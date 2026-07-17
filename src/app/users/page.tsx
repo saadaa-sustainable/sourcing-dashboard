@@ -42,7 +42,6 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   const { data, error } = await supabase.auth.getClaims();
   if (error || !data?.claims) redirect('/login');
   const userEmail = typeof data.claims.email === 'string' ? data.claims.email : null;
-  if (!userEmail?.toLowerCase().endsWith('@saadaa.in')) redirect('/login?error=This+panel+is+restricted+to+SAADAA+accounts.');
 
   const adminReady = hasSupabaseAdminEnv();
   const { error: formError, invited } = await searchParams;
@@ -76,10 +75,10 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             {formError && <div className="form-alert error"><Info size={15} />{formError}</div>}
             {invited && <div className="form-alert success"><CheckCircle2 size={15} />Invite email sent to {invited}. They can set a password from the link.</div>}
             <form action={inviteUser} className="invite-form">
-              <label className="field"><span>Work email</span><input type="email" name="email" placeholder="new.teammate@saadaa.in" required autoComplete="off" disabled={!adminReady} /></label>
+              <label className="field"><span>Work email</span><input type="email" name="email" placeholder="new.teammate@company.com" required autoComplete="off" disabled={!adminReady} /></label>
               <button type="submit" className="primary-button" disabled={!adminReady}><UserPlus size={16} /> Send invite</button>
             </form>
-            <p className="invite-hint">An invite email is sent via Supabase. Only <strong>@saadaa.in</strong> addresses are allowed. Invite emails require SMTP to be configured on the Supabase project.</p>
+            <p className="invite-hint">An invite email is sent via Supabase to any valid address. Invite emails require SMTP to be configured on the Supabase project.</p>
           </div>
         </section>
 

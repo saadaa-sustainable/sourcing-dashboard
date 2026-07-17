@@ -18,7 +18,6 @@ export default async function Home() {
     const { data, error } = await supabase.auth.getClaims();
     if (error || !data?.claims) redirect('/login');
     userEmail = typeof data.claims.email === 'string' ? data.claims.email : null;
-    if (!userEmail?.toLowerCase().endsWith('@saadaa.in')) redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
   const dashboardData = await loadDashboardData();
   return <DashboardShell data={dashboardData} userEmail={userEmail} signOutAction={signOut} />;

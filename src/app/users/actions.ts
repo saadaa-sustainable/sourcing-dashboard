@@ -8,22 +8,19 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 
 // Re-verify the caller server-side. Never trust the page guard alone: a server
 // action is an independent POST endpoint that anyone with a session could hit.
-async function requireSaadaaUser() {
+async function requireUser() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
   if (error || !data?.claims) redirect('/login');
-  const email = typeof data.claims.email === 'string' ? data.claims.email : '';
-  if (!email.toLowerCase().endsWith('@saadaa.in')) redirect('/login?error=This+panel+is+restricted+to+SAADAA+accounts.');
-  return email;
 }
 
 export async function inviteUser(formData: FormData) {
   if (!hasSupabaseEnv()) redirect('/');
-  await requireSaadaaUser();
+  await requireUser();
 
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   if (!email) redirect('/users?error=Enter+an+email+address.');
-  if (!email.endsWith('@saadaa.in')) redirect('/users?error=Only+%40saadaa.in+addresses+can+be+invited.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) redirect('/users?error=Enter+a+valid+email+address.');
   if (!hasSupabaseAdminEnv()) redirect('/users?error=SUPABASE_SERVICE_ROLE_KEY+is+not+configured+on+the+server.');
 
   const hdrs = await headers();
