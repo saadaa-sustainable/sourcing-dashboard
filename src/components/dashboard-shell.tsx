@@ -1,178 +1,1737 @@
-'use client';
+"use client";
 
-import { useMemo, useState } from 'react';
-import { AlertTriangle, ArrowUpRight, Award, Boxes, CalendarClock, ChevronRight, CircleHelp, Download, Factory, Info, LayoutDashboard, LogOut, Menu, PackageSearch, Search, Store, Users, X, Zap } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { aggregateProductRows, buildTrackerRows, buildVendorRollups, createLookups, isDelayedPo, isHighRiskPo, isOpenPo, resolveVendor } from '@/lib/business-logic';
-import { downloadCsv, type CsvValue } from '@/lib/download';
-import type { DashboardData, PendingPo, TrackerRow, VendorRollup } from '@/lib/types';
+import { useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Award,
+  Boxes,
+  CalendarClock,
+  ChevronRight,
+  CircleHelp,
+  Download,
+  Factory,
+  Info,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  PackageSearch,
+  Search,
+  Store,
+  Users,
+  X,
+  Zap,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  LabelList,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  aggregateProductRows,
+  buildTrackerRows,
+  buildVendorRollups,
+  createLookups,
+  isDelayedPo,
+  isHighRiskPo,
+  isOpenPo,
+  resolveVendor,
+} from "@/lib/business-logic";
+import { downloadCsv, type CsvValue } from "@/lib/download";
+import type {
+  DashboardData,
+  PendingPo,
+  TrackerRow,
+  VendorRollup,
+} from "@/lib/types";
 
 const tabs = [
-  ['dashboard', 'Dashboard', LayoutDashboard], ['open-po', 'Open PO Tracker', PackageSearch],
-  ['vendors', 'Vendor Performance', Factory], ['vendor-type', 'Vendor Type', Store],
-  ['merchants', 'Merchant Performance', Users], ['products', 'Product Tracker', Boxes],
-  ['urgent-replenish', 'Urgent Replenishment', Zap], ['recommend', 'Vendor Recommendation', Award],
-  ['matrix', 'Product Matrix View', CalendarClock],
+  ["dashboard", "Dashboard", LayoutDashboard],
+  ["open-po", "Open PO Tracker", PackageSearch],
+  ["vendors", "Vendor Performance", Factory],
+  ["vendor-type", "Vendor Type", Store],
+  ["merchants", "Merchant Performance", Users],
+  ["products", "Product Tracker", Boxes],
+  ["urgent-replenish", "Urgent Replenishment", Zap],
+  ["recommend", "Vendor Recommendation", Award],
+  ["matrix", "Product Matrix View", CalendarClock],
 ] as const;
-type TabId = typeof tabs[number][0];
+type TabId = (typeof tabs)[number][0];
 
 const glossary: Record<TabId, string[]> = {
-  dashboard: ['Open PO: pending quantity actual is greater than zero.', 'Delayed PO: an open PO whose expected delivery date is before today.', 'High Risk: no quantity received and expected delivery is within 15 days, including overdue POs.', 'Open value: pending quantity actual × item price.'],
-  'open-po': ['Rows are grouped by PO reference + product code.', 'Variants is the distinct variant count, not a piece count.', 'Delay days never goes below zero.', 'TNA stage is the first milestone without an actual date; missing TNA data is shown explicitly.', 'TNA Delay shows planned vs actual dates for each stage.'],
-  vendors: ['Vendor joins use vendor code first, then name only as a fallback.', 'Utilization = open quantity ÷ monthly capacity.', 'Vendors missing from capacity master show zero capacity fields.'],
-  'vendor-type': ['Labels containing “woven” are Woven. Every other label, including blank, is Knit.', 'Charts show the top 15 vendors within each bucket.'],
-  merchants: ['Merchant comes from vendor capacity master, then vendor type master.', 'Unmapped vendors are grouped under Unassigned.'],
-  products: ['Filters are applied to source PO rows before product aggregation.', 'Product + variant keeps variants separate; product summary collapses them.', 'DOQ and Product State remain blocked until their source feeds exist.'],
-  'urgent-replenish': ['Shows products approaching or exceeding reorder points.', 'In Process: open PO inventory expected within 365 days.', 'OOS: out of stock products with no coverage.'],
-  recommend: ['Each leaderboard ranks active vendors by a single quality, so you can weigh the trade-offs before issuing a PO.', 'Spare capacity = monthly capacity − current open quantity.', 'On-time uses delay %; TNA punctuality uses average TNA delay days.', 'Picking a product lists only vendors that have produced it before, best on-time first.'],
-  matrix: ['Rows are products (optionally variants), columns are vendors, and cells are pending quantity.', 'Totals include only the currently open PO rows.'],
+  dashboard: [
+    "Open PO: pending quantity actual is greater than zero.",
+    "Delayed PO: an open PO whose expected delivery date is before today.",
+    "High Risk: no quantity received and expected delivery is within 15 days, including overdue POs.",
+    "Open value: pending quantity actual × item price.",
+  ],
+  "open-po": [
+    "Rows are grouped by PO reference + product code.",
+    "Variants is the distinct variant count, not a piece count.",
+    "Delay days never goes below zero.",
+    "TNA stage is the first milestone without an actual date; missing TNA data is shown explicitly.",
+    "TNA Delay shows planned vs actual dates for each stage.",
+  ],
+  vendors: [
+    "Vendor joins use vendor code first, then name only as a fallback.",
+    "Utilization = open quantity ÷ monthly capacity.",
+    "Vendors missing from capacity master show zero capacity fields.",
+  ],
+  "vendor-type": [
+    "Labels containing “woven” are Woven. Every other label, including blank, is Knit.",
+    "Charts show the top 15 vendors within each bucket.",
+  ],
+  merchants: [
+    "Merchant comes from vendor capacity master, then vendor type master.",
+    "Unmapped vendors are grouped under Unassigned.",
+  ],
+  products: [
+    "Filters are applied to source PO rows before product aggregation.",
+    "Product + variant keeps variants separate; product summary collapses them.",
+    "DOQ and Product State remain blocked until their source feeds exist.",
+  ],
+  "urgent-replenish": [
+    "Shows products approaching or exceeding reorder points.",
+    "In Process: open PO inventory expected within 365 days.",
+    "OOS: out of stock products with no coverage.",
+  ],
+  recommend: [
+    "Each leaderboard ranks active vendors by a single quality, so you can weigh the trade-offs before issuing a PO.",
+    "Spare capacity = monthly capacity − current open quantity.",
+    "On-time uses delay %; TNA punctuality uses average TNA delay days.",
+    "Picking a product lists only vendors that have produced it before, best on-time first.",
+  ],
+  matrix: [
+    "Rows are products (optionally variants), columns are vendors, and cells are pending quantity.",
+    "Totals include only the currently open PO rows.",
+  ],
 };
 
-const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
-const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
-const colors = ['#7b4fbf', '#c9a882', '#4f7c4d', '#f0c61e', '#3b6fd4', '#b54f7a'];
+const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const money = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+const colors = [
+  "#7b4fbf",
+  "#c9a882",
+  "#4f7c4d",
+  "#f0c61e",
+  "#3b6fd4",
+  "#b54f7a",
+];
 const today = new Date();
-const norm = (value: string | null | undefined) => (value ?? '').trim().toLowerCase();
-const unique = (values: string[]) => [...new Set(values.filter(Boolean))].sort();
-const metricIcons = { purple: LayoutDashboard, teal: Boxes, blue: CalendarClock, orange: Info, red: AlertTriangle } as const;
+const norm = (value: string | null | undefined) =>
+  (value ?? "").trim().toLowerCase();
+const unique = (values: string[]) =>
+  [...new Set(values.filter(Boolean))].sort();
+const metricIcons = {
+  purple: LayoutDashboard,
+  teal: Boxes,
+  blue: CalendarClock,
+  orange: Info,
+  red: AlertTriangle,
+} as const;
 
-function Card({ label, value, note, tone = 'purple', big = false, onClick }: { label: string; value: string; note?: string; tone?: string; big?: boolean; onClick?: () => void }) {
+function Card({
+  label,
+  value,
+  note,
+  tone = "purple",
+  big = false,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: string;
+  big?: boolean;
+  onClick?: () => void;
+}) {
   const Icon = metricIcons[tone as keyof typeof metricIcons] ?? LayoutDashboard;
-  return <button type="button" className={`metric-card tone-${tone}${big ? ' big' : ''}`} onClick={onClick} disabled={!onClick}>
-    <span className="metric-icon"><Icon size={17} strokeWidth={1.8} /></span>
-    <span className="metric-label">{label}</span><strong>{value}</strong>{note && <small>{note}</small>}{onClick && <ArrowUpRight className="metric-action" size={15} />}
-  </button>;
+  return (
+    <button
+      type="button"
+      className={`metric-card tone-${tone}${big ? " big" : ""}`}
+      onClick={onClick}
+      disabled={!onClick}
+    >
+      <span className="metric-icon">
+        <Icon size={17} strokeWidth={1.8} />
+      </span>
+      <span className="metric-label">{label}</span>
+      <strong>{value}</strong>
+      {note && <small>{note}</small>}
+      {onClick && <ArrowUpRight className="metric-action" size={15} />}
+    </button>
+  );
 }
 
-function Empty({ text = 'No data for this filter' }: { text?: string }) {
-  return <div className="empty-state"><PackageSearch size={28} /><p>{text}</p></div>;
-}
-
-function DownloadButton({ filename, headers, rows }: { filename: string; headers: string[]; rows: CsvValue[][] }) {
-  return <button type="button" className="download-button" onClick={() => downloadCsv(filename, headers, rows)} disabled={!rows.length} title={rows.length ? `Download ${rows.length} rows as CSV` : 'No data to download'}><Download size={13} /> CSV</button>;
-}
-
-function ChartCard({ title, children, download }: { title: string; children: React.ReactNode; download?: { filename: string; headers: string[]; rows: CsvValue[][] } }) {
-  return <section className="panel chart-panel"><div className="panel-title"><div><span className="panel-kicker">Live analysis</span><h3>{title}</h3></div>{download ? <DownloadButton {...download} /> : <span className="panel-spark"><i /><i /><i /></span>}</div><div className="chart-area">{children}</div></section>;
-}
-
-const vendorCsvHeaders = ['Vendor name', 'Vendor code', 'Bucket', 'Merchant', 'Open POs', 'Delayed POs', 'Delay %', 'Open qty', 'Open value', 'Machines', 'Active karigar', 'Latest karigar', 'Capacity/mo', 'Utilization %'];
-const vendorCsvRows = (rows: VendorRollup[]): CsvValue[][] => rows.map((r) => [r.vendorName, r.vendorCode, r.vendorBucket, r.merchant, r.openPoCount, r.delayedPoCount, r.delayPct, r.openQty, Math.round(r.openValue), r.totalMachines, r.totalActiveKarigar, r.karigarLatest, r.capacityPerMonth, r.utilizationPct]);
-const tnaTotalDays = (t: TrackerRow['tna']) => t ? t.pp_sample_delay_days + t.gpt_delay_days + t.cutting_delay_days + t.in_line_qc_delay_days : null;
-
-function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  return <div className="modal-backdrop" onMouseDown={onClose}><div className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
-    <div className="modal-head"><h2>{title}</h2><button className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div>{children}
-  </div></div>;
-}
-
-function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
-  return <label className="field"><span>{label}</span><select value={value} onChange={(e) => onChange(e.target.value)}><option value="">All</option>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
-}
-
-function DashboardTab({ data, bucket, setBucket, onHighRisk, onOverdue }: { data: DashboardData; bucket: string; setBucket: (v: string) => void; onHighRisk: (rows: PendingPo[]) => void; onOverdue: (rows: PendingPo[]) => void }) {
-  const lookups = useMemo(() => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords), [data]);
-  const rows = useMemo(() => data.pendingPos.filter((row) => bucket === 'All' || resolveVendor(row, lookups).bucket === bucket), [data.pendingPos, bucket, lookups]);
-  const open = rows.filter(isOpenPo); const delayed = open.filter((row) => isDelayedPo(row, today)); const highRisk = open.filter((row) => isHighRiskPo(row, today));
-  const openRefs = unique(open.map((row) => row.po_ref_num ?? '')); const delayedRefs = unique(delayed.map((row) => row.po_ref_num ?? ''));
-  const tracker = buildTrackerRows(rows, data.vendorTypes, data.vendorMasters, data.tnaRecords, today);
-  const vendor = buildVendorRollups(rows, data.vendorTypes, data.vendorMasters, data.tnaRecords, today).slice(0, 12);
-  const ageing = ['Not Due', '0-7 Days', '8-15 Days', '16-30 Days', '30+ Days', 'No EDD'].map((name) => ({ name, value: unique(tracker.filter((row) => row.delayBucket === name).map((row) => row.poRef)).length })).filter((item) => item.value);
-  const products = Object.values(tracker.reduce<Record<string, { name: string; qty: number }>>((acc, row) => { acc[row.productCode] ??= { name: row.productCode, qty: 0 }; acc[row.productCode].qty += row.pendingQty; return acc; }, {})).sort((a, b) => b.qty - a.qty).slice(0, 15);
-  const codeAgg: Record<string, { name: string; open: Set<string>; delayed: Set<string> }> = {};
-  tracker.forEach((row) => { const c = (codeAgg[row.productCode] ??= { name: row.productCode, open: new Set(), delayed: new Set() }); c.open.add(row.poRef); if (row.delayDays > 0) c.delayed.add(row.poRef); });
-  const codeDelay = Object.values(codeAgg).map((c) => ({ name: c.name, delayPct: c.open.size ? Math.round(c.delayed.size / c.open.size * 100) : 0, open: c.open.size })).sort((a, b) => b.open - a.open).slice(0, 15);
-  const varAgg: Record<string, { name: string; open: Set<string>; delayed: Set<string> }> = {};
-  tracker.forEach((row) => row.skuRows.forEach((sku) => { const key = `${row.productCode} · ${sku.product_variant ?? 'Unmapped'}`; const v = (varAgg[key] ??= { name: key, open: new Set(), delayed: new Set() }); v.open.add(row.poRef); if (row.delayDays > 0) v.delayed.add(row.poRef); }));
-  const variantRows = Object.values(varAgg).map((v) => ({ name: v.name, openCount: v.open.size, delayPct: v.open.size ? Math.round(v.delayed.size / v.open.size * 100) : 0 }));
-  const variantOpen = [...variantRows].sort((a, b) => b.openCount - a.openCount).slice(0, 15);
-  const variantDelay = [...variantRows].sort((a, b) => b.delayPct - a.delayPct).slice(0, 15);
-  return <>
-    <div className="segment"><button className={bucket === 'All' ? 'active' : ''} onClick={() => setBucket('All')}>All</button><button className={bucket === 'Woven' ? 'active' : ''} onClick={() => setBucket('Woven')}>Woven</button><button className={bucket === 'Knit' ? 'active' : ''} onClick={() => setBucket('Knit')}>Knitted</button></div>
-    <div className="metric-grid">
-      <Card label="Open POs" value={fmt.format(openRefs.length)} note={`${fmt.format(open.length)} SKU rows`} />
-      <Card label="Open Qty" value={fmt.format(open.reduce((s, r) => s + r.pending_qty_actual, 0))} tone="teal" />
-      <Card label="Open Value" value={money.format(open.reduce((s, r) => s + r.pending_qty_actual * r.item_price, 0))} tone="blue" />
-      <Card label="Delayed POs" value={fmt.format(delayedRefs.length)} note={`${openRefs.length ? Math.round(delayedRefs.length / openRefs.length * 100) : 0}% of open · audit`} tone="orange" big onClick={() => onOverdue(delayed)} />
-      <Card label="High Risk POs" value={fmt.format(unique(highRisk.map((r) => r.po_ref_num ?? '')).length)} note="View details" tone="red" big onClick={() => onHighRisk(highRisk)} />
+function Empty({ text = "No data for this filter" }: { text?: string }) {
+  return (
+    <div className="empty-state">
+      <PackageSearch size={28} />
+      <p>{text}</p>
     </div>
-    <div className="chart-grid">
-      <ChartCard title="PO ageing" download={{ filename: 'po-ageing', headers: ['Ageing bucket', 'Open PO count'], rows: ageing.map((a) => [a.name, a.value]) }}>{ageing.length ? <ResponsiveContainer><PieChart><Pie data={ageing} dataKey="value" nameKey="name" innerRadius={52} outerRadius={82} paddingAngle={3} label>{ageing.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer> : <Empty />}</ChartCard>
-      <ChartCard title="Vendor open vs delayed POs" download={{ filename: 'vendor-open-vs-delayed', headers: vendorCsvHeaders, rows: vendorCsvRows(vendor) }}>{vendor.length ? <ResponsiveContainer><BarChart data={vendor} margin={{ left: -20, bottom: 28 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="vendorCode" angle={-35} textAnchor="end" height={50} /><YAxis /><Tooltip /><Legend /><Bar dataKey="openPoCount" name="Open" fill="#8b5cf6" radius={[5,5,0,0]}><LabelList dataKey="openPoCount" position="top" /></Bar><Bar dataKey="delayedPoCount" name="Delayed" fill="#f97316" radius={[5,5,0,0]}><LabelList dataKey="delayedPoCount" position="top" /></Bar></BarChart></ResponsiveContainer> : <Empty />}</ChartCard>
-      <ChartCard title="Vendor delay %" download={{ filename: 'vendor-delay-pct', headers: vendorCsvHeaders, rows: vendorCsvRows(vendor) }}>{vendor.length ? <ResponsiveContainer><BarChart data={vendor} margin={{ left: -20, bottom: 28 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="vendorCode" angle={-35} textAnchor="end" height={50} /><YAxis unit="%" /><Tooltip /><Bar dataKey="delayPct" name="Delay %" fill="#ef4444" radius={[5,5,0,0]}><LabelList dataKey="delayPct" position="top" formatter={(v) => `${v}%`} /></Bar></BarChart></ResponsiveContainer> : <Empty />}</ChartCard>
-      <ChartCard title="Top product codes by pending qty" download={{ filename: 'top-product-codes', headers: ['Product code', 'Pending qty'], rows: products.map((p) => [p.name, p.qty]) }}>{products.length ? <ResponsiveContainer><BarChart data={products} layout="vertical" margin={{ left: 15 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" /><YAxis type="category" dataKey="name" width={75} /><Tooltip /><Bar dataKey="qty" fill="#14b8a6" radius={[0,5,5,0]}><LabelList dataKey="qty" position="right" /></Bar></BarChart></ResponsiveContainer> : <Empty />}</ChartCard>
-      <ChartCard title="Product code delay %" download={{ filename: 'product-code-delay-pct', headers: ['Product code', 'Delay %', 'Open POs'], rows: codeDelay.map((c) => [c.name, c.delayPct, c.open]) }}>{codeDelay.length ? <ResponsiveContainer><BarChart data={codeDelay} layout="vertical" margin={{ left: 15 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" unit="%" /><YAxis type="category" dataKey="name" width={75} /><Tooltip formatter={(v) => `${v}%`} /><Bar dataKey="delayPct" name="Delay %" fill="#ef4444" radius={[0,5,5,0]}><LabelList dataKey="delayPct" position="right" formatter={(v) => `${v}%`} /></Bar></BarChart></ResponsiveContainer> : <Empty />}</ChartCard>
-      <ChartCard title="Product variant · open PO count" download={{ filename: 'product-variant-open-po-count', headers: ['Product · variant', 'Open PO count'], rows: variantOpen.map((v) => [v.name, v.openCount]) }}>{variantOpen.length ? <ResponsiveContainer><BarChart data={variantOpen} layout="vertical" margin={{ left: 15 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" /><YAxis type="category" dataKey="name" width={140} /><Tooltip /><Bar dataKey="openCount" name="Open POs" fill="#8b5cf6" radius={[0,5,5,0]}><LabelList dataKey="openCount" position="right" /></Bar></BarChart></ResponsiveContainer> : <Empty />}</ChartCard>
-      <ChartCard title="Product variant · delay %" download={{ filename: 'product-variant-delay-pct', headers: ['Product · variant', 'Delay %'], rows: variantDelay.map((v) => [v.name, v.delayPct]) }}>{variantDelay.length ? <ResponsiveContainer><BarChart data={variantDelay} layout="vertical" margin={{ left: 15 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" unit="%" /><YAxis type="category" dataKey="name" width={140} /><Tooltip formatter={(v) => `${v}%`} /><Bar dataKey="delayPct" name="Delay %" fill="#f59e0b" radius={[0,5,5,0]}><LabelList dataKey="delayPct" position="right" formatter={(v) => `${v}%`} /></Bar></BarChart></ResponsiveContainer> : <Empty />}</ChartCard>
+  );
+}
+
+function DownloadButton({
+  filename,
+  headers,
+  rows,
+}: {
+  filename: string;
+  headers: string[];
+  rows: CsvValue[][];
+}) {
+  return (
+    <button
+      type="button"
+      className="download-button"
+      onClick={() => downloadCsv(filename, headers, rows)}
+      disabled={!rows.length}
+      title={
+        rows.length
+          ? `Download ${rows.length} rows as CSV`
+          : "No data to download"
+      }
+    >
+      <Download size={13} /> CSV
+    </button>
+  );
+}
+
+function ChartCard({
+  title,
+  children,
+  download,
+}: {
+  title: string;
+  children: React.ReactNode;
+  download?: { filename: string; headers: string[]; rows: CsvValue[][] };
+}) {
+  return (
+    <section className="panel chart-panel">
+      <div className="panel-title">
+        <div>
+          <span className="panel-kicker">Live analysis</span>
+          <h3>{title}</h3>
+        </div>
+        {download ? (
+          <DownloadButton {...download} />
+        ) : (
+          <span className="panel-spark">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
+      </div>
+      <div className="chart-area">{children}</div>
+    </section>
+  );
+}
+
+const vendorCsvHeaders = [
+  "Vendor name",
+  "Vendor code",
+  "Bucket",
+  "Merchant",
+  "Open POs",
+  "Delayed POs",
+  "Delay %",
+  "Open qty",
+  "Open value",
+  "Machines",
+  "Active karigar",
+  "Latest karigar",
+  "Capacity/mo",
+  "Utilization %",
+];
+const vendorCsvRows = (rows: VendorRollup[]): CsvValue[][] =>
+  rows.map((r) => [
+    r.vendorName,
+    r.vendorCode,
+    r.vendorBucket,
+    r.merchant,
+    r.openPoCount,
+    r.delayedPoCount,
+    r.delayPct,
+    r.openQty,
+    Math.round(r.openValue),
+    r.totalMachines,
+    r.totalActiveKarigar,
+    r.karigarLatest,
+    r.capacityPerMonth,
+    r.utilizationPct,
+  ]);
+const tnaTotalDays = (t: TrackerRow["tna"]) =>
+  t
+    ? t.pp_sample_delay_days +
+      t.gpt_delay_days +
+      t.cutting_delay_days +
+      t.in_line_qc_delay_days
+    : null;
+
+function Modal({
+  title,
+  onClose,
+  children,
+  wide = false,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div
+        className={`modal ${wide ? "modal-wide" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
-  </>;
+  );
 }
 
-function TrackerTab({ data, onView }: { data: DashboardData; onView: (row: TrackerRow) => void }) {
-  const all = useMemo(() => buildTrackerRows(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const [filters, set] = useState({ vendor: '', vendorType: '', type: '', product: '', merchant: '', bucket: '', search: '' });
-  const lookups = useMemo(() => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords), [data]);
-  const rows = all.filter((row) => (!filters.vendor || row.vendorName === filters.vendor) && (!filters.vendorType || row.vendorBucket === filters.vendorType) && (!filters.type || row.poType === filters.type) && (!filters.product || row.productCode === filters.product) && (!filters.merchant || row.merchant === filters.merchant) && (!filters.bucket || row.delayBucket === filters.bucket) && (!filters.search || [row.poRef, row.productCode, row.vendorName].some((v) => norm(v).includes(norm(filters.search)))));
-  return <><div className="filter-bar"><label className="search-field"><Search size={16} /><input placeholder="Search PO, product or vendor" value={filters.search} onChange={(e) => set({ ...filters, search: e.target.value })} /></label><FilterSelect label="Vendor" value={filters.vendor} options={unique(all.map((r) => r.vendorName))} onChange={(v) => set({ ...filters, vendor: v })} /><FilterSelect label="Vendor Type" value={filters.vendorType} options={['Woven', 'Knit']} onChange={(v) => set({ ...filters, vendorType: v })} /><FilterSelect label="PO type" value={filters.type} options={unique(all.map((r) => r.poType))} onChange={(v) => set({ ...filters, type: v })} /><FilterSelect label="Product" value={filters.product} options={unique(all.map((r) => r.productCode))} onChange={(v) => set({ ...filters, product: v })} /><FilterSelect label="Merchant" value={filters.merchant} options={unique(all.map((r) => r.merchant))} onChange={(v) => set({ ...filters, merchant: v })} /><FilterSelect label="Days Overdue" value={filters.bucket} options={['Not Due','0-7 Days','8-15 Days','16-30 Days','30+ Days','No EDD']} onChange={(v) => set({ ...filters, bucket: v })} /></div>
-    <div className="panel table-panel"><div className="table-meta"><span>{fmt.format(rows.length)} PO + product + EDD groups</span><span className="table-meta-actions"><small>Scroll horizontally for TNA →</small><DownloadButton filename="open-po-tracker" headers={['PO reference', 'Vendor', 'Vendor code', 'Product', 'Variants', 'Pending qty', 'Pending value', 'EDD', 'Delay days', 'Days Overdue', 'TNA stage', 'TNA days', 'PP TNA', 'PP Actual', 'GPT TNA', 'GPT Actual', 'Cutting TNA', 'Cutting actual', 'Inline TNA', 'Inline actual']} rows={rows.map((row) => [row.poRef, row.vendorName, row.vendorCode, row.productCode, row.variantCount, row.pendingQty, Math.round(row.pendingValue), row.edd ?? 'No EDD', row.delayDays, row.delayBucket, row.stage, tnaTotalDays(row.tna) ?? '', row.tna?.pp_sample_tna_date ?? '', row.tna?.pp_sample_actual_date ?? '', row.tna?.gpt_tna_date ?? '', row.tna?.gpt_actual_date ?? '', row.tna?.cutting_tna_date ?? '', row.tna?.cutting_actual_date_first ?? '', row.tna?.in_line_tna_date ?? '', row.tna?.in_line_actual_date ?? ''])} /></span></div>{rows.length ? <div className="table-scroll wide-table"><table><thead><tr><th>PO reference</th><th>Vendor</th><th>Product</th><th>Variants</th><th>Pending qty</th><th>Pending value</th><th>EDD</th><th>Delay</th><th>Days Overdue</th><th>TNA stage</th><th>TNA days</th><th>PP TNA</th><th>PP Actual</th><th>GPT TNA</th><th>GPT Actual</th><th>Cutting TNA</th><th>Cutting actual</th><th>Inline TNA</th><th>Inline actual</th><th></th></tr></thead><tbody>{rows.slice(0, 500).map((row) => <tr key={row.key}><td className="mono">{row.poRef}</td><td>{row.vendorName}<small>{row.vendorCode}</small></td><td>{row.productCode}</td><td>{row.variantCount}</td><td>{fmt.format(row.pendingQty)}</td><td>{money.format(row.pendingValue)}</td><td>{row.edd ?? 'No EDD'}</td><td>{row.delayDays ? <span className="badge danger">{row.delayDays}d</span> : <span className="badge success">On time</span>}</td><td>{row.delayBucket}</td><td><span className="badge info">{row.stage}</span></td><td>{(() => { const d = tnaTotalDays(row.tna); return d === null ? '—' : d > 0 ? <span className="badge danger">{d}d</span> : <span className="badge success">{d}d</span>; })()}</td><td>{row.tna?.pp_sample_tna_date ?? '—'}</td><td>{row.tna?.pp_sample_actual_date ?? '—'}</td><td>{row.tna?.gpt_tna_date ?? '—'}</td><td>{row.tna?.gpt_actual_date ?? '—'}</td><td>{row.tna?.cutting_tna_date ?? '—'}</td><td>{row.tna?.cutting_actual_date_first ?? '—'}</td><td>{row.tna?.in_line_tna_date ?? '—'}</td><td>{row.tna?.in_line_actual_date ?? '—'}</td><td><button className="link-button" onClick={() => onView(row)}>View <ChevronRight size={14} /></button></td></tr>)}</tbody></table></div> : <Empty />}</div></>;
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">All</option>
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
-function VendorTable({ rows, filename }: { rows: VendorRollup[]; filename?: string }) {
-  return <>{filename && <div className="table-meta"><span>{fmt.format(rows.length)} rows</span><DownloadButton filename={filename} headers={vendorCsvHeaders} rows={vendorCsvRows(rows)} /></div>}{rows.length ? <div className="table-scroll"><table><thead><tr><th>Vendor</th><th>Merchant</th><th>Open POs</th><th>Delayed</th><th>Delay %</th><th>Open qty</th><th>Open value</th><th>Machines</th><th>Active karigar</th><th>Latest karigar</th><th>Capacity/mo</th><th>Utilization</th></tr></thead><tbody>{rows.map((row) => <tr key={row.vendorCode || row.vendorName}><td>{row.vendorName}<small>{row.vendorCode} · {row.vendorBucket}</small></td><td>{row.merchant}</td><td>{row.openPoCount}</td><td>{row.delayedPoCount}</td><td>{row.delayPct}%</td><td>{fmt.format(row.openQty)}</td><td>{money.format(row.openValue)}</td><td>{fmt.format(row.totalMachines)}</td><td>{fmt.format(row.totalActiveKarigar)}</td><td>{fmt.format(row.karigarLatest)}</td><td>{fmt.format(row.capacityPerMonth)}</td><td><span className={`badge ${row.utilizationPct > 100 ? 'danger' : 'info'}`}>{row.utilizationPct}%</span></td></tr>)}</tbody></table></div> : <Empty />}</>;
+function DashboardTab({
+  data,
+  bucket,
+  setBucket,
+  onHighRisk,
+  onOverdue,
+}: {
+  data: DashboardData;
+  bucket: string;
+  setBucket: (v: string) => void;
+  onHighRisk: (rows: PendingPo[]) => void;
+  onOverdue: (rows: PendingPo[]) => void;
+}) {
+  const lookups = useMemo(
+    () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
+    [data],
+  );
+  const rows = useMemo(
+    () =>
+      data.pendingPos.filter(
+        (row) =>
+          bucket === "All" || resolveVendor(row, lookups).bucket === bucket,
+      ),
+    [data.pendingPos, bucket, lookups],
+  );
+  const open = rows.filter(isOpenPo);
+  const delayed = open.filter((row) => isDelayedPo(row, today));
+  const highRisk = open.filter((row) => isHighRiskPo(row, today));
+  const openRefs = unique(open.map((row) => row.po_ref_num ?? ""));
+  const delayedRefs = unique(delayed.map((row) => row.po_ref_num ?? ""));
+  const tracker = buildTrackerRows(
+    rows,
+    data.vendorTypes,
+    data.vendorMasters,
+    data.tnaRecords,
+    today,
+  );
+  const vendor = buildVendorRollups(
+    rows,
+    data.vendorTypes,
+    data.vendorMasters,
+    data.tnaRecords,
+    today,
+  ).slice(0, 12);
+  const ageing = [
+    "Not Due",
+    "0-7 Days",
+    "8-15 Days",
+    "16-30 Days",
+    "30+ Days",
+    "No EDD",
+  ]
+    .map((name) => ({
+      name,
+      value: unique(
+        tracker
+          .filter((row) => row.delayBucket === name)
+          .map((row) => row.poRef),
+      ).length,
+    }))
+    .filter((item) => item.value);
+  const products = Object.values(
+    tracker.reduce<Record<string, { name: string; qty: number }>>(
+      (acc, row) => {
+        acc[row.productCode] ??= { name: row.productCode, qty: 0 };
+        acc[row.productCode].qty += row.pendingQty;
+        return acc;
+      },
+      {},
+    ),
+  )
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, 15);
+  const codeAgg: Record<
+    string,
+    { name: string; open: Set<string>; delayed: Set<string> }
+  > = {};
+  tracker.forEach((row) => {
+    const c = (codeAgg[row.productCode] ??= {
+      name: row.productCode,
+      open: new Set(),
+      delayed: new Set(),
+    });
+    c.open.add(row.poRef);
+    if (row.delayDays > 0) c.delayed.add(row.poRef);
+  });
+  const codeDelay = Object.values(codeAgg)
+    .map((c) => ({
+      name: c.name,
+      delayPct: c.open.size
+        ? Math.round((c.delayed.size / c.open.size) * 100)
+        : 0,
+      open: c.open.size,
+    }))
+    .sort((a, b) => b.open - a.open)
+    .slice(0, 15);
+  const varAgg: Record<
+    string,
+    { name: string; open: Set<string>; delayed: Set<string> }
+  > = {};
+  tracker.forEach((row) =>
+    row.skuRows.forEach((sku) => {
+      const key = `${row.productCode} · ${sku.product_variant ?? "Unmapped"}`;
+      const v = (varAgg[key] ??= {
+        name: key,
+        open: new Set(),
+        delayed: new Set(),
+      });
+      v.open.add(row.poRef);
+      if (row.delayDays > 0) v.delayed.add(row.poRef);
+    }),
+  );
+  const variantRows = Object.values(varAgg).map((v) => ({
+    name: v.name,
+    openCount: v.open.size,
+    delayPct: v.open.size
+      ? Math.round((v.delayed.size / v.open.size) * 100)
+      : 0,
+  }));
+  const variantOpen = [...variantRows]
+    .sort((a, b) => b.openCount - a.openCount)
+    .slice(0, 15);
+  const variantDelay = [...variantRows]
+    .sort((a, b) => b.delayPct - a.delayPct)
+    .slice(0, 15);
+  return (
+    <>
+      <div className="segment">
+        <button
+          className={bucket === "All" ? "active" : ""}
+          onClick={() => setBucket("All")}
+        >
+          All
+        </button>
+        <button
+          className={bucket === "Woven" ? "active" : ""}
+          onClick={() => setBucket("Woven")}
+        >
+          Woven
+        </button>
+        <button
+          className={bucket === "Knit" ? "active" : ""}
+          onClick={() => setBucket("Knit")}
+        >
+          Knitted
+        </button>
+      </div>
+      <div className="metric-grid">
+        <Card
+          label="Open POs"
+          value={fmt.format(openRefs.length)}
+          note={`${fmt.format(open.length)} SKU rows`}
+        />
+        <Card
+          label="Open Qty"
+          value={fmt.format(open.reduce((s, r) => s + r.pending_qty_actual, 0))}
+          tone="teal"
+        />
+        <Card
+          label="Open Value"
+          value={money.format(
+            open.reduce((s, r) => s + r.pending_qty_actual * r.item_price, 0),
+          )}
+          tone="blue"
+        />
+        <Card
+          label="Delayed POs"
+          value={fmt.format(delayedRefs.length)}
+          note={`${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · audit`}
+          tone="orange"
+          big
+          onClick={() => onOverdue(delayed)}
+        />
+        <Card
+          label="High Risk POs"
+          value={fmt.format(
+            unique(highRisk.map((r) => r.po_ref_num ?? "")).length,
+          )}
+          note="View details"
+          tone="red"
+          big
+          onClick={() => onHighRisk(highRisk)}
+        />
+      </div>
+      <div className="chart-grid">
+        <ChartCard
+          title="PO ageing"
+          download={{
+            filename: "po-ageing",
+            headers: ["Ageing bucket", "Open PO count"],
+            rows: ageing.map((a) => [a.name, a.value]),
+          }}
+        >
+          {ageing.length ? (
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={ageing}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={52}
+                  outerRadius={82}
+                  paddingAngle={3}
+                  label
+                >
+                  {ageing.map((_, i) => (
+                    <Cell key={i} fill={colors[i % colors.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Vendor open vs delayed POs"
+          download={{
+            filename: "vendor-open-vs-delayed",
+            headers: vendorCsvHeaders,
+            rows: vendorCsvRows(vendor),
+          }}
+        >
+          {vendor.length ? (
+            <ResponsiveContainer>
+              <BarChart data={vendor} margin={{ left: -20, bottom: 28 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="vendorCode"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={50}
+                />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar
+                  dataKey="openPoCount"
+                  name="Open PO count"
+                  fill="#8b5cf6"
+                  radius={[5, 5, 0, 0]}
+                >
+                  <LabelList dataKey="openPoCount" position="top" />
+                </Bar>
+                <Bar
+                  dataKey="delayedPoCount"
+                  name="Delayed PO count"
+                  fill="#f97316"
+                  radius={[5, 5, 0, 0]}
+                >
+                  <LabelList dataKey="delayedPoCount" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Vendor delay %"
+          download={{
+            filename: "vendor-delay-pct",
+            headers: vendorCsvHeaders,
+            rows: vendorCsvRows(vendor),
+          }}
+        >
+          {vendor.length ? (
+            <ResponsiveContainer>
+              <BarChart data={vendor} margin={{ left: -20, bottom: 28 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="vendorCode"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={50}
+                />
+                <YAxis unit="%" />
+                <Tooltip />
+                <Bar
+                  dataKey="delayPct"
+                  name="Delay %"
+                  fill="#ef4444"
+                  radius={[5, 5, 0, 0]}
+                >
+                  <LabelList
+                    dataKey="delayPct"
+                    position="top"
+                    formatter={(v) => `${v}%`}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+        title="Top product codes by pending quantity"
+          download={{
+            filename: "top-product-codes",
+            headers: ["Product code", "Pending qty"],
+            rows: products.map((p) => [p.name, p.qty]),
+          }}
+        >
+          {products.length ? (
+            <ResponsiveContainer>
+              <BarChart data={products} layout="vertical" margin={{ left: 15 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" interval={0} width={75} />
+                <Tooltip />
+                <Bar
+                  dataKey="qty"
+                  name="Pending quantity"
+                  fill="#14b8a6"
+                  radius={[0, 5, 5, 0]}
+                >
+                  <LabelList dataKey="qty" position="right" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+        title="Product code delay percentage"
+          download={{
+            filename: "product-code-delay-pct",
+            headers: ["Product code", "Delay %", "Open POs"],
+            rows: codeDelay.map((c) => [c.name, c.delayPct, c.open]),
+          }}
+        >
+          {codeDelay.length ? (
+            <ResponsiveContainer>
+              <BarChart
+                data={codeDelay}
+                layout="vertical"
+                margin={{ left: 15 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" unit="%" />
+                <YAxis type="category" dataKey="name" interval={0} width={75} />
+                <Tooltip formatter={(v) => `${v}%`} />
+                <Bar
+                  dataKey="delayPct"
+                  name="Delay %"
+                  fill="#ef4444"
+                  radius={[0, 5, 5, 0]}
+                >
+                  <LabelList
+                    dataKey="delayPct"
+                    position="right"
+                    formatter={(v) => `${v}%`}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+        title="Product variant · Open PO count"
+          download={{
+            filename: "product-variant-open-po-count",
+            headers: ["Product · variant", "Open PO count"],
+            rows: variantOpen.map((v) => [v.name, v.openCount]),
+          }}
+        >
+          {variantOpen.length ? (
+            <ResponsiveContainer>
+              <BarChart
+                data={variantOpen}
+                layout="vertical"
+                margin={{ left: 15 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" interval={0} width={140} />
+                <Tooltip />
+                <Bar
+                  dataKey="openCount"
+                  name="Open PO count"
+                  fill="#8b5cf6"
+                  radius={[0, 5, 5, 0]}
+                >
+                  <LabelList dataKey="openCount" position="right" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+        title="Product variant · Delay percentage"
+          download={{
+            filename: "product-variant-delay-pct",
+            headers: ["Product · variant", "Delay %"],
+            rows: variantDelay.map((v) => [v.name, v.delayPct]),
+          }}
+        >
+          {variantDelay.length ? (
+            <ResponsiveContainer>
+              <BarChart
+                data={variantDelay}
+                layout="vertical"
+                margin={{ left: 15 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" unit="%" />
+                <YAxis type="category" dataKey="name" interval={0} width={140} />
+                <Tooltip formatter={(v) => `${v}%`} />
+                <Bar
+                  dataKey="delayPct"
+                  name="Delay %"
+                  fill="#f59e0b"
+                  radius={[0, 5, 5, 0]}
+                >
+                  <LabelList
+                    dataKey="delayPct"
+                    position="right"
+                    formatter={(v) => `${v}%`}
+                  />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+      </div>
+    </>
+  );
+}
+
+function TrackerTab({
+  data,
+  onView,
+}: {
+  data: DashboardData;
+  onView: (row: TrackerRow) => void;
+}) {
+  const all = useMemo(
+    () =>
+      buildTrackerRows(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const [filters, set] = useState({
+    vendor: "",
+    vendorType: "",
+    type: "",
+    product: "",
+    merchant: "",
+    bucket: "",
+    search: "",
+  });
+  const lookups = useMemo(
+    () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
+    [data],
+  );
+  const rows = all.filter(
+    (row) =>
+      (!filters.vendor || row.vendorName === filters.vendor) &&
+      (!filters.vendorType || row.vendorBucket === filters.vendorType) &&
+      (!filters.type || row.poType === filters.type) &&
+      (!filters.product || row.productCode === filters.product) &&
+      (!filters.merchant || row.merchant === filters.merchant) &&
+      (!filters.bucket || row.delayBucket === filters.bucket) &&
+      (!filters.search ||
+        [row.poRef, row.productCode, row.vendorName].some((v) =>
+          norm(v).includes(norm(filters.search)),
+        )),
+  );
+  return (
+    <>
+      <div className="filter-bar">
+        <label className="search-field">
+          <Search size={16} />
+          <input
+            placeholder="Search PO, product or vendor"
+            value={filters.search}
+            onChange={(e) => set({ ...filters, search: e.target.value })}
+          />
+        </label>
+        <FilterSelect
+          label="Vendor"
+          value={filters.vendor}
+          options={unique(all.map((r) => r.vendorName))}
+          onChange={(v) => set({ ...filters, vendor: v })}
+        />
+        <FilterSelect
+          label="Vendor Type"
+          value={filters.vendorType}
+          options={["Woven", "Knit"]}
+          onChange={(v) => set({ ...filters, vendorType: v })}
+        />
+        <FilterSelect
+          label="PO type"
+          value={filters.type}
+          options={unique(all.map((r) => r.poType))}
+          onChange={(v) => set({ ...filters, type: v })}
+        />
+        <FilterSelect
+          label="Product"
+          value={filters.product}
+          options={unique(all.map((r) => r.productCode))}
+          onChange={(v) => set({ ...filters, product: v })}
+        />
+        <FilterSelect
+          label="Merchant"
+          value={filters.merchant}
+          options={unique(all.map((r) => r.merchant))}
+          onChange={(v) => set({ ...filters, merchant: v })}
+        />
+        <FilterSelect
+          label="Days Overdue"
+          value={filters.bucket}
+          options={[
+            "Not Due",
+            "0-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "30+ Days",
+            "No EDD",
+          ]}
+          onChange={(v) => set({ ...filters, bucket: v })}
+        />
+      </div>
+      <div className="panel table-panel">
+        <div className="table-meta">
+          <span>{fmt.format(rows.length)} PO + product + EDD groups</span>
+          <span className="table-meta-actions">
+            <small>Scroll horizontally for TNA →</small>
+            <DownloadButton
+              filename="open-po-tracker"
+              headers={[
+                "PO reference",
+                "Vendor",
+                "Vendor code",
+                "Product",
+                "Variants",
+                "Pending qty",
+                "Pending value",
+                "EDD",
+                "Delay days",
+                "Days Overdue",
+                "TNA stage",
+                "TNA days",
+                "PP TNA",
+                "PP Actual",
+                "GPT TNA",
+                "GPT Actual",
+                "Cutting TNA",
+                "Cutting actual",
+                "Inline TNA",
+                "Inline actual",
+              ]}
+              rows={rows.map((row) => [
+                row.poRef,
+                row.vendorName,
+                row.vendorCode,
+                row.productCode,
+                row.variantCount,
+                row.pendingQty,
+                Math.round(row.pendingValue),
+                row.edd ?? "No EDD",
+                row.delayDays,
+                row.delayBucket,
+                row.stage,
+                tnaTotalDays(row.tna) ?? "",
+                row.tna?.pp_sample_tna_date ?? "",
+                row.tna?.pp_sample_actual_date ?? "",
+                row.tna?.gpt_tna_date ?? "",
+                row.tna?.gpt_actual_date ?? "",
+                row.tna?.cutting_tna_date ?? "",
+                row.tna?.cutting_actual_date_first ?? "",
+                row.tna?.in_line_tna_date ?? "",
+                row.tna?.in_line_actual_date ?? "",
+              ])}
+            />
+          </span>
+        </div>
+        {rows.length ? (
+          <div className="table-scroll wide-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>PO reference</th>
+                  <th>Vendor</th>
+                  <th>Product</th>
+                  <th>Variants</th>
+                  <th>Pending qty</th>
+                  <th>Pending value</th>
+                  <th>EDD</th>
+                  <th>Delay</th>
+                  <th>Days Overdue</th>
+                  <th>TNA stage</th>
+                  <th>TNA days</th>
+                  <th>PP TNA</th>
+                  <th>PP Actual</th>
+                  <th>GPT TNA</th>
+                  <th>GPT Actual</th>
+                  <th>Cutting TNA</th>
+                  <th>Cutting actual</th>
+                  <th>Inline TNA</th>
+                  <th>Inline actual</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 500).map((row) => (
+                  <tr key={row.key}>
+                    <td className="mono">{row.poRef}</td>
+                    <td>
+                      {row.vendorName}
+                      <small>{row.vendorCode}</small>
+                    </td>
+                    <td>{row.productCode}</td>
+                    <td>{row.variantCount}</td>
+                    <td>{fmt.format(row.pendingQty)}</td>
+                    <td>{money.format(row.pendingValue)}</td>
+                    <td>{row.edd ?? "No EDD"}</td>
+                    <td>
+                      {row.delayDays ? (
+                        <span className="badge danger">{row.delayDays}d</span>
+                      ) : (
+                        <span className="badge success">On time</span>
+                      )}
+                    </td>
+                    <td>{row.delayBucket}</td>
+                    <td>
+                      <span className="badge info">{row.stage}</span>
+                    </td>
+                    <td>
+                      {(() => {
+                        const d = tnaTotalDays(row.tna);
+                        return d === null ? (
+                          "—"
+                        ) : d > 0 ? (
+                          <span className="badge danger">{d}d</span>
+                        ) : (
+                          <span className="badge success">{d}d</span>
+                        );
+                      })()}
+                    </td>
+                    <td>{row.tna?.pp_sample_tna_date ?? "—"}</td>
+                    <td>{row.tna?.pp_sample_actual_date ?? "—"}</td>
+                    <td>{row.tna?.gpt_tna_date ?? "—"}</td>
+                    <td>{row.tna?.gpt_actual_date ?? "—"}</td>
+                    <td>{row.tna?.cutting_tna_date ?? "—"}</td>
+                    <td>{row.tna?.cutting_actual_date_first ?? "—"}</td>
+                    <td>{row.tna?.in_line_tna_date ?? "—"}</td>
+                    <td>{row.tna?.in_line_actual_date ?? "—"}</td>
+                    <td>
+                      <button
+                        className="link-button"
+                        onClick={() => onView(row)}
+                      >
+                        View <ChevronRight size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty />
+        )}
+      </div>
+    </>
+  );
+}
+
+function VendorTable({
+  rows,
+  filename,
+}: {
+  rows: VendorRollup[];
+  filename?: string;
+}) {
+  return (
+    <>
+      {filename && (
+        <div className="table-meta">
+          <span>{fmt.format(rows.length)} rows</span>
+          <DownloadButton
+            filename={filename}
+            headers={vendorCsvHeaders}
+            rows={vendorCsvRows(rows)}
+          />
+        </div>
+      )}
+      {rows.length ? (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Merchant</th>
+                <th>Open POs</th>
+                <th>Delayed</th>
+                <th>Delay %</th>
+                <th>Open qty</th>
+                <th>Open value</th>
+                <th>Machines</th>
+                <th>Active karigar</th>
+                <th>Latest karigar</th>
+                <th>Capacity/mo</th>
+                <th>Utilization</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.vendorCode || row.vendorName}>
+                  <td>
+                    {row.vendorName}
+                    <small>
+                      {row.vendorCode} · {row.vendorBucket}
+                    </small>
+                  </td>
+                  <td>{row.merchant}</td>
+                  <td>{row.openPoCount}</td>
+                  <td>{row.delayedPoCount}</td>
+                  <td>{row.delayPct}%</td>
+                  <td>{fmt.format(row.openQty)}</td>
+                  <td>{money.format(row.openValue)}</td>
+                  <td>{fmt.format(row.totalMachines)}</td>
+                  <td>{fmt.format(row.totalActiveKarigar)}</td>
+                  <td>{fmt.format(row.karigarLatest)}</td>
+                  <td>{fmt.format(row.capacityPerMonth)}</td>
+                  <td>
+                    <span
+                      className={`badge ${row.utilizationPct > 100 ? "danger" : "info"}`}
+                    >
+                      {row.utilizationPct}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty />
+      )}
+    </>
+  );
 }
 
 function VendorTab({ data }: { data: DashboardData }) {
-  const rows = useMemo(() => buildVendorRollups(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const openCodes = new Set(rows.map((row) => norm(row.vendorCode))); const zero = data.vendorTypes.filter((v) => norm(v.status) === 'active' && !openCodes.has(norm(v.vendor_code)));
-  const types = unique(data.pendingPos.map((r) => r.po_type ?? 'Unknown'));
-  const typeQty = (vendorCode: string, t: string) => data.pendingPos.filter((p) => isOpenPo(p) && norm(p.vendor_code) === norm(vendorCode) && (p.po_type ?? 'Unknown') === t).reduce((s, p) => s + p.pending_qty_actual, 0);
-  return <><div className="metric-grid compact"><Card label="Active vendors" value={fmt.format(data.vendorTypes.filter((v) => norm(v.status) === 'active').length)} /><Card label="Active with 0 open PO" value={fmt.format(zero.length)} note={zero.slice(0, 3).map((v) => v.vendor_code).join(', ') || 'None'} tone="orange" /><Card label="Total monthly capacity" value={fmt.format(rows.reduce((s, r) => s + r.capacityPerMonth, 0))} tone="teal" /><Card label="Total Open PO Quantity" value={fmt.format(rows.reduce((s, r) => s + r.openQty, 0))} tone="blue" /></div><div className="chart-grid"><ChartCard title="Open qty vs capacity" download={{ filename: 'vendor-open-qty-vs-capacity', headers: vendorCsvHeaders, rows: vendorCsvRows(rows) }}>{rows.length ? <ResponsiveContainer><BarChart data={rows.slice(0,15)} margin={{ left: -20, bottom: 28 }}><XAxis dataKey="vendorCode" angle={-35} textAnchor="end" height={50}/><YAxis/><Tooltip/><Legend/><Bar dataKey="openQty" name="Open qty" fill="#8b5cf6"><LabelList dataKey="openQty" position="top" /></Bar><Bar dataKey="capacityPerMonth" name="Capacity" fill="#14b8a6"><LabelList dataKey="capacityPerMonth" position="top" /></Bar></BarChart></ResponsiveContainer> : <Empty/>}</ChartCard><ChartCard title="Vendor × PO type (open qty)" download={{ filename: 'vendor-by-po-type', headers: ['Vendor', ...types], rows: rows.map((vendor) => [vendor.vendorCode, ...types.map((t) => typeQty(vendor.vendorCode, t))]) }}><div className="matrix-mini"><table><thead><tr><th>Vendor</th>{types.map((t) => <th key={t}>{t}</th>)}</tr></thead><tbody>{rows.slice(0,12).map((vendor) => <tr key={vendor.vendorCode}><td>{vendor.vendorCode}</td>{types.map((t) => <td key={t}>{fmt.format(typeQty(vendor.vendorCode, t))}</td>)}</tr>)}</tbody></table></div></ChartCard></div><section className="panel table-panel"><div className="panel-title"><h3>Vendor performance</h3></div><VendorTable rows={rows} filename="vendor-performance"/></section></>;
+  const rows = useMemo(
+    () =>
+      buildVendorRollups(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const openCodes = new Set(rows.map((row) => norm(row.vendorCode)));
+  const zero = data.vendorTypes.filter(
+    (v) => norm(v.status) === "active" && !openCodes.has(norm(v.vendor_code)),
+  );
+  const types = unique(data.pendingPos.map((r) => r.po_type ?? "Unknown"));
+  const typeQty = (vendorCode: string, t: string) =>
+    data.pendingPos
+      .filter(
+        (p) =>
+          isOpenPo(p) &&
+          norm(p.vendor_code) === norm(vendorCode) &&
+          (p.po_type ?? "Unknown") === t,
+      )
+      .reduce((s, p) => s + p.pending_qty_actual, 0);
+  return (
+    <>
+      <div className="metric-grid compact">
+        <Card
+          label="Active vendors"
+          value={fmt.format(
+            data.vendorTypes.filter((v) => norm(v.status) === "active").length,
+          )}
+        />
+        <Card
+          label="Active with 0 open PO"
+          value={fmt.format(zero.length)}
+          note={
+            zero
+              .slice(0, 3)
+              .map((v) => v.vendor_code)
+              .join(", ") || "None"
+          }
+          tone="orange"
+        />
+        <Card
+          label="Total monthly capacity"
+          value={fmt.format(rows.reduce((s, r) => s + r.capacityPerMonth, 0))}
+          tone="teal"
+        />
+        <Card
+          label="Total Open PO Quantity"
+          value={fmt.format(rows.reduce((s, r) => s + r.openQty, 0))}
+          tone="blue"
+        />
+      </div>
+      <div className="chart-grid">
+        <ChartCard
+          title="Open quantity vs monthly capacity"
+          download={{
+            filename: "vendor-open-qty-vs-capacity",
+            headers: vendorCsvHeaders,
+            rows: vendorCsvRows(rows),
+          }}
+        >
+          {rows.length ? (
+            <ResponsiveContainer>
+              <BarChart
+                data={rows.slice(0, 15)}
+                margin={{ left: -20, bottom: 28 }}
+              >
+                <XAxis
+                  dataKey="vendorCode"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={50}
+                />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="openQty" name="Open quantity" fill="#8b5cf6">
+                  <LabelList dataKey="openQty" position="top" />
+                </Bar>
+                <Bar
+                  dataKey="capacityPerMonth"
+                  name="Monthly capacity"
+                  fill="#14b8a6"
+                >
+                  <LabelList dataKey="capacityPerMonth" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Vendor × PO type (open quantity)"
+          download={{
+            filename: "vendor-by-po-type",
+            headers: ["Vendor", ...types],
+            rows: rows.map((vendor) => [
+              vendor.vendorCode,
+              ...types.map((t) => typeQty(vendor.vendorCode, t)),
+            ]),
+          }}
+        >
+          <div className="matrix-mini">
+            <table>
+              <thead>
+                <tr>
+                  <th>Vendor</th>
+                  {types.map((t) => (
+                    <th key={t}>{t}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 12).map((vendor) => (
+                  <tr key={vendor.vendorCode}>
+                    <td>{vendor.vendorCode}</td>
+                    {types.map((t) => (
+                      <td key={t}>
+                        {fmt.format(typeQty(vendor.vendorCode, t))}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ChartCard>
+      </div>
+      <section className="panel table-panel">
+        <div className="panel-title">
+          <h3>Vendor performance</h3>
+        </div>
+        <VendorTable rows={rows} filename="vendor-performance" />
+      </section>
+    </>
+  );
 }
 
 function VendorTypeTab({ data }: { data: DashboardData }) {
-  const all = useMemo(() => buildVendorRollups(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const allTracker = useMemo(() => buildTrackerRows(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  return <div className="split-columns">{(['Woven','Knit'] as const).map((bucket) => { const rows = all.filter((r) => r.vendorBucket === bucket).slice(0,15); const trackerRows = allTracker.filter((r) => r.vendorBucket === bucket); const openVsDelayed = trackerRows.reduce<Record<string,{vendor:string;openQty:number;delayedQty:number}>>((acc, row) => { const key = row.vendorCode || row.vendorName; if (!acc[key]) acc[key] = { vendor: key, openQty: 0, delayedQty: 0 }; acc[key].openQty += row.pendingQty; if (row.delayDays > 0) acc[key].delayedQty += row.pendingQty; return acc; }, {}); const chartData = Object.values(openVsDelayed).slice(0, 15); return <section className="panel" key={bucket}><div className="panel-title"><h3>{bucket === 'Knit' ? 'Knitted' : bucket} vendors</h3><span className="table-meta-actions"><span>{rows.length} with open POs</span><DownloadButton filename={bucket === 'Knit' ? 'knitted-vendors' : 'woven-vendors'} headers={vendorCsvHeaders} rows={vendorCsvRows(rows)} /></span></div><div className="chart-area tall">{chartData.length ? <ResponsiveContainer><BarChart data={chartData} layout="vertical" margin={{ left: 50 }}><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number"/><YAxis type="category" dataKey="vendor" width={50}/><Tooltip/><Legend/><Bar dataKey="openQty" name="Open qty" fill={bucket === 'Woven' ? '#8b5cf6' : '#14b8a6'}><LabelList dataKey="openQty" position="right" /></Bar><Bar dataKey="delayedQty" name="Delayed qty" fill="#f97316"><LabelList dataKey="delayedQty" position="right" /></Bar></BarChart></ResponsiveContainer> : <Empty/>}</div></section>; })}</div>;
+  const all = useMemo(
+    () =>
+      buildVendorRollups(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const allTracker = useMemo(
+    () =>
+      buildTrackerRows(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  return (
+    <div className="split-columns">
+      {(["Woven", "Knit"] as const).map((bucket) => {
+        const rows = all.filter((r) => r.vendorBucket === bucket).slice(0, 15);
+        const trackerRows = allTracker.filter((r) => r.vendorBucket === bucket);
+        const openVsDelayed = trackerRows.reduce<
+          Record<
+            string,
+            { vendor: string; openQty: number; delayedQty: number }
+          >
+        >((acc, row) => {
+          const key = row.vendorCode || row.vendorName;
+          if (!acc[key]) acc[key] = { vendor: key, openQty: 0, delayedQty: 0 };
+          acc[key].openQty += row.pendingQty;
+          if (row.delayDays > 0) acc[key].delayedQty += row.pendingQty;
+          return acc;
+        }, {});
+        const chartData = Object.values(openVsDelayed).slice(0, 15);
+        return (
+          <section className="panel" key={bucket}>
+            <div className="panel-title">
+              <h3>{bucket === "Knit" ? "Knitted" : bucket} vendors</h3>
+              <span className="table-meta-actions">
+                <span>{rows.length} with open POs</span>
+                <DownloadButton
+                  filename={
+                    bucket === "Knit" ? "knitted-vendors" : "woven-vendors"
+                  }
+                  headers={vendorCsvHeaders}
+                  rows={vendorCsvRows(rows)}
+                />
+              </span>
+            </div>
+            <div className="chart-area tall">
+              {chartData.length ? (
+                <ResponsiveContainer>
+                  <BarChart
+                    data={chartData}
+                    layout="vertical"
+                    margin={{ left: 50 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" />
+                    <YAxis
+                      type="category"
+                      dataKey="vendor"
+                      interval={0}
+                      width={72}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Bar
+                      dataKey="openQty"
+                      name="Open quantity"
+                      fill={bucket === "Woven" ? "#8b5cf6" : "#14b8a6"}
+                    >
+                      <LabelList dataKey="openQty" position="right" />
+                    </Bar>
+                    <Bar
+                      dataKey="delayedQty"
+                      name="Delayed quantity"
+                      fill="#f97316"
+                    >
+                      <LabelList dataKey="delayedQty" position="right" />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty />
+              )}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
 }
 function MerchantTab({ data }: { data: DashboardData }) {
-  const vendors = useMemo(() => buildVendorRollups(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const rows = Object.values(vendors.reduce<Record<string, VendorRollup>>((acc, row) => { const current = acc[row.merchant] ?? { ...row, vendorCode: row.merchant, vendorName: row.merchant, openPoCount:0, delayedPoCount:0, delayPct:0, openQty:0, openValue:0, totalMachines:0, totalActiveKarigar:0, karigarLatest:0, capacityPerMonth:0, utilizationPct:0 }; current.openPoCount += row.openPoCount; current.delayedPoCount += row.delayedPoCount; current.openQty += row.openQty; current.openValue += row.openValue; current.capacityPerMonth += row.capacityPerMonth; current.totalMachines += row.totalMachines; current.totalActiveKarigar += row.totalActiveKarigar; current.karigarLatest += row.karigarLatest; acc[row.merchant] = current; return acc; }, {})).map((row) => ({ ...row, delayPct: row.openPoCount ? Math.round(row.delayedPoCount/row.openPoCount*100):0, utilizationPct: row.capacityPerMonth ? Math.round(row.openQty/row.capacityPerMonth*100):0 })).sort((a,b)=>b.openValue-a.openValue);
-  return <><div className="chart-grid"><ChartCard title="Open vs delayed by merchant" download={{ filename: 'merchant-open-vs-delayed', headers: vendorCsvHeaders, rows: vendorCsvRows(rows) }}>{rows.length ? <ResponsiveContainer><BarChart data={rows}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="merchant"/><YAxis/><Tooltip/><Legend/><Bar dataKey="openPoCount" name="Open" fill="#8b5cf6"><LabelList dataKey="openPoCount" position="top" /></Bar><Bar dataKey="delayedPoCount" name="Delayed" fill="#f97316"><LabelList dataKey="delayedPoCount" position="top" /></Bar></BarChart></ResponsiveContainer>:<Empty/>}</ChartCard><ChartCard title="Merchant open qty" download={{ filename: 'merchant-open-qty', headers: vendorCsvHeaders, rows: vendorCsvRows(rows) }}>{rows.length ? <ResponsiveContainer><BarChart data={rows}><XAxis dataKey="merchant"/><YAxis/><Tooltip/><Bar dataKey="openQty" fill="#14b8a6"><LabelList dataKey="openQty" position="top" /></Bar></BarChart></ResponsiveContainer>:<Empty/>}</ChartCard></div><section className="panel table-panel"><div className="panel-title"><h3>Merchant performance</h3></div><VendorTable rows={rows} filename="merchant-performance"/></section></>;
+  const vendors = useMemo(
+    () =>
+      buildVendorRollups(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const rows = Object.values(
+    vendors.reduce<Record<string, VendorRollup>>((acc, row) => {
+      const current = acc[row.merchant] ?? {
+        ...row,
+        vendorCode: row.merchant,
+        vendorName: row.merchant,
+        openPoCount: 0,
+        delayedPoCount: 0,
+        delayPct: 0,
+        openQty: 0,
+        openValue: 0,
+        totalMachines: 0,
+        totalActiveKarigar: 0,
+        karigarLatest: 0,
+        capacityPerMonth: 0,
+        utilizationPct: 0,
+      };
+      current.openPoCount += row.openPoCount;
+      current.delayedPoCount += row.delayedPoCount;
+      current.openQty += row.openQty;
+      current.openValue += row.openValue;
+      current.capacityPerMonth += row.capacityPerMonth;
+      current.totalMachines += row.totalMachines;
+      current.totalActiveKarigar += row.totalActiveKarigar;
+      current.karigarLatest += row.karigarLatest;
+      acc[row.merchant] = current;
+      return acc;
+    }, {}),
+  )
+    .map((row) => ({
+      ...row,
+      delayPct: row.openPoCount
+        ? Math.round((row.delayedPoCount / row.openPoCount) * 100)
+        : 0,
+      utilizationPct: row.capacityPerMonth
+        ? Math.round((row.openQty / row.capacityPerMonth) * 100)
+        : 0,
+    }))
+    .sort((a, b) => b.openValue - a.openValue);
+  return (
+    <>
+      <div className="chart-grid">
+        <ChartCard
+          title="Open vs delayed by merchant"
+          download={{
+            filename: "merchant-open-vs-delayed",
+            headers: vendorCsvHeaders,
+            rows: vendorCsvRows(rows),
+          }}
+        >
+          {rows.length ? (
+            <ResponsiveContainer>
+              <BarChart data={rows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="merchant"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={55}
+                />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="openPoCount" name="Open PO count" fill="#8b5cf6">
+                  <LabelList dataKey="openPoCount" position="top" />
+                </Bar>
+                <Bar
+                  dataKey="delayedPoCount"
+                  name="Delayed PO count"
+                  fill="#f97316"
+                >
+                  <LabelList dataKey="delayedPoCount" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Merchant open qty"
+          download={{
+            filename: "merchant-open-qty",
+            headers: vendorCsvHeaders,
+            rows: vendorCsvRows(rows),
+          }}
+        >
+          {rows.length ? (
+            <ResponsiveContainer>
+              <BarChart data={rows}>
+                <XAxis
+                  dataKey="merchant"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={55}
+                />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="openQty" name="Open quantity" fill="#14b8a6">
+                  <LabelList dataKey="openQty" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+      </div>
+      <section className="panel table-panel">
+        <div className="panel-title">
+          <h3>Merchant performance</h3>
+        </div>
+        <VendorTable rows={rows} filename="merchant-performance" />
+      </section>
+    </>
+  );
 }
 
 function ProductTab({ data }: { data: DashboardData }) {
-  const lookups = useMemo(() => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords), [data]);
-  const [filters, set] = useState({ merchant:'', vendor:'', type:'', variant:'', product:'', search:'' });
-  const filteredSource = data.pendingPos.filter((row) => { const resolved = resolveVendor(row, lookups); return isOpenPo(row) && (!filters.merchant || resolved.merchant === filters.merchant) && (!filters.vendor || row.vendor_name === filters.vendor) && (!filters.type || row.po_type === filters.type) && (!filters.product || row.product_code === filters.product) && (!filters.variant || row.product_variant === filters.variant) && (!filters.search || [row.product_code,row.product_variant,row.sku].some((v)=>norm(v).includes(norm(filters.search)))); });
-  const tracker = buildTrackerRows(filteredSource, data.vendorTypes, data.vendorMasters, data.tnaRecords, today);
-  const products = aggregateProductRows(tracker); const summary = Object.values(products.reduce<Record<string,{productCode:string;variants:Set<string>;qty:number;value:number}>>((acc,row)=>{ acc[row.productCode] ??= {productCode:row.productCode,variants:new Set(),qty:0,value:0}; acc[row.productCode].variants.add(row.variant); acc[row.productCode].qty+=row.qty; acc[row.productCode].value+=row.value; return acc;},{})).sort((a,b)=>b.qty-a.qty);
-  const merchants = unique(data.pendingPos.map((row)=>resolveVendor(row,lookups).merchant));
-  const allVariants = unique(data.pendingPos.filter(p => p.product_variant).map((r)=>r.product_variant ?? ''));
-  const allProducts = unique(data.pendingPos.filter(p => p.product_code).map((r)=>r.product_code ?? ''));
-  return <><div className="filter-bar"><label className="search-field"><Search size={16}/><input placeholder="Search product, variant or SKU" value={filters.search} onChange={(e)=>set({...filters,search:e.target.value})}/></label><FilterSelect label="Merchant" value={filters.merchant} options={merchants} onChange={(v)=>set({...filters,merchant:v})}/><FilterSelect label="Vendor" value={filters.vendor} options={unique(data.pendingPos.map((r)=>r.vendor_name ?? ''))} onChange={(v)=>set({...filters,vendor:v})}/><FilterSelect label="PO type" value={filters.type} options={unique(data.pendingPos.map((r)=>r.po_type ?? ''))} onChange={(v)=>set({...filters,type:v})}/><FilterSelect label="Product" value={filters.product} options={allProducts} onChange={(v)=>set({...filters,product:v})}/><FilterSelect label="Variant" value={filters.variant} options={allVariants} onChange={(v)=>set({...filters,variant:v})}/></div><section className="panel table-panel product-table"><div className="panel-title"><h3>Product + variant rollup</h3><span className="table-meta-actions"><span>{products.length} rows</span><DownloadButton filename="product-variant-rollup" headers={['Product code', 'Variant', 'Pending qty', 'Pending value']} rows={products.map((row) => [row.productCode, row.variant, row.qty, Math.round(row.value)])} /></span></div>{products.length?<div className="table-scroll"><table><thead><tr><th>Product code</th><th>Variant</th><th>Pending qty</th><th>Pending value</th></tr></thead><tbody>{products.map((row)=><tr key={`${row.productCode}-${row.variant}`}><td>{row.productCode}</td><td>{row.variant}</td><td>{fmt.format(row.qty)}</td><td>{money.format(row.value)}</td></tr>)}</tbody></table></div>:<Empty/>}</section><section className="panel table-panel"><div className="panel-title"><h3>Product code summary</h3><DownloadButton filename="product-code-summary" headers={['Product code', 'Variants', 'Pending qty', 'Pending value']} rows={summary.map((row) => [row.productCode, row.variants.size, row.qty, Math.round(row.value)])} /></div>{summary.length?<div className="table-scroll"><table><thead><tr><th>Product code</th><th>Variants</th><th>Pending qty</th><th>Pending value</th></tr></thead><tbody>{summary.map((row)=><tr key={row.productCode}><td>{row.productCode}</td><td>{row.variants.size}</td><td>{fmt.format(row.qty)}</td><td>{money.format(row.value)}</td></tr>)}</tbody></table></div>:<Empty/>}</section></>;
+  const lookups = useMemo(
+    () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
+    [data],
+  );
+  const [filters, set] = useState({
+    merchant: "",
+    vendor: "",
+    type: "",
+    variant: "",
+    product: "",
+    search: "",
+  });
+  const filteredSource = data.pendingPos.filter((row) => {
+    const resolved = resolveVendor(row, lookups);
+    return (
+      isOpenPo(row) &&
+      (!filters.merchant || resolved.merchant === filters.merchant) &&
+      (!filters.vendor || row.vendor_name === filters.vendor) &&
+      (!filters.type || row.po_type === filters.type) &&
+      (!filters.product || row.product_code === filters.product) &&
+      (!filters.variant || row.product_variant === filters.variant) &&
+      (!filters.search ||
+        [row.product_code, row.product_variant, row.sku].some((v) =>
+          norm(v).includes(norm(filters.search)),
+        ))
+    );
+  });
+  const tracker = buildTrackerRows(
+    filteredSource,
+    data.vendorTypes,
+    data.vendorMasters,
+    data.tnaRecords,
+    today,
+  );
+  const products = aggregateProductRows(tracker);
+  const summary = Object.values(
+    products.reduce<
+      Record<
+        string,
+        {
+          productCode: string;
+          variants: Set<string>;
+          qty: number;
+          value: number;
+        }
+      >
+    >((acc, row) => {
+      acc[row.productCode] ??= {
+        productCode: row.productCode,
+        variants: new Set(),
+        qty: 0,
+        value: 0,
+      };
+      acc[row.productCode].variants.add(row.variant);
+      acc[row.productCode].qty += row.qty;
+      acc[row.productCode].value += row.value;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b.qty - a.qty);
+  const merchants = unique(
+    data.pendingPos.map((row) => resolveVendor(row, lookups).merchant),
+  );
+  const allVariants = unique(
+    data.pendingPos
+      .filter((p) => p.product_variant)
+      .map((r) => r.product_variant ?? ""),
+  );
+  const allProducts = unique(
+    data.pendingPos
+      .filter((p) => p.product_code)
+      .map((r) => r.product_code ?? ""),
+  );
+  return (
+    <>
+      <div className="filter-bar">
+        <label className="search-field">
+          <Search size={16} />
+          <input
+            placeholder="Search product, variant or SKU"
+            value={filters.search}
+            onChange={(e) => set({ ...filters, search: e.target.value })}
+          />
+        </label>
+        <FilterSelect
+          label="Merchant"
+          value={filters.merchant}
+          options={merchants}
+          onChange={(v) => set({ ...filters, merchant: v })}
+        />
+        <FilterSelect
+          label="Vendor"
+          value={filters.vendor}
+          options={unique(data.pendingPos.map((r) => r.vendor_name ?? ""))}
+          onChange={(v) => set({ ...filters, vendor: v })}
+        />
+        <FilterSelect
+          label="PO type"
+          value={filters.type}
+          options={unique(data.pendingPos.map((r) => r.po_type ?? ""))}
+          onChange={(v) => set({ ...filters, type: v })}
+        />
+        <FilterSelect
+          label="Product"
+          value={filters.product}
+          options={allProducts}
+          onChange={(v) => set({ ...filters, product: v })}
+        />
+        <FilterSelect
+          label="Variant"
+          value={filters.variant}
+          options={allVariants}
+          onChange={(v) => set({ ...filters, variant: v })}
+        />
+      </div>
+      <section className="panel table-panel product-table">
+        <div className="panel-title">
+          <h3>Product + variant rollup</h3>
+          <span className="table-meta-actions">
+            <span>{products.length} rows</span>
+            <DownloadButton
+              filename="product-variant-rollup"
+              headers={[
+                "Product code",
+                "Variant",
+                "Pending qty",
+                "Pending value",
+              ]}
+              rows={products.map((row) => [
+                row.productCode,
+                row.variant,
+                row.qty,
+                Math.round(row.value),
+              ])}
+            />
+          </span>
+        </div>
+        {products.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product code</th>
+                  <th>Variant</th>
+                  <th>Pending qty</th>
+                  <th>Pending value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((row) => (
+                  <tr key={`${row.productCode}-${row.variant}`}>
+                    <td>{row.productCode}</td>
+                    <td>{row.variant}</td>
+                    <td>{fmt.format(row.qty)}</td>
+                    <td>{money.format(row.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty />
+        )}
+      </section>
+      <section className="panel table-panel">
+        <div className="panel-title">
+          <h3>Product code summary</h3>
+          <DownloadButton
+            filename="product-code-summary"
+            headers={[
+              "Product code",
+              "Variants",
+              "Pending qty",
+              "Pending value",
+            ]}
+            rows={summary.map((row) => [
+              row.productCode,
+              row.variants.size,
+              row.qty,
+              Math.round(row.value),
+            ])}
+          />
+        </div>
+        {summary.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product code</th>
+                  <th>Variants</th>
+                  <th>Pending qty</th>
+                  <th>Pending value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.map((row) => (
+                  <tr key={row.productCode}>
+                    <td>{row.productCode}</td>
+                    <td>{row.variants.size}</td>
+                    <td>{fmt.format(row.qty)}</td>
+                    <td>{money.format(row.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty />
+        )}
+      </section>
+    </>
+  );
 }
 
 function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
-  const tracker = useMemo(() => buildTrackerRows(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const inProcess365 = tracker.filter(row => {
+  const tracker = useMemo(
+    () =>
+      buildTrackerRows(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const inProcess365 = tracker.filter((row) => {
     if (!row.edd) return false;
     const eddDate = new Date(row.edd);
-    const daysUntilEdd = Math.floor((eddDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntilEdd = Math.floor(
+      (eddDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
     return daysUntilEdd <= 365 && daysUntilEdd >= 0;
   });
   const productOOS = Object.values(
     data.pendingPos
-      .filter(p => p.pending_qty_actual === 0)
-      .reduce<Record<string, { productCode: string; count: number; lastVendor: string }>>((acc, row) => {
-        const key = row.product_code || 'Unmapped';
-        if (!acc[key]) acc[key] = { productCode: key, count: 0, lastVendor: '' };
+      .filter((p) => p.pending_qty_actual === 0)
+      .reduce<
+        Record<
+          string,
+          { productCode: string; count: number; lastVendor: string }
+        >
+      >((acc, row) => {
+        const key = row.product_code || "Unmapped";
+        if (!acc[key])
+          acc[key] = { productCode: key, count: 0, lastVendor: "" };
         acc[key].count += 1;
-        acc[key].lastVendor = row.vendor_name || 'Unknown';
+        acc[key].lastVendor = row.vendor_name || "Unknown";
         return acc;
-      }, {})
+      }, {}),
   ).slice(0, 20);
-  
-  const inProcessData = inProcess365.slice(0, 15).map(row => ({
+
+  const inProcessData = inProcess365.slice(0, 15).map((row) => ({
     productCode: row.productCode,
     vendor: row.vendorCode || row.vendorName,
     qty: row.pendingQty,
@@ -180,49 +1739,912 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
     delayDays: row.delayDays,
   }));
 
-  return <><div className="metric-grid compact"><Card label="In Process (365d)" value={fmt.format(inProcess365.length)} note="Expected within 365 days" tone="teal" /><Card label="Out of Stock" value={fmt.format(productOOS.length)} note="0 pending quantity" tone="orange" /></div><div className="chart-grid"><ChartCard title="In Process - Top products by qty" download={{ filename: 'in-process-365', headers: ['Product', 'Vendor', 'Qty', 'EDD', 'Delay days'], rows: inProcessData.map((row) => [row.productCode, row.vendor, row.qty, row.edd ?? 'No EDD', row.delayDays]) }}>{inProcessData.length ? <ResponsiveContainer><BarChart data={inProcessData} layout="vertical" margin={{ left: 100 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" /><YAxis type="category" dataKey="productCode" interval={0} width={100} /><Tooltip /><Bar dataKey="qty" name="Pending quantity" fill="#39bfa7" radius={[0,5,5,0]} /></BarChart></ResponsiveContainer> : <Empty text="No products expected within 365 days" />}</ChartCard><ChartCard title="Out of Stock products" download={{ filename: 'out-of-stock', headers: ['Product code', 'Count', 'Last vendor'], rows: productOOS.map((row) => [row.productCode, row.count, row.lastVendor]) }}>{productOOS.length ? <ResponsiveContainer><BarChart data={productOOS} layout="vertical" margin={{ left: 100 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} /><XAxis type="number" /><YAxis type="category" dataKey="productCode" interval={0} width={100} /><Tooltip /><Bar dataKey="count" name="Out-of-stock count" fill="#ef6a7a" radius={[0,5,5,0]} /></BarChart></ResponsiveContainer> : <Empty text="No out of stock products" />}</ChartCard></div><section className="panel table-panel"><div className="panel-title"><h3>In Process inventory (365 days)</h3></div>{inProcess365.length ? <div className="table-scroll"><table><thead><tr><th>Product</th><th>Vendor</th><th>PO</th><th>Qty</th><th>EDD</th><th>Delay days</th></tr></thead><tbody>{inProcess365.slice(0, 100).map((row, i) => <tr key={i}><td>{row.productCode}</td><td>{row.vendorCode || row.vendorName}</td><td className="mono">{row.poRef}</td><td>{fmt.format(row.pendingQty)}</td><td>{row.edd ?? 'No EDD'}</td><td>{row.delayDays ? <span className="badge danger">{row.delayDays}d</span> : <span className="badge success">On time</span>}</td></tr>)}</tbody></table></div> : <Empty text="No products in process within 365 days" />}</section></>;
+  return (
+    <>
+      <div className="metric-grid compact">
+        <Card
+          label="In Process (365d)"
+          value={fmt.format(inProcess365.length)}
+          note="Expected within 365 days"
+          tone="teal"
+        />
+        <Card
+          label="Out of Stock"
+          value={fmt.format(productOOS.length)}
+          note="0 pending quantity"
+          tone="orange"
+        />
+      </div>
+      <div className="chart-grid">
+        <ChartCard
+          title="In Process - Top products by pending quantity"
+          download={{
+            filename: "in-process-365",
+            headers: ["Product", "Vendor", "Qty", "EDD", "Delay days"],
+            rows: inProcessData.map((row) => [
+              row.productCode,
+              row.vendor,
+              row.qty,
+              row.edd ?? "No EDD",
+              row.delayDays,
+            ]),
+          }}
+        >
+          {inProcessData.length ? (
+            <ResponsiveContainer>
+              <BarChart
+                data={inProcessData}
+                layout="vertical"
+                margin={{ left: 100 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" />
+                <YAxis
+                  type="category"
+                  dataKey="productCode"
+                  interval={0}
+                  width={100}
+                />
+                <Tooltip />
+                <Bar
+                  dataKey="qty"
+                  name="Pending quantity"
+                  fill="#39bfa7"
+                  radius={[0, 5, 5, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty text="No products expected within 365 days" />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Out of Stock products by occurrence count"
+          download={{
+            filename: "out-of-stock",
+            headers: ["Product code", "Count", "Last vendor"],
+            rows: productOOS.map((row) => [
+              row.productCode,
+              row.count,
+              row.lastVendor,
+            ]),
+          }}
+        >
+          {productOOS.length ? (
+            <ResponsiveContainer>
+              <BarChart
+                data={productOOS}
+                layout="vertical"
+                margin={{ left: 100 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" />
+                <YAxis
+                  type="category"
+                  dataKey="productCode"
+                  interval={0}
+                  width={100}
+                />
+                <Tooltip />
+                <Bar
+                  dataKey="count"
+                  name="Out-of-stock count"
+                  fill="#ef6a7a"
+                  radius={[0, 5, 5, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty text="No out of stock products" />
+          )}
+        </ChartCard>
+      </div>
+      <section className="panel table-panel">
+        <div className="panel-title">
+          <h3>In Process inventory (365 days)</h3>
+        </div>
+        {inProcess365.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Vendor</th>
+                  <th>PO</th>
+                  <th>Qty</th>
+                  <th>EDD</th>
+                  <th>Delay days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inProcess365.slice(0, 100).map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.productCode}</td>
+                    <td>{row.vendorCode || row.vendorName}</td>
+                    <td className="mono">{row.poRef}</td>
+                    <td>{fmt.format(row.pendingQty)}</td>
+                    <td>{row.edd ?? "No EDD"}</td>
+                    <td>
+                      {row.delayDays ? (
+                        <span className="badge danger">{row.delayDays}d</span>
+                      ) : (
+                        <span className="badge success">On time</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty text="No products in process within 365 days" />
+        )}
+      </section>
+    </>
+  );
 }
 
 function RecommendTab({ data }: { data: DashboardData }) {
-  const [bucket, setBucket] = useState('All');
-  const [product, setProduct] = useState('');
-  const tracker = useMemo(() => buildTrackerRows(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const vendors = useMemo(() => buildVendorRollups(data.pendingPos, data.vendorTypes, data.vendorMasters, data.tnaRecords, today), [data]);
-  const tnaByVendor = useMemo(() => { const m = new Map<string, { sum: number; n: number }>(); tracker.forEach((r) => { const d = tnaTotalDays(r.tna); if (d !== null) { const k = norm(r.vendorCode || r.vendorName); const e = m.get(k) ?? { sum: 0, n: 0 }; e.sum += d; e.n += 1; m.set(k, e); } }); return m; }, [tracker]);
-  const enriched = vendors.map((v) => { const e = tnaByVendor.get(norm(v.vendorCode || v.vendorName)); return { ...v, spareCapacity: v.capacityPerMonth - v.openQty, avgTnaDelay: e && e.n ? Math.round(e.sum / e.n) : null }; });
+  const [bucket, setBucket] = useState("All");
+  const [product, setProduct] = useState("");
+  const tracker = useMemo(
+    () =>
+      buildTrackerRows(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const vendors = useMemo(
+    () =>
+      buildVendorRollups(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const tnaByVendor = useMemo(() => {
+    const m = new Map<string, { sum: number; n: number }>();
+    tracker.forEach((r) => {
+      const d = tnaTotalDays(r.tna);
+      if (d !== null) {
+        const k = norm(r.vendorCode || r.vendorName);
+        const e = m.get(k) ?? { sum: 0, n: 0 };
+        e.sum += d;
+        e.n += 1;
+        m.set(k, e);
+      }
+    });
+    return m;
+  }, [tracker]);
+  const enriched = vendors.map((v) => {
+    const e = tnaByVendor.get(norm(v.vendorCode || v.vendorName));
+    return {
+      ...v,
+      spareCapacity: v.capacityPerMonth - v.openQty,
+      avgTnaDelay: e && e.n ? Math.round(e.sum / e.n) : null,
+    };
+  });
   type RankVendor = (typeof enriched)[number];
-  const pool = enriched.filter((v) => bucket === 'All' || v.vendorBucket === bucket);
-  const products = unique(data.pendingPos.map((p) => p.product_code ?? ''));
-  const productKeys = new Set(data.pendingPos.filter((p) => product && p.product_code === product).map((p) => norm(p.vendor_code || p.vendor_name || '')));
-  const productVendors = product ? enriched.filter((v) => productKeys.has(norm(v.vendorCode || v.vendorName))).sort((a, b) => a.delayPct - b.delayPct || b.spareCapacity - a.spareCapacity) : [];
-  const boards: { key: string; title: string; col: string; rows: RankVendor[]; metric: (v: RankVendor) => string }[] = [
-    { key: 'ontime', title: 'Best on-time record', col: 'Late %', rows: [...pool].sort((a, b) => a.delayPct - b.delayPct).slice(0, 8), metric: (v) => `${v.delayPct}%` },
-    { key: 'capacity', title: 'Most spare capacity', col: 'Free/mo', rows: [...pool].filter((v) => v.capacityPerMonth > 0).sort((a, b) => b.spareCapacity - a.spareCapacity).slice(0, 8), metric: (v) => fmt.format(v.spareCapacity) },
-    { key: 'tna', title: 'Best TNA punctuality', col: 'Avg TNA delay', rows: [...pool].filter((v) => v.avgTnaDelay !== null).sort((a, b) => (a.avgTnaDelay ?? 0) - (b.avgTnaDelay ?? 0)).slice(0, 8), metric: (v) => `${v.avgTnaDelay}d` },
-    { key: 'util', title: 'Lowest utilisation', col: 'Used', rows: [...pool].filter((v) => v.capacityPerMonth > 0).sort((a, b) => a.utilizationPct - b.utilizationPct).slice(0, 8), metric: (v) => `${v.utilizationPct}%` },
+  const pool = enriched.filter(
+    (v) => bucket === "All" || v.vendorBucket === bucket,
+  );
+  const products = unique(data.pendingPos.map((p) => p.product_code ?? ""));
+  const productKeys = new Set(
+    data.pendingPos
+      .filter((p) => product && p.product_code === product)
+      .map((p) => norm(p.vendor_code || p.vendor_name || "")),
+  );
+  const productVendors = product
+    ? enriched
+        .filter((v) => productKeys.has(norm(v.vendorCode || v.vendorName)))
+        .sort(
+          (a, b) =>
+            a.delayPct - b.delayPct || b.spareCapacity - a.spareCapacity,
+        )
+    : [];
+  const boards: {
+    key: string;
+    title: string;
+    col: string;
+    rows: RankVendor[];
+    metric: (v: RankVendor) => string;
+  }[] = [
+    {
+      key: "ontime",
+      title: "Best on-time record",
+      col: "Late %",
+      rows: [...pool].sort((a, b) => a.delayPct - b.delayPct).slice(0, 8),
+      metric: (v) => `${v.delayPct}%`,
+    },
+    {
+      key: "capacity",
+      title: "Most spare capacity",
+      col: "Free/mo",
+      rows: [...pool]
+        .filter((v) => v.capacityPerMonth > 0)
+        .sort((a, b) => b.spareCapacity - a.spareCapacity)
+        .slice(0, 8),
+      metric: (v) => fmt.format(v.spareCapacity),
+    },
+    {
+      key: "tna",
+      title: "Best TNA punctuality",
+      col: "Avg TNA delay",
+      rows: [...pool]
+        .filter((v) => v.avgTnaDelay !== null)
+        .sort((a, b) => (a.avgTnaDelay ?? 0) - (b.avgTnaDelay ?? 0))
+        .slice(0, 8),
+      metric: (v) => `${v.avgTnaDelay}d`,
+    },
+    {
+      key: "util",
+      title: "Lowest utilisation",
+      col: "Used",
+      rows: [...pool]
+        .filter((v) => v.capacityPerMonth > 0)
+        .sort((a, b) => a.utilizationPct - b.utilizationPct)
+        .slice(0, 8),
+      metric: (v) => `${v.utilizationPct}%`,
+    },
   ];
-  return <>
-    <div className="segment"><button className={bucket === 'All' ? 'active' : ''} onClick={() => setBucket('All')}>All</button><button className={bucket === 'Woven' ? 'active' : ''} onClick={() => setBucket('Woven')}>Woven</button><button className={bucket === 'Knit' ? 'active' : ''} onClick={() => setBucket('Knit')}>Knitted</button></div>
-    <div className="filter-bar"><FilterSelect label="Recommend for product" value={product} options={products} onChange={setProduct} /></div>
-    {product && <section className="panel table-panel"><div className="panel-title"><h3>Vendors who have made {product}</h3><span className="table-meta-actions"><span>{productVendors.length} vendors</span><DownloadButton filename={`recommend-${product}`} headers={['Rank', 'Vendor', 'Vendor code', 'Bucket', 'Late %', 'Spare capacity', 'Avg TNA delay', 'Utilisation %']} rows={productVendors.map((v, i) => [i + 1, v.vendorName, v.vendorCode, v.vendorBucket, v.delayPct, v.spareCapacity, v.avgTnaDelay ?? '', v.utilizationPct])} /></span></div>{productVendors.length ? <div className="table-scroll"><table><thead><tr><th>#</th><th>Vendor</th><th>Late %</th><th>Spare capacity</th><th>Avg TNA delay</th><th>Utilisation</th></tr></thead><tbody>{productVendors.map((v, i) => <tr key={v.vendorCode || v.vendorName}><td>{i === 0 ? <span className="badge success">★ 1</span> : i + 1}</td><td>{v.vendorName}<small>{v.vendorCode} · {v.vendorBucket}</small></td><td>{v.delayPct}%</td><td>{fmt.format(v.spareCapacity)}</td><td>{v.avgTnaDelay === null ? '—' : `${v.avgTnaDelay}d`}</td><td><span className={`badge ${v.utilizationPct > 100 ? 'danger' : 'info'}`}>{v.utilizationPct}%</span></td></tr>)}</tbody></table></div> : <Empty text="No vendor has produced this product before — use the leaderboards below" />}</section>}
-    <div className="chart-grid">{boards.map((b) => <section className="panel" key={b.key}><div className="panel-title"><div><span className="panel-kicker">Leaderboard</span><h3>{b.title}</h3></div></div>{b.rows.length ? <div className="table-scroll"><table><thead><tr><th>#</th><th>Vendor</th><th>{b.col}</th></tr></thead><tbody>{b.rows.map((v, i) => <tr key={v.vendorCode || v.vendorName}><td>{i + 1}</td><td>{v.vendorName}<small>{v.vendorCode} · {v.vendorBucket}</small></td><td>{b.metric(v)}</td></tr>)}</tbody></table></div> : <Empty />}</section>)}</div>
-  </>;
+  return (
+    <>
+      <div className="segment">
+        <button
+          className={bucket === "All" ? "active" : ""}
+          onClick={() => setBucket("All")}
+        >
+          All
+        </button>
+        <button
+          className={bucket === "Woven" ? "active" : ""}
+          onClick={() => setBucket("Woven")}
+        >
+          Woven
+        </button>
+        <button
+          className={bucket === "Knit" ? "active" : ""}
+          onClick={() => setBucket("Knit")}
+        >
+          Knitted
+        </button>
+      </div>
+      <div className="filter-bar">
+        <FilterSelect
+          label="Recommend for product"
+          value={product}
+          options={products}
+          onChange={setProduct}
+        />
+      </div>
+      {product && (
+        <section className="panel table-panel">
+          <div className="panel-title">
+            <h3>Vendors who have made {product}</h3>
+            <span className="table-meta-actions">
+              <span>{productVendors.length} vendors</span>
+              <DownloadButton
+                filename={`recommend-${product}`}
+                headers={[
+                  "Rank",
+                  "Vendor",
+                  "Vendor code",
+                  "Bucket",
+                  "Late %",
+                  "Spare capacity",
+                  "Avg TNA delay",
+                  "Utilisation %",
+                ]}
+                rows={productVendors.map((v, i) => [
+                  i + 1,
+                  v.vendorName,
+                  v.vendorCode,
+                  v.vendorBucket,
+                  v.delayPct,
+                  v.spareCapacity,
+                  v.avgTnaDelay ?? "",
+                  v.utilizationPct,
+                ])}
+              />
+            </span>
+          </div>
+          {productVendors.length ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Vendor</th>
+                    <th>Late %</th>
+                    <th>Spare capacity</th>
+                    <th>Avg TNA delay</th>
+                    <th>Utilisation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productVendors.map((v, i) => (
+                    <tr key={v.vendorCode || v.vendorName}>
+                      <td>
+                        {i === 0 ? (
+                          <span className="badge success">★ 1</span>
+                        ) : (
+                          i + 1
+                        )}
+                      </td>
+                      <td>
+                        {v.vendorName}
+                        <small>
+                          {v.vendorCode} · {v.vendorBucket}
+                        </small>
+                      </td>
+                      <td>{v.delayPct}%</td>
+                      <td>{fmt.format(v.spareCapacity)}</td>
+                      <td>
+                        {v.avgTnaDelay === null ? "—" : `${v.avgTnaDelay}d`}
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${v.utilizationPct > 100 ? "danger" : "info"}`}
+                        >
+                          {v.utilizationPct}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <Empty text="No vendor has produced this product before — use the leaderboards below" />
+          )}
+        </section>
+      )}
+      <div className="chart-grid">
+        {boards.map((b) => (
+          <section className="panel" key={b.key}>
+            <div className="panel-title">
+              <div>
+                <span className="panel-kicker">Leaderboard</span>
+                <h3>{b.title}</h3>
+              </div>
+            </div>
+            {b.rows.length ? (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Vendor</th>
+                      <th>{b.col}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.rows.map((v, i) => (
+                      <tr key={v.vendorCode || v.vendorName}>
+                        <td>{i + 1}</td>
+                        <td>
+                          {v.vendorName}
+                          <small>
+                            {v.vendorCode} · {v.vendorBucket}
+                          </small>
+                        </td>
+                        <td>{b.metric(v)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty />
+            )}
+          </section>
+        ))}
+      </div>
+    </>
+  );
 }
 
 function MatrixTab({ data }: { data: DashboardData }) {
-  const [mode,setMode]=useState<'variant'|'product'>('variant');
-  const [filters, set] = useState({ product: '', vendor: '', search: '' });
-  const tracker=useMemo(()=>buildTrackerRows(data.pendingPos,data.vendorTypes,data.vendorMasters,data.tnaRecords,today),[data]);
-  const filteredTracker = tracker.filter(row => (!filters.product || row.productCode === filters.product) && (!filters.vendor || row.vendorCode === filters.vendor || row.vendorName === filters.vendor) && (!filters.search || [row.productCode, row.vendorCode, row.vendorName].some(v => norm(v).includes(norm(filters.search)))));
-  const vendors=unique(filteredTracker.map((r)=>r.vendorCode||r.vendorName)); const cells=new Map<string,number>(); const SEP='|@|';
-  filteredTracker.forEach((row)=>row.skuRows.forEach((sku)=>{const r=mode==='variant'?`${row.productCode} · ${sku.product_variant??'Unmapped'}`:row.productCode; const k=`${r}${SEP}${row.vendorCode||row.vendorName}`;cells.set(k,(cells.get(k)??0)+sku.pending_qty_actual);})); const rowNames=unique([...cells.keys()].map((k)=>k.split(SEP)[0]));
-  const matrixRows: CsvValue[][] = [...rowNames.map((r) => [r, ...vendors.map((v) => cells.get(`${r}${SEP}${v}`) ?? 0), vendors.reduce((s, v) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0)]), ['Total', ...vendors.map((v) => rowNames.reduce((s, r) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0)), [...cells.values()].reduce((s, v) => s + v, 0)]];
-  const allProducts = unique(tracker.map(r => r.productCode));
-  const allVendors = unique(tracker.map(r => r.vendorCode || r.vendorName));
-  return <><div className="segment"><button className={mode==='variant'?'active':''} onClick={()=>setMode('variant')}>By Variant</button><button className={mode==='product'?'active':''} onClick={()=>setMode('product')}>By Product Code</button></div><div className="filter-bar"><label className="search-field"><Search size={16}/><input placeholder="Search product or vendor" value={filters.search} onChange={(e)=>set({...filters,search:e.target.value})}/></label><FilterSelect label="Product" value={filters.product} options={allProducts} onChange={(v)=>set({...filters,product:v})}/><FilterSelect label="Vendor" value={filters.vendor} options={allVendors} onChange={(v)=>set({...filters,vendor:v})}/></div><section className="panel table-panel"><div className="table-meta"><span>{fmt.format(rowNames.length)} {mode==='variant'?'product · variant':'product'} rows × {vendors.length} vendors</span><DownloadButton filename={mode==='variant'?'matrix-by-variant':'matrix-by-product'} headers={[mode==='variant'?'Product · variant':'Product code', ...vendors, 'Total']} rows={matrixRows} /></div><div className="table-scroll matrix-table">{rowNames.length?<table><thead><tr><th>{mode==='variant'?'Product · variant':'Product code'}</th>{vendors.map((v)=><th key={v}>{v}</th>)}<th>Total</th></tr></thead><tbody>{rowNames.map((r)=><tr key={r}><td>{r}</td>{vendors.map((v)=><td key={v}>{fmt.format(cells.get(`${r}${SEP}${v}`)??0)}</td>)}<td><strong>{fmt.format(vendors.reduce((s,v)=>s+(cells.get(`${r}${SEP}${v}`)??0),0))}</strong></td></tr>)}<tr><td><strong>Total</strong></td>{vendors.map((v)=><td key={v}><strong>{fmt.format(rowNames.reduce((s,r)=>s+(cells.get(`${r}${SEP}${v}`)??0),0))}</strong></td>)}<td><strong>{fmt.format([...cells.values()].reduce((s,v)=>s+v,0))}</strong></td></tr></tbody></table>:<Empty/>}</div></section></>;
+  const [mode, setMode] = useState<"variant" | "product">("variant");
+  const [filters, set] = useState({ product: "", vendor: "", search: "" });
+  const tracker = useMemo(
+    () =>
+      buildTrackerRows(
+        data.pendingPos,
+        data.vendorTypes,
+        data.vendorMasters,
+        data.tnaRecords,
+        today,
+      ),
+    [data],
+  );
+  const filteredTracker = tracker.filter(
+    (row) =>
+      (!filters.product || row.productCode === filters.product) &&
+      (!filters.vendor ||
+        row.vendorCode === filters.vendor ||
+        row.vendorName === filters.vendor) &&
+      (!filters.search ||
+        [row.productCode, row.vendorCode, row.vendorName].some((v) =>
+          norm(v).includes(norm(filters.search)),
+        )),
+  );
+  const vendors = unique(
+    filteredTracker.map((r) => r.vendorCode || r.vendorName),
+  );
+  const cells = new Map<string, number>();
+  const SEP = "|@|";
+  filteredTracker.forEach((row) =>
+    row.skuRows.forEach((sku) => {
+      const r =
+        mode === "variant"
+          ? `${row.productCode} · ${sku.product_variant ?? "Unmapped"}`
+          : row.productCode;
+      const k = `${r}${SEP}${row.vendorCode || row.vendorName}`;
+      cells.set(k, (cells.get(k) ?? 0) + sku.pending_qty_actual);
+    }),
+  );
+  const rowNames = unique([...cells.keys()].map((k) => k.split(SEP)[0]));
+  const matrixRows: CsvValue[][] = [
+    ...rowNames.map((r) => [
+      r,
+      ...vendors.map((v) => cells.get(`${r}${SEP}${v}`) ?? 0),
+      vendors.reduce((s, v) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0),
+    ]),
+    [
+      "Total",
+      ...vendors.map((v) =>
+        rowNames.reduce((s, r) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0),
+      ),
+      [...cells.values()].reduce((s, v) => s + v, 0),
+    ],
+  ];
+  const allProducts = unique(tracker.map((r) => r.productCode));
+  const allVendors = unique(tracker.map((r) => r.vendorCode || r.vendorName));
+  return (
+    <>
+      <div className="segment">
+        <button
+          className={mode === "variant" ? "active" : ""}
+          onClick={() => setMode("variant")}
+        >
+          By Variant
+        </button>
+        <button
+          className={mode === "product" ? "active" : ""}
+          onClick={() => setMode("product")}
+        >
+          By Product Code
+        </button>
+      </div>
+      <div className="filter-bar">
+        <label className="search-field">
+          <Search size={16} />
+          <input
+            placeholder="Search product or vendor"
+            value={filters.search}
+            onChange={(e) => set({ ...filters, search: e.target.value })}
+          />
+        </label>
+        <FilterSelect
+          label="Product"
+          value={filters.product}
+          options={allProducts}
+          onChange={(v) => set({ ...filters, product: v })}
+        />
+        <FilterSelect
+          label="Vendor"
+          value={filters.vendor}
+          options={allVendors}
+          onChange={(v) => set({ ...filters, vendor: v })}
+        />
+      </div>
+      <section className="panel table-panel">
+        <div className="table-meta">
+          <span>
+            {fmt.format(rowNames.length)}{" "}
+            {mode === "variant" ? "product · variant" : "product"} rows ×{" "}
+            {vendors.length} vendors
+          </span>
+          <DownloadButton
+            filename={
+              mode === "variant" ? "matrix-by-variant" : "matrix-by-product"
+            }
+            headers={[
+              mode === "variant" ? "Product · variant" : "Product code",
+              ...vendors,
+              "Total",
+            ]}
+            rows={matrixRows}
+          />
+        </div>
+        <div className="table-scroll matrix-table">
+          {rowNames.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    {mode === "variant" ? "Product · variant" : "Product code"}
+                  </th>
+                  {vendors.map((v) => (
+                    <th key={v}>{v}</th>
+                  ))}
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rowNames.map((r) => (
+                  <tr key={r}>
+                    <td>{r}</td>
+                    {vendors.map((v) => (
+                      <td key={v}>
+                        {fmt.format(cells.get(`${r}${SEP}${v}`) ?? 0)}
+                      </td>
+                    ))}
+                    <td>
+                      <strong>
+                        {fmt.format(
+                          vendors.reduce(
+                            (s, v) => s + (cells.get(`${r}${SEP}${v}`) ?? 0),
+                            0,
+                          ),
+                        )}
+                      </strong>
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>
+                    <strong>Total</strong>
+                  </td>
+                  {vendors.map((v) => (
+                    <td key={v}>
+                      <strong>
+                        {fmt.format(
+                          rowNames.reduce(
+                            (s, r) => s + (cells.get(`${r}${SEP}${v}`) ?? 0),
+                            0,
+                          ),
+                        )}
+                      </strong>
+                    </td>
+                  ))}
+                  <td>
+                    <strong>
+                      {fmt.format(
+                        [...cells.values()].reduce((s, v) => s + v, 0),
+                      )}
+                    </strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          ) : (
+            <Empty />
+          )}
+        </div>
+      </section>
+    </>
+  );
 }
-export function DashboardShell({ data, userEmail, signOutAction }: { data: DashboardData; userEmail: string | null; signOutAction: () => Promise<void> }) {
-  const [tab,setTab]=useState<TabId>('dashboard'); const [navOpen,setNavOpen]=useState(false); const [info,setInfo]=useState(false); const [detail,setDetail]=useState<TrackerRow|null>(null); const [highRisk,setHighRisk]=useState<PendingPo[]|null>(null); const [overdue,setOverdue]=useState<PendingPo[]|null>(null); const [bucket,setBucket]=useState('All');
-  const current=tabs.find(([id])=>id===tab)!;
-  return <div className="app-shell"><aside className={navOpen?'sidebar open':'sidebar'}><div className="brand"><div className="brand-mark">S</div><div><strong>SAADAA</strong><span>Sourcing intelligence</span></div><button className="mobile-close" aria-label="Close navigation" onClick={()=>setNavOpen(false)}><X/></button></div><nav>{tabs.map(([id,label,Icon])=><button key={id} className={tab===id?'active':''} onClick={()=>{setTab(id);setNavOpen(false)}}><Icon size={18}/><span>{label}</span></button>)}</nav><div className="sidebar-foot"><div className="status-dot"><i/>Data connected</div><small>{userEmail??'Local fixture mode'}</small>{userEmail&&<form action={signOutAction}><button><LogOut size={16}/> Sign out</button></form>}</div></aside><main><header><button className="menu-button" aria-label="Open navigation" onClick={()=>setNavOpen(true)}><Menu/></button><div><p>Sourcing dashboard</p><h1>{current[1]}</h1></div><div className="header-actions"><button className="help-button" onClick={()=>setInfo(true)}><CircleHelp size={17}/> What do these mean?</button><div className="build-badge"><span>BUILD</span>{process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0,7)??'LOCAL'} · {new Date(data.loadedAt).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</div></div></header>{data.warnings.map((warning)=><div className="notice" key={warning}><Info size={16}/>{warning}</div>)}<div className="content">{tab==='dashboard'&&<DashboardTab data={data} bucket={bucket} setBucket={setBucket} onHighRisk={setHighRisk} onOverdue={setOverdue}/>} {tab==='open-po'&&<TrackerTab data={data} onView={setDetail}/>} {tab==='vendors'&&<VendorTab data={data}/>} {tab==='vendor-type'&&<VendorTypeTab data={data}/>} {tab==='merchants'&&<MerchantTab data={data}/>} {tab==='products'&&<ProductTab data={data}/>} {tab==='urgent-replenish'&&<UrgentReplenishmentTab data={data}/>} {tab==='recommend'&&<RecommendTab data={data}/>} {tab==='matrix'&&<MatrixTab data={data}/>}</div></main>{info&&<Modal title={`${current[1]} definitions`} onClose={()=>setInfo(false)}><ul className="definition-list">{glossary[tab].map((item)=><li key={item}>{item}</li>)}</ul></Modal>}{detail&&<Modal title={detail.poRef} onClose={()=>setDetail(null)} wide><div className="detail-summary"><span>{detail.vendorName}</span><span>{detail.productCode}</span><span>{fmt.format(detail.pendingQty)} pending</span><span>{detail.stage}</span></div><div className="table-meta"><span>{fmt.format(detail.skuRows.length)} SKU rows</span><DownloadButton filename={`po-${detail.poRef}-skus`} headers={['SKU', 'Variant', 'Size', 'Original', 'Pending actual', 'Price']} rows={detail.skuRows.map((row) => [row.sku, row.product_variant, row.size, row.original_quantity, row.pending_qty_actual, row.item_price])} /></div><div className="table-scroll"><table><thead><tr><th>SKU</th><th>Variant</th><th>Size</th><th>Original</th><th>Pending actual</th><th>Price</th></tr></thead><tbody>{detail.skuRows.map((row,i)=><tr key={row.source_row_key??i}><td>{row.sku}</td><td>{row.product_variant}</td><td>{row.size}</td><td>{fmt.format(row.original_quantity)}</td><td>{fmt.format(row.pending_qty_actual)}</td><td>{money.format(row.item_price)}</td></tr>)}</tbody></table></div></Modal>}{highRisk&&<Modal title="High risk POs" onClose={()=>setHighRisk(null)} wide>{highRisk.length?<><div className="table-meta"><span>{fmt.format(highRisk.length)} SKU rows</span><DownloadButton filename="high-risk-pos" headers={['PO', 'Vendor', 'SKU', 'EDD', 'Original', 'Pending']} rows={highRisk.map((row) => [row.po_ref_num, row.vendor_name, row.sku, row.expected_delivery_date, row.original_quantity, row.pending_qty_actual])} /></div><div className="table-scroll"><table><thead><tr><th>PO</th><th>Vendor</th><th>SKU</th><th>EDD</th><th>Original</th><th>Pending</th></tr></thead><tbody>{highRisk.slice(0,500).map((row,i)=><tr key={row.source_row_key??i}><td>{row.po_ref_num}</td><td>{row.vendor_name}</td><td>{row.sku}</td><td>{row.expected_delivery_date}</td><td>{fmt.format(row.original_quantity)}</td><td>{fmt.format(row.pending_qty_actual)}</td></tr>)}</tbody></table></div></>:<Empty/>}</Modal>}{overdue&&<Modal title="Overdue POs — audit (close date passed)" onClose={()=>setOverdue(null)} wide>{overdue.length?<><div className="table-meta"><span>{fmt.format(overdue.length)} SKU rows</span><DownloadButton filename="overdue-audit" headers={['PO', 'Vendor', 'SKU', 'EDD', 'Original', 'Pending']} rows={overdue.map((row) => [row.po_ref_num, row.vendor_name, row.sku, row.expected_delivery_date, row.original_quantity, row.pending_qty_actual])} /></div><div className="table-scroll"><table><thead><tr><th>PO</th><th>Vendor</th><th>SKU</th><th>EDD</th><th>Original</th><th>Pending</th></tr></thead><tbody>{overdue.slice(0,500).map((row,i)=><tr key={row.source_row_key??i}><td>{row.po_ref_num}</td><td>{row.vendor_name}</td><td>{row.sku}</td><td>{row.expected_delivery_date}</td><td>{fmt.format(row.original_quantity)}</td><td>{fmt.format(row.pending_qty_actual)}</td></tr>)}</tbody></table></div></>:<Empty/>}</Modal>}</div>;
+export function DashboardShell({
+  data,
+  userEmail,
+  signOutAction,
+}: {
+  data: DashboardData;
+  userEmail: string | null;
+  signOutAction: () => Promise<void>;
+}) {
+  const [tab, setTab] = useState<TabId>("dashboard");
+  const [navOpen, setNavOpen] = useState(false);
+  const [info, setInfo] = useState(false);
+  const [detail, setDetail] = useState<TrackerRow | null>(null);
+  const [highRisk, setHighRisk] = useState<PendingPo[] | null>(null);
+  const [overdue, setOverdue] = useState<PendingPo[] | null>(null);
+  const [bucket, setBucket] = useState("All");
+  const current = tabs.find(([id]) => id === tab)!;
+  return (
+    <div className="app-shell">
+      <aside className={navOpen ? "sidebar open" : "sidebar"}>
+        <div className="brand">
+          <div className="brand-mark">S</div>
+          <div>
+            <strong>SAADAA</strong>
+            <span>Sourcing intelligence</span>
+          </div>
+          <button
+            className="mobile-close"
+            aria-label="Close navigation"
+            onClick={() => setNavOpen(false)}
+          >
+            <X />
+          </button>
+        </div>
+        <nav>
+          {tabs.map(([id, label, Icon]) => (
+            <button
+              key={id}
+              className={tab === id ? "active" : ""}
+              onClick={() => {
+                setTab(id);
+                setNavOpen(false);
+              }}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <div className="status-dot">
+            <i />
+            Data connected
+          </div>
+          <small>{userEmail ?? "Local fixture mode"}</small>
+          {userEmail && (
+            <form action={signOutAction}>
+              <button>
+                <LogOut size={16} /> Sign out
+              </button>
+            </form>
+          )}
+        </div>
+      </aside>
+      <main>
+        <header>
+          <button
+            className="menu-button"
+            aria-label="Open navigation"
+            onClick={() => setNavOpen(true)}
+          >
+            <Menu />
+          </button>
+          <div>
+            <p>Sourcing dashboard</p>
+            <h1>{current[1]}</h1>
+          </div>
+          <div className="header-actions">
+            <button className="help-button" onClick={() => setInfo(true)}>
+              <CircleHelp size={17} /> What do these mean?
+            </button>
+            <div className="build-badge">
+              <span>BUILD</span>
+              {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ??
+                "LOCAL"}{" "}
+              ·{" "}
+              {new Date(data.loadedAt).toLocaleString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </div>
+          </div>
+        </header>
+        {data.warnings.map((warning) => (
+          <div className="notice" key={warning}>
+            <Info size={16} />
+            {warning}
+          </div>
+        ))}
+        <div className="content">
+          {tab === "dashboard" && (
+            <DashboardTab
+              data={data}
+              bucket={bucket}
+              setBucket={setBucket}
+              onHighRisk={setHighRisk}
+              onOverdue={setOverdue}
+            />
+          )}{" "}
+          {tab === "open-po" && <TrackerTab data={data} onView={setDetail} />}{" "}
+          {tab === "vendors" && <VendorTab data={data} />}{" "}
+          {tab === "vendor-type" && <VendorTypeTab data={data} />}{" "}
+          {tab === "merchants" && <MerchantTab data={data} />}{" "}
+          {tab === "products" && <ProductTab data={data} />}{" "}
+          {tab === "urgent-replenish" && <UrgentReplenishmentTab data={data} />}{" "}
+          {tab === "recommend" && <RecommendTab data={data} />}{" "}
+          {tab === "matrix" && <MatrixTab data={data} />}
+        </div>
+      </main>
+      {info && (
+        <Modal
+          title={`${current[1]} definitions`}
+          onClose={() => setInfo(false)}
+        >
+          <ul className="definition-list">
+            {glossary[tab].map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </Modal>
+      )}
+      {detail && (
+        <Modal title={detail.poRef} onClose={() => setDetail(null)} wide>
+          <div className="detail-summary">
+            <span>{detail.vendorName}</span>
+            <span>{detail.productCode}</span>
+            <span>{fmt.format(detail.pendingQty)} pending</span>
+            <span>{detail.stage}</span>
+          </div>
+          <div className="table-meta">
+            <span>{fmt.format(detail.skuRows.length)} SKU rows</span>
+            <DownloadButton
+              filename={`po-${detail.poRef}-skus`}
+              headers={[
+                "SKU",
+                "Variant",
+                "Size",
+                "Original",
+                "Pending actual",
+                "Price",
+              ]}
+              rows={detail.skuRows.map((row) => [
+                row.sku,
+                row.product_variant,
+                row.size,
+                row.original_quantity,
+                row.pending_qty_actual,
+                row.item_price,
+              ])}
+            />
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Variant</th>
+                  <th>Size</th>
+                  <th>Original</th>
+                  <th>Pending actual</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.skuRows.map((row, i) => (
+                  <tr key={row.source_row_key ?? i}>
+                    <td>{row.sku}</td>
+                    <td>{row.product_variant}</td>
+                    <td>{row.size}</td>
+                    <td>{fmt.format(row.original_quantity)}</td>
+                    <td>{fmt.format(row.pending_qty_actual)}</td>
+                    <td>{money.format(row.item_price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Modal>
+      )}
+      {highRisk && (
+        <Modal title="High risk POs" onClose={() => setHighRisk(null)} wide>
+          {highRisk.length ? (
+            <>
+              <div className="table-meta">
+                <span>{fmt.format(highRisk.length)} SKU rows</span>
+                <DownloadButton
+                  filename="high-risk-pos"
+                  headers={[
+                    "PO",
+                    "Vendor",
+                    "SKU",
+                    "EDD",
+                    "Original",
+                    "Pending",
+                  ]}
+                  rows={highRisk.map((row) => [
+                    row.po_ref_num,
+                    row.vendor_name,
+                    row.sku,
+                    row.expected_delivery_date,
+                    row.original_quantity,
+                    row.pending_qty_actual,
+                  ])}
+                />
+              </div>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>PO</th>
+                      <th>Vendor</th>
+                      <th>SKU</th>
+                      <th>EDD</th>
+                      <th>Original</th>
+                      <th>Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {highRisk.slice(0, 500).map((row, i) => (
+                      <tr key={row.source_row_key ?? i}>
+                        <td>{row.po_ref_num}</td>
+                        <td>{row.vendor_name}</td>
+                        <td>{row.sku}</td>
+                        <td>{row.expected_delivery_date}</td>
+                        <td>{fmt.format(row.original_quantity)}</td>
+                        <td>{fmt.format(row.pending_qty_actual)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <Empty />
+          )}
+        </Modal>
+      )}
+      {overdue && (
+        <Modal
+          title="Overdue POs — audit (close date passed)"
+          onClose={() => setOverdue(null)}
+          wide
+        >
+          {overdue.length ? (
+            <>
+              <div className="table-meta">
+                <span>{fmt.format(overdue.length)} SKU rows</span>
+                <DownloadButton
+                  filename="overdue-audit"
+                  headers={[
+                    "PO",
+                    "Vendor",
+                    "SKU",
+                    "EDD",
+                    "Original",
+                    "Pending",
+                  ]}
+                  rows={overdue.map((row) => [
+                    row.po_ref_num,
+                    row.vendor_name,
+                    row.sku,
+                    row.expected_delivery_date,
+                    row.original_quantity,
+                    row.pending_qty_actual,
+                  ])}
+                />
+              </div>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>PO</th>
+                      <th>Vendor</th>
+                      <th>SKU</th>
+                      <th>EDD</th>
+                      <th>Original</th>
+                      <th>Pending</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overdue.slice(0, 500).map((row, i) => (
+                      <tr key={row.source_row_key ?? i}>
+                        <td>{row.po_ref_num}</td>
+                        <td>{row.vendor_name}</td>
+                        <td>{row.sku}</td>
+                        <td>{row.expected_delivery_date}</td>
+                        <td>{fmt.format(row.original_quantity)}</td>
+                        <td>{fmt.format(row.pending_qty_actual)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <Empty />
+          )}
+        </Modal>
+      )}
+    </div>
+  );
 }
