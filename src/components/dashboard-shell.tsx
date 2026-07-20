@@ -29,8 +29,6 @@ import {
   Cell,
   LabelList,
   Legend,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -575,38 +573,6 @@ function DashboardTab({
           title="PO ageing"
           download={{
             filename: "po-ageing",
-            headers: ["Ageing bucket", "Open PO count"],
-            rows: ageing.map((a) => [a.name, a.value]),
-          }}
-        >
-          {ageing.length ? (
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={ageing}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={52}
-                  outerRadius={82}
-                  paddingAngle={3}
-                  label
-                >
-                  {ageing.map((_, i) => (
-                    <Cell key={i} fill={colors[i % colors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <Empty />
-          )}
-        </ChartCard>
-        <ChartCard
-          title="PO ageing (bar)"
-          download={{
-            filename: "po-ageing-bar",
             headers: ["Ageing bucket", "Open PO count"],
             rows: ageing.map((a) => [a.name, a.value]),
           }}
