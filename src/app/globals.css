@@ -328,6 +328,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .recharts-cartesian-grid line { stroke: rgba(50,55,83,.08); }
 .recharts-text { fill: #7d8498; font-size: 10px; }
 .recharts-label-list .recharts-text { fill: #4a5163; font-weight: 600; }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px 18px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
+.pager button { padding: 6px 13px; color: #596178; font-size: 11px; font-weight: 560; background: #fff; border: 1px solid var(--line-strong); border-radius: 8px; }
+.pager button:disabled { opacity: .45; cursor: default; }
 .recharts-default-tooltip { border: 0 !important; border-radius: 11px !important; box-shadow: var(--shadow) !important; }
 .recharts-legend-item-text { color: #737b90 !important; font-size: 10px; }
 .recharts-layer.recharts-bar-rectangle path { filter: drop-shadow(0 4px 5px rgba(50,55,83,.06)); }

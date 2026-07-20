@@ -186,6 +186,52 @@ function Empty({ text = "No data for this filter" }: { text?: string }) {
   );
 }
 
+const PAGE_SIZE = 25;
+
+function usePaged<T>(rows: T[]) {
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  return {
+    pageRows: rows.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE),
+    page: current,
+    setPage,
+    pageCount,
+    total: rows.length,
+  };
+}
+
+function Pager({
+  page,
+  setPage,
+  pageCount,
+  total,
+}: {
+  page: number;
+  setPage: (n: number) => void;
+  pageCount: number;
+  total: number;
+}) {
+  if (pageCount <= 1) return null;
+  return (
+    <div className="pager">
+      <button type="button" disabled={page <= 0} onClick={() => setPage(page - 1)}>
+        Prev
+      </button>
+      <span>
+        Page {page + 1} of {pageCount} · {fmt.format(total)} rows
+      </span>
+      <button
+        type="button"
+        disabled={page >= pageCount - 1}
+        onClick={() => setPage(page + 1)}
+      >
+        Next
+      </button>
+    </div>
+  );
+}
+
 function DownloadButton({
   filename,
   headers,
@@ -558,6 +604,39 @@ function DashboardTab({
           )}
         </ChartCard>
         <ChartCard
+          title="PO ageing (bar)"
+          download={{
+            filename: "po-ageing-bar",
+            headers: ["Ageing bucket", "Open PO count"],
+            rows: ageing.map((a) => [a.name, a.value]),
+          }}
+        >
+          {ageing.length ? (
+            <ResponsiveContainer>
+              <BarChart data={ageing} margin={{ left: -20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" name="Open PO count" radius={[5, 5, 0, 0]}>
+                  {ageing.map((_, i) => (
+                    <Cell key={i} fill={colors[i % colors.length]} />
+                  ))}
+                  <LabelList dataKey="value" position="top" />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty />
+          )}
+        </ChartCard>
+        <ChartCard
           title="Vendor open vs delayed POs"
           download={{
             filename: "vendor-open-vs-delayed",
@@ -801,6 +880,7 @@ function TrackerTab({
   );
   const [filters, set] = useState({
     vendor: "",
+    vendorCode: "",
     vendorType: "",
     type: "",
     product: "",
@@ -815,6 +895,7 @@ function TrackerTab({
   const rows = all.filter(
     (row) =>
       (!filters.vendor || row.vendorName === filters.vendor) &&
+      (!filters.vendorCode || row.vendorCode === filters.vendorCode) &&
       (!filters.vendorType || row.vendorBucket === filters.vendorType) &&
       (!filters.type || row.poType === filters.type) &&
       (!filters.product || row.productCode === filters.product) &&
@@ -825,6 +906,7 @@ function TrackerTab({
           norm(v).includes(norm(filters.search)),
         )),
   );
+  const paged = usePaged(rows);
   return (
     <>
       <div className="filter-bar">
@@ -841,6 +923,12 @@ function TrackerTab({
           value={filters.vendor}
           options={unique(all.map((r) => r.vendorName))}
           onChange={(v) => set({ ...filters, vendor: v })}
+        />
+        <FilterSelect
+          label="Vendor Code"
+          value={filters.vendorCode}
+          options={unique(all.map((r) => r.vendorCode))}
+          onChange={(v) => set({ ...filters, vendorCode: v })}
         />
         <FilterSelect
           label="Vendor Type"
@@ -962,7 +1050,7 @@ function TrackerTab({
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 500).map((row) => (
+                {paged.pageRows.map((row) => (
                   <tr key={row.key}>
                     <td className="mono">{row.poRef}</td>
                     <td>
@@ -1021,6 +1109,12 @@ function TrackerTab({
         ) : (
           <Empty />
         )}
+        <Pager
+          page={paged.page}
+          setPage={paged.setPage}
+          pageCount={paged.pageCount}
+          total={paged.total}
+        />
       </div>
     </>
   );
@@ -1033,6 +1127,7 @@ function VendorTable({
   rows: VendorRollup[];
   filename?: string;
 }) {
+  const paged = usePaged(rows);
   return (
     <>
       {filename && (
@@ -1065,7 +1160,7 @@ function VendorTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {paged.pageRows.map((row) => (
                 <tr key={row.vendorCode || row.vendorName}>
                   <td>
                     {row.vendorName}
@@ -1098,6 +1193,12 @@ function VendorTable({
       ) : (
         <Empty />
       )}
+      <Pager
+        page={paged.page}
+        setPage={paged.setPage}
+        pageCount={paged.pageCount}
+        total={paged.total}
+      />
     </>
   );
 }
@@ -1185,14 +1286,26 @@ function VendorTab({ data }: { data: DashboardData }) {
                 <Tooltip />
                 <Legend />
                 <Bar dataKey="openQty" name="Open quantity" fill="#8b5cf6">
-                  <LabelList dataKey="openQty" position="top" />
+                  <LabelList
+                    dataKey="openQty"
+                    position="top"
+                    angle={-90}
+                    offset={14}
+                    fontSize={9}
+                  />
                 </Bar>
                 <Bar
                   dataKey="capacityPerMonth"
                   name="Monthly capacity"
                   fill="#14b8a6"
                 >
-                  <LabelList dataKey="capacityPerMonth" position="top" />
+                  <LabelList
+                    dataKey="capacityPerMonth"
+                    position="top"
+                    angle={-90}
+                    offset={14}
+                    fontSize={9}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -1487,6 +1600,7 @@ function ProductTab({ data }: { data: DashboardData }) {
   const [filters, set] = useState({
     merchant: "",
     vendor: "",
+    vendorCode: "",
     type: "",
     variant: "",
     product: "",
@@ -1498,6 +1612,7 @@ function ProductTab({ data }: { data: DashboardData }) {
       isOpenPo(row) &&
       (!filters.merchant || resolved.merchant === filters.merchant) &&
       (!filters.vendor || row.vendor_name === filters.vendor) &&
+      (!filters.vendorCode || row.vendor_code === filters.vendorCode) &&
       (!filters.type || row.po_type === filters.type) &&
       (!filters.product || row.product_code === filters.product) &&
       (!filters.variant || row.product_variant === filters.variant) &&
@@ -1552,6 +1667,8 @@ function ProductTab({ data }: { data: DashboardData }) {
       .filter((p) => p.product_code)
       .map((r) => r.product_code ?? ""),
   );
+  const pagedProducts = usePaged(products);
+  const pagedSummary = usePaged(summary);
   return (
     <>
       <div className="filter-bar">
@@ -1574,6 +1691,12 @@ function ProductTab({ data }: { data: DashboardData }) {
           value={filters.vendor}
           options={unique(data.pendingPos.map((r) => r.vendor_name ?? ""))}
           onChange={(v) => set({ ...filters, vendor: v })}
+        />
+        <FilterSelect
+          label="Vendor Code"
+          value={filters.vendorCode}
+          options={unique(data.pendingPos.map((r) => r.vendor_code ?? ""))}
+          onChange={(v) => set({ ...filters, vendorCode: v })}
         />
         <FilterSelect
           label="PO type"
@@ -1628,7 +1751,7 @@ function ProductTab({ data }: { data: DashboardData }) {
                 </tr>
               </thead>
               <tbody>
-                {products.map((row) => (
+                {pagedProducts.pageRows.map((row) => (
                   <tr key={`${row.productCode}-${row.variant}`}>
                     <td>{row.productCode}</td>
                     <td>{row.variant}</td>
@@ -1642,6 +1765,12 @@ function ProductTab({ data }: { data: DashboardData }) {
         ) : (
           <Empty />
         )}
+        <Pager
+          page={pagedProducts.page}
+          setPage={pagedProducts.setPage}
+          pageCount={pagedProducts.pageCount}
+          total={pagedProducts.total}
+        />
       </section>
       <section className="panel table-panel">
         <div className="panel-title">
@@ -1674,7 +1803,7 @@ function ProductTab({ data }: { data: DashboardData }) {
                 </tr>
               </thead>
               <tbody>
-                {summary.map((row) => (
+                {pagedSummary.pageRows.map((row) => (
                   <tr key={row.productCode}>
                     <td>{row.productCode}</td>
                     <td>{row.variants.size}</td>
@@ -1688,6 +1817,12 @@ function ProductTab({ data }: { data: DashboardData }) {
         ) : (
           <Empty />
         )}
+        <Pager
+          page={pagedSummary.page}
+          setPage={pagedSummary.setPage}
+          pageCount={pagedSummary.pageCount}
+          total={pagedSummary.total}
+        />
       </section>
     </>
   );
@@ -1738,6 +1873,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
     edd: row.edd,
     delayDays: row.delayDays,
   }));
+  const pagedInProcess = usePaged(inProcess365);
 
   return (
     <>
@@ -1857,7 +1993,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
                 </tr>
               </thead>
               <tbody>
-                {inProcess365.slice(0, 100).map((row, i) => (
+                {pagedInProcess.pageRows.map((row, i) => (
                   <tr key={i}>
                     <td>{row.productCode}</td>
                     <td>{row.vendorCode || row.vendorName}</td>
@@ -1879,6 +2015,12 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
         ) : (
           <Empty text="No products in process within 365 days" />
         )}
+        <Pager
+          page={pagedInProcess.page}
+          setPage={pagedInProcess.setPage}
+          pageCount={pagedInProcess.pageCount}
+          total={pagedInProcess.total}
+        />
       </section>
     </>
   );
@@ -1994,6 +2136,7 @@ function RecommendTab({ data }: { data: DashboardData }) {
       metric: (v) => `${v.utilizationPct}%`,
     },
   ];
+  const pagedProductVendors = usePaged(productVendors);
   return (
     <>
       <div className="segment">
@@ -2069,13 +2212,15 @@ function RecommendTab({ data }: { data: DashboardData }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {productVendors.map((v, i) => (
+                  {pagedProductVendors.pageRows.map((v, i) => {
+                    const rank = pagedProductVendors.page * PAGE_SIZE + i;
+                    return (
                     <tr key={v.vendorCode || v.vendorName}>
                       <td>
-                        {i === 0 ? (
+                        {rank === 0 ? (
                           <span className="badge success">★ 1</span>
                         ) : (
-                          i + 1
+                          rank + 1
                         )}
                       </td>
                       <td>
@@ -2097,13 +2242,20 @@ function RecommendTab({ data }: { data: DashboardData }) {
                         </span>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : (
             <Empty text="No vendor has produced this product before — use the leaderboards below" />
           )}
+          <Pager
+            page={pagedProductVendors.page}
+            setPage={pagedProductVendors.setPage}
+            pageCount={pagedProductVendors.pageCount}
+            total={pagedProductVendors.total}
+          />
         </section>
       )}
       <div className="chart-grid">
@@ -2153,7 +2305,12 @@ function RecommendTab({ data }: { data: DashboardData }) {
 
 function MatrixTab({ data }: { data: DashboardData }) {
   const [mode, setMode] = useState<"variant" | "product">("variant");
-  const [filters, set] = useState({ product: "", vendor: "", search: "" });
+  const [filters, set] = useState({
+    product: "",
+    vendor: "",
+    vendorCode: "",
+    search: "",
+  });
   const tracker = useMemo(
     () =>
       buildTrackerRows(
@@ -2171,6 +2328,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
       (!filters.vendor ||
         row.vendorCode === filters.vendor ||
         row.vendorName === filters.vendor) &&
+      (!filters.vendorCode || row.vendorCode === filters.vendorCode) &&
       (!filters.search ||
         [row.productCode, row.vendorCode, row.vendorName].some((v) =>
           norm(v).includes(norm(filters.search)),
@@ -2208,6 +2366,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
   ];
   const allProducts = unique(tracker.map((r) => r.productCode));
   const allVendors = unique(tracker.map((r) => r.vendorCode || r.vendorName));
+  const pagedRowNames = usePaged(rowNames);
   return (
     <>
       <div className="segment">
@@ -2245,6 +2404,12 @@ function MatrixTab({ data }: { data: DashboardData }) {
           options={allVendors}
           onChange={(v) => set({ ...filters, vendor: v })}
         />
+        <FilterSelect
+          label="Vendor Code"
+          value={filters.vendorCode}
+          options={unique(tracker.map((r) => r.vendorCode))}
+          onChange={(v) => set({ ...filters, vendorCode: v })}
+        />
       </div>
       <section className="panel table-panel">
         <div className="table-meta">
@@ -2280,7 +2445,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
                 </tr>
               </thead>
               <tbody>
-                {rowNames.map((r) => (
+                {pagedRowNames.pageRows.map((r) => (
                   <tr key={r}>
                     <td>{r}</td>
                     {vendors.map((v) => (
@@ -2330,6 +2495,12 @@ function MatrixTab({ data }: { data: DashboardData }) {
             <Empty />
           )}
         </div>
+        <Pager
+          page={pagedRowNames.page}
+          setPage={pagedRowNames.setPage}
+          pageCount={pagedRowNames.pageCount}
+          total={pagedRowNames.total}
+        />
       </section>
     </>
   );
