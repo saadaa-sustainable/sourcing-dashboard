@@ -573,7 +573,7 @@ function DashboardTab({
           Knitted
         </button>
       </div>
-      <div className="metric-grid overview">
+      <div className="metric-grid dashboard-metrics">
         <Card
           label="Open POs"
           value={fmt.format(openRefs.length)}

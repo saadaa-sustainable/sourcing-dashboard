@@ -251,9 +251,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(145px, 1fr)); gap: 15px; margin-bottom: 20px; }
 .metric-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .metric-grid.summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.metric-grid.overview { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 18px; }
-.metric-grid.overview > .metric-card:nth-child(-n + 3) { grid-column: span 2; }
-.metric-grid.overview > .metric-card:nth-child(n + 4) { grid-column: span 3; min-height: 174px; }
 .metric-card {
   position: relative;
   min-height: 144px;
@@ -302,15 +299,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .metric-card.big .metric-label { font-size: 13px !important; }
 .metric-card.big strong { margin: 20px 0 12px; font-size: 30px; }
 .metric-card.big small { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.5; }
-.metric-grid.overview .metric-card.big small {
-  width: fit-content;
-  padding: 6px 9px;
-  color: var(--card-accent);
-  font-size: 11px;
-  font-weight: 700;
-  background: var(--card-soft);
-  border-radius: 8px;
-}
+.metric-grid.dashboard-metrics .metric-card.big strong { margin: 18px 0 16px; font-size: 32px; }
+.metric-grid.dashboard-metrics .metric-card.big small { color: var(--ink); font-size: 15px; font-weight: 700; }
 .metric-action { position: absolute; right: 17px; bottom: 18px; color: var(--card-accent, var(--purple)); }
 .tone-purple { --card-accent: #6d5dfc; --card-soft: #efedff; --card-glow: rgba(109,93,252,.15); }
 .tone-teal { --card-accent: #20a88f; --card-soft: #e7f8f4; --card-glow: rgba(40,182,157,.15); }
@@ -538,8 +528,6 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 @media (max-width: 1180px) {
   .metric-grid { grid-template-columns: repeat(3, 1fr); }
   .metric-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .metric-grid.overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .metric-grid.overview > .metric-card:nth-child(n) { grid-column: span 1; }
   .chart-grid { grid-template-columns: 1fr; }
   .split-columns { grid-template-columns: 1fr; }
   .build-badge { display: none; }
@@ -572,7 +560,6 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 
 @media (max-width: 420px) {
   .metric-grid, .metric-grid.compact { grid-template-columns: 1fr 1fr; }
-  .metric-grid.overview { grid-template-columns: 1fr; }
   .metric-card { min-height: 128px; padding: 13px; }
   .metric-card strong { font-size: 17px; }
   .metric-card.big strong { font-size: 22px; }
