@@ -230,6 +230,48 @@ function Pager({
   );
 }
 
+// Horizontal-scroll wrapper for vertical bar charts (vendors on the X axis):
+// widens the plot so every vendor gets room, and scrolls when it overflows.
+function ScrollChart({
+  count,
+  per = 46,
+  children,
+}: {
+  count: number;
+  per?: number;
+  children: React.ReactElement;
+}) {
+  return (
+    <div className="chart-hscroll">
+      <div style={{ minWidth: "100%", width: count * per, height: "100%" }}>
+        <ResponsiveContainer>{children}</ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// Vertical-scroll wrapper for horizontal bar charts (vendors on the Y axis):
+// grows the plot height per vendor and scrolls when it overflows.
+function VScrollChart({
+  count,
+  per = 30,
+  min = 300,
+  children,
+}: {
+  count: number;
+  per?: number;
+  min?: number;
+  children: React.ReactElement;
+}) {
+  return (
+    <div className="chart-vscroll">
+      <div style={{ width: "100%", height: Math.max(count * per, min) }}>
+        <ResponsiveContainer>{children}</ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 function DownloadButton({
   filename,
   headers,
@@ -427,7 +469,7 @@ function DashboardTab({
     data.vendorMasters,
     data.tnaRecords,
     today,
-  ).slice(0, 12);
+  );
   const ageing = [
     "Not Due",
     "0-7 Days",
@@ -611,7 +653,7 @@ function DashboardTab({
           }}
         >
           {vendor.length ? (
-            <ResponsiveContainer>
+            <ScrollChart count={vendor.length}>
               <BarChart data={vendor} margin={{ left: -20, bottom: 28 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
@@ -641,7 +683,7 @@ function DashboardTab({
                   <LabelList dataKey="delayedPoCount" position="top" />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ScrollChart>
           ) : (
             <Empty />
           )}
@@ -655,7 +697,7 @@ function DashboardTab({
           }}
         >
           {vendor.length ? (
-            <ResponsiveContainer>
+            <ScrollChart count={vendor.length}>
               <BarChart data={vendor} margin={{ left: -20, bottom: 28 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
@@ -680,7 +722,7 @@ function DashboardTab({
                   />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ScrollChart>
           ) : (
             <Empty />
           )}
@@ -1236,11 +1278,8 @@ function VendorTab({ data }: { data: DashboardData }) {
           }}
         >
           {rows.length ? (
-            <ResponsiveContainer>
-              <BarChart
-                data={rows.slice(0, 15)}
-                margin={{ left: -20, bottom: 28 }}
-              >
+            <ScrollChart count={rows.length}>
+              <BarChart data={rows} margin={{ left: -20, bottom: 28 }}>
                 <XAxis
                   dataKey="vendorCode"
                   interval={0}
@@ -1274,7 +1313,7 @@ function VendorTab({ data }: { data: DashboardData }) {
                   />
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </ScrollChart>
           ) : (
             <Empty />
           )}
@@ -1301,7 +1340,7 @@ function VendorTab({ data }: { data: DashboardData }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 12).map((vendor) => (
+                {rows.map((vendor) => (
                   <tr key={vendor.vendorCode}>
                     <td>{vendor.vendorCode}</td>
                     {types.map((t) => (
@@ -1352,7 +1391,7 @@ function VendorTypeTab({ data }: { data: DashboardData }) {
   return (
     <div className="split-columns">
       {(["Woven", "Knit"] as const).map((bucket) => {
-        const rows = all.filter((r) => r.vendorBucket === bucket).slice(0, 15);
+        const rows = all.filter((r) => r.vendorBucket === bucket);
         const trackerRows = allTracker.filter((r) => r.vendorBucket === bucket);
         const openVsDelayed = trackerRows.reduce<
           Record<
@@ -1366,7 +1405,7 @@ function VendorTypeTab({ data }: { data: DashboardData }) {
           if (row.delayDays > 0) acc[key].delayedQty += row.pendingQty;
           return acc;
         }, {});
-        const chartData = Object.values(openVsDelayed).slice(0, 15);
+        const chartData = Object.values(openVsDelayed);
         return (
           <section className="panel" key={bucket}>
             <div className="panel-title">
@@ -1384,7 +1423,7 @@ function VendorTypeTab({ data }: { data: DashboardData }) {
             </div>
             <div className="chart-area tall">
               {chartData.length ? (
-                <ResponsiveContainer>
+                <VScrollChart count={chartData.length}>
                   <BarChart
                     data={chartData}
                     layout="vertical"
@@ -1415,7 +1454,7 @@ function VendorTypeTab({ data }: { data: DashboardData }) {
                       <LabelList dataKey="delayedQty" position="right" />
                     </Bar>
                   </BarChart>
-                </ResponsiveContainer>
+                </VScrollChart>
               ) : (
                 <Empty />
               )}
