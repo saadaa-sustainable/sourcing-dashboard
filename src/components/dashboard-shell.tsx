@@ -1882,18 +1882,20 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
 
   return (
     <>
-      <div className="metric-grid compact">
+      <div className="metric-grid compact summary">
         <Card
           label="In Process (365d)"
           value={fmt.format(inProcess365.length)}
           note="Expected within 365 days"
           tone="teal"
+          big
         />
         <Card
           label="Out of Stock"
           value={fmt.format(productOOS.length)}
           note="0 pending quantity"
           tone="orange"
+          big
         />
       </div>
       <div className="chart-grid">

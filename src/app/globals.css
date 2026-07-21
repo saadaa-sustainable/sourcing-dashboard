@@ -249,7 +249,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .segment button.active { color: var(--purple-dark); font-weight: 690; background: #fff; box-shadow: 0 4px 12px rgba(34,40,74,.09), inset 0 -2px rgba(109,93,252,.08); }
 
 .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(145px, 1fr)); gap: 15px; margin-bottom: 20px; }
-.metric-grid.compact { grid-template-columns: repeat(3, minmax(180px, 1fr)); }
+.metric-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.metric-grid.summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .metric-card {
   position: relative;
   min-height: 144px;
@@ -293,8 +294,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .metric-label { color: #737b90 !important; font-size: 10px !important; font-weight: 650; letter-spacing: .025em; }
 .metric-card strong { display: block; margin: 7px 0 5px; font-family: "Geist Mono", monospace; font-size: 24px; font-weight: 650; letter-spacing: -.055em; }
 .metric-card small { display: block; color: #959caf; font-size: 9px; }
-.metric-card.big strong { font-size: 32px; }
-.metric-card.big small { font-size: 15px; font-weight: 700; color: var(--ink); }
+.metric-grid.summary .metric-card { min-height: 218px; padding: 24px; }
+.metric-card.big .metric-icon { width: 42px; height: 42px; margin-bottom: 30px; }
+.metric-card.big .metric-label { font-size: 13px !important; }
+.metric-card.big strong { margin: 20px 0 12px; font-size: 30px; }
+.metric-card.big small { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.5; }
 .metric-action { position: absolute; right: 17px; bottom: 18px; color: var(--card-accent, var(--purple)); }
 .tone-purple { --card-accent: #6d5dfc; --card-soft: #efedff; --card-glow: rgba(109,93,252,.15); }
 .tone-teal { --card-accent: #20a88f; --card-soft: #e7f8f4; --card-glow: rgba(40,182,157,.15); }
@@ -521,6 +525,7 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 
 @media (max-width: 1180px) {
   .metric-grid { grid-template-columns: repeat(3, 1fr); }
+  .metric-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chart-grid { grid-template-columns: 1fr; }
   .split-columns { grid-template-columns: 1fr; }
   .build-badge { display: none; }
