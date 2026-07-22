@@ -317,6 +317,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   backdrop-filter: blur(10px);
 }
 .chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; margin-bottom: 17px; }
+.chart-grid > .chart-wide { grid-column: 1 / -1; }
 .chart-panel { padding: 20px 21px 16px; transition: box-shadow .2s ease, transform .2s ease; }
 .chart-panel:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
 .panel-title { min-height: 43px; padding: 17px 20px 11px; display: flex; align-items: center; justify-content: space-between; }

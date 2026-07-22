@@ -27,8 +27,10 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   LabelList,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -67,50 +69,64 @@ type TabId = (typeof tabs)[number][0];
 
 const glossary: Record<TabId, string[]> = {
   dashboard: [
-    "Open PO: pending quantity actual is greater than zero.",
-    "Delayed PO: an open PO whose expected delivery date is before today.",
-    "High Risk: no quantity received and expected delivery is within 15 days, including overdue POs.",
-    "Open value: pending quantity actual × item price.",
+    "Open PO — a purchase order that still has garments left to receive. Formula: counted when pending_qty_actual > 0. Fully received orders are not counted.",
+    "Open Qty — the total pieces still to be delivered. Formula: sum of pending_qty_actual across all open lines.",
+    "Open value — the money still tied up in undelivered goods. Formula: sum of (pending_qty_actual × item price) across open lines.",
+    "Delayed PO — an open order whose promised delivery date has already passed. Formula: open PO where expected delivery date (EDD) is before today.",
+    "Delayed % — out of all open orders, the share that are running late. Formula: delayed open POs ÷ total open POs × 100.",
+    "High Risk PO — nothing received yet AND delivery is close. Formula: open PO where received = 0 (pending_quantity = original_quantity) AND EDD is within 15 days from today (overdue counts too).",
+    "The All / Woven / Knitted buttons filter every card and chart to that vendor type. Tip: the Delayed and High Risk cards are clickable and open the full PO list.",
   ],
   "open-po": [
-    "Rows are grouped by PO reference + product code.",
-    "Variants is the distinct variant count, not a piece count.",
-    "Delay days never goes below zero.",
-    "TNA stage is the first milestone without an actual date; missing TNA data is shown explicitly.",
-    "TNA Delay shows planned vs actual dates for each stage.",
+    "Each row is one purchase order line, grouped by PO number + product + delivery date.",
+    "Variants — how many different variants (for example colours) that line covers, not a piece count.",
+    "Delay — days past the promised delivery date. Formula: today − EDD, never below 0 (0 is shown as 'On time').",
+    "Days Overdue — a bucket built from that delay: Not Due (0 days late), 0-7, 8-15, 16-30, 30+ days, or No EDD when no delivery date is set.",
+    "TNA stage — the first production step (PP Sample → GPT → Cutting → Inline) that has no actual date filled in yet. 'Not in TNA Tracker' means no production timeline exists.",
+    "TNA days — the total production delay for the order. Formula: PP delay + GPT delay + Cutting delay + Inline delay (days).",
+    "The PP / GPT / Cutting / Inline columns show the planned date (TNA) next to the actual date so you can see where time slipped. Scroll right to see them.",
   ],
   vendors: [
-    "Vendor joins use vendor code first, then name only as a fallback.",
-    "Utilization = open quantity ÷ monthly capacity.",
-    "Vendors missing from capacity master show zero capacity fields.",
+    "Vendors are matched first by vendor code, and by name only when no code matches.",
+    "Open POs / Delayed — counts of that vendor's distinct PO numbers. Delayed = those whose delivery date has passed. Delay % formula: delayed POs ÷ open POs × 100.",
+    "Open qty — sum of the vendor's pending quantity. Open value — sum of (pending quantity × price).",
+    "Utilisation — how full a vendor's plate is. Formula: open quantity ÷ monthly capacity × 100. Above 100% means booked beyond capacity.",
+    "Total Open PO Quantity — the pending quantity of every vendor added together.",
+    "Vendors with no capacity data in the master sheet show 0 for capacity and utilisation.",
   ],
   "vendor-type": [
-    "Labels containing “woven” are Woven. Every other label, including blank, is Knit.",
-    "Charts show the top 15 vendors within each bucket.",
+    "Vendors are split into Woven and Knitted. Anything labelled 'woven' counts as Woven; everything else (including blank) is treated as Knit.",
+    "Per vendor: Open quantity = sum of pending quantity; Delayed quantity = sum of pending quantity on lines whose delivery date has already passed (delay days > 0).",
+    "Every vendor in each group is shown — if there are many, scroll inside the chart to see them all.",
   ],
   merchants: [
-    "Merchant comes from vendor capacity master, then vendor type master.",
-    "Unmapped vendors are grouped under Unassigned.",
+    "Figures are grouped by merchant (the person who owns the vendor relationship). A merchant is read from the vendor capacity sheet first, then the vendor type sheet.",
+    "Each merchant's Open POs, Delayed, Open qty and Open value are the totals of its vendors. Delay % formula: delayed POs ÷ open POs × 100.",
+    "Vendors with no merchant assigned are grouped together under 'Unassigned'.",
   ],
   products: [
-    "Filters are applied to source PO rows before product aggregation.",
-    "Product + variant keeps variants separate; product summary collapses them.",
-    "DOQ and Product State remain blocked until their source feeds exist.",
+    "Any filters you choose are applied to the raw PO lines first, then the totals are added up.",
+    "Product + variant rollup keeps each variant on its own row; Product code summary combines all variants of a product into one line.",
+    "Pending qty — sum of pending quantity. Pending value — sum of (pending quantity × item price).",
   ],
   "urgent-replenish": [
-    "Shows products approaching or exceeding reorder points.",
-    "In Process: open PO inventory expected within 365 days.",
-    "OOS: out of stock products with no coverage.",
+    "Highlights products that need attention because stock is running low or has run out.",
+    "In Process (365d) — open PO stock arriving soon. Formula: open lines where the delivery date is between today and today + 365 days.",
+    "Out of Stock — products with no pending coverage. Formula: products whose pending_qty_actual is 0 across their lines.",
   ],
   recommend: [
-    "Each leaderboard ranks active vendors by a single quality, so you can weigh the trade-offs before issuing a PO.",
-    "Spare capacity = monthly capacity − current open quantity.",
-    "On-time uses delay %; TNA punctuality uses average TNA delay days.",
-    "Picking a product lists only vendors that have produced it before, best on-time first.",
+    "Helps you decide which vendor to give a new PO to, based on each vendor's past track record.",
+    "Each leaderboard ranks vendors by ONE quality so you can compare and choose.",
+    "Spare capacity — room left this month. Formula: monthly capacity − current open quantity (higher is better).",
+    "On-time record — ranks by delay % (delayed POs ÷ open POs × 100), lowest first.",
+    "TNA punctuality — ranks by average production delay. Formula: average of each PO's TNA days (PP + GPT + Cutting + Inline delays), lowest first.",
+    "Lowest workload — ranks by utilisation (open qty ÷ capacity × 100), lowest first.",
+    "Pick a product to see only the vendors who have made it before, with the best on-time vendor starred as the top choice.",
   ],
   matrix: [
-    "Rows are products (optionally variants), columns are vendors, and cells are pending quantity.",
-    "Totals include only the currently open PO rows.",
+    "A grid: each row is a product (or product + variant), each column is a vendor, and each cell is the pending quantity that vendor owes for that product. Formula: cell = sum of pending_qty_actual for that product × vendor.",
+    "Use 'By Variant' to see each colour/variant separately, or 'By Product Code' to combine all variants of a product.",
+    "The Total row and column add up only the currently open PO quantities.",
   ],
 };
 
@@ -302,13 +318,15 @@ function ChartCard({
   title,
   children,
   download,
+  wide = false,
 }: {
   title: string;
   children: React.ReactNode;
   download?: { filename: string; headers: string[]; rows: CsvValue[][] };
+  wide?: boolean;
 }) {
   return (
-    <section className="panel chart-panel">
+    <section className={`panel chart-panel${wide ? " chart-wide" : ""}`}>
       <div className="panel-title">
         <div>
           <span className="panel-kicker">Live analysis</span>
@@ -645,28 +663,39 @@ function DashboardTab({
           )}
         </ChartCard>
         <ChartCard
-          title="Vendor open vs delayed POs"
+          title="Vendor PO status and delay percentage"
+          wide
           download={{
-            filename: "vendor-open-vs-delayed",
+            filename: "vendor-po-status-and-delay-percentage",
             headers: vendorCsvHeaders,
             rows: vendorCsvRows(vendor),
           }}
         >
           {vendor.length ? (
-            <ScrollChart count={vendor.length}>
-              <BarChart data={vendor} margin={{ left: -20, bottom: 28 }}>
+            <ResponsiveContainer>
+              <ComposedChart
+                data={vendor}
+                margin={{ top: 20, right: 16, left: -8, bottom: 42 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="vendorCode"
                   interval={0}
                   angle={-35}
                   textAnchor="end"
-                  height={50}
+                  height={64}
                 />
-                <YAxis />
+                <YAxis yAxisId="count" allowDecimals={false} />
+                <YAxis
+                  yAxisId="percentage"
+                  orientation="right"
+                  domain={[0, 100]}
+                  unit="%"
+                />
                 <Tooltip />
                 <Legend />
                 <Bar
+                  yAxisId="count"
                   dataKey="openPoCount"
                   name="Open PO count"
                   fill="#8b5cf6"
@@ -675,6 +704,7 @@ function DashboardTab({
                   <LabelList dataKey="openPoCount" position="top" />
                 </Bar>
                 <Bar
+                  yAxisId="count"
                   dataKey="delayedPoCount"
                   name="Delayed PO count"
                   fill="#f97316"
@@ -682,47 +712,18 @@ function DashboardTab({
                 >
                   <LabelList dataKey="delayedPoCount" position="top" />
                 </Bar>
-              </BarChart>
-            </ScrollChart>
-          ) : (
-            <Empty />
-          )}
-        </ChartCard>
-        <ChartCard
-          title="Vendor delay %"
-          download={{
-            filename: "vendor-delay-pct",
-            headers: vendorCsvHeaders,
-            rows: vendorCsvRows(vendor),
-          }}
-        >
-          {vendor.length ? (
-            <ScrollChart count={vendor.length}>
-              <BarChart data={vendor} margin={{ left: -20, bottom: 28 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="vendorCode"
-                  interval={0}
-                  angle={-35}
-                  textAnchor="end"
-                  height={50}
-                />
-                <YAxis unit="%" />
-                <Tooltip />
-                <Bar
+                <Line
+                  yAxisId="percentage"
+                  type="monotone"
                   dataKey="delayPct"
-                  name="Delay %"
-                  fill="#ef4444"
-                  radius={[5, 5, 0, 0]}
-                >
-                  <LabelList
-                    dataKey="delayPct"
-                    position="top"
-                    formatter={(v) => `${v}%`}
-                  />
-                </Bar>
-              </BarChart>
-            </ScrollChart>
+                  name="Delay percentage"
+                  stroke="#c0392b"
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: "#c0392b" }}
+                  activeDot={{ r: 6 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
           ) : (
             <Empty />
           )}
