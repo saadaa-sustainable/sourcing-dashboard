@@ -17,7 +17,6 @@ import {
   Menu,
   PackageSearch,
   Search,
-  Store,
   Users,
   X,
   Zap,
@@ -58,7 +57,6 @@ const tabs = [
   ["dashboard", "Dashboard", LayoutDashboard],
   ["open-po", "Open PO Tracker", PackageSearch],
   ["vendors", "Vendor Performance", Factory],
-  ["vendor-type", "Vendor Type", Store],
   ["merchants", "Merchant Performance", Users],
   ["products", "Product Tracker", Boxes],
   ["urgent-replenish", "Urgent Replenishment", Zap],
@@ -67,7 +65,7 @@ const tabs = [
 ] as const;
 type TabId = (typeof tabs)[number][0];
 
-const glossary: Record<TabId, string[]> = {
+const glossary: Record<string, string[]> = {
   dashboard: [
     "Open PO — a purchase order that still has garments left to receive. Formula: counted when pending_qty_actual > 0. Fully received orders are not counted.",
     "Open Qty — the total pieces still to be delivered. Formula: sum of pending_qty_actual across all open lines.",
@@ -242,26 +240,6 @@ function Pager({
       >
         Next
       </button>
-    </div>
-  );
-}
-
-// Horizontal-scroll wrapper for vertical bar charts (vendors on the X axis):
-// widens the plot so every vendor gets room, and scrolls when it overflows.
-function ScrollChart({
-  count,
-  per = 46,
-  children,
-}: {
-  count: number;
-  per?: number;
-  children: React.ReactElement;
-}) {
-  return (
-    <div className="chart-hscroll">
-      <div style={{ minWidth: "100%", width: count * per, height: "100%" }}>
-        <ResponsiveContainer>{children}</ResponsiveContainer>
-      </div>
     </div>
   );
 }
@@ -692,7 +670,12 @@ function DashboardTab({
                   domain={[0, 100]}
                   unit="%"
                 />
-                <Tooltip />
+                <Tooltip
+                  formatter={(value, name) => [
+                    name === "Delay percentage" ? `${value}%` : value,
+                    name,
+                  ]}
+                />
                 <Legend />
                 <Bar
                   yAxisId="count"
@@ -897,10 +880,6 @@ function TrackerTab({
     bucket: "",
     search: "",
   });
-  const lookups = useMemo(
-    () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
-    [data],
-  );
   const rows = all.filter(
     (row) =>
       (!filters.vendor || row.vendorName === filters.vendor) &&
@@ -1272,6 +1251,7 @@ function VendorTab({ data }: { data: DashboardData }) {
       <div className="chart-grid">
         <ChartCard
           title="Open quantity vs monthly capacity"
+          wide
           download={{
             filename: "vendor-open-qty-vs-capacity",
             headers: vendorCsvHeaders,
@@ -1279,7 +1259,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           }}
         >
           {rows.length ? (
-            <ScrollChart count={rows.length}>
+            <ResponsiveContainer>
               <BarChart data={rows} margin={{ left: -20, bottom: 28 }}>
                 <XAxis
                   dataKey="vendorCode"
@@ -1314,7 +1294,7 @@ function VendorTab({ data }: { data: DashboardData }) {
                   />
                 </Bar>
               </BarChart>
-            </ScrollChart>
+            </ResponsiveContainer>
           ) : (
             <Empty />
           )}
@@ -1356,6 +1336,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           </div>
         </ChartCard>
       </div>
+      <VendorTypeCharts data={data} />
       <section className="panel table-panel">
         <div className="panel-title">
           <h3>Vendor performance</h3>
@@ -1366,7 +1347,7 @@ function VendorTab({ data }: { data: DashboardData }) {
   );
 }
 
-function VendorTypeTab({ data }: { data: DashboardData }) {
+function VendorTypeCharts({ data }: { data: DashboardData }) {
   const all = useMemo(
     () =>
       buildVendorRollups(
@@ -2373,7 +2354,8 @@ function MatrixTab({ data }: { data: DashboardData }) {
     ],
   ];
   const allProducts = unique(tracker.map((r) => r.productCode));
-  const allVendors = unique(tracker.map((r) => r.vendorCode || r.vendorName));
+  const allVendorNames = unique(tracker.map((r) => r.vendorName));
+  const allVendorCodes = unique(tracker.map((r) => r.vendorCode));
   const pagedRowNames = usePaged(rowNames);
   return (
     <>
@@ -2409,13 +2391,13 @@ function MatrixTab({ data }: { data: DashboardData }) {
         <FilterSelect
           label="Vendor"
           value={filters.vendor}
-          options={allVendors}
+          options={allVendorNames}
           onChange={(v) => set({ ...filters, vendor: v })}
         />
         <FilterSelect
           label="Vendor Code"
           value={filters.vendorCode}
-          options={unique(tracker.map((r) => r.vendorCode))}
+          options={allVendorCodes}
           onChange={(v) => set({ ...filters, vendorCode: v })}
         />
       </div>
@@ -2626,7 +2608,6 @@ export function DashboardShell({
           )}{" "}
           {tab === "open-po" && <TrackerTab data={data} onView={setDetail} />}{" "}
           {tab === "vendors" && <VendorTab data={data} />}{" "}
-          {tab === "vendor-type" && <VendorTypeTab data={data} />}{" "}
           {tab === "merchants" && <MerchantTab data={data} />}{" "}
           {tab === "products" && <ProductTab data={data} />}{" "}
           {tab === "urgent-replenish" && <UrgentReplenishmentTab data={data} />}{" "}
