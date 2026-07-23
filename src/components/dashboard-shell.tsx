@@ -2530,7 +2530,9 @@ export function DashboardShell({
           </button>
         </div>
         <nav>
-          {tabs.map(([id, label, Icon]) => (
+          {tabs
+            .filter(([id]) => id !== "urgent-replenish")
+            .map(([id, label, Icon]) => (
             <button
               key={id}
               className={tab === id ? "active" : ""}
