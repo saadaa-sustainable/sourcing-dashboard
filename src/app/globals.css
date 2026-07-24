@@ -141,6 +141,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   box-shadow: inset 3px 0 #8f80ff, 0 8px 22px rgba(8, 8, 20, 0.12);
 }
 .sidebar nav button.active svg { color: #c6beff; filter: drop-shadow(0 3px 5px rgba(109,93,252,.3)); }
+.sidebar nav a { width: 100%; padding: 12px 13px; display: flex; align-items: center; gap: 12px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #9ea5bf; font-size: 12px; text-decoration: none; transition: color .18s ease, background .18s ease, transform .18s ease, border-color .18s ease; }
+.sidebar nav a svg { color: rgba(250, 248, 245, 0.50); transition: color .18s ease; }
+.sidebar nav a:hover { color: #faf8f5; background: rgba(255,255,255,.06); transform: translateX(2px); }
+.sidebar nav a:hover svg { color: #f0c61e; }
+.wf-nav-divider { margin: 15px 0 3px; padding: 0 11px; color: #8a8172; font-size: 8px; font-weight: 750; letter-spacing: 0.18em; text-transform: uppercase; }
 
 .sidebar-foot {
   position: relative;

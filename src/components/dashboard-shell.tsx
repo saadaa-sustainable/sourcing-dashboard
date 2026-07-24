@@ -5,10 +5,12 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Award,
+  Ban,
   Boxes,
   CalendarClock,
   ChevronRight,
   CircleHelp,
+  ClipboardCheck,
   Download,
   Factory,
   Info,
@@ -17,6 +19,7 @@ import {
   Menu,
   PackageSearch,
   Search,
+  ShoppingCart,
   Users,
   X,
   Zap,
@@ -2545,6 +2548,23 @@ export function DashboardShell({
               <span>{label}</span>
             </button>
           ))}
+          <div className="wf-nav-divider">Workflows</div>
+          <a href="/buying-plan">
+            <ShoppingCart size={18} />
+            <span>Buying Plan</span>
+          </a>
+          <a href="/vendor-capacity">
+            <Factory size={18} />
+            <span>Vendor Capacity</span>
+          </a>
+          <a href="/discontinue">
+            <Ban size={18} />
+            <span>Discontinue</span>
+          </a>
+          <a href="/approvals">
+            <ClipboardCheck size={18} />
+            <span>Approvals</span>
+          </a>
         </nav>
         <div className="sidebar-foot">
           <div className="status-dot">
