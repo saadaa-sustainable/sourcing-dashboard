@@ -34,6 +34,7 @@ export default async function ApprovalsPage() {
       subtitle="Buying plans and discontinue requests waiting on a decision."
       active="/approvals"
       role={user.role}
+      userEmail={user.email}
     >
       <ApprovalsClient items={items} log={log} role={user.role} />
     </FormLayout>

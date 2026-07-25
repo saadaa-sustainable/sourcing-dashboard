@@ -232,13 +232,25 @@ end $$;
 create policy "sourcing append approval log" on public.sd_approval_log
   for insert to authenticated with check (public.sd_can_write());
 
+-- User management: only admins (the role manager) may add users or change roles.
+-- Reads stay open to any @saadaa.in via the "saadaa read sd_user" policy above.
+grant insert, update on public.sd_user to authenticated;
+
+create policy "admin manage users" on public.sd_user
+  for all to authenticated
+  using (public.sd_current_role() = 'admin')
+  with check (public.sd_current_role() = 'admin');
+
 -- ---------------------------------------------------------------------
 -- 9. Seed users — REPLACE THESE EMAILS BEFORE RUNNING
 --    Roles: 'admin' for founders (full access + all approvals),
 --           'team'  for everyone who fills the forms.
 --    Anyone signing in who is not listed here is read-only automatically.
 -- ---------------------------------------------------------------------
+--    pushpendra@saadaa.in is the role manager — an admin who allots roles from
+--    the in-app User Panel. Add other admins/team members here or via that panel.
 insert into public.sd_user (email, full_name, role) values
+  ('pushpendra@saadaa.in','Pushpendra (role manager)','admin'),
   ('website@saadaa.in',  'Pushpendra',  'admin'),
   ('mahesh@saadaa.in',   'Mahesh',      'admin'),
   ('mukesh@saadaa.in',   'Mukesh ji',   'team'),

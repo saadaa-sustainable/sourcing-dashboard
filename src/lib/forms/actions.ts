@@ -25,7 +25,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { currentUser } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
-import type { ApprovalEntity, SdStatus } from './types';
+import type { ApprovalEntity, SdRole, SdStatus } from './types';
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -386,4 +386,42 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
   return done(decision === 'approve' ? 'Approved.' : 'Rejected.');
+}
+
+/* ================================================================== */
+/* User panel — admin (role manager) assigns roles                     */
+/* ================================================================== */
+
+const ASSIGNABLE_ROLES: SdRole[] = ['viewer', 'team', 'admin'];
+
+export async function saveUser(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can manage users.');
+
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  const fullName = String(formData.get('full_name') ?? '').trim() || null;
+  const role = String(formData.get('role') ?? '') as SdRole;
+  const isActive = formData.get('is_active') === 'true';
+
+  if (!/^[^@\s]+@saadaa\.in$/.test(email)) {
+    return fail('Enter a valid @saadaa.in email address.');
+  }
+  if (!ASSIGNABLE_ROLES.includes(role)) return fail('Invalid role.');
+  // Guard against locking yourself out of the role manager.
+  if (email === actor.email && (role !== 'admin' || !isActive)) {
+    return fail('You cannot remove your own admin access.');
+  }
+
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_user')
+    .upsert(
+      { email, full_name: fullName, role, is_active: isActive },
+      { onConflict: 'email' },
+    );
+  if (error) return fail(`Could not save user: ${error.message}`);
+
+  revalidatePath('/users');
+  return done(`Saved ${email}.`);
 }

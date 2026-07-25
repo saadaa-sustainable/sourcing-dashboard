@@ -51,6 +51,7 @@ export default async function BuyingPlanPage({
       subtitle={`Monthly buying budget — ${monthLabel(planMonth)}. Submitted for approval before POs are issued.`}
       active="/buying-plan"
       role={user.role}
+      userEmail={user.email}
     >
       <BuyingPlanClient
         planMonth={planMonth}

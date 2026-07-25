@@ -62,6 +62,7 @@ export default async function VendorCapacityPage() {
       subtitle={`Weekly capacity input — ${weekLabel(week)}. No approval; input and update only.`}
       active="/vendor-capacity"
       role={user.role}
+      userEmail={user.email}
     >
       <VendorCapacityClient
         week={week}

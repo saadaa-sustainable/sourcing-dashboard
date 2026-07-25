@@ -70,6 +70,17 @@ export async function currentUser(): Promise<SdUser | null> {
   );
 }
 
+/** Every provisioned user, for the admin-only User Panel. */
+export async function loadUsers(): Promise<SdUser[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_user')
+    .select('email, full_name, role, is_active')
+    .order('is_active', { ascending: false })
+    .order('email');
+  return (data ?? []) as SdUser[];
+}
+
 /* ------------------------------------------------------------------ */
 /* Buying plan                                                         */
 /* ------------------------------------------------------------------ */

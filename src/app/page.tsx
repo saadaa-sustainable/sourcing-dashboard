@@ -5,12 +5,6 @@ import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-async function signOut() {
-  'use server';
-  if (hasSupabaseEnv()) { const supabase = await createClient(); await supabase.auth.signOut(); }
-  redirect('/login');
-}
-
 export default async function Home() {
   let userEmail: string | null = null;
   if (hasSupabaseEnv()) {
@@ -21,5 +15,5 @@ export default async function Home() {
     if (!userEmail?.toLowerCase().endsWith('@saadaa.in')) redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
   const dashboardData = await loadDashboardData();
-  return <DashboardShell data={dashboardData} userEmail={userEmail} signOutAction={signOut} />;
+  return <DashboardShell data={dashboardData} userEmail={userEmail} />;
 }

@@ -1,28 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
-  Award,
-  Ban,
   Boxes,
   CalendarClock,
   ChevronRight,
   CircleHelp,
-  ClipboardCheck,
   Download,
-  Factory,
   Info,
   LayoutDashboard,
-  LogOut,
-  Menu,
   PackageSearch,
   Search,
-  ShoppingCart,
-  Users,
   X,
-  Zap,
 } from "lucide-react";
 import {
   Bar,
@@ -55,18 +46,7 @@ import type {
   TrackerRow,
   VendorRollup,
 } from "@/lib/types";
-
-const tabs = [
-  ["dashboard", "Dashboard", LayoutDashboard],
-  ["open-po", "Open PO Tracker", PackageSearch],
-  ["vendors", "Vendor Performance", Factory],
-  ["merchants", "Merchant Performance", Users],
-  ["products", "Product Tracker", Boxes],
-  ["urgent-replenish", "Urgent Replenishment", Zap],
-  ["recommend", "Vendor Recommendation", Award],
-  ["matrix", "Product Matrix View", CalendarClock],
-] as const;
-type TabId = (typeof tabs)[number][0];
+import { SideNav, tabs, type TabId } from "./side-nav";
 
 const glossary: Record<string, string[]> = {
   dashboard: [
@@ -2501,95 +2481,29 @@ function MatrixTab({ data }: { data: DashboardData }) {
 export function DashboardShell({
   data,
   userEmail,
-  signOutAction,
 }: {
   data: DashboardData;
   userEmail: string | null;
-  signOutAction: () => Promise<void>;
 }) {
   const [tab, setTab] = useState<TabId>("dashboard");
-  const [navOpen, setNavOpen] = useState(false);
   const [info, setInfo] = useState(false);
   const [detail, setDetail] = useState<TrackerRow | null>(null);
   const [highRisk, setHighRisk] = useState<PendingPo[] | null>(null);
   const [overdue, setOverdue] = useState<PendingPo[] | null>(null);
   const [bucket, setBucket] = useState("All");
+  // Let /?tab=<id> deep-link a specific tab (used by the sidebar on other pages).
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (requested && tabs.some(([id]) => id === requested)) {
+      setTab(requested as TabId);
+    }
+  }, []);
   const current = tabs.find(([id]) => id === tab)!;
   return (
     <div className="app-shell">
-      <aside className={navOpen ? "sidebar open" : "sidebar"}>
-        <div className="brand">
-          <div className="brand-mark">S</div>
-          <div>
-            <strong>SAADAA</strong>
-            <span>Sourcing intelligence</span>
-          </div>
-          <button
-            className="mobile-close"
-            aria-label="Close navigation"
-            onClick={() => setNavOpen(false)}
-          >
-            <X />
-          </button>
-        </div>
-        <nav>
-          {tabs
-            .filter(([id]) => id !== "urgent-replenish")
-            .map(([id, label, Icon]) => (
-            <button
-              key={id}
-              className={tab === id ? "active" : ""}
-              onClick={() => {
-                setTab(id);
-                setNavOpen(false);
-              }}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </button>
-          ))}
-          <div className="wf-nav-divider">Workflows</div>
-          <a href="/buying-plan">
-            <ShoppingCart size={18} />
-            <span>Buying Plan</span>
-          </a>
-          <a href="/vendor-capacity">
-            <Factory size={18} />
-            <span>Vendor Capacity</span>
-          </a>
-          <a href="/discontinue">
-            <Ban size={18} />
-            <span>Discontinue</span>
-          </a>
-          <a href="/approvals">
-            <ClipboardCheck size={18} />
-            <span>Approvals</span>
-          </a>
-        </nav>
-        <div className="sidebar-foot">
-          <div className="status-dot">
-            <i />
-            Data connected
-          </div>
-          <small>{userEmail ?? "Local fixture mode"}</small>
-          {userEmail && (
-            <form action={signOutAction}>
-              <button>
-                <LogOut size={16} /> Sign out
-              </button>
-            </form>
-          )}
-        </div>
-      </aside>
+      <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} />
       <main>
         <header>
-          <button
-            className="menu-button"
-            aria-label="Open navigation"
-            onClick={() => setNavOpen(true)}
-          >
-            <Menu />
-          </button>
           <div>
             <p>Sourcing dashboard</p>
             <h1>{current[1]}</h1>

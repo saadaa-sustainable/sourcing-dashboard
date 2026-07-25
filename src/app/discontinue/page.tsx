@@ -34,6 +34,7 @@ export default async function DiscontinuePage() {
       subtitle="Variant-level discontinue approval. Auditorial process — no PO is issued."
       active="/discontinue"
       role={user.role}
+      userEmail={user.email}
     >
       <DiscontinueClient requests={requests} variants={variants} role={user.role} />
     </FormLayout>
