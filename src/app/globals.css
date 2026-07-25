@@ -483,9 +483,16 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 .modal-head { position: sticky; z-index: 5; top: 0; height: 66px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,.9); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
 .modal-head h2 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
 .icon-button { padding: 7px; }
-.definition-list { margin: 0; padding: 23px 41px 28px; }
-.definition-list li { margin-bottom: 13px; padding-left: 3px; color: #596178; font-size: 12px; line-height: 1.6; }
-.definition-list li::marker { color: var(--purple); }
+.help-intro { margin: 22px 24px 0; padding: 16px 18px; display: flex; align-items: center; gap: 13px; background: #faf1dc; border: 1px solid rgba(232,200,122,.55); border-radius: 14px; }
+.help-intro-icon { width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; color: #2c2420; background: #f0c61e; border-radius: 12px; }
+.help-intro strong { display: block; color: var(--ink); font-size: 13px; }
+.help-intro p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.definition-grid { padding: 18px 24px 26px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.definition-card { min-width: 0; padding: 16px; display: flex; align-items: flex-start; gap: 12px; background: #fff; border: 1px solid #e7e2d2; border-radius: 14px; box-shadow: 0 1px 0 rgba(40,36,28,.03); }
+.definition-number { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; color: #2c2420; font-family: var(--font-space-grotesk), sans-serif; font-size: 10px; font-weight: 700; background: #faf1dc; border-radius: 9px; }
+.definition-card h3 { margin: 1px 0 6px; color: var(--ink); font-size: 12px; }
+.definition-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.definition-card small { margin-top: 9px; padding: 7px 9px; display: block; color: #355c7a; font-size: 10px; line-height: 1.45; background: #d6e1f5; border-radius: 8px; }
 .detail-summary { padding: 16px 20px; display: flex; gap: 8px; flex-wrap: wrap; }
 .detail-summary span { padding: 7px 10px; color: #5d4dd5; font-size: 9px; font-weight: 620; background: #f0eeff; border: 1px solid #dedaff; border-radius: 9px; }
 
@@ -573,6 +580,8 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
   .filter-bar { padding: 12px; }
   .search-field { min-width: 100%; }
   .chart-area { height: 280px; }
+  .help-intro { margin: 14px 14px 0; }
+  .definition-grid { padding: 14px; grid-template-columns: 1fr; }
 }
 
 @media (max-width: 420px) {

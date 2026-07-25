@@ -113,6 +113,64 @@ const glossary: Record<string, string[]> = {
   ],
 };
 
+type HelpItem = { title: string; text: string; tip?: string };
+
+const simpleGlossary: Record<string, HelpItem[]> = {
+  dashboard: [
+    { title: "Open POs", text: "Orders that still have items left to arrive." },
+    { title: "Open quantity", text: "The total number of pieces that vendors still need to deliver." },
+    { title: "Open value", text: "The value of all pieces that are still pending." },
+    { title: "Delayed POs", text: "Open orders whose promised delivery date has passed.", tip: "Delay % shows how many open orders are late." },
+    { title: "High-risk POs", text: "Orders with no received quantity and a delivery date that is close or already overdue." },
+    { title: "Woven and Knitted", text: "Use these buttons to update every card and graph for one vendor type." },
+  ],
+  "open-po": [
+    { title: "One row", text: "Each row shows one purchase order, product and delivery date." },
+    { title: "Variants", text: "The number of different product options, such as colours. It is not a piece count." },
+    { title: "Delay", text: "The number of days after the promised delivery date. On-time orders show 0." },
+    { title: "Days overdue", text: "Orders are grouped into simple delay ranges so urgent orders are easy to find." },
+    { title: "TNA stage", text: "The next production step that has not been completed yet." },
+    { title: "TNA days", text: "The total delay across sampling, GPT, cutting and inline checks." },
+  ],
+  vendors: [
+    { title: "Open and delayed POs", text: "Shows how many open orders each vendor has and how many are late." },
+    { title: "Open quantity", text: "The number of pieces the vendor still needs to deliver." },
+    { title: "Monthly capacity", text: "The number of pieces the vendor can normally handle in one month." },
+    { title: "Utilisation", text: "How much of the vendor's monthly capacity is already booked.", tip: "More than 100% means the vendor is over capacity." },
+    { title: "Woven and Knitted charts", text: "Compare open and delayed quantities for vendors in each group." },
+  ],
+  merchants: [
+    { title: "Merchant totals", text: "All vendor orders owned by the same merchant are added together." },
+    { title: "Open POs", text: "Orders that still have pieces left to arrive." },
+    { title: "Delayed POs", text: "Open orders whose promised date has passed." },
+    { title: "Unassigned", text: "Vendors with no merchant in the source data appear in this group." },
+  ],
+  products: [
+    { title: "Filters", text: "Choose a merchant, vendor, vendor code, PO type or product to narrow the results." },
+    { title: "Product and variant", text: "Keeps each product option, such as a colour, on its own row." },
+    { title: "Product summary", text: "Combines all variants of the same product into one row." },
+    { title: "Pending quantity and value", text: "Shows the pieces still due and their total value." },
+  ],
+  "urgent-replenish": [
+    { title: "In process", text: "Open stock that is expected to arrive within the next 365 days." },
+    { title: "Out of stock", text: "Products that currently have no pending quantity coming in." },
+    { title: "How to use this page", text: "Start with out-of-stock products, then check what stock is already on the way." },
+  ],
+  recommend: [
+    { title: "Purpose", text: "Helps you choose a suitable vendor for a new order." },
+    { title: "Spare capacity", text: "The vendor's monthly capacity that is still available." },
+    { title: "On-time record", text: "Vendors with fewer delayed orders rank higher." },
+    { title: "TNA punctuality", text: "Vendors with fewer production-stage delays rank higher." },
+    { title: "Product experience", text: "Choose a product to see vendors that have made it before." },
+  ],
+  matrix: [
+    { title: "How to read the grid", text: "Rows are products, columns are vendors and each cell shows pending quantity." },
+    { title: "By variant", text: "Shows every product option separately." },
+    { title: "By product code", text: "Combines all variants into one product row." },
+    { title: "Totals", text: "The final row and column add the visible pending quantities." },
+  ],
+};
+
 const fmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -2497,10 +2555,17 @@ export function DashboardShell({
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
     if (requested && tabs.some(([id]) => id === requested)) {
-      setTab(requested as TabId);
+      const timer = window.setTimeout(() => setTab(requested as TabId), 0);
+      return () => window.clearTimeout(timer);
     }
   }, []);
   const current = tabs.find(([id]) => id === tab)!;
+  const helpItems: HelpItem[] =
+    simpleGlossary[tab] ??
+    (glossary[tab] ?? []).map((text, index) => ({
+      title: `Guide ${index + 1}`,
+      text,
+    }));
   return (
     <div className="app-shell">
       <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} />
@@ -2554,15 +2619,26 @@ export function DashboardShell({
         </div>
       </main>
       {info && (
-        <Modal
-          title={`${current[1]} definitions`}
-          onClose={() => setInfo(false)}
-        >
-          <ul className="definition-list">
-            {glossary[tab].map((item) => (
-              <li key={item}>{item}</li>
+        <Modal title={`About ${current[1]}`} onClose={() => setInfo(false)} wide>
+          <div className="help-intro">
+            <span className="help-intro-icon"><CircleHelp size={20} /></span>
+            <div>
+              <strong>A quick guide to this page</strong>
+              <p>Here is what the main numbers and sections mean.</p>
+            </div>
+          </div>
+          <div className="definition-grid">
+            {helpItems.map((item, index) => (
+              <article className="definition-card" key={item.title}>
+                <span className="definition-number">{index + 1}</span>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                  {item.tip && <small>{item.tip}</small>}
+                </div>
+              </article>
             ))}
-          </ul>
+          </div>
         </Modal>
       )}
       {detail && (
