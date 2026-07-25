@@ -121,22 +121,19 @@ export function FormHelp({ route, title }: { route: string; title: string }) {
                 <X size={18} />
               </button>
             </div>
-            <div className="wf-help-intro">
-              <span className="wf-help-intro-icon"><CircleHelp size={20} /></span>
+            <div className="help-intro">
+              <span className="help-intro-icon"><CircleHelp size={20} /></span>
               <div>
                 <strong>A quick guide to this workflow</strong>
                 <p>Use these notes while filling or reviewing the form.</p>
               </div>
             </div>
-            <div className="wf-help-grid">
+            <div className="definition-grid">
               {items.map((it, index) => (
-                <article className="wf-help-card" key={it.field}>
-                  <span className="wf-help-number">{index + 1}</span>
+                <article className="definition-card" key={it.field}>
+                  <span className="definition-number">{index + 1}</span>
                   <div>
-                    <div className="wf-help-head">
-                      <strong>{it.field}</strong>
-                      <span className="wf-help-source">{it.source}</span>
-                    </div>
+                    <h3>{it.field}</h3>
                     <p>{it.detail}</p>
                   </div>
                 </article>
