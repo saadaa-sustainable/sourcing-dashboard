@@ -9,7 +9,6 @@ import {
   ClipboardCheck,
   Factory,
   LayoutDashboard,
-  LogOut,
   Menu,
   PackageSearch,
   ShoppingCart,
@@ -18,7 +17,6 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { signOut } from '@/lib/auth-actions';
 
 // The dashboard's main tabs. These are in-page state on `/` (not routes), so the
 // sidebar switches them via `onTab` on the dashboard, and links to `/?tab=<id>`
@@ -133,13 +131,6 @@ export function SideNav({
             Data connected
           </div>
           <small>{userEmail ?? 'Local fixture mode'}</small>
-          {userEmail && (
-            <form action={signOut}>
-              <button>
-                <LogOut size={16} /> Sign out
-              </button>
-            </form>
-          )}
         </div>
       </aside>
     </>
