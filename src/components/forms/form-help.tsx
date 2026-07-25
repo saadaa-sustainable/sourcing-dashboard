@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CircleHelp, X } from 'lucide-react';
 
 type HelpItem = { field: string; source: string; detail: string };
@@ -102,7 +103,7 @@ export function FormHelp({ route, title }: { route: string; title: string }) {
       <button type="button" className="help-button" onClick={() => setOpen(true)}>
         <CircleHelp size={17} /> What do these mean?
       </button>
-      {open && (
+      {open && createPortal(
         <div className="modal-backdrop" onMouseDown={() => setOpen(false)}>
           <div
             className="modal modal-wide"
@@ -140,7 +141,8 @@ export function FormHelp({ route, title }: { route: string; title: string }) {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
