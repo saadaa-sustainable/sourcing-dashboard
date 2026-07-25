@@ -52,9 +52,50 @@ const HELP: Record<string, HelpItem[]> = {
   ],
 };
 
+const SIMPLE_HELP: Record<string, HelpItem[]> = {
+  '/buying-plan': [
+    { field: 'Product code', source: 'Product list', detail: 'The product you are planning to buy for the selected month.' },
+    { field: 'Pending quantity', source: 'Reference', detail: 'A demand estimate shown to help you decide how much to plan.' },
+    { field: 'Job work / FOB / E-FOB quantity', source: 'You enter', detail: 'Split the planned pieces by the type of purchase order you expect to use.' },
+    { field: 'Total quantity', source: 'Automatic', detail: 'The three planned quantities added together.' },
+    { field: 'Standard value', source: 'You enter', detail: 'The expected cost of one piece.' },
+    { field: 'Value to be bought', source: 'Automatic', detail: 'Planned quantity multiplied by the standard value.' },
+    { field: 'Actual issued', source: 'PO data', detail: 'What has already been ordered for this month. Red rows are above the plan.' },
+    { field: 'Save, submit and approve', source: 'Workflow', detail: 'Save keeps a draft. Submit sends it for review. Approval locks the final plan.' },
+  ],
+  '/vendor-capacity': [
+    { field: 'Vendor and type', source: 'Vendor list', detail: 'The vendor being updated and the kind of work they handle.' },
+    { field: 'Machines and active karigar', source: 'You enter', detail: 'The machines and workers currently assigned to SAADAA.' },
+    { field: 'Monthly capacity', source: 'You enter', detail: 'How many pieces the vendor says they can produce in one month.' },
+    { field: 'PO capacity', source: 'Automatic', detail: 'The order capacity after adjusting for the vendor type.' },
+    { field: 'In process', source: 'Open PO data', detail: 'Pieces already placed with the vendor and not yet completed.' },
+    { field: 'Available capacity', source: 'Automatic', detail: 'Capacity still free for new orders. A negative value means the vendor is overloaded.' },
+    { field: 'Utilisation', source: 'Automatic', detail: 'The share of PO capacity already in use.' },
+  ],
+  '/discontinue': [
+    { field: 'Product and variant', source: 'Product list', detail: 'Choose the exact product option that should be stopped.' },
+    { field: 'Reason', source: 'You enter', detail: 'Briefly explain why the product variant should be discontinued.' },
+    { field: 'Status', source: 'Workflow', detail: 'Shows whether the request is a draft, waiting for review, approved or rejected.' },
+    { field: 'Approval', source: 'Admin', detail: 'An admin reviews the request. Once approved, the variant is removed from future buying plans.' },
+  ],
+  '/approvals': [
+    { field: 'Record', source: 'Submitted work', detail: 'The buying plan or discontinue request waiting for a decision.' },
+    { field: 'Submitted by', source: 'Automatic', detail: 'The person who sent the item for approval and when they sent it.' },
+    { field: 'Needs', source: 'Automatic', detail: 'Shows which role is allowed to approve the item.' },
+    { field: 'Approve or reject', source: 'Your decision', detail: 'Approve accepts the request. Reject sends it back with the decision recorded.' },
+    { field: 'Approval log', source: 'History', detail: 'A record of every status change, who made it and any notes.' },
+  ],
+  '/users': [
+    { field: 'Email', source: 'Login', detail: 'The person\'s SAADAA email used to match their access.' },
+    { field: 'Name', source: 'You enter', detail: 'The name shown inside the application.' },
+    { field: 'Role', source: 'Access control', detail: 'Admin has full access, Team can work on routine tasks, and Viewer has read-only access.' },
+    { field: 'Active', source: 'Access control', detail: 'Turn this off to remove editing access without deleting the user.' },
+  ],
+};
+
 export function FormHelp({ route, title }: { route: string; title: string }) {
   const [open, setOpen] = useState(false);
-  const items = HELP[route];
+  const items = SIMPLE_HELP[route] ?? HELP[route];
   if (!items) return null;
   return (
     <>
@@ -71,7 +112,7 @@ export function FormHelp({ route, title }: { route: string; title: string }) {
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="modal-head">
-              <h2>{title} — what do these mean?</h2>
+              <h2>About {title}</h2>
               <button
                 className="icon-button"
                 onClick={() => setOpen(false)}
@@ -80,17 +121,27 @@ export function FormHelp({ route, title }: { route: string; title: string }) {
                 <X size={18} />
               </button>
             </div>
-            <ul className="wf-help-list">
-              {items.map((it) => (
-                <li key={it.field}>
-                  <div className="wf-help-head">
-                    <strong>{it.field}</strong>
-                    <span className="wf-help-source">{it.source}</span>
+            <div className="wf-help-intro">
+              <span className="wf-help-intro-icon"><CircleHelp size={20} /></span>
+              <div>
+                <strong>A quick guide to this workflow</strong>
+                <p>Use these notes while filling or reviewing the form.</p>
+              </div>
+            </div>
+            <div className="wf-help-grid">
+              {items.map((it, index) => (
+                <article className="wf-help-card" key={it.field}>
+                  <span className="wf-help-number">{index + 1}</span>
+                  <div>
+                    <div className="wf-help-head">
+                      <strong>{it.field}</strong>
+                      <span className="wf-help-source">{it.source}</span>
+                    </div>
+                    <p>{it.detail}</p>
                   </div>
-                  <p>{it.detail}</p>
-                </li>
+                </article>
               ))}
-            </ul>
+            </div>
           </div>
         </div>
       )}
