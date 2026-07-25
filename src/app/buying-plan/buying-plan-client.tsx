@@ -54,6 +54,22 @@ function toDraft(line: BuyingPlanLine): Draft {
   };
 }
 
+// A fresh, zeroed row for a product code. Status and Woven/Knit are left blank
+// (no product-level master source yet) and filled in by hand.
+function blankDraft(code: string, key: string): Draft {
+  return {
+    key,
+    product_code: code,
+    product_status: '',
+    fabric_type: '',
+    pending_quantity: '',
+    job_work_qty: '0',
+    fob_qty: '0',
+    efob_qty: '0',
+    standard_value: '',
+  };
+}
+
 export function BuyingPlanClient({
   planMonth,
   plan,
@@ -72,7 +88,16 @@ export function BuyingPlanClient({
   const status: SdStatus = plan?.status ?? 'draft';
   const editable = canEdit(role, status);
 
-  const [rows, setRows] = useState<Draft[]>(() => lines.map(toDraft));
+  // Spec: every active product is listed; you zero out what you won't make.
+  // A saved plan shows its stored lines; a fresh editable plan pre-lists all
+  // active product codes (zeroed). A read-only viewer of an empty plan sees none.
+  const [rows, setRows] = useState<Draft[]>(() =>
+    lines.length
+      ? lines.map(toDraft)
+      : editable
+        ? productCodes.map((code, index) => blankDraft(code, `seed-${code}-${index}`))
+        : [],
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -117,34 +142,14 @@ export function BuyingPlanClient({
     if (!code) return;
     setRows((current) => [
       ...current,
-      {
-        key: `new-${code}-${Date.now()}`,
-        product_code: code,
-        product_status: '',
-        fabric_type: '',
-        pending_quantity: '',
-        job_work_qty: '0',
-        fob_qty: '0',
-        efob_qty: '0',
-        standard_value: '',
-      },
+      blankDraft(code, `new-${code}-${Date.now()}`),
     ]);
   }
 
   function addAll() {
     setRows((current) => [
       ...current,
-      ...available.map((code, index) => ({
-        key: `bulk-${code}-${index}`,
-        product_code: code,
-        product_status: '',
-        fabric_type: '',
-        pending_quantity: '',
-        job_work_qty: '0',
-        fob_qty: '0',
-        efob_qty: '0',
-        standard_value: '',
-      })),
+      ...available.map((code, index) => blankDraft(code, `bulk-${code}-${index}`)),
     ]);
   }
 

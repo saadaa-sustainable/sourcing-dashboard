@@ -5,12 +5,12 @@
  * the Apps Script sheet sync — see the warning at the top of forms/actions.ts.
  */
 
-export type SdRole =
-  | 'viewer'
-  | 'supply_chain'
-  | 'approver_l1'
-  | 'approver_l2'
-  | 'admin';
+// Two working roles:
+//   admin — founders. Full access and can approve everything.
+//   team  — supply-chain staff. Fill/submit forms and approve routine items.
+// 'viewer' is not assigned to anyone; it is the automatic read-only state for a
+// signed-in @saadaa.in account that has not been added to sd_user yet.
+export type SdRole = 'viewer' | 'team' | 'admin';
 
 export type SdStatus =
   | 'draft'

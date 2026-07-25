@@ -11,13 +11,13 @@ everything downstream.
 **Where:** Supabase dashboard → your sourcing project → SQL Editor.
 
 1. Open `supabase/migrations/20260723120000_sourcing_workflows.sql`.
-2. **Edit the last block first** — the seed users at the bottom. Replace the four
-   emails with real ones and set the roles:
-   - `admin` — you
-   - `approver_l2` — Mahesh
-   - `approver_l1` — Mukesh ji
-   - `supply_chain` — everyone who fills the forms (Durganshu ji, Anubhuti)
-   Anyone signing in who is not in `sd_user` gets `viewer` — read-only, no error.
+2. **Edit the last block first** — the seed users at the bottom. Replace the
+   emails with real ones and set the role to one of just two values:
+   - `admin` — the founders. Full access, and approve everything (both tiers).
+   - `team` — everyone who fills the forms (Durganshu ji, Anubhuti, Mukesh ji…).
+     They can approve routine items; larger buying plans and all discontinue
+     requests still escalate to an `admin`.
+   Anyone signing in who is not in `sd_user` is read-only automatically (no error).
 3. Paste the whole file into the SQL Editor. Run.
 4. Verify:
    ```sql

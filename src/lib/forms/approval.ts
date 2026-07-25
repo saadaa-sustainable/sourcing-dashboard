@@ -7,23 +7,21 @@ import type { ApprovalEntity, SdRole, SdStatus } from './types';
  * Every form imports from this file so a rule change is a one-line edit.
  */
 
-/** Quantity above which an approval escalates past L1. */
-export const L2_THRESHOLD_QTY = 5_000;
+/** Quantity above which an approval escalates from team to admin. */
+export const ADMIN_THRESHOLD_QTY = 5_000;
 
-/**
- * Entities that always escalate regardless of quantity.
- * NPD product POs bypass the threshold entirely.
- */
-const ALWAYS_L2: ApprovalEntity[] = ['discontinue'];
+/** Entities that always need admin (founder) approval, whatever the quantity. */
+const ALWAYS_ADMIN: ApprovalEntity[] = ['discontinue'];
 
+/** Who has to approve: the team can sign off routine items, admin the rest. */
 export function routeApproval(entity: ApprovalEntity, quantity = 0): SdRole {
-  if (ALWAYS_L2.includes(entity)) return 'approver_l2';
-  return quantity > L2_THRESHOLD_QTY ? 'approver_l2' : 'approver_l1';
+  if (ALWAYS_ADMIN.includes(entity)) return 'admin';
+  return quantity > ADMIN_THRESHOLD_QTY ? 'admin' : 'team';
 }
 
 /** Status reached when a draft is submitted, given who has to sign it off. */
 export function statusOnSubmit(entity: ApprovalEntity, quantity = 0): SdStatus {
-  return routeApproval(entity, quantity) === 'approver_l2'
+  return routeApproval(entity, quantity) === 'admin'
     ? 'pending_l2'
     : 'submitted';
 }
@@ -34,24 +32,24 @@ export function statusOnSubmit(entity: ApprovalEntity, quantity = 0): SdStatus {
 
 const RANK: Record<SdRole, number> = {
   viewer: 0,
-  supply_chain: 1,
-  approver_l1: 2,
-  approver_l2: 3,
-  admin: 4,
+  team: 1,
+  admin: 2,
 };
 
 export function canEdit(role: SdRole, status: SdStatus) {
   if (status === 'approved') return false;
-  return RANK[role] >= RANK.supply_chain;
+  return RANK[role] >= RANK.team;
 }
 
 export function canSubmit(role: SdRole, status: SdStatus) {
-  return status === 'draft' && RANK[role] >= RANK.supply_chain;
+  return status === 'draft' && RANK[role] >= RANK.team;
 }
 
 export function canApprove(role: SdRole, status: SdStatus) {
-  if (status === 'submitted') return RANK[role] >= RANK.approver_l1;
-  if (status === 'pending_l2') return RANK[role] >= RANK.approver_l2;
+  // Routine items (status 'submitted') can be signed off by the team; anything
+  // escalated to 'pending_l2' needs an admin (founder).
+  if (status === 'submitted') return RANK[role] >= RANK.team;
+  if (status === 'pending_l2') return RANK[role] >= RANK.admin;
   return false;
 }
 
@@ -61,8 +59,8 @@ export function canApprove(role: SdRole, status: SdStatus) {
 
 export const STATUS_LABEL: Record<SdStatus, string> = {
   draft: 'Draft',
-  submitted: 'Awaiting L1 approval',
-  pending_l2: 'Awaiting L2 approval',
+  submitted: 'Awaiting team approval',
+  pending_l2: 'Awaiting admin approval',
   approved: 'Approved',
   rejected: 'Rejected',
 };
@@ -77,10 +75,8 @@ export const STATUS_TONE: Record<SdStatus, string> = {
 };
 
 export const ROLE_LABEL: Record<SdRole, string> = {
-  viewer: 'Viewer',
-  supply_chain: 'Supply chain',
-  approver_l1: 'Approver — L1',
-  approver_l2: 'Approver — L2',
+  viewer: 'Viewer (read-only)',
+  team: 'Team',
   admin: 'Admin',
 };
 

@@ -13,8 +13,11 @@
 -- ---------------------------------------------------------------------
 -- 1. Enums
 -- ---------------------------------------------------------------------
+-- Two working roles: admin (founders — full access, approves everything) and
+-- team (supply-chain staff — fill forms, approve routine items). 'viewer' is the
+-- automatic read-only default for a signed-in account not listed in sd_user.
 create type public.sd_role as enum
-  ('viewer', 'supply_chain', 'approver_l1', 'approver_l2', 'admin');
+  ('viewer', 'team', 'admin');
 
 create type public.sd_status as enum
   ('draft', 'submitted', 'pending_l2', 'approved', 'rejected');
@@ -55,8 +58,7 @@ returns boolean
 language sql stable
 as $$
   select public.sd_is_saadaa()
-     and public.sd_current_role() in
-         ('supply_chain', 'approver_l1', 'approver_l2', 'admin');
+     and public.sd_current_role() in ('team', 'admin');
 $$;
 
 -- ---------------------------------------------------------------------
@@ -232,10 +234,13 @@ create policy "sourcing append approval log" on public.sd_approval_log
 
 -- ---------------------------------------------------------------------
 -- 9. Seed users — REPLACE THESE EMAILS BEFORE RUNNING
+--    Roles: 'admin' for founders (full access + all approvals),
+--           'team'  for everyone who fills the forms.
+--    Anyone signing in who is not listed here is read-only automatically.
 -- ---------------------------------------------------------------------
 insert into public.sd_user (email, full_name, role) values
   ('website@saadaa.in',  'Pushpendra',  'admin'),
-  ('mahesh@saadaa.in',   'Mahesh',      'approver_l2'),
-  ('mukesh@saadaa.in',   'Mukesh ji',   'approver_l1'),
-  ('durganshu@saadaa.in','Durganshu ji','supply_chain')
+  ('mahesh@saadaa.in',   'Mahesh',      'admin'),
+  ('mukesh@saadaa.in',   'Mukesh ji',   'team'),
+  ('durganshu@saadaa.in','Durganshu ji','team')
 on conflict (email) do nothing;
