@@ -186,7 +186,7 @@ export function BuyingPlanClient({
     <>
       <div className="wf-toolbar">
         <div className="wf-toolbar-left">
-          <Field label="Plan month">
+          <Field label="Month">
             <select
               value={planMonth}
               onChange={(event) => {
@@ -259,21 +259,21 @@ export function BuyingPlanClient({
             <thead>
               <tr>
                 <th>Product code</th>
-                <th>Status</th>
-                <th>Woven / Knit</th>
-                <th className="num">Pending qty</th>
-                <th className="num input-col">Job work</th>
-                <th className="num input-col">FOB</th>
-                <th className="num input-col">E-FOB</th>
-                <th className="num">Total qty</th>
-                <th className="num input-col">Std value</th>
-                <th className="num">Value to buy</th>
-                <th className="num">Actual issued</th>
+                <th>Product status</th>
+                <th>Woven / Knitted</th>
+                <th className="num">Pending quantity</th>
+                <th className="num input-col">Job work qty</th>
+                <th className="num input-col">FOB qty</th>
+                <th className="num input-col">E-FOB qty</th>
+                <th className="num">Total quantity</th>
+                <th className="num input-col">Standard value</th>
+                <th className="num">Value to be bought</th>
+                <th className="num">Actual issued qty / value</th>
                 {editable && <th aria-label="Remove" />}
               </tr>
             </thead>
             <tbody>
-              {view.map(({ row, totalQty, valueToBeBought, actualQty, overPlan }) => (
+              {view.map(({ row, totalQty, valueToBeBought, actualQty, actualValue, overPlan }) => (
                 <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
                   <td className="mono">{row.product_code}</td>
                   <td>{row.product_status || '—'}</td>
@@ -309,7 +309,7 @@ export function BuyingPlanClient({
                   </td>
                   <td className="num">{money.format(valueToBeBought)}</td>
                   <td className="num">
-                    {fmt.format(actualQty)}
+                    {fmt.format(actualQty)} / {money.format(actualValue)}
                     {overPlan && <span className="wf-over-tag">over plan</span>}
                   </td>
                   {editable && (
@@ -346,7 +346,9 @@ export function BuyingPlanClient({
                   <td className="num strong">{fmt.format(totals.qty)}</td>
                   <td />
                   <td className="num strong">{money.format(totals.value)}</td>
-                  <td className="num">{fmt.format(totals.actualQty)}</td>
+                  <td className="num">
+                    {fmt.format(totals.actualQty)} / {money.format(totals.actualValue)}
+                  </td>
                   {editable && <td />}
                 </tr>
               </tfoot>

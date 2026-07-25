@@ -11,6 +11,7 @@ import {
   Download,
   Info,
   LayoutDashboard,
+  LogOut,
   PackageSearch,
   Search,
   X,
@@ -47,6 +48,7 @@ import type {
   VendorRollup,
 } from "@/lib/types";
 import { SideNav, tabs, type TabId } from "./side-nav";
+import { signOut } from "@/lib/auth-actions";
 
 const glossary: Record<string, string[]> = {
   dashboard: [
@@ -2512,18 +2514,18 @@ export function DashboardShell({
             <button className="help-button" onClick={() => setInfo(true)}>
               <CircleHelp size={17} /> What do these mean?
             </button>
-            <div className="build-badge">
-              <span>BUILD</span>
-              {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ??
-                "LOCAL"}{" "}
-              ·{" "}
-              {new Date(data.loadedAt).toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </div>
+            {userEmail && (
+              <div className="account">
+                <span className="account-email" title={userEmail}>
+                  {userEmail}
+                </span>
+                <form action={signOut}>
+                  <button type="submit" className="account-signout">
+                    <LogOut size={15} /> Sign out
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </header>
         {data.warnings.map((warning) => (

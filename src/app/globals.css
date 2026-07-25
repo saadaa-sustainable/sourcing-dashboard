@@ -217,6 +217,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .build-badge span { margin-right: 5px; color: var(--purple); font-weight: 800; }
 
+.account { display: flex; align-items: center; gap: 10px; }
+.account-email { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #596178; font-size: 11px; font-weight: 560; }
+.account-signout { display: flex; align-items: center; gap: 6px; padding: 8px 12px; color: #596178; font-size: 11px; font-weight: 560; background: rgba(255, 255, 255, 0.85); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow-sm); transition: transform .17s ease, box-shadow .17s ease, border-color .17s ease; }
+.account-signout:hover { transform: translateY(-1px); border-color: var(--red); color: var(--red); }
+.account-signout svg { color: inherit; }
+
 .notice {
   margin: 18px 36px 0;
   padding: 11px 14px;
