@@ -136,6 +136,19 @@ export type ApprovalLogRow = {
   created_at: string;
 };
 
+/** One arriving-stock line for the Inward Plan (grouped PO × product × variant). */
+export type InwardPlanGroup = {
+  po_number: string;
+  po_ref_num: string | null;
+  product_code: string;
+  product_variant: string;
+  vendor_code: string;
+  vendor_name: string;
+  ordered_qty: number;
+  arriving_qty: number;
+  expected_delivery_date: string | null;
+};
+
 /** One row in the unified /approvals queue. */
 export type ApprovalQueueItem = {
   entityType: ApprovalEntity;

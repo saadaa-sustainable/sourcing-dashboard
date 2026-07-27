@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import { weekLabel } from '@/lib/forms/approval';
 import {
   currentUser,
+  loadInProcessByVendor,
   loadVendorCapacity,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -29,14 +30,13 @@ export default async function VendorCapacityPage() {
 
   if (!user) redirect('/login');
 
-  const { week, logs, priorLogs, multipliers, rollups, vendorMasters, vendorTypes } =
+  const { week, logs, priorLogs, multipliers, vendorMasters, vendorTypes } =
     await loadVendorCapacity();
+  // Real in-process load from the PO pipeline (sd_vendor_in_process), not the sheet.
+  const inProcessByCode = await loadInProcessByVendor();
 
   const currentByCode = new Map(logs.map((row) => [key(row.vendor_code), row]));
   const priorByCode = new Map(priorLogs.map((row) => [key(row.vendor_code), row]));
-  const inProcessByCode = new Map(
-    rollups.map((row) => [key(row.vendorCode), row.openQty]),
-  );
   const typeByCode = new Map(
     vendorTypes.map((row) => [key(row.vendor_code), row.vendor_type ?? '']),
   );

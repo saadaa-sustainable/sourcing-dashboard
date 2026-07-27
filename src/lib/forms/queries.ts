@@ -10,6 +10,7 @@ import type {
   BuyingPlanLine,
   BuyingPlanLineView,
   DiscontinueRequest,
+  InwardPlanGroup,
   SdUser,
   VendorCapacityLog,
   VendorCapacityView,
@@ -133,41 +134,114 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
 }
 
 /**
- * Actual issued quantity/value, joined live off the read-only PO mirror.
- * Never stored on the plan — it changes every time the sheet syncs.
+ * Actual issued quantity/value for the plan month, from the PO pipeline view
+ * (sd_po_actuals_by_product_month = real EasyCom POs). Advisory — never blocks.
  */
 export async function loadActualsByProduct(planMonth: string) {
   const supabase = await client();
-  const [y, m] = planMonth.split('-').map(Number);
-  const from = planMonth;
-  const to = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from('sd_po_actuals_by_product_month')
+    .select('product_code, issued_qty, issued_value')
+    .eq('plan_month', planMonth);
 
-  const rows: { product_code: string | null; original_quantity: number; item_price: number }[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
+  const map = new Map<string, { qty: number; value: number }>();
+  (
+    (data ?? []) as {
+      product_code: string | null;
+      issued_qty: number | null;
+      issued_value: number | null;
+    }[]
+  ).forEach((row) => {
+    const code = (row.product_code ?? '').trim();
+    if (!code) return;
+    map.set(code, {
+      qty: Number(row.issued_qty) || 0,
+      value: Number(row.issued_value) || 0,
+    });
+  });
+  return map;
+}
+
+/**
+ * In-process (Approved) quantity per vendor, from the PO pipeline view
+ * (sd_vendor_in_process). Feeds Vendor Capacity's available-capacity — real PO
+ * load instead of the sheet's open-qty. Keyed by lower-cased vendor_code.
+ */
+export async function loadInProcessByVendor(): Promise<Map<string, number>> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_vendor_in_process')
+    .select('vendor_code, in_process_qty');
+
+  const map = new Map<string, number>();
+  (
+    (data ?? []) as { vendor_code: string | null; in_process_qty: number | null }[]
+  ).forEach((row) => {
+    const code = (row.vendor_code ?? '').trim().toLowerCase();
+    if (code) map.set(code, Number(row.in_process_qty) || 0);
+  });
+  return map;
+}
+
+/**
+ * Inward Plan — arriving stock from open (Approved) POs, grouped to colour level
+ * (po_number × product_code × product_variant) off sd_po_lines_enriched.
+ * Only lines with pending qty > 0 (still to arrive). Soonest EDD first.
+ */
+export async function loadInwardPlan(): Promise<InwardPlanGroup[]> {
+  const supabase = await client();
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
-      .from('pending_po_master')
-      .select('product_code, original_quantity, item_price')
-      .eq('is_active', true)
-      .gte('po_date', from)
-      .lt('po_date', to)
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) break; // actuals are advisory — never block the form
+      .from('sd_po_lines_enriched')
+      .select(
+        'po_number, po_ref_num, product_code, product_variant, vendor_code, vendor_name, pending_qty, original_qty, expected_delivery_date',
+      )
+      .eq('po_status_code', 3)
+      .gt('pending_qty', 0)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_po_lines_enriched: ${error.message}`);
     if (!data?.length) break;
-    rows.push(...(data as typeof rows));
+    rows.push(...(data as Record<string, unknown>[]));
     if (data.length < PAGE_SIZE) break;
   }
 
-  const map = new Map<string, { qty: number; value: number }>();
-  rows.forEach((row) => {
-    const code = (row.product_code ?? '').trim();
-    if (!code) return;
-    const current = map.get(code) ?? { qty: 0, value: 0 };
-    const qty = Number(row.original_quantity) || 0;
-    current.qty += qty;
-    current.value += qty * (Number(row.item_price) || 0);
-    map.set(code, current);
+  const groups = new Map<string, InwardPlanGroup>();
+  for (const r of rows) {
+    const po_number = String(r.po_number ?? '');
+    const product_code = String(r.product_code ?? '');
+    const product_variant = String(r.product_variant ?? '');
+    const arriving = Number(r.pending_qty) || 0;
+    const ordered = Number(r.original_qty) || 0;
+    const edd = (r.expected_delivery_date as string | null) ?? null;
+    const k = `${po_number}${product_code}${product_variant}`;
+    const g = groups.get(k);
+    if (g) {
+      g.arriving_qty += arriving;
+      g.ordered_qty += ordered;
+      if (edd && (!g.expected_delivery_date || edd < g.expected_delivery_date)) {
+        g.expected_delivery_date = edd;
+      }
+    } else {
+      groups.set(k, {
+        po_number,
+        po_ref_num: (r.po_ref_num as string | null) ?? null,
+        product_code,
+        product_variant,
+        vendor_code: String(r.vendor_code ?? ''),
+        vendor_name: String(r.vendor_name ?? ''),
+        ordered_qty: ordered,
+        arriving_qty: arriving,
+        expected_delivery_date: edd,
+      });
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    if (!a.expected_delivery_date) return 1;
+    if (!b.expected_delivery_date) return -1;
+    return a.expected_delivery_date.localeCompare(b.expected_delivery_date);
   });
-  return map;
 }
 
 export function buildBuyingPlanView(

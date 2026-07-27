@@ -45,3 +45,9 @@ next-env.d.ts
 
 # Local dev server logs
 .devserver.*.log
+
+# PO backfill kit
+backfill/node_modules/
+backfill/package-lock.json
+gcp-key.json
+!backfill/.env.example

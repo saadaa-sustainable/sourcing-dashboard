@@ -12,6 +12,7 @@ import {
   Menu,
   PackageSearch,
   ShoppingCart,
+  Truck,
   UserCog,
   Users,
   X,
@@ -37,6 +38,7 @@ export type TabId = (typeof tabs)[number][0];
 const WORKFLOW_LINKS = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
+  { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/discontinue', label: 'Discontinue', Icon: Ban },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
 ] as const;

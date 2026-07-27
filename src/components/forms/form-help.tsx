@@ -92,6 +92,13 @@ const SIMPLE_HELP: Record<string, HelpItem[]> = {
     { field: 'Role', source: 'Access control', detail: 'Admin has full access, Team can work on routine tasks, and Viewer has read-only access.' },
     { field: 'Active', source: 'Access control', detail: 'Turn this off to remove editing access without deleting the user.' },
   ],
+  '/inward-plan': [
+    { field: 'PO / Product / Variant', source: 'PO data', detail: 'Each row is one colour of one product on an open purchase order.' },
+    { field: 'Ordered', source: 'PO data', detail: 'How many pieces were ordered on that line.' },
+    { field: 'Arriving', source: 'PO data', detail: 'Pieces still to arrive (ordered but not yet received).' },
+    { field: 'Expected', source: 'PO data', detail: 'The soonest expected delivery date for that line.' },
+    { field: 'What this shows', source: 'Open POs', detail: 'Only Approved POs with stock still to come, soonest arrival first.' },
+  ],
 };
 
 export function FormHelp({ route, title }: { route: string; title: string }) {
