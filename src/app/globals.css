@@ -493,6 +493,9 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 .definition-card h3 { margin: 1px 0 6px; color: var(--ink); font-size: 12px; }
 .definition-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .definition-card small { margin-top: 9px; padding: 7px 9px; display: block; color: #355c7a; font-size: 10px; line-height: 1.45; background: #d6e1f5; border-radius: 8px; }
+.definition-meta { margin-top: 9px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.definition-source { padding: 3px 9px; font-size: 8.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--purple-dark); background: var(--purple-soft); border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+.definition-formula { padding: 4px 9px; font-family: "Geist Mono", ui-monospace, monospace; font-size: 10.5px; color: #355c7a; background: #d6e1f5; border-radius: 7px; }
 .detail-summary { padding: 16px 20px; display: flex; gap: 8px; flex-wrap: wrap; }
 .detail-summary span { padding: 7px 10px; color: #5d4dd5; font-size: 9px; font-weight: 620; background: #f0eeff; border: 1px solid #dedaff; border-radius: 9px; }
 

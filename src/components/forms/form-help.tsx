@@ -4,153 +4,138 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CircleHelp, X } from 'lucide-react';
 
-type HelpItem = { field: string; source: string; detail: string };
+// Each field: plain meaning (detail), where the data comes from (source), and —
+// where there is a calculation — the exact formula. Keyed by route.
+type HelpItem = { field: string; source: string; formula?: string; detail: string };
 
-// For each form: what the field means, where its data comes from, and how it
-// feeds a calculation. Keyed by route so FormLayout can look it up from `active`.
 const HELP: Record<string, HelpItem[]> = {
   '/buying-plan': [
-    { field: 'Product code', source: 'Active products', detail: 'Read from the live PO data (pending_po_master), with any approved-discontinued variants removed. Every active product is listed so you allocate it or set it to zero.' },
-    { field: 'Product status / Woven · Knitted', source: 'Manual', detail: 'Typed in for now — there is no product master feeding fabric or status yet. Descriptive only; not used in any calculation.' },
-    { field: 'Pending quantity', source: 'Manual (stub)', detail: 'A reference demand figure. The replenishment module that will feed it does not exist yet, so it is entered by hand and shown for context only.' },
-    { field: 'Job work qty / FOB qty / E-FOB qty', source: 'Input', detail: 'How much of the product to buy through each PO type. These three are added together to give Total quantity.' },
-    { field: 'Total quantity', source: 'Calculated', detail: 'Job work + FOB + E-FOB. It is multiplied by Standard value to produce Value to be bought.' },
-    { field: 'Standard value', source: 'Input', detail: 'The per-piece standard cost. Used as the multiplier for Value to be bought.' },
-    { field: 'Value to be bought', source: 'Calculated', detail: 'Total quantity × Standard value. This is the month’s buying budget for that product; the column total is the whole budget being approved.' },
-    { field: 'Actual issued qty / value', source: 'PO data', detail: 'Taken from POs dated in this plan month (pending_po_master): qty = sum of ordered quantity, value = qty × item price. A stand-in for the EasyCom feed. It is compared against the plan.' },
-    { field: 'Over plan (red row)', source: 'Calculated', detail: 'Shown when Actual issued qty is greater than the planned Total quantity. A warning only — it never blocks saving or submitting.' },
-    { field: 'Month · Save / Submit / Approve', source: 'Workflow', detail: 'The month this budget covers. A plan stays editable until it is approved; large plans need admin approval, routine ones can be approved by the team.' },
-  ],
-  '/vendor-capacity': [
-    { field: 'Vendor · Type', source: 'Vendor masters', detail: 'The vendor and its type (Job work / E-FOB / FOB) from the vendor master data. The type sets the capacity multiplier used below.' },
-    { field: 'Machines allotted / Active karigar', source: 'Input', detail: 'Machines and workers assigned to SAADAA this week. Machines allotted is the numerator of machine utilisation.' },
-    { field: 'Capacity / month', source: 'Input', detail: 'The vendor’s stated monthly piece capacity. It is the base figure for PO capacity.' },
-    { field: 'Machines at onboarding / Capacity signed', source: 'Input', detail: 'What was committed when the vendor was onboarded. Machines at onboarding is the denominator for machine utilisation; Capacity signed is reference.' },
-    { field: 'PO capacity', source: 'Calculated', detail: 'Capacity / month × the type multiplier (Job work ×1.0, E-FOB ×1.5, FOB ×2.5). How much you can place on order with this vendor.' },
-    { field: 'In process', source: 'Open PO data', detail: 'Quantity already on open POs with this vendor, from pending_po_master. Subtracted from PO capacity to get Available.' },
-    { field: 'Available', source: 'Calculated', detail: 'PO capacity − In process. Free capacity for new POs; a negative number means the vendor is over-committed.' },
-    { field: 'Utilisation', source: 'Calculated', detail: 'In process ÷ PO capacity × 100 — how full the vendor is.' },
-    { field: 'Last updated', source: 'sd_vendor_capacity_log', detail: 'When this week’s row was submitted. Capacity is an append-only weekly log; the previous week pre-fills the form.' },
-  ],
-  '/discontinue': [
-    { field: 'Product code · Variant', source: 'Active variants', detail: 'Chosen from the live active product/variant list (pending_po_master). Identifies exactly which colour/variant to stop making.' },
-    { field: 'Reason', source: 'Input', detail: 'Why the variant is being discontinued. Free text for the approver.' },
-    { field: 'Status', source: 'sd_discontinue_request', detail: 'Draft → Submitted → Approved / Rejected. Once Approved, that variant is removed from the Buying Plan’s active product list — this is how the two forms link.' },
-    { field: 'Requested by · Decision', source: 'Workflow', detail: 'Who raised the request, and the approve/reject action. Discontinue always needs an admin decision.' },
-  ],
-  '/approvals': [
-    { field: 'Record', source: 'sd_buying_plan / sd_discontinue_request', detail: 'The item waiting on a decision — a monthly buying plan or a discontinue request. The sub-line shows its size (product codes / pieces) or the variant.' },
-    { field: 'Submitted by / Submitted', source: 'The record', detail: 'Who submitted it and when.' },
-    { field: 'Needs', source: 'Calculated routing', detail: 'Which role must approve: routine items can be signed off by the team; larger buying plans and all discontinues escalate to an admin.' },
-    { field: 'Approve / Reject', source: 'Workflow', detail: 'Your decision. It only appears on items you are allowed to approve, and updating is atomic — a second approver on the same item gets nothing to do.' },
-    { field: 'Approval log (When / Record / Change / Actor / Notes)', source: 'sd_approval_log', detail: 'The audit trail: every status change, who made it, and any note. Written automatically on each decision.' },
-  ],
-  '/users': [
-    { field: 'Email', source: 'sd_user', detail: 'The person’s @saadaa.in login. Roles are matched to this email when they sign in.' },
-    { field: 'Name', source: 'sd_user', detail: 'Display name — cosmetic.' },
-    { field: 'Role', source: 'sd_user', detail: 'Admin = full access and approves everything. Team = fills forms and approves routine items. Viewer = read-only. This is what every permission check across the app reads.' },
-    { field: 'Active', source: 'sd_user', detail: 'Turning a user inactive drops them to read-only without deleting them. Anyone not listed here is read-only by default.' },
-  ],
-};
-
-const SIMPLE_HELP: Record<string, HelpItem[]> = {
-  '/buying-plan': [
-    { field: 'Product code', source: 'Product list', detail: 'The product you are planning to buy for the selected month.' },
-    { field: 'Pending quantity', source: 'Reference', detail: 'A demand estimate shown to help you decide how much to plan.' },
-    { field: 'Job work / FOB / E-FOB quantity', source: 'You enter', detail: 'Split the planned pieces by the type of purchase order you expect to use.' },
-    { field: 'Total quantity', source: 'Automatic', detail: 'The three planned quantities added together.' },
+    { field: 'Product code', source: 'Active products (sheet)', detail: 'The product you are planning to buy this month. Every active product is listed — set the ones you will not make to 0.' },
+    { field: 'Product status / Woven · Knitted', source: 'You enter', detail: 'Typed in, descriptive only. Not used in any calculation yet.' },
+    { field: 'Pending quantity', source: 'Reference', detail: 'A demand estimate shown for context. Not part of the totals yet.' },
+    { field: 'Job work / FOB / E-FOB quantity', source: 'You enter', detail: 'Split the planned pieces across the type of purchase order you expect to use.' },
+    { field: 'Total quantity', source: 'Automatic', formula: 'Job work + FOB + E-FOB', detail: 'The three planned quantities added together.' },
     { field: 'Standard value', source: 'You enter', detail: 'The expected cost of one piece.' },
-    { field: 'Value to be bought', source: 'Automatic', detail: 'Planned quantity multiplied by the standard value.' },
-    { field: 'Actual issued', source: 'PO data', detail: 'What has already been ordered for this month. Red rows are above the plan.' },
-    { field: 'Save, submit and approve', source: 'Workflow', detail: 'Save keeps a draft. Submit sends it for review. Approval locks the final plan.' },
+    { field: 'Value to be bought', source: 'Automatic', formula: 'Total quantity × Standard value', detail: 'This product’s slice of the month’s buying budget. The column total is the whole budget being approved.' },
+    { field: 'Actual issued qty / value', source: 'Real PO data (GCP)', formula: 'qty = Σ ordered qty · value = Σ (ordered qty × price), for POs placed this month', detail: 'What has actually been ordered this month, from the EasyCom PO pipeline in BigQuery. Compared against your plan.' },
+    { field: 'Over plan (red row)', source: 'Automatic', formula: 'Actual issued qty > Total quantity', detail: 'A warning when you have ordered more than planned. Shown only — it never blocks saving or submitting.' },
+    { field: 'Save / Submit / Approve', source: 'Workflow', detail: 'Save keeps a draft; Submit sends it for review; Approval locks the plan. Large plans need admin approval, routine ones the team.' },
   ],
   '/vendor-capacity': [
-    { field: 'Vendor and type', source: 'Vendor list', detail: 'The vendor being updated and the kind of work they handle.' },
-    { field: 'Machines and active karigar', source: 'You enter', detail: 'The machines and workers currently assigned to SAADAA.' },
-    { field: 'Monthly capacity', source: 'You enter', detail: 'How many pieces the vendor says they can produce in one month.' },
-    { field: 'PO capacity', source: 'Automatic', detail: 'The order capacity after adjusting for the vendor type.' },
-    { field: 'In process', source: 'Open PO data', detail: 'Pieces already placed with the vendor and not yet completed.' },
-    { field: 'Available capacity', source: 'Automatic', detail: 'Capacity still free for new orders. A negative value means the vendor is overloaded.' },
-    { field: 'Utilisation', source: 'Automatic', detail: 'The share of PO capacity already in use.' },
+    { field: 'Vendor · Type', source: 'Vendor master (sheet)', detail: 'The vendor and its type (Job work / E-FOB / FOB). The type sets the multiplier used below.' },
+    { field: 'Machines allotted / Active karigar', source: 'You enter', detail: 'Machines and workers assigned to SAADAA this week.' },
+    { field: 'Capacity / month', source: 'You enter', detail: 'Pieces the vendor says they can make in a month. The base figure for PO capacity.' },
+    { field: 'Machines at onboarding / Capacity signed', source: 'You enter', detail: 'What was committed at onboarding — reference, and the base for machine utilisation.' },
+    { field: 'PO capacity', source: 'Automatic', formula: 'Capacity/month × multiplier (Job ×1.0, E-FOB ×1.5, FOB ×2.5)', detail: 'How much you can place on order with this vendor.' },
+    { field: 'In process', source: 'Real PO data (GCP)', formula: 'Σ pending qty on the vendor’s Approved POs', detail: 'Pieces already on order and not yet received — from the EasyCom PO pipeline in BigQuery.' },
+    { field: 'Available', source: 'Automatic', formula: 'PO capacity − In process', detail: 'Free capacity for new POs. A negative value means the vendor is over-committed.' },
+    { field: 'Utilisation', source: 'Automatic', formula: 'In process ÷ PO capacity × 100', detail: 'How full the vendor is.' },
+    { field: 'Last updated', source: 'Weekly log', detail: 'When this week’s row was submitted. Capacity is a weekly log; last week pre-fills the form.' },
   ],
-  '/discontinue': [
-    { field: 'Product and variant', source: 'Product list', detail: 'Choose the exact product option that should be stopped.' },
-    { field: 'Reason', source: 'You enter', detail: 'Briefly explain why the product variant should be discontinued.' },
-    { field: 'Status', source: 'Workflow', detail: 'Shows whether the request is a draft, waiting for review, approved or rejected.' },
-    { field: 'Approval', source: 'Admin', detail: 'An admin reviews the request. Once approved, the variant is removed from future buying plans.' },
-  ],
-  '/approvals': [
-    { field: 'Record', source: 'Submitted work', detail: 'The buying plan or discontinue request waiting for a decision.' },
-    { field: 'Submitted by', source: 'Automatic', detail: 'The person who sent the item for approval and when they sent it.' },
-    { field: 'Needs', source: 'Automatic', detail: 'Shows which role is allowed to approve the item.' },
-    { field: 'Approve or reject', source: 'Your decision', detail: 'Approve accepts the request. Reject sends it back with the decision recorded.' },
-    { field: 'Approval log', source: 'History', detail: 'A record of every status change, who made it and any notes.' },
-  ],
-  '/users': [
-    { field: 'Email', source: 'Login', detail: 'The person\'s SAADAA email used to match their access.' },
-    { field: 'Name', source: 'You enter', detail: 'The name shown inside the application.' },
-    { field: 'Role', source: 'Access control', detail: 'Admin has full access, Team can work on routine tasks, and Viewer has read-only access.' },
-    { field: 'Active', source: 'Access control', detail: 'Turn this off to remove editing access without deleting the user.' },
+  '/po-approval': [
+    { field: 'PO ref', source: 'You enter', detail: 'Your reference for this purchase order. Auto-numbered POs come in phase 2 — for now type your own.' },
+    { field: 'Type (FG / Material / NPD)', source: 'You enter', detail: 'FG = finished goods, Material = fabric/trims, NPD = new product development. NPD always needs admin approval.' },
+    { field: 'Product code / Vendor code', source: 'Active products & vendors', detail: 'What is being ordered and who from. Vendor code drives the live-capacity check on the approval card.' },
+    { field: 'Quantity', source: 'You enter', detail: 'Total pieces on the PO. Drives the approval routing threshold.' },
+    { field: 'Number of colours', source: 'Automatic', formula: 'Distinct variants known for the product code (PO data)', detail: 'How many colours the product has, counted from the PO pipeline. Filled in when you save.' },
+    { field: 'Cost sheet / TNA link', source: 'You enter', detail: 'Links to the cost sheet and the TNA (time & action) plan for this PO.' },
+    { field: 'TNA critical dates', source: 'You enter', detail: 'The four production milestones — PP sample, GPT, cutting, inline — plus the closing date.' },
+    { field: 'Vendor load (live)', source: 'Real PO data (GCP)', formula: 'Σ pending qty on the vendor’s Approved POs', detail: 'Shown on the approval card so the approver sees how loaded the vendor already is before signing off.' },
+    { field: 'Needs', source: 'Automatic', formula: 'FG/Material ≤ 5,000 → Team · > 5,000 → Admin · NPD → Admin', detail: 'Which role must approve this PO.' },
+    { field: 'Cycle time', source: 'Automatic', formula: 'Days between submit → approve → issue', detail: 'How long each stage of the PO lifecycle took, from the timestamps captured along the way.' },
+    { field: 'Issue (EasyCom PO number)', source: 'You enter at issuance', detail: 'After approval, enter the EasyCom PO number. It ties this approval back to the real PO in the pipeline.' },
+    { field: 'DGO signing / auto PO number', source: 'Phase 2', detail: 'Stubbed for now — digital sign-off and automatic PO numbering arrive in a later phase.' },
   ],
   '/inward-plan': [
-    { field: 'PO / Product / Variant', source: 'PO data', detail: 'Each row is one colour of one product on an open purchase order.' },
-    { field: 'Ordered', source: 'PO data', detail: 'How many pieces were ordered on that line.' },
-    { field: 'Arriving', source: 'PO data', detail: 'Pieces still to arrive (ordered but not yet received).' },
-    { field: 'Expected', source: 'PO data', detail: 'The soonest expected delivery date for that line.' },
-    { field: 'What this shows', source: 'Open POs', detail: 'Only Approved POs with stock still to come, soonest arrival first.' },
+    { field: 'PO / Product / Variant', source: 'Real PO data (GCP)', detail: 'Each row is one colour of one product on an open purchase order.' },
+    { field: 'Ordered', source: 'Real PO data (GCP)', detail: 'How many pieces were ordered on that line.' },
+    { field: 'Arriving', source: 'Real PO data (GCP)', formula: 'Σ pending qty (ordered − received)', detail: 'Pieces still to arrive — ordered but not yet received.' },
+    { field: 'Expected', source: 'Real PO data (GCP)', detail: 'The soonest expected delivery date for that line.' },
+    { field: 'What this shows', source: 'Open POs (Approved)', detail: 'Only Approved POs with stock still to come, soonest arrival first.' },
+  ],
+  '/discontinue': [
+    { field: 'Product · Variant', source: 'Active variants (sheet)', detail: 'The exact colour/variant that should be stopped.' },
+    { field: 'Reason', source: 'You enter', detail: 'Briefly explain why the variant should be discontinued.' },
+    { field: 'Status', source: 'Workflow', detail: 'Draft → Submitted → Approved / Rejected. Once Approved, the variant drops out of the Buying Plan’s product list.' },
+    { field: 'Requested by / Decision', source: 'Workflow', detail: 'Who raised the request, and the approve/reject action. Discontinue always needs an admin.' },
+  ],
+  '/approvals': [
+    { field: 'Record', source: 'Submitted work', detail: 'The buying plan or discontinue request awaiting a decision. The sub-line shows its size or variant.' },
+    { field: 'Submitted by / when', source: 'Automatic', detail: 'Who sent the item for approval and when.' },
+    { field: 'Needs', source: 'Automatic', formula: 'Team — unless a buying plan over 5,000 pcs or any discontinue → Admin', detail: 'Which role is allowed to approve this item.' },
+    { field: 'Approve / Reject', source: 'Your decision', detail: 'Only shows on items you may approve. The first decision wins — a second approver gets nothing to do.' },
+    { field: 'Approval log', source: 'History', detail: 'Every status change, who made it, and any note — recorded automatically.' },
+  ],
+  '/users': [
+    { field: 'Email', source: 'Login', detail: 'The person’s @saadaa.in login. Roles are matched to this email when they sign in.' },
+    { field: 'Name', source: 'You enter', detail: 'The name shown inside the application.' },
+    { field: 'Role', source: 'Access control', detail: 'Admin = full access and approves everything. Team = fills forms and approves routine items. Viewer = read-only.' },
+    { field: 'Active', source: 'Access control', detail: 'Turn this off to make someone read-only without deleting them.' },
   ],
 };
 
 export function FormHelp({ route, title }: { route: string; title: string }) {
   const [open, setOpen] = useState(false);
-  const items = SIMPLE_HELP[route] ?? HELP[route];
+  const items = HELP[route];
   if (!items) return null;
   return (
     <>
       <button type="button" className="help-button" onClick={() => setOpen(true)}>
         <CircleHelp size={17} /> What do these mean?
       </button>
-      {open && createPortal(
-        <div className="modal-backdrop" onMouseDown={() => setOpen(false)}>
-          <div
-            className="modal modal-wide"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${title} definitions`}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="modal-head">
-              <h2>About {title}</h2>
-              <button
-                className="icon-button"
-                onClick={() => setOpen(false)}
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="help-intro">
-              <span className="help-intro-icon"><CircleHelp size={20} /></span>
-              <div>
-                <strong>A quick guide to this workflow</strong>
-                <p>Use these notes while filling or reviewing the form.</p>
+      {open &&
+        createPortal(
+          <div className="modal-backdrop" onMouseDown={() => setOpen(false)}>
+            <div
+              className="modal modal-wide"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${title} definitions`}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="modal-head">
+                <h2>About {title}</h2>
+                <button
+                  className="icon-button"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="help-intro">
+                <span className="help-intro-icon">
+                  <CircleHelp size={20} />
+                </span>
+                <div>
+                  <strong>A quick guide to this workflow</strong>
+                  <p>
+                    Each field shows where its data comes from and, where there is
+                    a calculation, the exact formula.
+                  </p>
+                </div>
+              </div>
+              <div className="definition-grid">
+                {items.map((it, index) => (
+                  <article className="definition-card" key={it.field}>
+                    <span className="definition-number">{index + 1}</span>
+                    <div>
+                      <h3>{it.field}</h3>
+                      <p>{it.detail}</p>
+                      <div className="definition-meta">
+                        <span className="definition-source">{it.source}</span>
+                        {it.formula && (
+                          <code className="definition-formula">= {it.formula}</code>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
             </div>
-            <div className="definition-grid">
-              {items.map((it, index) => (
-                <article className="definition-card" key={it.field}>
-                  <span className="definition-number">{index + 1}</span>
-                  <div>
-                    <h3>{it.field}</h3>
-                    <p>{it.detail}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

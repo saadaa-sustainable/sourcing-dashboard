@@ -149,6 +149,46 @@ export type InwardPlanGroup = {
   expected_delivery_date: string | null;
 };
 
+export type PoType = 'FG' | 'Material' | 'NPD';
+
+/** A PO raised for approval (the write-side of the PO Approval workflow). */
+export type PoApproval = {
+  id: number;
+  po_ref: string | null;
+  po_type: PoType;
+  product_code: string | null;
+  vendor_code: string | null;
+  quantity: number;
+  number_of_colours: number | null;
+  cost_sheet_link: string | null;
+  tna_link: string | null;
+  tna_pp_date: string | null;
+  tna_gpt_date: string | null;
+  tna_cutting_date: string | null;
+  tna_inline_date: string | null;
+  closing_date: string | null;
+  status: SdStatus;
+  submitted_by: string | null;
+  submitted_for_approval_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
+  easycom_po_number: string | null;
+  po_issued_by: string | null;
+  po_issued_at: string | null;
+  dgo_signed: boolean;
+  auto_po_number: string | null;
+  created_at: string;
+};
+
+/** Cycle-time row from sd_po_cycle_time (days per lifecycle stage). */
+export type PoCycleTime = {
+  id: number;
+  days_submit_to_approve: number | null;
+  days_approve_to_issue: number | null;
+  days_total: number | null;
+};
+
 /** One row in the unified /approvals queue. */
 export type ApprovalQueueItem = {
   entityType: ApprovalEntity;
@@ -161,4 +201,7 @@ export type ApprovalQueueItem = {
   submittedBy: string | null;
   submittedAt: string | null;
   href: string;
+  // PO Approval only: the vendor's live in-process load, shown on the card.
+  vendorCode?: string | null;
+  vendorInProcessQty?: number | null;
 };

@@ -232,6 +232,10 @@
 .wf-btn-ghost { background: transparent; border-color: rgba(0, 0, 0, 0.16); }
 .wf-btn-ghost:hover:not(:disabled) { background: rgba(0, 0, 0, 0.04); }
 .wf-btn-danger { background: #b3261e; color: #fff; }
+.wf-btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+.wf-issue-row { display: flex; gap: 6px; align-items: center; }
+.wf-issue-row input { width: 120px; }
+.wf-error-text { display: block; color: #b3261e; margin-bottom: 4px; }
 .wf-icon-btn {
   background: none;
   border: none;

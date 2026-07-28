@@ -11,6 +11,8 @@ import type {
   BuyingPlanLineView,
   DiscontinueRequest,
   InwardPlanGroup,
+  PoApproval,
+  PoCycleTime,
   SdUser,
   VendorCapacityLog,
   VendorCapacityView,
@@ -386,6 +388,52 @@ export async function loadDiscontinueRequests() {
 }
 
 /* ------------------------------------------------------------------ */
+/* PO Approval                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Everything the PO Approval screen needs: the POs themselves, their cycle-time
+ * rows (sd_po_cycle_time), the product/vendor pick-lists for the entry form, and
+ * each vendor's live in-process load (sd_vendor_in_process) for the cards.
+ */
+export async function loadPoApprovals() {
+  const supabase = await client();
+
+  const [{ data: pos }, { data: cycle }, { data: variants }] = await Promise.all([
+    supabase
+      .from('sd_po_approval')
+      .select('*')
+      .order('id', { ascending: false })
+      .limit(500),
+    supabase.from('sd_po_cycle_time').select('*').limit(500),
+    supabase.from('sd_active_variants').select('product_code').limit(PAGE_SIZE),
+  ]);
+
+  const capacityByVendor = await loadInProcessByVendor();
+
+  const productCodes = [
+    ...new Set(
+      ((variants ?? []) as { product_code: string }[])
+        .map((r) => r.product_code)
+        .filter(Boolean),
+    ),
+  ].sort();
+
+  const vendorCodes = [...capacityByVendor.keys()].sort();
+
+  const cycleById = new Map<number, PoCycleTime>();
+  ((cycle ?? []) as PoCycleTime[]).forEach((c) => cycleById.set(c.id, c));
+
+  return {
+    pos: (pos ?? []) as PoApproval[],
+    cycleById,
+    productCodes,
+    vendorCodes,
+    capacityByVendor,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Approvals queue                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -395,21 +443,26 @@ export async function loadApprovalQueue(): Promise<{
 }> {
   const supabase = await client();
 
-  const [{ data: plans }, { data: discontinues }, { data: log }] = await Promise.all([
-    supabase
-      .from('sd_buying_plan')
-      .select('*')
-      .in('status', ['submitted', 'pending_l2']),
-    supabase
-      .from('sd_discontinue_request')
-      .select('*')
-      .in('status', ['submitted', 'pending_l2']),
-    supabase
-      .from('sd_approval_log')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100),
-  ]);
+  const [{ data: plans }, { data: discontinues }, { data: pos }, { data: log }] =
+    await Promise.all([
+      supabase
+        .from('sd_buying_plan')
+        .select('*')
+        .in('status', ['submitted', 'pending_l2']),
+      supabase
+        .from('sd_discontinue_request')
+        .select('*')
+        .in('status', ['submitted', 'pending_l2']),
+      supabase
+        .from('sd_po_approval')
+        .select('*')
+        .in('status', ['submitted', 'pending_l2']),
+      supabase
+        .from('sd_approval_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100),
+    ]);
 
   const items: ApprovalQueueItem[] = [];
 
@@ -453,6 +506,32 @@ export async function loadApprovalQueue(): Promise<{
       submittedAt: req.requested_at,
       href: '/discontinue',
     });
+  }
+
+  if ((pos ?? []).length) {
+    const capacityByVendor = await loadInProcessByVendor();
+    for (const po of (pos ?? []) as PoApproval[]) {
+      const qty = Number(po.quantity || 0);
+      const vendor = (po.vendor_code ?? '').trim();
+      items.push({
+        entityType: 'po_approval',
+        entityId: String(po.id),
+        label: `PO ${po.po_ref ?? `#${po.id}`} — ${po.po_type}`,
+        sublabel: `${po.product_code ?? '—'} · ${vendor || '—'} · ${qty.toLocaleString('en-IN')} pcs${
+          po.number_of_colours ? ` · ${po.number_of_colours} colours` : ''
+        }`,
+        status: po.status,
+        quantity: qty,
+        requiredRole: routeApproval('po_approval', qty, po.po_type),
+        submittedBy: po.submitted_by,
+        submittedAt: po.submitted_for_approval_at,
+        href: '/po-approval',
+        vendorCode: vendor || null,
+        vendorInProcessQty: vendor
+          ? capacityByVendor.get(vendor.toLowerCase()) ?? null
+          : null,
+      });
+    }
   }
 
   items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));

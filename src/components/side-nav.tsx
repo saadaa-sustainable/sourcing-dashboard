@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ClipboardCheck,
   Factory,
+  FileCheck,
   LayoutDashboard,
   Menu,
   PackageSearch,
@@ -38,6 +39,7 @@ export type TabId = (typeof tabs)[number][0];
 const WORKFLOW_LINKS = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
+  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/discontinue', label: 'Discontinue', Icon: Ban },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },

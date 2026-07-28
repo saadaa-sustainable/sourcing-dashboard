@@ -85,6 +85,16 @@ export function ApprovalsClient({
                 <dt>Needs</dt>
                 <dd>{ROLE_LABEL[item.requiredRole]}</dd>
               </div>
+              {item.entityType === 'po_approval' && item.vendorCode && (
+                <div>
+                  <dt>Vendor load (live)</dt>
+                  <dd>
+                    {item.vendorInProcessQty == null
+                      ? 'No open POs'
+                      : `${item.vendorInProcessQty.toLocaleString('en-IN')} pcs in process`}
+                  </dd>
+                </div>
+              )}
             </dl>
             <div className="wf-queue-foot">
               <Link href={item.href} className="wf-btn wf-btn-ghost">

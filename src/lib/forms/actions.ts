@@ -24,10 +24,12 @@
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { currentUser } from './queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
-import type { ApprovalEntity, SdRole, SdStatus } from './types';
+import { canApprove, canEdit, canSubmit, routeApproval, statusOnSubmit } from './approval';
+import type { ApprovalEntity, PoType, SdRole, SdStatus } from './types';
 
-export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
+export type ActionResult =
+  | { ok: true; message?: string; id?: number }
+  | { ok: false; error: string };
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
 const done = (message?: string): ActionResult => ({ ok: true, message });
@@ -385,7 +387,199 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
+  revalidatePath('/po-approval');
   return done(decision === 'approve' ? 'Approved.' : 'Rejected.');
+}
+
+/* ================================================================== */
+/* PO Approval                                                         */
+/* ================================================================== */
+
+const PO_TYPES: PoType[] = ['FG', 'Material', 'NPD'];
+const dateOrNull = (v: unknown) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? '')) ? String(v) : null;
+const textOrNull = (v: unknown) => {
+  const s = String(v ?? '').trim();
+  return s || null;
+};
+
+/** Number of colours = distinct variants known for the product code (from PO data). */
+async function countColours(
+  supabase: Awaited<ReturnType<typeof supa>>,
+  productCode: string | null,
+): Promise<number | null> {
+  if (!productCode) return null;
+  const { data } = await supabase
+    .from('sd_po_lines_enriched')
+    .select('product_variant')
+    .eq('product_code', productCode);
+  if (!data?.length) return null;
+  const set = new Set(
+    (data as { product_variant: string | null }[])
+      .map((r) => r.product_variant)
+      .filter(Boolean),
+  );
+  return set.size || null;
+}
+
+/** Read the PO Approval fields out of a FormData into a table row. */
+function readPoFields(formData: FormData) {
+  const rawType = String(formData.get('po_type') ?? 'FG');
+  const po_type: PoType = (PO_TYPES.includes(rawType as PoType) ? rawType : 'FG') as PoType;
+  return {
+    po_ref: textOrNull(formData.get('po_ref')),
+    po_type,
+    product_code: textOrNull(formData.get('product_code')),
+    vendor_code: textOrNull(formData.get('vendor_code')),
+    quantity: Number(formData.get('quantity') ?? 0) || 0,
+    cost_sheet_link: textOrNull(formData.get('cost_sheet_link')),
+    tna_link: textOrNull(formData.get('tna_link')),
+    tna_pp_date: dateOrNull(formData.get('tna_pp_date')),
+    tna_gpt_date: dateOrNull(formData.get('tna_gpt_date')),
+    tna_cutting_date: dateOrNull(formData.get('tna_cutting_date')),
+    tna_inline_date: dateOrNull(formData.get('tna_inline_date')),
+    closing_date: dateOrNull(formData.get('closing_date')),
+  };
+}
+
+export async function savePoApproval(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+
+  const id = Number(formData.get('id')) || 0;
+  const supabase = await supa();
+
+  // Guard edits against the current stored status.
+  let status: SdStatus = 'draft';
+  if (id) {
+    const { data: existing } = await supabase
+      .from('sd_po_approval')
+      .select('id, status')
+      .eq('id', id)
+      .maybeSingle();
+    if (!existing) return fail('PO not found.');
+    status = existing.status as SdStatus;
+  }
+  if (!canEdit(user.role, status)) {
+    return fail(
+      status === 'approved'
+        ? 'This PO is approved and can no longer be edited.'
+        : 'You do not have permission to edit PO approvals.',
+    );
+  }
+
+  const fields = readPoFields(formData);
+  const number_of_colours = await countColours(supabase, fields.product_code);
+
+  if (id) {
+    const { error } = await supabase
+      .from('sd_po_approval')
+      .update({ ...fields, number_of_colours })
+      .eq('id', id)
+      .eq('status', 'draft');
+    if (error) return fail(`Could not save: ${error.message}`);
+    revalidatePath('/po-approval');
+    return { ok: true, message: 'Saved.', id };
+  }
+
+  const { data, error } = await supabase
+    .from('sd_po_approval')
+    .insert({ ...fields, number_of_colours, status: 'draft' })
+    .select('id')
+    .single();
+  if (error) return fail(`Could not create PO: ${error.message}`);
+  revalidatePath('/po-approval');
+  return { ok: true, message: `Saved PO #${data.id}.`, id: data.id as number };
+}
+
+export async function submitPoApproval(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Save the PO before submitting it.');
+
+  const supabase = await supa();
+  const { data: po } = await supabase
+    .from('sd_po_approval')
+    .select('id, status, po_ref, po_type, product_code, quantity')
+    .eq('id', id)
+    .maybeSingle();
+  if (!po) return fail('PO not found.');
+  if (!canSubmit(user.role, po.status as SdStatus)) {
+    return fail('This PO cannot be submitted from its current state.');
+  }
+  const qty = Number(po.quantity || 0);
+  if (qty <= 0) return fail('Enter a quantity before submitting.');
+
+  const next = statusOnSubmit('po_approval', qty, po.po_type as string);
+  const { data: updated, error } = await supabase
+    .from('sd_po_approval')
+    .update({
+      status: next,
+      submitted_by: user.email,
+      submitted_for_approval_at: new Date().toISOString(),
+      rejection_notes: null,
+    })
+    .eq('id', id)
+    .eq('status', 'draft')
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Already submitted by someone else.');
+
+  await writeLog(
+    'po_approval',
+    String(id),
+    `PO ${po.po_ref ?? `#${id}`} · ${po.po_type} · ${po.product_code ?? ''}`.trim(),
+    'draft',
+    next,
+    user.email,
+  );
+  revalidatePath('/po-approval');
+  revalidatePath('/approvals');
+  return done(
+    next === 'pending_l2' ? 'Submitted for admin approval.' : 'Submitted for approval.',
+  );
+}
+
+/** After approval, issue the PO: record the EasyCom PO number that ties to real data. */
+export async function issuePoApproval(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to issue POs.');
+  }
+
+  const id = Number(formData.get('id'));
+  const easycom = String(formData.get('easycom_po_number') ?? '').trim();
+  if (!id) return fail('Invalid PO.');
+  if (!easycom) return fail('Enter the EasyCom PO number.');
+
+  const supabase = await supa();
+  const { data: updated, error } = await supabase
+    .from('sd_po_approval')
+    .update({
+      easycom_po_number: easycom,
+      po_issued_by: user.email,
+      po_issued_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .eq('status', 'approved')
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Only an approved PO can be issued.');
+
+  await writeLog(
+    'po_approval',
+    String(id),
+    `PO #${id} issued as ${easycom}`,
+    'approved',
+    'approved',
+    user.email,
+    `EasyCom PO ${easycom}`,
+  );
+  revalidatePath('/po-approval');
+  return done(`Issued as EasyCom PO ${easycom}.`);
 }
 
 /* ================================================================== */
