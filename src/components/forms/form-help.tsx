@@ -11,8 +11,7 @@ type HelpItem = { field: string; source: string; formula?: string; detail: strin
 const HELP: Record<string, HelpItem[]> = {
   '/buying-plan': [
     { field: 'Product code', source: 'Active products (sheet)', detail: 'The product you are planning to buy this month. Every active product is listed — set the ones you will not make to 0.' },
-    { field: 'Product status / Woven · Knitted', source: 'You enter', detail: 'Typed in, descriptive only. Not used in any calculation yet.' },
-    { field: 'Pending quantity', source: 'Reference', detail: 'A demand estimate shown for context. Not part of the totals yet.' },
+    { field: 'Product status / Woven · Knitted', source: 'Product master', detail: 'Read-only, pulled from the product master (sd_product_master) — never typed here. Shows “—” until the master is filled in.' },
     { field: 'Job work / FOB / E-FOB quantity', source: 'You enter', detail: 'Split the planned pieces across the type of purchase order you expect to use.' },
     { field: 'Total quantity', source: 'Automatic', formula: 'Job work + FOB + E-FOB', detail: 'The three planned quantities added together.' },
     { field: 'Standard value', source: 'You enter', detail: 'The expected cost of one piece.' },

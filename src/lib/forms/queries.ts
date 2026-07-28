@@ -127,10 +127,31 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     ),
   ].sort();
 
+  // Product status + woven/knitted come from the master, read-only. Nulls until
+  // the master is populated — the Buying Plan never lets these be typed.
+  const { data: master } = await supabase
+    .from('sd_product_master')
+    .select('product_code, product_status, fabric_type')
+    .limit(PAGE_SIZE);
+  const productMaster: Record<string, { status: string | null; fabric_type: string | null }> = {};
+  (
+    (master ?? []) as {
+      product_code: string;
+      product_status: string | null;
+      fabric_type: string | null;
+    }[]
+  ).forEach((m) => {
+    productMaster[m.product_code] = {
+      status: m.product_status,
+      fabric_type: m.fabric_type,
+    };
+  });
+
   return {
     plan: (plan as BuyingPlan | null) ?? null,
     lines,
     productCodes,
+    productMaster,
     planMonth,
   };
 }

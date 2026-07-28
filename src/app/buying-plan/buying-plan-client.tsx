@@ -54,8 +54,8 @@ function toDraft(line: BuyingPlanLine): Draft {
   };
 }
 
-// A fresh, zeroed row for a product code. Status and Woven/Knit are left blank
-// (no product-level master source yet) and filled in by hand.
+// A fresh, zeroed row for a product code. Status and Woven/Knit are display-only
+// and come from sd_product_master (read-only), so they are not seeded here.
 function blankDraft(code: string, key: string): Draft {
   return {
     key,
@@ -75,6 +75,7 @@ export function BuyingPlanClient({
   plan,
   lines,
   productCodes,
+  productMaster,
   actuals,
   role,
 }: {
@@ -82,6 +83,7 @@ export function BuyingPlanClient({
   plan: BuyingPlan | null;
   lines: BuyingPlanLine[];
   productCodes: string[];
+  productMaster: Record<string, { status: string | null; fabric_type: string | null }>;
   actuals: Record<string, { qty: number; value: number }>;
   role: SdRole;
 }) {
@@ -156,9 +158,16 @@ export function BuyingPlanClient({
   function save() {
     setError(null);
     setMessage(null);
+    // Status + woven/knit are master-owned; store the master value as the
+    // planning-time snapshot rather than anything the user typed.
+    const snapshot = rows.map((row) => ({
+      ...row,
+      product_status: productMaster[row.product_code]?.status ?? '',
+      fabric_type: productMaster[row.product_code]?.fabric_type ?? '',
+    }));
     const payload = new FormData();
     payload.set('plan_month', planMonth);
-    payload.set('lines', JSON.stringify(rows));
+    payload.set('lines', JSON.stringify(snapshot));
     start(async () => {
       const result = await saveBuyingPlan(payload);
       if (result.ok) setMessage(result.message ?? 'Saved.');
@@ -261,7 +270,6 @@ export function BuyingPlanClient({
                 <th>Product code</th>
                 <th>Product status</th>
                 <th>Woven / Knitted</th>
-                <th className="num">Pending quantity</th>
                 <th className="num input-col">Job work qty</th>
                 <th className="num input-col">FOB qty</th>
                 <th className="num input-col">E-FOB qty</th>
@@ -276,13 +284,8 @@ export function BuyingPlanClient({
               {view.map(({ row, totalQty, valueToBeBought, actualQty, actualValue, overPlan }) => (
                 <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
                   <td className="mono">{row.product_code}</td>
-                  <td>{row.product_status || '—'}</td>
-                  <td>{row.fabric_type || '—'}</td>
-                  <td className="num">
-                    {row.pending_quantity === ''
-                      ? '—'
-                      : fmt.format(num(row.pending_quantity))}
-                  </td>
+                  <td>{productMaster[row.product_code]?.status || '—'}</td>
+                  <td>{productMaster[row.product_code]?.fabric_type || '—'}</td>
                   {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
                     <td key={field} className="num input-col">
                       <input
@@ -332,7 +335,7 @@ export function BuyingPlanClient({
               ))}
               {!view.length && (
                 <tr>
-                  <td colSpan={12} className="wf-empty-cell">
+                  <td colSpan={11} className="wf-empty-cell">
                     No product codes added yet. Discontinued variants are excluded
                     automatically.
                   </td>
@@ -342,7 +345,7 @@ export function BuyingPlanClient({
             {view.length > 0 && (
               <tfoot>
                 <tr>
-                  <td colSpan={7}>Total</td>
+                  <td colSpan={6}>Total</td>
                   <td className="num strong">{fmt.format(totals.qty)}</td>
                   <td />
                   <td className="num strong">{money.format(totals.value)}</td>
