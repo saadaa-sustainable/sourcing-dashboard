@@ -33,6 +33,63 @@ async function fetchAllRows<T>(supabase: Reader, table: string, orderBy: string)
   return rows;
 }
 
+/**
+ * Map one sd_po_dashboard row (GCP pipeline shape) onto the dashboard's PendingPo.
+ * po_type is derived in the view from po_ref_num (FOB/EFOB/JOB). pending_qty_actual
+ * mirrors pending_qty — the pipeline's pending is already the true open quantity.
+ */
+function mapPipelinePo(r: Record<string, unknown>): PendingPo {
+  const num = (v: unknown) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : 0;
+  };
+  const str = (v: unknown) => (v == null || v === '' ? null : String(v));
+  const pending = num(r.pending_qty);
+  return {
+    source_row_key: str(r.po_detail_id) ?? undefined,
+    po_number: str(r.po_number),
+    po_created_date: str(r.po_date),
+    po_date: str(r.po_date),
+    item_price: num(r.item_price),
+    po_id: str(r.po_id),
+    sku: str(r.sku),
+    product_description: str(r.product_description),
+    cp_id: str(r.product_id),
+    po_detail_id: str(r.po_detail_id),
+    original_quantity: num(r.original_qty),
+    pending_quantity: pending,
+    size: str(r.size),
+    po_status: str(r.po_status),
+    vendor_name: str(r.vendor_name),
+    vendor_code: str(r.vendor_code),
+    expected_delivery_date: str(r.expected_delivery_date),
+    po_ref_num: str(r.po_ref_num),
+    product_variant: str(r.product_variant),
+    product_code: str(r.product_code),
+    pending_qty_actual: pending,
+    po_type: str(r.po_type),
+    match_flag: true,
+  };
+}
+
+/**
+ * The dashboard's PO source: sd_po_dashboard (GCP pipeline, filtered to the live
+ * sourcing working set). Replaces the pending_po_master sheet. Pages past the
+ * PostgREST 1000-row cap with a stable sort on po_detail_id.
+ */
+async function fetchDashboardPos(supabase: Reader): Promise<PendingPo[]> {
+  const rows: PendingPo[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase.from('sd_po_dashboard').select('*')
+      .order('po_detail_id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`Supabase read failed for sd_po_dashboard: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as Record<string, unknown>[]).map(mapPipelinePo));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 async function fixture(name: string) {
   return readFile(path.join(process.cwd(), 'data', 'fixtures', name), 'utf8');
 }
@@ -120,13 +177,13 @@ export async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseEnv()) return loadFixtures();
   const supabase = await createClient();
   const [pendingPos, vendorTypes, vendorMasters, tnaRecords] = await Promise.all([
-    fetchAllRows<PendingPo>(supabase, 'pending_po_master', 'id'),
+    fetchDashboardPos(supabase),
     fetchAllRows<VendorType>(supabase, 'vendor_type_master', 'vendor_name'),
     fetchAllRows<VendorMaster>(supabase, 'vendor_master_data', 'vendor_code'),
     fetchAllRows<TnaRecord>(supabase, 'tna_tracker', 'po_no'),
   ]);
   const warnings: string[] = [];
-  if (!pendingPos.length) warnings.push('No active PO rows returned from Supabase — check the latest sync_log entry.');
+  if (!pendingPos.length) warnings.push('No PO rows returned from sd_po_dashboard — check the latest GCP pipeline load.');
   return {
     pendingPos, vendorTypes, vendorMasters, tnaRecords,
     source: 'supabase', warnings, loadedAt: new Date().toISOString(),
