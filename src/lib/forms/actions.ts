@@ -334,6 +334,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   buying_plan: 'sd_buying_plan',
   discontinue: 'sd_discontinue_request',
   po_approval: 'sd_po_approval',
+  standard_cost: 'sd_standard_cost',
 };
 
 export async function decideApproval(formData: FormData): Promise<ActionResult> {
@@ -388,7 +389,109 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
   revalidatePath('/po-approval');
+  revalidatePath('/standard-cost');
   return done(decision === 'approve' ? 'Approved.' : 'Rejected.');
+}
+
+/* ================================================================== */
+/* Standard cost sheet                                                 */
+/* ================================================================== */
+
+export async function saveStandardCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit standard costs.');
+  }
+
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+
+  const supabase = await supa();
+  const { data: existing } = await supabase
+    .from('sd_standard_cost')
+    .select('id, status, frozen')
+    .eq('product_code', product_code)
+    .maybeSingle();
+
+  if (existing?.frozen) {
+    return fail('This cost is frozen (a PO was issued) and can no longer be edited.');
+  }
+  const status = (existing?.status ?? 'draft') as SdStatus;
+  if (!canEdit(user.role, status)) {
+    return fail(
+      status === 'approved'
+        ? 'This cost is approved — resubmit to change it.'
+        : 'You cannot edit this cost right now.',
+    );
+  }
+
+  const patch = {
+    product_code,
+    job_cost: numOrNull(formData.get('job_cost')),
+    fob_cost: numOrNull(formData.get('fob_cost')),
+    efob_cost: numOrNull(formData.get('efob_cost')),
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('sd_standard_cost')
+    .upsert(patch, { onConflict: 'product_code' })
+    .select('id')
+    .single();
+  if (error) return fail(`Could not save: ${error.message}`);
+
+  revalidatePath('/standard-cost');
+  return { ok: true, message: `Saved ${product_code}.`, id: data.id as number };
+}
+
+export async function submitStandardCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Save the cost before submitting it.');
+
+  const supabase = await supa();
+  const { data: row } = await supabase
+    .from('sd_standard_cost')
+    .select('id, product_code, status, frozen, job_cost, fob_cost, efob_cost')
+    .eq('id', id)
+    .maybeSingle();
+  if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen and cannot be resubmitted.');
+  if (!canSubmit(user.role, row.status as SdStatus)) {
+    return fail('This cost cannot be submitted from its current state.');
+  }
+  if (row.job_cost == null && row.fob_cost == null && row.efob_cost == null) {
+    return fail('Enter at least one rate before submitting.');
+  }
+
+  const next = statusOnSubmit('standard_cost');
+  const { data: updated, error } = await supabase
+    .from('sd_standard_cost')
+    .update({
+      status: next,
+      submitted_by: user.email,
+      submitted_at: new Date().toISOString(),
+      rejection_notes: null,
+    })
+    .eq('id', id)
+    .eq('status', 'draft')
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Already submitted by someone else.');
+
+  await writeLog(
+    'standard_cost',
+    String(id),
+    `Standard cost — ${row.product_code}`,
+    'draft',
+    next,
+    user.email,
+  );
+  revalidatePath('/standard-cost');
+  revalidatePath('/approvals');
+  return done('Submitted for approval.');
 }
 
 /* ================================================================== */
@@ -550,9 +653,20 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     })
     .eq('id', id)
     .eq('status', 'approved')
-    .select('id');
+    .select('id, product_code');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Only an approved PO can be issued.');
+
+  // Freeze the product's standard cost at first PO issuance — from here the
+  // rates are locked. Best effort: a failure must not undo the issuance.
+  const productCode = (updated[0].product_code as string | null)?.trim();
+  if (productCode) {
+    await supabase
+      .from('sd_standard_cost')
+      .update({ frozen: true, frozen_at: new Date().toISOString() })
+      .eq('product_code', productCode)
+      .eq('frozen', false);
+  }
 
   await writeLog(
     'po_approval',
@@ -564,7 +678,51 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     `EasyCom PO ${easycom}`,
   );
   revalidatePath('/po-approval');
+  revalidatePath('/standard-cost');
   return done(`Issued as EasyCom PO ${easycom}.`);
+}
+
+/* ================================================================== */
+/* Product master — status + woven/knitted, read by the Buying Plan    */
+/* ================================================================== */
+
+const PRODUCT_STATUSES = [
+  'Active', 'Inactive', 'TBD', 'NPD', 'NPD-Not-Launched', 'Ongoing', 'Discontinued',
+];
+const FABRIC_TYPES = ['Woven', 'Knitted'];
+
+export async function saveProductMaster(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit the product master.');
+  }
+
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+
+  const rawStatus = String(formData.get('product_status') ?? '').trim();
+  const rawFabric = String(formData.get('fabric_type') ?? '').trim();
+  const product_status = PRODUCT_STATUSES.includes(rawStatus) ? rawStatus : null;
+  const fabric_type = FABRIC_TYPES.includes(rawFabric) ? rawFabric : null;
+  const is_active = formData.get('is_active') !== 'false';
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_product_master').upsert(
+    {
+      product_code,
+      product_status,
+      fabric_type,
+      is_active,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'product_code' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+
+  revalidatePath('/product-master');
+  revalidatePath('/buying-plan');
+  return done(`Saved ${product_code}.`);
 }
 
 /* ================================================================== */

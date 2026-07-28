@@ -9,10 +9,12 @@ import {
   ClipboardCheck,
   Factory,
   FileCheck,
+  IndianRupee,
   LayoutDashboard,
   Menu,
   PackageSearch,
   ShoppingCart,
+  Tags,
   Truck,
   UserCog,
   Users,
@@ -38,6 +40,7 @@ export type TabId = (typeof tabs)[number][0];
 
 const WORKFLOW_LINKS = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
+  { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
@@ -120,6 +123,14 @@ export function SideNav({
             </a>
           ))}
           <div className="wf-nav-divider">Admin</div>
+          <a
+            href="/product-master"
+            className={activeWorkflow === '/product-master' ? 'active' : ''}
+            onClick={close}
+          >
+            <Tags size={18} />
+            <span>Product Master</span>
+          </a>
           <a
             href="/users"
             className={activeWorkflow === '/users' ? 'active' : ''}

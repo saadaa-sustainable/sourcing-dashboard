@@ -26,6 +26,15 @@ export type SdUser = {
   is_active: boolean;
 };
 
+/** Product-level master attributes the Buying Plan reads (sd_product_master). */
+export type ProductMaster = {
+  product_code: string;
+  product_status: string | null;
+  fabric_type: string | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
 /* ------------------------------------------------------------------ */
 /* Buying Plan                                                         */
 /* ------------------------------------------------------------------ */
@@ -122,7 +131,29 @@ export type DiscontinueRequest = {
 /* Approval log                                                        */
 /* ------------------------------------------------------------------ */
 
-export type ApprovalEntity = 'buying_plan' | 'discontinue' | 'po_approval';
+export type ApprovalEntity =
+  | 'buying_plan'
+  | 'discontinue'
+  | 'po_approval'
+  | 'standard_cost';
+
+/** Standard cost sheet row — final job/FOB/EFOB rates per product (sd_standard_cost). */
+export type StandardCost = {
+  id: number;
+  product_code: string;
+  job_cost: number | null;
+  fob_cost: number | null;
+  efob_cost: number | null;
+  status: SdStatus;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
+  frozen: boolean;
+  frozen_at: string | null;
+  updated_at: string;
+};
 
 export type ApprovalLogRow = {
   id: number;

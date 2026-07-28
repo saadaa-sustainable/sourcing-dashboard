@@ -1,7 +1,16 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
-import { Plus, Save, Send, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Eye,
+  Plus,
+  Save,
+  Send,
+  Trash2,
+} from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
   addMonths,
@@ -76,6 +85,7 @@ export function BuyingPlanClient({
   lines,
   productCodes,
   productMaster,
+  standardCosts,
   actuals,
   role,
 }: {
@@ -84,6 +94,7 @@ export function BuyingPlanClient({
   lines: BuyingPlanLine[];
   productCodes: string[];
   productMaster: Record<string, { status: string | null; fabric_type: string | null }>;
+  standardCosts: Record<string, { job: number; fob: number; efob: number }>;
   actuals: Record<string, { qty: number; value: number }>;
   role: SdRole;
 }) {
@@ -104,6 +115,18 @@ export function BuyingPlanClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // Input module (fill the plan) vs View module (running read-only view). Default
+  // to View — "एक view चलता रहे"; supply chain switches to Input to fill it.
+  const [mode, setMode] = useState<'view' | 'input'>('view');
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // Overdue = buying still outstanding more than a week into the plan month.
+  // Evaluated after mount so server/client render match.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), []);
+  const overdueThreshold = Date.parse(`${planMonth}T00:00:00Z`) + 7 * 86_400_000;
+
   const used = useMemo(
     () => new Set(rows.map((row) => row.product_code)),
     [rows],
@@ -111,18 +134,65 @@ export function BuyingPlanClient({
   const available = productCodes.filter((code) => !used.has(code));
 
   const view = rows.map((row) => {
-    const totalQty = num(row.job_work_qty) + num(row.fob_qty) + num(row.efob_qty);
+    const jobQty = num(row.job_work_qty);
+    const fobQty = num(row.fob_qty);
+    const efobQty = num(row.efob_qty);
+    const totalQty = jobQty + fobQty + efobQty;
+    const cost = standardCosts[row.product_code];
+    // Per-PO-type: each quantity multiplies by its own approved standard cost.
+    const valueToBeBought = cost
+      ? jobQty * cost.job + fobQty * cost.fob + efobQty * cost.efob
+      : 0;
     const actual = actuals[row.product_code] ?? { qty: 0, value: 0 };
+    const remaining = Math.max(0, totalQty - actual.qty);
     return {
       row,
       totalQty,
-      valueToBeBought: totalQty * num(row.standard_value),
+      cost,
+      // A planned quantity with no approved cost can't be valued — flag it.
+      missingCost: totalQty > 0 && !cost,
+      valueToBeBought,
       actualQty: actual.qty,
       actualValue: actual.value,
+      remaining,
+      pctComplete:
+        totalQty > 0 ? Math.min(100, Math.round((actual.qty / totalQty) * 100)) : 0,
+      isOverdue: remaining > 0 && now != null && now > overdueThreshold,
+      fabricType: productMaster[row.product_code]?.fabric_type || 'Unspecified',
+      productStatus: productMaster[row.product_code]?.status || '—',
       // Red, but never blocking. Mahesh: show it, don't refuse it.
       overPlan: totalQty > 0 && actual.qty > totalQty,
     };
   });
+
+  type ViewItem = (typeof view)[number];
+
+  // View module works over products that actually have a planned quantity.
+  const planned = view.filter((v) => v.totalQty > 0);
+  const overdueCount = planned.filter((v) => v.isOverdue).length;
+  const viewRows = overdueOnly ? planned.filter((v) => v.isOverdue) : planned;
+  const groups: [string, ViewItem[]][] = (() => {
+    const m = new Map<string, ViewItem[]>();
+    for (const item of viewRows) {
+      const list = m.get(item.fabricType) ?? [];
+      list.push(item);
+      m.set(item.fabricType, list);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  })();
+  const plannedTotals = planned.reduce(
+    (acc, item) => ({
+      qty: acc.qty + item.totalQty,
+      value: acc.value + item.valueToBeBought,
+      actualQty: acc.actualQty + item.actualQty,
+      actualValue: acc.actualValue + item.actualValue,
+    }),
+    { qty: 0, value: 0, actualQty: 0, actualValue: 0 },
+  );
+  const pctBought =
+    plannedTotals.qty > 0
+      ? Math.min(100, Math.round((plannedTotals.actualQty / plannedTotals.qty) * 100))
+      : 0;
 
   const totals = view.reduce(
     (acc, item) => ({
@@ -213,9 +283,25 @@ export function BuyingPlanClient({
             </select>
           </Field>
           <StatusBadge status={status} />
+          <div className="segment wf-segment">
+            <button
+              type="button"
+              className={mode === 'view' ? 'active' : ''}
+              onClick={() => setMode('view')}
+            >
+              <Eye size={14} /> View
+            </button>
+            <button
+              type="button"
+              className={mode === 'input' ? 'active' : ''}
+              onClick={() => setMode('input')}
+            >
+              <ClipboardList size={14} /> Input
+            </button>
+          </div>
         </div>
 
-        {editable && (
+        {editable && mode === 'input' && (
           <div className="wf-toolbar-right">
             <select
               className="wf-add-select"
@@ -262,6 +348,22 @@ export function BuyingPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
+      {mode === 'view' && (
+        <PlanView
+          groups={groups}
+          totals={plannedTotals}
+          pctBought={pctBought}
+          overdueCount={overdueCount}
+          overdueOnly={overdueOnly}
+          setOverdueOnly={setOverdueOnly}
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+          plannedCount={planned.length}
+        />
+      )}
+
+      {mode === 'input' && (
+      <>
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
           <table className="wide-table wf-grid">
@@ -274,14 +376,14 @@ export function BuyingPlanClient({
                 <th className="num input-col">FOB qty</th>
                 <th className="num input-col">E-FOB qty</th>
                 <th className="num">Total quantity</th>
-                <th className="num input-col">Standard value</th>
+                <th className="num">Standard cost (J / F / E)</th>
                 <th className="num">Value to be bought</th>
                 <th className="num">Actual issued qty / value</th>
                 {editable && <th aria-label="Remove" />}
               </tr>
             </thead>
             <tbody>
-              {view.map(({ row, totalQty, valueToBeBought, actualQty, actualValue, overPlan }) => (
+              {view.map(({ row, totalQty, cost, missingCost, valueToBeBought, actualQty, actualValue, overPlan }) => (
                 <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
                   <td className="mono">{row.product_code}</td>
                   <td>{productMaster[row.product_code]?.status || '—'}</td>
@@ -298,19 +400,18 @@ export function BuyingPlanClient({
                     </td>
                   ))}
                   <td className="num strong">{fmt.format(totalQty)}</td>
-                  <td className="num input-col">
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="—"
-                      value={row.standard_value}
-                      disabled={!editable}
-                      onChange={(event) =>
-                        patch(row.key, 'standard_value', event.target.value)
-                      }
-                    />
+                  <td className="num">
+                    {cost
+                      ? `${fmt.format(cost.job)} / ${fmt.format(cost.fob)} / ${fmt.format(cost.efob)}`
+                      : '—'}
                   </td>
-                  <td className="num">{money.format(valueToBeBought)}</td>
+                  <td className="num">
+                    {missingCost ? (
+                      <span className="wf-over-tag">no approved cost</span>
+                    ) : (
+                      money.format(valueToBeBought)
+                    )}
+                  </td>
                   <td className="num">
                     {fmt.format(actualQty)} / {money.format(actualValue)}
                     {overPlan && <span className="wf-over-tag">over plan</span>}
@@ -397,6 +498,177 @@ export function BuyingPlanClient({
             />
           )}
         </div>
+      </div>
+      </>
+      )}
+    </>
+  );
+}
+
+type ViewItemFull = {
+  row: Draft;
+  totalQty: number;
+  cost?: { job: number; fob: number; efob: number };
+  missingCost: boolean;
+  valueToBeBought: number;
+  actualQty: number;
+  actualValue: number;
+  remaining: number;
+  pctComplete: number;
+  isOverdue: boolean;
+  fabricType: string;
+  productStatus: string;
+  overPlan: boolean;
+};
+
+function Progress({ pct, overdue = false }: { pct: number; overdue?: boolean }) {
+  return (
+    <div className="wf-progress">
+      <div
+        className={overdue ? 'wf-progress-fill wf-progress-over' : 'wf-progress-fill'}
+        style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+      />
+    </div>
+  );
+}
+
+function PlanView({
+  groups,
+  totals,
+  pctBought,
+  overdueCount,
+  overdueOnly,
+  setOverdueOnly,
+  collapsed,
+  setCollapsed,
+  plannedCount,
+}: {
+  groups: [string, ViewItemFull[]][];
+  totals: { qty: number; value: number; actualQty: number; actualValue: number };
+  pctBought: number;
+  overdueCount: number;
+  overdueOnly: boolean;
+  setOverdueOnly: (v: boolean) => void;
+  collapsed: Record<string, boolean>;
+  setCollapsed: (updater: (c: Record<string, boolean>) => Record<string, boolean>) => void;
+  plannedCount: number;
+}) {
+  if (!plannedCount) {
+    return (
+      <div className="empty-state">
+        <p>Nothing planned yet — switch to Input to fill this month’s buying plan.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="metric-grid wf-metric-grid">
+        <div className="metric-card">
+          <span className="metric-label">Total buying qty</span>
+          <strong>{fmt.format(totals.qty)}</strong>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Total value to buy</span>
+          <strong>{money.format(totals.value)}</strong>
+        </div>
+        <div className="metric-card tone-teal">
+          <span className="metric-label">Issued (actual)</span>
+          <strong>{fmt.format(totals.actualQty)}</strong>
+          <small>{money.format(totals.actualValue)}</small>
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">% bought</span>
+          <strong>{pctBought}%</strong>
+          <Progress pct={pctBought} />
+        </div>
+        <div className={overdueCount ? 'metric-card tone-orange' : 'metric-card'}>
+          <span className="metric-label">Overdue</span>
+          <strong>{overdueCount}</strong>
+        </div>
+      </div>
+
+      <div className="wf-toolbar">
+        <div className="segment wf-segment">
+          <button
+            type="button"
+            className={!overdueOnly ? 'active' : ''}
+            onClick={() => setOverdueOnly(false)}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={overdueOnly ? 'active' : ''}
+            onClick={() => setOverdueOnly(true)}
+          >
+            Overdue only ({overdueCount})
+          </button>
+        </div>
+      </div>
+
+      <div className="wf-plan-groups">
+        {groups.map(([fabric, items]) => {
+          const gt = items.reduce(
+            (a, it) => ({
+              qty: a.qty + it.totalQty,
+              value: a.value + it.valueToBeBought,
+              actualQty: a.actualQty + it.actualQty,
+            }),
+            { qty: 0, value: 0, actualQty: 0 },
+          );
+          const gPct = gt.qty > 0 ? Math.round((gt.actualQty / gt.qty) * 100) : 0;
+          const isCollapsed = collapsed[fabric];
+          return (
+            <div className="wf-plan-group" key={fabric}>
+              <button
+                type="button"
+                className="wf-plan-group-head"
+                onClick={() =>
+                  setCollapsed((c) => ({ ...c, [fabric]: !c[fabric] }))
+                }
+              >
+                {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                <span className="wf-plan-group-name">{fabric}</span>
+                <span className="wf-subtle">{items.length} products</span>
+                <span className="wf-plan-group-stat">{fmt.format(gt.qty)} pcs</span>
+                <span className="wf-plan-group-stat">{money.format(gt.value)}</span>
+                <span className="wf-plan-group-bar">
+                  <Progress pct={gPct} />
+                </span>
+              </button>
+              {!isCollapsed && (
+                <div className="wf-plan-group-body">
+                  {items.map((it) => (
+                    <div
+                      className={it.isOverdue ? 'wf-plan-line wf-plan-line-over' : 'wf-plan-line'}
+                      key={it.row.key}
+                    >
+                      <span className="mono wf-plan-code">{it.row.product_code}</span>
+                      <span className="wf-subtle">{it.productStatus}</span>
+                      <span className="num">{fmt.format(it.totalQty)} pcs</span>
+                      <span className="num">
+                        {it.missingCost ? (
+                          <span className="wf-over-tag">no approved cost</span>
+                        ) : (
+                          money.format(it.valueToBeBought)
+                        )}
+                      </span>
+                      <span className="wf-plan-line-bar">
+                        <Progress pct={it.pctComplete} overdue={it.isOverdue} />
+                      </span>
+                      <span className="num wf-subtle">{it.pctComplete}%</span>
+                      <span className="num wf-subtle">
+                        {it.remaining > 0 ? `${fmt.format(it.remaining)} left` : 'done'}
+                      </span>
+                      {it.isOverdue && <span className="wf-overdue-tag">overdue</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </>
   );

@@ -238,6 +238,49 @@
 .wf-error-text { display: block; color: #b3261e; margin-bottom: 4px; }
 .wf-check-field { flex-direction: row; align-items: center; gap: 10px; }
 .wf-check-field input { width: auto; }
+.wf-search {
+  padding: 7px 12px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.16);
+  font-size: 13px; min-width: 220px;
+}
+
+/* ---- Buying Plan: View module (progress + grouped view) ---- */
+.wf-progress {
+  width: 100%; min-width: 60px; height: 7px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.09); overflow: hidden;
+}
+.wf-progress-fill {
+  height: 100%; border-radius: 999px; background: #1f1d1a;
+  transition: width 0.3s ease;
+}
+.wf-progress-over { background: #d98324; }
+
+.wf-plan-groups { display: flex; flex-direction: column; gap: 10px; }
+.wf-plan-group { border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 12px; background: #fff; overflow: hidden; }
+.wf-plan-group-head {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 16px; background: rgba(0, 0, 0, 0.02); border: none;
+  cursor: pointer; text-align: left; font: inherit;
+}
+.wf-plan-group-head:hover { background: rgba(0, 0, 0, 0.05); }
+.wf-plan-group-name { font-weight: 600; }
+.wf-plan-group-stat { font-variant-numeric: tabular-nums; font-weight: 600; }
+.wf-plan-group-bar { flex: 1; max-width: 220px; margin-left: auto; }
+.wf-plan-group-body { display: flex; flex-direction: column; }
+
+.wf-plan-line {
+  display: grid;
+  grid-template-columns: 110px 1fr 90px 110px minmax(90px, 1fr) 52px 88px auto;
+  align-items: center; gap: 12px;
+  padding: 9px 16px; border-top: 1px solid rgba(0, 0, 0, 0.05); font-size: 13px;
+}
+.wf-plan-line-over { background: rgba(217, 131, 36, 0.06); }
+.wf-plan-code { font-weight: 600; }
+.wf-plan-line .num { font-variant-numeric: tabular-nums; text-align: right; }
+.wf-plan-line-bar { min-width: 90px; }
+.wf-overdue-tag {
+  justify-self: end; font-size: 11px; font-weight: 600; color: #fff;
+  background: #d98324; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
+}
 
 /* ---- PO reporting screen ---- */
 .wf-report-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }

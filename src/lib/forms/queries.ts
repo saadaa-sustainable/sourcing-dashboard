@@ -13,7 +13,9 @@ import type {
   InwardPlanGroup,
   PoApproval,
   PoCycleTime,
+  ProductMaster,
   SdUser,
+  StandardCost,
   VendorCapacityLog,
   VendorCapacityView,
   VendorTypeMultiplier,
@@ -71,6 +73,57 @@ export async function currentUser(): Promise<SdUser | null> {
       is_active: true,
     }
   );
+}
+
+/** Every product's master row, for the Product Master panel + Buying Plan. */
+export async function loadProductMaster(): Promise<ProductMaster[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_product_master')
+    .select('*')
+    .order('product_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as ProductMaster[];
+}
+
+/** Every standard-cost row, for the Standard Cost sheet page. */
+export async function loadStandardCosts(): Promise<StandardCost[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_standard_cost')
+    .select('*')
+    .order('product_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as StandardCost[];
+}
+
+/** Approved standard rates per product, for the Buying Plan value calc. */
+export async function loadApprovedStandardCosts(): Promise<
+  Record<string, { job: number; fob: number; efob: number }>
+> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_standard_cost')
+    .select('product_code, job_cost, fob_cost, efob_cost, status')
+    .eq('status', 'approved')
+    .limit(PAGE_SIZE);
+
+  const map: Record<string, { job: number; fob: number; efob: number }> = {};
+  (
+    (data ?? []) as {
+      product_code: string;
+      job_cost: number | null;
+      fob_cost: number | null;
+      efob_cost: number | null;
+    }[]
+  ).forEach((r) => {
+    map[r.product_code] = {
+      job: Number(r.job_cost) || 0,
+      fob: Number(r.fob_cost) || 0,
+      efob: Number(r.efob_cost) || 0,
+    };
+  });
+  return map;
 }
 
 /** Every provisioned user, for the admin-only User Panel. */
@@ -147,11 +200,15 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     };
   });
 
+  // Approved standard rates drive the per-PO-type buying value.
+  const standardCosts = await loadApprovedStandardCosts();
+
   return {
     plan: (plan as BuyingPlan | null) ?? null,
     lines,
     productCodes,
     productMaster,
+    standardCosts,
     planMonth,
   };
 }
@@ -497,28 +554,48 @@ export async function loadApprovalQueue(): Promise<{
 }> {
   const supabase = await client();
 
-  const [{ data: plans }, { data: discontinues }, { data: pos }, { data: log }] =
-    await Promise.all([
-      supabase
-        .from('sd_buying_plan')
-        .select('*')
-        .in('status', ['submitted', 'pending_l2']),
-      supabase
-        .from('sd_discontinue_request')
-        .select('*')
-        .in('status', ['submitted', 'pending_l2']),
-      supabase
-        .from('sd_po_approval')
-        .select('*')
-        .in('status', ['submitted', 'pending_l2']),
-      supabase
-        .from('sd_approval_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100),
-    ]);
+  const [
+    { data: plans },
+    { data: discontinues },
+    { data: pos },
+    { data: costs },
+    { data: log },
+  ] = await Promise.all([
+    supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_discontinue_request')
+      .select('*')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase.from('sd_po_approval').select('*').in('status', ['submitted', 'pending_l2']),
+    supabase.from('sd_standard_cost').select('*').in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_approval_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100),
+  ]);
 
   const items: ApprovalQueueItem[] = [];
+
+  for (const cost of (costs ?? []) as StandardCost[]) {
+    const rates = [
+      cost.job_cost != null ? `J ${cost.job_cost}` : null,
+      cost.fob_cost != null ? `F ${cost.fob_cost}` : null,
+      cost.efob_cost != null ? `E ${cost.efob_cost}` : null,
+    ].filter(Boolean).join(' · ');
+    items.push({
+      entityType: 'standard_cost',
+      entityId: String(cost.id),
+      label: `Standard cost — ${cost.product_code}`,
+      sublabel: rates || 'No rates entered',
+      status: cost.status,
+      quantity: 0,
+      requiredRole: routeApproval('standard_cost'),
+      submittedBy: cost.submitted_by,
+      submittedAt: cost.submitted_at,
+      href: '/standard-cost',
+    });
+  }
 
   for (const plan of (plans ?? []) as BuyingPlan[]) {
     const { data: lines } = await supabase
