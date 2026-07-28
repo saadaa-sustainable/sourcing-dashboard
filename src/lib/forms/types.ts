@@ -149,44 +149,62 @@ export type InwardPlanGroup = {
   expected_delivery_date: string | null;
 };
 
-export type PoType = 'FG' | 'Material' | 'NPD';
+/** How the PO is placed. Descriptive — does not affect routing. */
+export type PoType = 'FOB' | 'job_work' | 'efob';
+/** What the PO is for. Drives approval routing (NPD/MAT → 2-level; FG by qty). */
+export type PoCategory = 'fg' | 'mat' | 'npd';
 
-/** A PO raised for approval (the write-side of the PO Approval workflow). */
+/**
+ * A PO raised for approval (the write-side of the PO Approval workflow).
+ * Field set is the sheet-verified spec: 18 inputs + DiGiO-signed issuance fields.
+ */
 export type PoApproval = {
   id: number;
-  po_ref: string | null;
-  po_type: PoType;
+  timestamp_created: string;
+  created_by: string | null;
+  // inputs
+  po_type: PoType | null;
   product_code: string | null;
+  po_ref_num: string | null;
   vendor_code: string | null;
-  quantity: number;
-  number_of_colours: number | null;
-  cost_sheet_link: string | null;
-  tna_link: string | null;
-  tna_pp_date: string | null;
-  tna_gpt_date: string | null;
-  tna_cutting_date: string | null;
-  tna_inline_date: string | null;
-  closing_date: string | null;
+  vendor_name: string | null;
+  tna_sheet_url: string | null;
+  cost_sheet_url: string | null;
+  po_qty: number;
+  po_closing_date: string | null;
+  cad_folder_url: string | null;
+  cs_pp_sample_due: string | null;
+  cs_gpt_due: string | null;
+  cs_cutting_start: string | null;
+  cs_inline_qc_due: string | null;
+  critical_path_first_delivery: string | null;
+  trim_card_signed: boolean;
+  buying_plan_no: string | null;
+  category: PoCategory;
+  // approval workflow
   status: SdStatus;
-  submitted_by: string | null;
   submitted_for_approval_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
   rejection_notes: string | null;
-  easycom_po_number: string | null;
-  po_issued_by: string | null;
+  // issuance / DiGiO signing (phase 2 for the signed_* set)
+  easycom_po_no: string | null;
+  signed_po_document_url: string | null;
+  signed_cost_sheet_url: string | null;
+  signed_tna_url: string | null;
+  signed_po_ref_number: string | null;
+  date_of_po_sign: string | null;
+  first_actual_delivery_date: string | null;
   po_issued_at: string | null;
-  dgo_signed: boolean;
-  auto_po_number: string | null;
   created_at: string;
 };
 
 /** Cycle-time row from sd_po_cycle_time (days per lifecycle stage). */
 export type PoCycleTime = {
   id: number;
-  days_submit_to_approve: number | null;
-  days_approve_to_issue: number | null;
-  days_total: number | null;
+  days_to_approve: number | null;
+  days_to_issue: number | null;
+  total_cycle_days: number | null;
 };
 
 /** One row in the unified /approvals queue. */
@@ -201,7 +219,10 @@ export type ApprovalQueueItem = {
   submittedBy: string | null;
   submittedAt: string | null;
   href: string;
-  // PO Approval only: the vendor's live in-process load, shown on the card.
+  // PO Approval only: the vendor's live capacity, shown on the card so the
+  // approver sees the load and the last-updated signed capacity before deciding.
   vendorCode?: string | null;
   vendorInProcessQty?: number | null;
+  vendorCapacityPerMonth?: number | null;
+  vendorCapacityUpdatedAt?: string | null;
 };

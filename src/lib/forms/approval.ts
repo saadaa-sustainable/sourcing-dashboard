@@ -13,19 +13,24 @@ export const ADMIN_THRESHOLD_QTY = 5_000;
 /** Entities that always need admin (founder) approval, whatever the quantity. */
 const ALWAYS_ADMIN: ApprovalEntity[] = ['discontinue'];
 
+/** PO categories that always need 2-level (admin) approval, whatever the qty. */
+const PO_ALWAYS_ADMIN = ['npd', 'mat'];
+
 /**
  * Who has to approve: the team can sign off routine items, admin the rest.
  *
- * For a PO Approval, pass `poType` — an NPD (new product development) PO always
- * escalates to admin; FG / Material follow the quantity threshold.
+ * For a PO Approval, pass its `category` — NPD and MAT are always 2-level
+ * (admin); only FG follows the quantity threshold (≤5000 → team, >5000 → admin).
  */
 export function routeApproval(
   entity: ApprovalEntity,
   quantity = 0,
-  poType?: string | null,
+  category?: string | null,
 ): SdRole {
   if (ALWAYS_ADMIN.includes(entity)) return 'admin';
-  if (entity === 'po_approval' && String(poType).toUpperCase() === 'NPD') return 'admin';
+  if (entity === 'po_approval' && PO_ALWAYS_ADMIN.includes(String(category).toLowerCase())) {
+    return 'admin';
+  }
   return quantity > ADMIN_THRESHOLD_QTY ? 'admin' : 'team';
 }
 
@@ -33,9 +38,9 @@ export function routeApproval(
 export function statusOnSubmit(
   entity: ApprovalEntity,
   quantity = 0,
-  poType?: string | null,
+  category?: string | null,
 ): SdStatus {
-  return routeApproval(entity, quantity, poType) === 'admin'
+  return routeApproval(entity, quantity, category) === 'admin'
     ? 'pending_l2'
     : 'submitted';
 }

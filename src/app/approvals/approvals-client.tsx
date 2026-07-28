@@ -86,14 +86,28 @@ export function ApprovalsClient({
                 <dd>{ROLE_LABEL[item.requiredRole]}</dd>
               </div>
               {item.entityType === 'po_approval' && item.vendorCode && (
-                <div>
-                  <dt>Vendor load (live)</dt>
-                  <dd>
-                    {item.vendorInProcessQty == null
-                      ? 'No open POs'
-                      : `${item.vendorInProcessQty.toLocaleString('en-IN')} pcs in process`}
-                  </dd>
-                </div>
+                <>
+                  <div>
+                    <dt>Vendor load (live)</dt>
+                    <dd>
+                      {item.vendorInProcessQty == null
+                        ? 'No open POs'
+                        : `${item.vendorInProcessQty.toLocaleString('en-IN')} pcs in process`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Capacity (last updated)</dt>
+                    <dd>
+                      {item.vendorCapacityPerMonth
+                        ? `${item.vendorCapacityPerMonth.toLocaleString('en-IN')} pcs/mo${
+                            item.vendorCapacityUpdatedAt
+                              ? ` · ${new Date(item.vendorCapacityUpdatedAt).toLocaleDateString('en-IN')}`
+                              : ''
+                          }`
+                        : 'Not logged yet'}
+                    </dd>
+                  </div>
+                </>
               )}
             </dl>
             <div className="wf-queue-foot">

@@ -186,6 +186,39 @@ export async function loadInProcessByVendor(): Promise<Map<string, number>> {
 }
 
 /**
+ * Each vendor's most recently logged monthly capacity (sd_vendor_capacity_log),
+ * so the PO approval card can show "last-updated capacity". Keyed lower-case.
+ */
+export async function loadLatestVendorCapacity(): Promise<
+  Map<string, { capacityPerMonth: number; weekOf: string | null }>
+> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_vendor_capacity_log')
+    .select('vendor_code, capacity_per_month, week_of')
+    .order('week_of', { ascending: false });
+
+  const map = new Map<string, { capacityPerMonth: number; weekOf: string | null }>();
+  (
+    (data ?? []) as {
+      vendor_code: string | null;
+      capacity_per_month: number | null;
+      week_of: string | null;
+    }[]
+  ).forEach((row) => {
+    const code = (row.vendor_code ?? '').trim().toLowerCase();
+    // Rows arrive newest-first, so the first one seen per vendor is the latest.
+    if (code && !map.has(code)) {
+      map.set(code, {
+        capacityPerMonth: Number(row.capacity_per_month) || 0,
+        weekOf: row.week_of ?? null,
+      });
+    }
+  });
+  return map;
+}
+
+/**
  * Inward Plan — arriving stock from open (Approved) POs, grouped to colour level
  * (po_number × product_code × product_variant) off sd_po_lines_enriched.
  * Only lines with pending qty > 0 (still to arrive). Soonest EDD first.
@@ -509,27 +542,31 @@ export async function loadApprovalQueue(): Promise<{
   }
 
   if ((pos ?? []).length) {
-    const capacityByVendor = await loadInProcessByVendor();
+    const [inProcessByVendor, latestCapacity] = await Promise.all([
+      loadInProcessByVendor(),
+      loadLatestVendorCapacity(),
+    ]);
     for (const po of (pos ?? []) as PoApproval[]) {
-      const qty = Number(po.quantity || 0);
+      const qty = Number(po.po_qty || 0);
       const vendor = (po.vendor_code ?? '').trim();
+      const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
       items.push({
         entityType: 'po_approval',
         entityId: String(po.id),
-        label: `PO ${po.po_ref ?? `#${po.id}`} — ${po.po_type}`,
-        sublabel: `${po.product_code ?? '—'} · ${vendor || '—'} · ${qty.toLocaleString('en-IN')} pcs${
-          po.number_of_colours ? ` · ${po.number_of_colours} colours` : ''
-        }`,
+        label: `PO ${po.po_ref_num ?? `#${po.id}`} — ${po.category.toUpperCase()}`,
+        sublabel: `${po.product_code ?? '—'} · ${po.vendor_name || vendor || '—'} · ${qty.toLocaleString('en-IN')} pcs`,
         status: po.status,
         quantity: qty,
-        requiredRole: routeApproval('po_approval', qty, po.po_type),
-        submittedBy: po.submitted_by,
+        requiredRole: routeApproval('po_approval', qty, po.category),
+        submittedBy: po.created_by,
         submittedAt: po.submitted_for_approval_at,
         href: '/po-approval',
         vendorCode: vendor || null,
         vendorInProcessQty: vendor
-          ? capacityByVendor.get(vendor.toLowerCase()) ?? null
+          ? inProcessByVendor.get(vendor.toLowerCase()) ?? null
           : null,
+        vendorCapacityPerMonth: cap?.capacityPerMonth ?? null,
+        vendorCapacityUpdatedAt: cap?.weekOf ?? null,
       });
     }
   }

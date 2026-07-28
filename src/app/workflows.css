@@ -236,6 +236,19 @@
 .wf-issue-row { display: flex; gap: 6px; align-items: center; }
 .wf-issue-row input { width: 120px; }
 .wf-error-text { display: block; color: #b3261e; margin-bottom: 4px; }
+.wf-check-field { flex-direction: row; align-items: center; gap: 10px; }
+.wf-check-field input { width: auto; }
+
+/* ---- PO reporting screen ---- */
+.wf-report-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.wf-report-card { padding: 14px 16px; }
+.wf-report-count {
+  font-weight: 700; font-size: 15px; background: rgba(0, 0, 0, 0.06);
+  border-radius: 999px; padding: 1px 10px;
+}
+.wf-report-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.wf-report-list li { display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.wf-report-empty { margin: 8px 0 0; }
 .wf-icon-btn {
   background: none;
   border: none;

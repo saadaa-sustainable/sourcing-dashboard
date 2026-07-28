@@ -24,8 +24,8 @@
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { currentUser } from './queries';
-import { canApprove, canEdit, canSubmit, routeApproval, statusOnSubmit } from './approval';
-import type { ApprovalEntity, PoType, SdRole, SdStatus } from './types';
+import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
+import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from './types';
 
 export type ActionResult =
   | { ok: true; message?: string; id?: number }
@@ -395,7 +395,8 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
 /* PO Approval                                                         */
 /* ================================================================== */
 
-const PO_TYPES: PoType[] = ['FG', 'Material', 'NPD'];
+const PO_TYPES: PoType[] = ['FOB', 'job_work', 'efob'];
+const PO_CATEGORIES: PoCategory[] = ['fg', 'mat', 'npd'];
 const dateOrNull = (v: unknown) =>
   /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? '')) ? String(v) : null;
 const textOrNull = (v: unknown) => {
@@ -403,42 +404,29 @@ const textOrNull = (v: unknown) => {
   return s || null;
 };
 
-/** Number of colours = distinct variants known for the product code (from PO data). */
-async function countColours(
-  supabase: Awaited<ReturnType<typeof supa>>,
-  productCode: string | null,
-): Promise<number | null> {
-  if (!productCode) return null;
-  const { data } = await supabase
-    .from('sd_po_lines_enriched')
-    .select('product_variant')
-    .eq('product_code', productCode);
-  if (!data?.length) return null;
-  const set = new Set(
-    (data as { product_variant: string | null }[])
-      .map((r) => r.product_variant)
-      .filter(Boolean),
-  );
-  return set.size || null;
-}
-
-/** Read the PO Approval fields out of a FormData into a table row. */
+/** Read the PO Approval input fields out of a FormData into a table row. */
 function readPoFields(formData: FormData) {
-  const rawType = String(formData.get('po_type') ?? 'FG');
-  const po_type: PoType = (PO_TYPES.includes(rawType as PoType) ? rawType : 'FG') as PoType;
+  const rawType = String(formData.get('po_type') ?? '');
+  const rawCat = String(formData.get('category') ?? 'fg').toLowerCase();
   return {
-    po_ref: textOrNull(formData.get('po_ref')),
-    po_type,
+    po_type: (PO_TYPES.includes(rawType as PoType) ? rawType : null) as PoType | null,
     product_code: textOrNull(formData.get('product_code')),
+    po_ref_num: textOrNull(formData.get('po_ref_num')),
     vendor_code: textOrNull(formData.get('vendor_code')),
-    quantity: Number(formData.get('quantity') ?? 0) || 0,
-    cost_sheet_link: textOrNull(formData.get('cost_sheet_link')),
-    tna_link: textOrNull(formData.get('tna_link')),
-    tna_pp_date: dateOrNull(formData.get('tna_pp_date')),
-    tna_gpt_date: dateOrNull(formData.get('tna_gpt_date')),
-    tna_cutting_date: dateOrNull(formData.get('tna_cutting_date')),
-    tna_inline_date: dateOrNull(formData.get('tna_inline_date')),
-    closing_date: dateOrNull(formData.get('closing_date')),
+    vendor_name: textOrNull(formData.get('vendor_name')),
+    tna_sheet_url: textOrNull(formData.get('tna_sheet_url')),
+    cost_sheet_url: textOrNull(formData.get('cost_sheet_url')),
+    po_qty: Number(formData.get('po_qty') ?? 0) || 0,
+    po_closing_date: dateOrNull(formData.get('po_closing_date')),
+    cad_folder_url: textOrNull(formData.get('cad_folder_url')),
+    cs_pp_sample_due: dateOrNull(formData.get('cs_pp_sample_due')),
+    cs_gpt_due: dateOrNull(formData.get('cs_gpt_due')),
+    cs_cutting_start: dateOrNull(formData.get('cs_cutting_start')),
+    cs_inline_qc_due: dateOrNull(formData.get('cs_inline_qc_due')),
+    critical_path_first_delivery: dateOrNull(formData.get('critical_path_first_delivery')),
+    trim_card_signed: formData.get('trim_card_signed') === 'true',
+    buying_plan_no: textOrNull(formData.get('buying_plan_no')),
+    category: (PO_CATEGORIES.includes(rawCat as PoCategory) ? rawCat : 'fg') as PoCategory,
   };
 }
 
@@ -469,12 +457,11 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   }
 
   const fields = readPoFields(formData);
-  const number_of_colours = await countColours(supabase, fields.product_code);
 
   if (id) {
     const { error } = await supabase
       .from('sd_po_approval')
-      .update({ ...fields, number_of_colours })
+      .update(fields)
       .eq('id', id)
       .eq('status', 'draft');
     if (error) return fail(`Could not save: ${error.message}`);
@@ -484,7 +471,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
 
   const { data, error } = await supabase
     .from('sd_po_approval')
-    .insert({ ...fields, number_of_colours, status: 'draft' })
+    .insert({ ...fields, created_by: user.email, status: 'draft' })
     .select('id')
     .single();
   if (error) return fail(`Could not create PO: ${error.message}`);
@@ -502,22 +489,21 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, po_ref, po_type, product_code, quantity')
+    .select('id, status, po_ref_num, category, product_code, po_qty')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
   if (!canSubmit(user.role, po.status as SdStatus)) {
     return fail('This PO cannot be submitted from its current state.');
   }
-  const qty = Number(po.quantity || 0);
+  const qty = Number(po.po_qty || 0);
   if (qty <= 0) return fail('Enter a quantity before submitting.');
 
-  const next = statusOnSubmit('po_approval', qty, po.po_type as string);
+  const next = statusOnSubmit('po_approval', qty, po.category as string);
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
     .update({
       status: next,
-      submitted_by: user.email,
       submitted_for_approval_at: new Date().toISOString(),
       rejection_notes: null,
     })
@@ -530,7 +516,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   await writeLog(
     'po_approval',
     String(id),
-    `PO ${po.po_ref ?? `#${id}`} · ${po.po_type} · ${po.product_code ?? ''}`.trim(),
+    `PO ${po.po_ref_num ?? `#${id}`} · ${po.category} · ${po.product_code ?? ''}`.trim(),
     'draft',
     next,
     user.email,
@@ -551,7 +537,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   }
 
   const id = Number(formData.get('id'));
-  const easycom = String(formData.get('easycom_po_number') ?? '').trim();
+  const easycom = String(formData.get('easycom_po_no') ?? '').trim();
   if (!id) return fail('Invalid PO.');
   if (!easycom) return fail('Enter the EasyCom PO number.');
 
@@ -559,8 +545,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
     .update({
-      easycom_po_number: easycom,
-      po_issued_by: user.email,
+      easycom_po_no: easycom,
       po_issued_at: new Date().toISOString(),
     })
     .eq('id', id)
