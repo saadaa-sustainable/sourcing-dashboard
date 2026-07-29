@@ -376,9 +376,10 @@ export function BuyingPlanClient({
                 <th className="num input-col">FOB qty</th>
                 <th className="num input-col">E-FOB qty</th>
                 <th className="num">Total quantity</th>
-                <th className="num">Standard cost (J / F / E)</th>
+                <th className="num">Standard cost</th>
                 <th className="num">Value to be bought</th>
-                <th className="num">Actual issued qty / value</th>
+                <th className="num">Actual issued quantity</th>
+                <th className="num">Actual issued value</th>
                 {editable && <th aria-label="Remove" />}
               </tr>
             </thead>
@@ -413,9 +414,10 @@ export function BuyingPlanClient({
                     )}
                   </td>
                   <td className="num">
-                    {fmt.format(actualQty)} / {money.format(actualValue)}
+                    {fmt.format(actualQty)}
                     {overPlan && <span className="wf-over-tag">over plan</span>}
                   </td>
+                  <td className="num">{money.format(actualValue)}</td>
                   {editable && (
                     <td>
                       <button
@@ -436,7 +438,7 @@ export function BuyingPlanClient({
               ))}
               {!view.length && (
                 <tr>
-                  <td colSpan={11} className="wf-empty-cell">
+                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
                     No product codes added yet. Discontinued variants are excluded
                     automatically.
                   </td>
@@ -450,9 +452,8 @@ export function BuyingPlanClient({
                   <td className="num strong">{fmt.format(totals.qty)}</td>
                   <td />
                   <td className="num strong">{money.format(totals.value)}</td>
-                  <td className="num">
-                    {fmt.format(totals.actualQty)} / {money.format(totals.actualValue)}
-                  </td>
+                  <td className="num strong">{fmt.format(totals.actualQty)}</td>
+                  <td className="num strong">{money.format(totals.actualValue)}</td>
                   {editable && <td />}
                 </tr>
               </tfoot>
