@@ -605,6 +605,24 @@ function PlanView({
             Overdue only ({overdueCount})
           </button>
         </div>
+        <div className="wf-toolbar-right">
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm"
+            onClick={() =>
+              setCollapsed(() => Object.fromEntries(groups.map(([f]) => [f, true])))
+            }
+          >
+            Collapse all
+          </button>
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm"
+            onClick={() => setCollapsed(() => ({}))}
+          >
+            Expand all
+          </button>
+        </div>
       </div>
 
       <div className="wf-plan-groups">
