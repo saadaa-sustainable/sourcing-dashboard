@@ -243,6 +243,21 @@
   font-size: 13px; min-width: 220px;
 }
 
+/* ---- Vendor Capacity: live vs fixed (ingested) markers ---- */
+.wf-live-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.04em;
+  color: #1f7a4d; background: rgba(46, 138, 96, 0.14);
+  padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+}
+.wf-fixed-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+  color: #6b6357; background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+}
+.wf-fixed-value { font-weight: 600; opacity: 0.85; }
+
 /* ---- Buying Plan: View module (progress + grouped view) ---- */
 .wf-progress {
   width: 100%; min-width: 60px; height: 7px; border-radius: 999px;

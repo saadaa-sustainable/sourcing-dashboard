@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, Send } from 'lucide-react';
+import { AlertTriangle, Lock, Send } from 'lucide-react';
 import { submitVendorCapacity } from '@/lib/forms/actions';
 import { canEdit, weekLabel } from '@/lib/forms/approval';
 import { Field, Notice } from '@/components/forms/form-layout';
@@ -14,12 +14,12 @@ import type {
 type Row = {
   vendor_code: string;
   vendor_name: string;
-  vendor_type: string;
-  machines_allocated: string;
-  active_karigar: string;
-  capacity_per_month: string;
-  machines_at_onboarding: string;
-  capacity_signed: string;
+  vendor_type: string; // normalised job_work | efob | fob (fixed, read-only)
+  machines_allocated: string; // LIVE weekly
+  active_karigar: string; // LIVE weekly
+  capacity_per_month: string; // LIVE weekly (current capacity)
+  machinesAtOnboarding: number; // ingested onboarding constant
+  capacitySigned: number; // ingested onboarding constant
   inProcessQty: number;
   lastUpdated: string | null;
 };
@@ -27,8 +27,14 @@ type Row = {
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const num = (value: string) => Number(value) || 0;
 
+const TYPE_LABEL: Record<string, string> = {
+  job_work: 'Job work',
+  efob: 'E-FOB',
+  fob: 'FOB',
+};
+
 function normaliseType(raw: string) {
-  const value = raw.toLowerCase();
+  const value = (raw || '').toLowerCase();
   if (value.includes('job')) return 'job_work';
   if (value.includes('e-fob') || value.includes('efob')) return 'efob';
   if (value.includes('fob')) return 'fob';
@@ -46,6 +52,8 @@ export function VendorCapacityClient({
     vendor_code: string;
     vendor_name: string;
     vendor_type: string;
+    machinesAtOnboarding: number;
+    capacitySigned: number;
     inProcessQty: number;
     current: VendorCapacityLog | null;
     prior: VendorCapacityLog | null;
@@ -74,8 +82,8 @@ export function VendorCapacityClient({
         machines_allocated: source?.machines_allocated?.toString() ?? '',
         active_karigar: source?.active_karigar?.toString() ?? '',
         capacity_per_month: source?.capacity_per_month?.toString() ?? '',
-        machines_at_onboarding: source?.machines_at_onboarding?.toString() ?? '',
-        capacity_signed: source?.capacity_signed?.toString() ?? '',
+        machinesAtOnboarding: vendor.machinesAtOnboarding,
+        capacitySigned: vendor.capacitySigned,
         inProcessQty: vendor.inProcessQty,
         lastUpdated: vendor.current?.submitted_at ?? null,
       };
@@ -85,8 +93,10 @@ export function VendorCapacityClient({
   const view = rows.map((row) => {
     const config = multiplierByType.get(row.vendor_type);
     const multiplier = config?.multiplier ?? 1;
+    // capacity/month is already the vendor's realistic ~26-working-day output,
+    // so it is used as-is × the type multiplier (no 30-day inflation).
     const capacity = num(row.capacity_per_month);
-    const poCapacity = capacity * multiplier;
+    const poCapacity = Math.round(capacity * multiplier);
     const available = poCapacity - row.inProcessQty;
     return {
       row,
@@ -127,12 +137,24 @@ export function VendorCapacityClient({
     payload.set(
       'rows',
       JSON.stringify(
-        rows.filter(
-          (row) =>
-            row.capacity_per_month !== '' ||
-            row.machines_allocated !== '' ||
-            row.active_karigar !== '',
-        ),
+        rows
+          .filter(
+            (row) =>
+              row.capacity_per_month !== '' ||
+              row.machines_allocated !== '' ||
+              row.active_karigar !== '',
+          )
+          // The onboarding constants ride along so each weekly record keeps a
+          // snapshot, but they are never typed — they come from the master.
+          .map((row) => ({
+            vendor_code: row.vendor_code,
+            vendor_name: row.vendor_name,
+            machines_allocated: row.machines_allocated,
+            active_karigar: row.active_karigar,
+            capacity_per_month: row.capacity_per_month,
+            machines_at_onboarding: row.machinesAtOnboarding,
+            capacity_signed: row.capacitySigned,
+          })),
       ),
     );
     start(async () => {
@@ -170,9 +192,16 @@ export function VendorCapacityClient({
       </div>
 
       <Notice tone="info">
-        Submit before <strong>Monday 14:00 IST</strong> — the PPM runs at 16:00.
-        Every submission is appended as its own weekly record; nothing is
-        overwritten across weeks.
+        <span className="wf-live-tag">LIVE</span> fields are what you fill each
+        week (machines allotted, active karigar, current capacity).{' '}
+        <span className="wf-fixed-tag">
+          <Lock size={10} /> FIXED
+        </span>{' '}
+        fields — vendor type, machines at onboarding, capacity signed — come from
+        the vendor master and can’t be edited here (a type change needs a separate
+        approval). Capacity/month is the vendor’s realistic monthly output (~26
+        working days), used as-is. Submit before <strong>Monday 14:00 IST</strong>;
+        PPM runs at 16:00.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -184,16 +213,42 @@ export function VendorCapacityClient({
             <thead>
               <tr>
                 <th>Vendor</th>
-                <th>Type</th>
-                <th className="num input-col">Machines allotted</th>
-                <th className="num input-col">Active karigar</th>
-                <th className="num input-col">Capacity / month</th>
-                <th className="num input-col">Machines at onboarding</th>
-                <th className="num input-col">Capacity signed</th>
-                <th className="num">PO capacity</th>
-                <th className="num">In process</th>
-                <th className="num">Available</th>
-                <th className="num">Utilisation</th>
+                <th>
+                  Type <span className="wf-fixed-tag"><Lock size={9} /></span>
+                </th>
+                <th className="num input-col">
+                  Machines allotted <span className="wf-live-tag">LIVE</span>
+                  <small className="wf-subtle">machines</small>
+                </th>
+                <th className="num input-col">
+                  Active karigar <span className="wf-live-tag">LIVE</span>
+                  <small className="wf-subtle">workers</small>
+                </th>
+                <th className="num input-col">
+                  Capacity / month <span className="wf-live-tag">LIVE</span>
+                  <small className="wf-subtle">pcs</small>
+                </th>
+                <th className="num">
+                  Machines at onboarding{' '}
+                  <span className="wf-fixed-tag"><Lock size={9} /></span>
+                  <small className="wf-subtle">machines</small>
+                </th>
+                <th className="num">
+                  Capacity signed <span className="wf-fixed-tag"><Lock size={9} /></span>
+                  <small className="wf-subtle">pcs</small>
+                </th>
+                <th className="num">
+                  PO capacity<small className="wf-subtle">pcs</small>
+                </th>
+                <th className="num">
+                  In process<small className="wf-subtle">pcs</small>
+                </th>
+                <th className="num">
+                  Available<small className="wf-subtle">pcs</small>
+                </th>
+                <th className="num">
+                  Utilisation<small className="wf-subtle">%</small>
+                </th>
                 <th>Last updated</th>
               </tr>
             </thead>
@@ -209,29 +264,15 @@ export function VendorCapacityClient({
                       <small className="mono wf-subtle">{row.vendor_code}</small>
                     </td>
                     <td>
-                      <select
-                        value={row.vendor_type}
-                        disabled={!editable}
-                        onChange={(event) =>
-                          patch(row.vendor_code, 'vendor_type', event.target.value)
-                        }
-                      >
-                        <option value="job_work">Job work</option>
-                        <option value="efob">E-FOB</option>
-                        <option value="fob">FOB</option>
-                      </select>
+                      <span className="wf-fixed-value">
+                        {TYPE_LABEL[row.vendor_type]}
+                      </span>
                       <small className="wf-subtle">
-                        ×{multiplier} · {stockDays}d
+                        ×{multiplier} · stock {stockDays}d
                       </small>
                     </td>
                     {(
-                      [
-                        'machines_allocated',
-                        'active_karigar',
-                        'capacity_per_month',
-                        'machines_at_onboarding',
-                        'capacity_signed',
-                      ] as const
+                      ['machines_allocated', 'active_karigar', 'capacity_per_month'] as const
                     ).map((field) => (
                       <td key={field} className="num input-col">
                         <input
@@ -245,13 +286,19 @@ export function VendorCapacityClient({
                         />
                       </td>
                     ))}
+                    <td className="num wf-fixed-value">
+                      {row.machinesAtOnboarding
+                        ? fmt.format(row.machinesAtOnboarding)
+                        : '—'}
+                    </td>
+                    <td className="num wf-fixed-value">
+                      {row.capacitySigned ? fmt.format(row.capacitySigned) : '—'}
+                    </td>
                     <td className="num">{fmt.format(poCapacity)}</td>
                     <td className="num">{fmt.format(row.inProcessQty)}</td>
                     <td className="num strong">
                       {fmt.format(available)}
-                      {overProduction && (
-                        <span className="wf-over-tag">over</span>
-                      )}
+                      {overProduction && <span className="wf-over-tag">over</span>}
                     </td>
                     <td className="num">{utilisationPct}%</td>
                     <td className="wf-subtle">
@@ -276,8 +323,9 @@ export function VendorCapacityClient({
 
       <div className="wf-footer-bar">
         <p className="wf-footer-note">
-          Available PO capacity = (capacity × vendor-type multiplier) − in-process
-          quantity. A negative value is over production.
+          PO capacity = current capacity/month (realistic ~26 working-day output)
+          × type multiplier (Job ×1.0, E-FOB ×1.5, FOB ×2.5). Available = PO
+          capacity − in-process. Negative = over production.
         </p>
         <div className="wf-footer-actions">
           {editable && (

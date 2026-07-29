@@ -37,10 +37,11 @@ export type VendorMaster = {
   vendor_name: string | null;
   onboarding_date: string | null;
   merchant_name: string | null;
+  primary_type: string | null;   // JOB | FOB | EFOB | EFOB/FOB — frozen at onboarding
   total_machines: number;
   total_active_karigar: number;
-  machines_for_saadaa: number;
-  capacity_per_month: number;
+  machines_for_saadaa: number;    // machines committed to SAADAA at onboarding
+  capacity_per_month: number;     // signed monthly capacity at onboarding
   karigar_latest: number;
   karigar_latest_as_of: string | null;
 };

@@ -146,7 +146,7 @@ async function loadFixtures(): Promise<DashboardData> {
   const karigarKey = karigarIndex >= 0 ? masterTable.headers[karigarIndex] : '';
   const vendorMasters: VendorMaster[] = masterTable.objects.filter((row) => s(row.vendor_code)).map((row) => ({
     vendor_code: s(row.vendor_code)!, vendor_name: s(row.vendor_name), onboarding_date: date(row.onboarding_date),
-    merchant_name: s(row.merchant_name), total_machines: n(row.total_machines),
+    merchant_name: s(row.merchant_name), primary_type: s(row.primary_type), total_machines: n(row.total_machines),
     total_active_karigar: n(row.total_active_karigar), machines_for_saadaa: n(row.no_of_machines_for_saadaa),
     capacity_per_month: n(row.capacity_month_for_saadaa),
     karigar_latest: karigarKey ? n(row[karigarKey]) : 0,
