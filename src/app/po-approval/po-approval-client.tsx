@@ -77,6 +77,22 @@ export function PoApprovalClient({
   const set = (k: keyof typeof BLANK, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  // Auto-suggest the PO ref in the observed standard format
+  // FY<yy>-<yy+1>/<TYPE>/<PRODUCT>/<VENDOR>- (sequence appended manually for now).
+  // Falls back to manual entry — the exact numbering rule is still to be confirmed.
+  function suggestRef() {
+    const d = new Date();
+    const fyStart = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+    const yy = String(fyStart).slice(2);
+    const yy2 = String(fyStart + 1).slice(2);
+    const typeTok =
+      form.po_type === 'job_work' ? 'JOB' : form.po_type === 'efob' ? 'EFOB' : 'FOB';
+    set(
+      'po_ref_num',
+      `FY${yy}-${yy2}/${typeTok}/${form.product_code}/${form.vendor_code.toUpperCase()}-`,
+    );
+  }
+
   const buildPayload = () => {
     const p = new FormData();
     Object.entries(form).forEach(([k, v]) => p.set(k, v));
@@ -166,12 +182,26 @@ export function PoApprovalClient({
                 ))}
               </datalist>
             </Field>
-            <Field label="PO reference number" hint="Auto-numbering is phase 2">
-              <input
-                value={form.po_ref_num}
-                placeholder="e.g. PO-2026-07-014"
-                onChange={(e) => set('po_ref_num', e.target.value)}
-              />
+            <Field
+              label="PO reference number"
+              hint="Suggest builds the standard code — edit or type your own"
+            >
+              <div className="wf-issue-row">
+                <input
+                  value={form.po_ref_num}
+                  placeholder="e.g. FY26-27/FOB/SDRPT/REG-01"
+                  onChange={(e) => set('po_ref_num', e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={suggestRef}
+                  disabled={!form.po_type || !form.product_code || !form.vendor_code}
+                  title="Auto-generate in the standard format"
+                >
+                  Suggest
+                </button>
+              </div>
             </Field>
             <Field
               label="Vendor code"
@@ -434,9 +464,21 @@ function PoRow({
   liveLoad?: number;
   role: SdRole;
 }) {
-  const [easycom, setEasycom] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [signing, setSigning] = useState(false);
+  const [iss, setIss] = useState({
+    easycom_po_no: po.easycom_po_no ?? '',
+    first_actual_delivery_date: po.first_actual_delivery_date ?? '',
+    signed_po_document_url: po.signed_po_document_url ?? '',
+    signed_cost_sheet_url: po.signed_cost_sheet_url ?? '',
+    signed_tna_url: po.signed_tna_url ?? '',
+    signed_po_ref_number: po.signed_po_ref_number ?? '',
+    date_of_po_sign: po.date_of_po_sign ?? '',
+  });
+  const setI = (k: keyof typeof iss, v: string) => setIss((s) => ({ ...s, [k]: v }));
+  const canIssue = canEdit(role, 'draft');
+  const issued = Boolean(po.po_issued_at);
 
   function submit() {
     setError(null);
@@ -449,11 +491,11 @@ function PoRow({
     });
   }
 
-  function issue() {
+  function saveIssuance() {
     setError(null);
     const p = new FormData();
     p.set('id', String(po.id));
-    p.set('easycom_po_no', easycom);
+    Object.entries(iss).forEach(([k, v]) => p.set(k, v));
     start(async () => {
       const res = await issuePoApproval(p);
       if (res.ok) window.location.reload();
@@ -462,85 +504,156 @@ function PoRow({
   }
 
   return (
-    <tr>
-      <td className="mono">{po.po_ref_num ?? `#${po.id}`}</td>
-      <td>{catLabel(po.category)}</td>
-      <td className="mono">{po.product_code ?? '—'}</td>
-      <td>
-        {po.vendor_name || po.vendor_code || '—'}
-        {po.vendor_code && (
-          <small className="wf-subtle">
-            {liveLoad == null
-              ? 'no open POs'
-              : `${liveLoad.toLocaleString('en-IN')} pcs in process`}
-          </small>
-        )}
-      </td>
-      <td>{Number(po.po_qty).toLocaleString('en-IN')}</td>
-      <td>
-        <StatusBadge status={po.status} />
-        {po.status === 'rejected' && po.rejection_notes && (
-          <small className="wf-subtle">{po.rejection_notes}</small>
-        )}
-        {po.easycom_po_no && (
-          <small className="wf-subtle">EasyCom {po.easycom_po_no}</small>
-        )}
-      </td>
-      <td className="wf-subtle">
-        {cycle?.total_cycle_days != null
-          ? `${cycle.total_cycle_days} total`
-          : cycle?.days_to_approve != null
-            ? `${cycle.days_to_approve} to approve`
-            : '—'}
-      </td>
-      <td>
-        {error && <small className="wf-subtle wf-error-text">{error}</small>}
-        {po.status === 'draft' && canSubmit(role, po.status) && (
-          <button
-            type="button"
-            className="wf-btn wf-btn-primary wf-btn-sm"
-            onClick={submit}
-            disabled={pending}
-          >
-            <Send size={14} /> Submit
-          </button>
-        )}
-        {(po.status === 'submitted' || po.status === 'pending_l2') &&
-          (canApprove(role, po.status) ? (
-            <ApprovalBar
-              entityType="po_approval"
-              entityId={String(po.id)}
-              entityLabel={`PO ${po.po_ref_num ?? `#${po.id}`} · ${catLabel(po.category)}`}
-              onDone={(res) => {
-                if (res.ok) window.location.reload();
-              }}
-            />
-          ) : (
-            <span className="wf-subtle">Awaiting approval</span>
-          ))}
-        {po.status === 'approved' &&
-          !po.easycom_po_no &&
-          canEdit(role, 'draft') && (
-            <div className="wf-issue-row">
-              <input
-                value={easycom}
-                placeholder="EasyCom PO #"
-                onChange={(e) => setEasycom(e.target.value)}
-              />
-              <button
-                type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                onClick={issue}
-                disabled={pending || !easycom.trim()}
-              >
-                <FileCheck size={14} /> Issue
-              </button>
-            </div>
+    <>
+      <tr className={signing ? 'wf-row-open' : ''}>
+        <td className="mono">{po.po_ref_num ?? `#${po.id}`}</td>
+        <td>{catLabel(po.category)}</td>
+        <td className="mono">{po.product_code ?? '—'}</td>
+        <td>
+          {po.vendor_name || po.vendor_code || '—'}
+          {po.vendor_code && (
+            <small className="wf-subtle">
+              {liveLoad == null
+                ? 'no open POs'
+                : `${liveLoad.toLocaleString('en-IN')} pcs in process`}
+            </small>
           )}
-        {po.status === 'approved' && po.easycom_po_no && (
-          <span className="wf-subtle">Issued</span>
-        )}
-      </td>
-    </tr>
+        </td>
+        <td>{Number(po.po_qty).toLocaleString('en-IN')}</td>
+        <td>
+          <StatusBadge status={po.status} />
+          {po.status === 'rejected' && po.rejection_notes && (
+            <small className="wf-subtle">{po.rejection_notes}</small>
+          )}
+          {po.easycom_po_no && (
+            <small className="wf-subtle">EasyCom {po.easycom_po_no}</small>
+          )}
+        </td>
+        <td className="wf-subtle">
+          {cycle?.total_cycle_days != null
+            ? `${cycle.total_cycle_days} total`
+            : cycle?.days_to_approve != null
+              ? `${cycle.days_to_approve} to approve`
+              : '—'}
+        </td>
+        <td>
+          {error && <small className="wf-subtle wf-error-text">{error}</small>}
+          {po.status === 'draft' && canSubmit(role, po.status) && (
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              onClick={submit}
+              disabled={pending}
+            >
+              <Send size={14} /> Submit
+            </button>
+          )}
+          {(po.status === 'submitted' || po.status === 'pending_l2') &&
+            (canApprove(role, po.status) ? (
+              <ApprovalBar
+                entityType="po_approval"
+                entityId={String(po.id)}
+                entityLabel={`PO ${po.po_ref_num ?? `#${po.id}`} · ${catLabel(po.category)}`}
+                onDone={(res) => {
+                  if (res.ok) window.location.reload();
+                }}
+              />
+            ) : (
+              <span className="wf-subtle">Awaiting approval</span>
+            ))}
+          {po.status === 'approved' && canIssue && (
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              onClick={() => setSigning((v) => !v)}
+            >
+              <FileCheck size={14} /> {issued ? 'Signing' : 'Issue / sign'}
+            </button>
+          )}
+          {po.status === 'approved' && !canIssue && issued && (
+            <span className="wf-subtle">Issued</span>
+          )}
+        </td>
+      </tr>
+      {signing && po.status === 'approved' && canIssue && (
+        <tr className="wf-issue-panel-row">
+          <td colSpan={8}>
+            <div className="wf-issue-panel">
+              <strong className="wf-issue-title">
+                Issue &amp; sign — {po.po_ref_num ?? `PO #${po.id}`}
+              </strong>
+              <div className="wf-form-grid">
+                <Field label="EasyCom PO no." hint="Maps to the real PO — required to issue">
+                  <input
+                    value={iss.easycom_po_no}
+                    placeholder="EasyCom PO #"
+                    onChange={(e) => setI('easycom_po_no', e.target.value)}
+                  />
+                </Field>
+                <Field label="First actual delivery date" hint="EasyCom">
+                  <input
+                    type="date"
+                    value={iss.first_actual_delivery_date}
+                    onChange={(e) => setI('first_actual_delivery_date', e.target.value)}
+                  />
+                </Field>
+                <Field label="Signed PO document" hint="DiGiO — URL for now">
+                  <input
+                    value={iss.signed_po_document_url}
+                    placeholder="https://…"
+                    onChange={(e) => setI('signed_po_document_url', e.target.value)}
+                  />
+                </Field>
+                <Field label="Signed cost sheet" hint="DiGiO — URL for now">
+                  <input
+                    value={iss.signed_cost_sheet_url}
+                    placeholder="https://…"
+                    onChange={(e) => setI('signed_cost_sheet_url', e.target.value)}
+                  />
+                </Field>
+                <Field label="Signed TNA" hint="DiGiO — URL for now">
+                  <input
+                    value={iss.signed_tna_url}
+                    placeholder="https://…"
+                    onChange={(e) => setI('signed_tna_url', e.target.value)}
+                  />
+                </Field>
+                <Field label="Signed PO ref number" hint="DiGiO">
+                  <input
+                    value={iss.signed_po_ref_number}
+                    onChange={(e) => setI('signed_po_ref_number', e.target.value)}
+                  />
+                </Field>
+                <Field label="Date of PO sign" hint="DiGiO">
+                  <input
+                    type="date"
+                    value={iss.date_of_po_sign}
+                    onChange={(e) => setI('date_of_po_sign', e.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="wf-footer-actions">
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary wf-btn-sm"
+                  onClick={saveIssuance}
+                  disabled={pending || (!issued && !iss.easycom_po_no.trim())}
+                >
+                  <FileCheck size={14} />{' '}
+                  {issued ? 'Save signing details' : 'Issue PO'}
+                </button>
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => setSigning(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

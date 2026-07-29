@@ -631,7 +631,13 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   );
 }
 
-/** After approval, issue the PO: record the EasyCom PO number that ties to real data. */
+/**
+ * After approval, issue + sign the PO. Captures the EasyCom mapping key (which
+ * ties to sd_po_master_raw) plus the DiGiO-signed docs, sign date, and first
+ * actual delivery date (fields 19–25). The DiGiO fields are manual URLs for now
+ * — the API integration populates them later. Callable repeatedly to add the
+ * signed docs after the initial issuance.
+ */
 export async function issuePoApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -640,46 +646,65 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   }
 
   const id = Number(formData.get('id'));
-  const easycom = String(formData.get('easycom_po_no') ?? '').trim();
   if (!id) return fail('Invalid PO.');
-  if (!easycom) return fail('Enter the EasyCom PO number.');
+  const easycom = String(formData.get('easycom_po_no') ?? '').trim();
 
   const supabase = await supa();
+  const { data: po } = await supabase
+    .from('sd_po_approval')
+    .select('id, status, product_code, po_issued_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!po) return fail('PO not found.');
+  if (po.status !== 'approved') return fail('Only an approved PO can be issued.');
+
+  const alreadyIssued = Boolean(po.po_issued_at);
+  // The EasyCom number is required to first issue; once issued it can be edited.
+  if (!alreadyIssued && !easycom) return fail('Enter the EasyCom PO number to issue.');
+
+  const patch: Record<string, unknown> = {
+    signed_po_document_url: textOrNull(formData.get('signed_po_document_url')),
+    signed_cost_sheet_url: textOrNull(formData.get('signed_cost_sheet_url')),
+    signed_tna_url: textOrNull(formData.get('signed_tna_url')),
+    signed_po_ref_number: textOrNull(formData.get('signed_po_ref_number')),
+    date_of_po_sign: dateOrNull(formData.get('date_of_po_sign')),
+    first_actual_delivery_date: dateOrNull(formData.get('first_actual_delivery_date')),
+  };
+  if (easycom) patch.easycom_po_no = easycom;
+  if (!alreadyIssued) patch.po_issued_at = new Date().toISOString();
+
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
-    .update({
-      easycom_po_no: easycom,
-      po_issued_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', id)
     .eq('status', 'approved')
-    .select('id, product_code');
+    .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Only an approved PO can be issued.');
 
-  // Freeze the product's standard cost at first PO issuance — from here the
-  // rates are locked. Best effort: a failure must not undo the issuance.
-  const productCode = (updated[0].product_code as string | null)?.trim();
-  if (productCode) {
-    await supabase
-      .from('sd_standard_cost')
-      .update({ frozen: true, frozen_at: new Date().toISOString() })
-      .eq('product_code', productCode)
-      .eq('frozen', false);
+  // Freeze the product's standard cost at first PO issuance.
+  if (!alreadyIssued) {
+    const productCode = (po.product_code as string | null)?.trim();
+    if (productCode) {
+      await supabase
+        .from('sd_standard_cost')
+        .update({ frozen: true, frozen_at: new Date().toISOString() })
+        .eq('product_code', productCode)
+        .eq('frozen', false);
+    }
+    await writeLog(
+      'po_approval',
+      String(id),
+      `PO #${id} issued as ${easycom}`,
+      'approved',
+      'approved',
+      user.email,
+      `EasyCom PO ${easycom}`,
+    );
   }
-
-  await writeLog(
-    'po_approval',
-    String(id),
-    `PO #${id} issued as ${easycom}`,
-    'approved',
-    'approved',
-    user.email,
-    `EasyCom PO ${easycom}`,
-  );
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
-  return done(`Issued as EasyCom PO ${easycom}.`);
+  return done(alreadyIssued ? 'Signing details saved.' : `Issued as EasyCom PO ${easycom}.`);
 }
 
 /* ================================================================== */

@@ -47,8 +47,8 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Needs', source: 'Automatic', formula: 'FG ≤ 5,000 → Team (L1) · FG > 5,000 → Admin (L2) · MAT & NPD → Admin', detail: 'Which role must approve this PO.' },
     { field: 'Cycle time', source: 'Automatic', formula: 'days_to_approve · days_to_issue · total_cycle_days', detail: 'How long each stage took, from submitted → approved → issued timestamps. Surfaced from sd_po_cycle_time.' },
     { field: 'Reporting screen', source: 'Automatic', detail: 'POs issued in the last 7 days, and approved POs still waiting to be issued this week.' },
-    { field: 'Issue (EasyCom PO no.)', source: 'You enter at issuance', detail: 'After approval, enter the EasyCom PO number. It ties this approval back to the real PO in sd_po_master_raw.' },
-    { field: 'DiGiO signing / auto PO number', source: 'Phase 2', detail: 'Stubbed for now — DiGiO document signing (PO, cost sheet, TNA) and automatic PO numbering arrive in a later phase.' },
+    { field: 'Issue & sign (fields 19–25)', source: 'You enter at issuance', detail: 'On an approved PO, “Issue / sign” opens a panel: EasyCom PO no. (maps back to sd_po_master_raw), first actual delivery date, and the DiGiO signed docs (PO, cost sheet, TNA), signed ref number and date of sign. EasyCom no. is required to issue; signed docs can be added after.' },
+    { field: 'Suggest PO ref / DiGiO', source: 'Automatic / Phase 2', detail: 'Suggest builds the PO ref in the standard FY/type/product/vendor format (editable). The DiGiO fields are manual URLs for now — the DiGiO API integration will populate them automatically later.' },
   ],
   '/inward-plan': [
     { field: 'PO / Product / Variant', source: 'Real PO data (GCP)', detail: 'Each row is one colour of one product on an open purchase order.' },
