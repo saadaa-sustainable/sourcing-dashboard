@@ -12,6 +12,7 @@ const HELP: Record<string, HelpItem[]> = {
   '/buying-plan': [
     { field: 'Product code', source: 'Active products (sheet)', detail: 'The product you are planning to buy this month. Every active product is listed — set the ones you will not make to 0.' },
     { field: 'Product status / Woven · Knitted', source: 'Product master', detail: 'Read-only, pulled from the product master (sd_product_master) — never typed here. Shows “—” until the master is filled in.' },
+    { field: 'Pending quantity', source: 'Replenishment (DOQ)', formula: '30-day ROP = Σ max(0, daily demand × 30 − stock − in-process)', detail: 'Computed from the Replenishment module (the DOQ-driven 30-day reorder), read-only. No longer typed by hand.' },
     { field: 'Job work / FOB / E-FOB quantity', source: 'You enter', detail: 'Split the planned pieces across the type of purchase order you expect to use.' },
     { field: 'Total quantity', source: 'Automatic', formula: 'Job work + FOB + E-FOB', detail: 'The three planned quantities added together.' },
     { field: 'Standard cost', source: 'Standard Cost sheet', detail: 'The approved job / FOB / E-FOB rates for the product, read-only. Shows “—” until a standard cost is approved.' },
@@ -56,6 +57,12 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Arriving', source: 'Real PO data (GCP)', formula: 'Σ pending qty (ordered − received)', detail: 'Pieces still to arrive — ordered but not yet received.' },
     { field: 'Expected', source: 'Real PO data (GCP)', detail: 'The soonest expected delivery date for that line.' },
     { field: 'What this shows', source: 'Open POs (Approved)', detail: 'Only Approved POs with stock still to come, soonest arrival first.' },
+  ],
+  '/replenishment': [
+    { field: 'Daily demand', source: 'Inventory planning (GCP)', formula: 'daily_quantity, else 45-day sales ÷ 45', detail: 'Average pieces sold per day for the colour, from the latest inventory-planning snapshot.' },
+    { field: 'Stock / In process / DOQ', source: 'Inventory planning (GCP)', detail: 'Current stock, pieces already on order, and days-of-quantity coverage at the current sales rate.' },
+    { field: '30 / 60 / 90-day reorder', source: 'Automatic', formula: 'max(0, daily demand × N − current stock − in-process)', detail: 'How much to reorder to cover N days. 30 is the immediate gap; 60/90 add forward coverage for long-lead vendors. Scales up with the window.' },
+    { field: 'Feeds the Buying Plan', source: 'Automatic', detail: 'The 30-day reorder (summed per product) becomes the Buying Plan’s computed Pending Quantity — no longer typed by hand.' },
   ],
   '/receivable-plan': [
     { field: 'PO / Product / colour', source: 'Real PO data (GCP)', detail: 'Each row is one colour on an open (Approved) PO, split out by size.' },

@@ -86,6 +86,7 @@ export function BuyingPlanClient({
   productCodes,
   productMaster,
   standardCosts,
+  pendingByCode,
   actuals,
   role,
 }: {
@@ -95,6 +96,7 @@ export function BuyingPlanClient({
   productCodes: string[];
   productMaster: Record<string, { status: string | null; fabric_type: string | null }>;
   standardCosts: Record<string, { job: number; fob: number; efob: number }>;
+  pendingByCode: Record<string, number>;
   actuals: Record<string, { qty: number; value: number }>;
   role: SdRole;
 }) {
@@ -372,6 +374,7 @@ export function BuyingPlanClient({
                 <th>Product code</th>
                 <th>Product status</th>
                 <th>Woven / Knitted</th>
+                <th className="num">Pending qty</th>
                 <th className="num input-col">Job work qty</th>
                 <th className="num input-col">FOB qty</th>
                 <th className="num input-col">E-FOB qty</th>
@@ -389,6 +392,11 @@ export function BuyingPlanClient({
                   <td className="mono">{row.product_code}</td>
                   <td>{productMaster[row.product_code]?.status || '—'}</td>
                   <td>{productMaster[row.product_code]?.fabric_type || '—'}</td>
+                  <td className="num">
+                    {pendingByCode[row.product_code]
+                      ? fmt.format(pendingByCode[row.product_code])
+                      : '—'}
+                  </td>
                   {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
                     <td key={field} className="num input-col">
                       <input
@@ -438,7 +446,7 @@ export function BuyingPlanClient({
               ))}
               {!view.length && (
                 <tr>
-                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
+                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
                     No product codes added yet. Discontinued variants are excluded
                     automatically.
                   </td>
@@ -448,7 +456,7 @@ export function BuyingPlanClient({
             {view.length > 0 && (
               <tfoot>
                 <tr>
-                  <td colSpan={6}>Total</td>
+                  <td colSpan={7}>Total</td>
                   <td className="num strong">{fmt.format(totals.qty)}</td>
                   <td />
                   <td className="num strong">{money.format(totals.value)}</td>

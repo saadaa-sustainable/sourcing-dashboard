@@ -181,6 +181,22 @@ export type ApprovalLogRow = {
   created_at: string;
 };
 
+/** Replenishment / DOQ recommendation for one colour (product_variant). */
+export type ReplenishmentRow = {
+  product_variant: string;
+  product_code: string | null;
+  product_name: string | null;
+  product_state: string | null;
+  current_stock: number;
+  in_progress: number;
+  daily_demand: number;
+  doq_45: number | null;
+  oos_flag: boolean;
+  rop_30: number;
+  rop_60: number;
+  rop_90: number;
+};
+
 /** One size-pivoted receivable row (open PO colour + DOQ/stock/OOS enrichment). */
 export type ReceivablePlanRow = {
   row_key: string;

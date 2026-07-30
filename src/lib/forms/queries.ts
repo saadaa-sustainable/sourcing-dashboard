@@ -16,6 +16,7 @@ import type {
   PoCycleTime,
   ProductMaster,
   ReceivablePlanRow,
+  ReplenishmentRow,
   SdUser,
   StandardCost,
   VendorCapacityLog,
@@ -75,6 +76,47 @@ export async function currentUser(): Promise<SdUser | null> {
       is_active: true,
     }
   );
+}
+
+/** Replenishment recommendations (colours needing reorder), for the module page. */
+export async function loadReplenishment(): Promise<ReplenishmentRow[]> {
+  const supabase = await client();
+  const rows: ReplenishmentRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_replenishment')
+      .select('*')
+      .gt('rop_30', 0)
+      .order('rop_30', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_replenishment: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as ReplenishmentRow[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/** Product-code → ROP quantities, feeding the Buying Plan's computed Pending Qty. */
+export async function loadReplenishmentByProduct(): Promise<
+  Record<string, { rop_30: number; rop_60: number; rop_90: number }>
+> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_replenishment_by_product')
+    .select('product_code, rop_30, rop_60, rop_90')
+    .limit(PAGE_SIZE);
+  const map: Record<string, { rop_30: number; rop_60: number; rop_90: number }> = {};
+  (
+    (data ?? []) as { product_code: string; rop_30: number; rop_60: number; rop_90: number }[]
+  ).forEach((r) => {
+    map[r.product_code] = {
+      rop_30: Number(r.rop_30) || 0,
+      rop_60: Number(r.rop_60) || 0,
+      rop_90: Number(r.rop_90) || 0,
+    };
+  });
+  return map;
 }
 
 /** Every product's master row + the NPD-promotion candidates, for the panel. */
@@ -207,8 +249,14 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     };
   });
 
-  // Approved standard rates drive the per-PO-type buying value.
-  const standardCosts = await loadApprovedStandardCosts();
+  // Approved standard rates drive the per-PO-type buying value; the replenishment
+  // roll-up drives the computed Pending Quantity (30-day ROP).
+  const [standardCosts, replenishment] = await Promise.all([
+    loadApprovedStandardCosts(),
+    loadReplenishmentByProduct(),
+  ]);
+  const pendingByCode: Record<string, number> = {};
+  for (const [code, r] of Object.entries(replenishment)) pendingByCode[code] = r.rop_30;
 
   return {
     plan: (plan as BuyingPlan | null) ?? null,
@@ -216,6 +264,7 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     productCodes,
     productMaster,
     standardCosts,
+    pendingByCode,
     planMonth,
   };
 }

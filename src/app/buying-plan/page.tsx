@@ -40,8 +40,10 @@ export default async function BuyingPlanPage({
     redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
 
-  const [{ plan, lines, productCodes, productMaster, standardCosts }, actualsMap] =
-    await Promise.all([loadBuyingPlan(planMonth), loadActualsByProduct(planMonth)]);
+  const [
+    { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
+    actualsMap,
+  ] = await Promise.all([loadBuyingPlan(planMonth), loadActualsByProduct(planMonth)]);
 
   return (
     <FormLayout
@@ -58,6 +60,7 @@ export default async function BuyingPlanPage({
         productCodes={productCodes}
         productMaster={productMaster}
         standardCosts={standardCosts}
+        pendingByCode={pendingByCode}
         actuals={Object.fromEntries(actualsMap)}
         role={user.role}
       />
