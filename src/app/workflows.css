@@ -242,6 +242,10 @@
 .wf-issue-title { font-size: 13px; }
 .wf-check-field { flex-direction: row; align-items: center; gap: 10px; }
 .wf-check-field input { width: auto; }
+.wf-benchmark {
+  font-size: 12px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(240, 198, 30, 0.12); border: 1px solid rgba(232, 200, 122, 0.55);
+}
 .wf-search {
   padding: 7px 12px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.16);
   font-size: 13px; min-width: 220px;
@@ -583,4 +587,31 @@
   .wf-footer-actions .wf-btn { width: 100%; }
   .wf-toolbar-left,
   .wf-toolbar-right { width: 100%; }
+}
+
+/* ---- buying plan FG / material tabs ---- */
+.wf-plan-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: rgba(231, 233, 243, 0.85);
+  border: 1px solid rgba(34, 40, 74, 0.045);
+  border-radius: 12px;
+}
+.wf-plan-tab {
+  padding: 8px 18px;
+  color: #747c91;
+  font-size: 11.5px;
+  font-weight: 580;
+  text-decoration: none;
+  border-radius: 9px;
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.wf-plan-tab:hover { color: var(--purple-dark); }
+.wf-plan-tab.active {
+  color: var(--purple-dark);
+  font-weight: 690;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(34, 40, 74, .09), inset 0 -2px rgba(109, 93, 252, .08);
 }

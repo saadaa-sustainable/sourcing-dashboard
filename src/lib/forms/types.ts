@@ -52,6 +52,7 @@ export type NpdPromotionCandidate = {
 export type BuyingPlan = {
   id: number;
   plan_month: string; // first day of month, ISO
+  plan_type: 'fg' | 'material';
   status: SdStatus;
   submitted_by: string | null;
   submitted_at: string | null;
@@ -72,6 +73,7 @@ export type BuyingPlanLine = {
   fob_qty: number;
   efob_qty: number;
   standard_value: number | null;
+  uom: string | null; // material track only
 };
 
 /** Everything derived. Never stored — same discipline as business-logic.ts. */

@@ -75,6 +75,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
 
   const planMonth = String(formData.get('plan_month') ?? '');
   if (!/^\d{4}-\d{2}-01$/.test(planMonth)) return fail('Invalid plan month.');
+  const planType = String(formData.get('plan_type') ?? 'fg') === 'material' ? 'material' : 'fg';
 
   let lines: Array<Record<string, unknown>>;
   try {
@@ -89,6 +90,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
     .from('sd_buying_plan')
     .select('id, status')
     .eq('plan_month', planMonth)
+    .eq('plan_type', planType)
     .maybeSingle();
 
   const status = (existing?.status ?? 'draft') as SdStatus;
@@ -104,7 +106,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
   if (!planId) {
     const { data, error } = await supabase
       .from('sd_buying_plan')
-      .insert({ plan_month: planMonth, status: 'draft' })
+      .insert({ plan_month: planMonth, plan_type: planType, status: 'draft' })
       .select('id')
       .single();
     if (error) return fail(`Could not create the plan: ${error.message}`);
@@ -137,6 +139,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
         line.standard_value === '' || line.standard_value == null
           ? null
           : Number(line.standard_value),
+      uom: line.uom ? String(line.uom) : null,
     }));
 
   if (payload.length) {
@@ -681,6 +684,10 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   // The EasyCom number is required to first issue; once issued it can be edited.
   if (!alreadyIssued && !easycom) return fail('Enter the EasyCom PO number to issue.');
 
+  // Explicit lock-in: the standard cost is frozen as the benchmark ONLY when the
+  // issuer ticks "set as standard benchmark cost" — never silently on first issue.
+  const setBenchmark = formData.get('set_benchmark') === 'true';
+
   const patch: Record<string, unknown> = {
     signed_po_document_url: textOrNull(formData.get('signed_po_document_url')),
     signed_cost_sheet_url: textOrNull(formData.get('signed_cost_sheet_url')),
@@ -691,6 +698,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   };
   if (easycom) patch.easycom_po_no = easycom;
   if (!alreadyIssued) patch.po_issued_at = new Date().toISOString();
+  if (setBenchmark) patch.benchmark_cost = true;
 
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
@@ -701,8 +709,8 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Only an approved PO can be issued.');
 
-  // Freeze the product's standard cost at first PO issuance.
-  if (!alreadyIssued) {
+  // Freeze the product's standard cost as the benchmark — only when explicitly set.
+  if (setBenchmark) {
     const productCode = (po.product_code as string | null)?.trim();
     if (productCode) {
       await supabase
@@ -711,6 +719,9 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
         .eq('product_code', productCode)
         .eq('frozen', false);
     }
+  }
+
+  if (!alreadyIssued) {
     await writeLog(
       'po_approval',
       String(id),

@@ -5,21 +5,25 @@ import {
   currentUser,
   loadActualsByProduct,
   loadBuyingPlan,
+  loadMaterialPlan,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { BuyingPlanClient } from './buying-plan-client';
+import { MaterialPlanClient } from './material-plan-client';
+import { PlanTypeTabs } from './plan-type-tabs';
 
 export const dynamic = 'force-dynamic';
 
 export default async function BuyingPlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; type?: string }>;
 }) {
   const params = await searchParams;
   const planMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '')
     ? params.month!
     : monthStart();
+  const planType = params.type === 'material' ? 'material' : 'fg';
 
   let user;
   try {
@@ -40,30 +44,57 @@ export default async function BuyingPlanPage({
     redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
 
-  const [
-    { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
-    actualsMap,
-  ] = await Promise.all([loadBuyingPlan(planMonth), loadActualsByProduct(planMonth)]);
+  const subtitle = `Monthly buying budget — ${monthLabel(planMonth)}. ${
+    planType === 'material' ? 'Fabric / material track.' : 'Finished-goods track.'
+  } Submitted for approval before POs are issued.`;
 
   return (
     <FormLayout
       title="Buying Plan"
-      subtitle={`Monthly buying budget — ${monthLabel(planMonth)}. Submitted for approval before POs are issued.`}
+      subtitle={subtitle}
       active="/buying-plan"
       role={user.role}
       userEmail={user.email}
     >
-      <BuyingPlanClient
-        planMonth={planMonth}
-        plan={plan}
-        lines={lines}
-        productCodes={productCodes}
-        productMaster={productMaster}
-        standardCosts={standardCosts}
-        pendingByCode={pendingByCode}
-        actuals={Object.fromEntries(actualsMap)}
-        role={user.role}
-      />
+      <PlanTypeTabs planMonth={planMonth} planType={planType} />
+      {planType === 'material' ? (
+        <MaterialTrack planMonth={planMonth} role={user.role} />
+      ) : (
+        <FgTrack planMonth={planMonth} role={user.role} />
+      )}
     </FormLayout>
+  );
+}
+
+async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+  const [
+    { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
+    actualsMap,
+  ] = await Promise.all([loadBuyingPlan(planMonth), loadActualsByProduct(planMonth)]);
+  return (
+    <BuyingPlanClient
+      planMonth={planMonth}
+      plan={plan}
+      lines={lines}
+      productCodes={productCodes}
+      productMaster={productMaster}
+      standardCosts={standardCosts}
+      pendingByCode={pendingByCode}
+      actuals={Object.fromEntries(actualsMap)}
+      role={role}
+    />
+  );
+}
+
+async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+  const { plan, lines, materialCodes } = await loadMaterialPlan(planMonth);
+  return (
+    <MaterialPlanClient
+      planMonth={planMonth}
+      plan={plan}
+      lines={lines}
+      materialCodes={materialCodes}
+      role={role}
+    />
   );
 }

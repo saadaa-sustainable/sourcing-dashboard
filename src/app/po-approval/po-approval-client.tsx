@@ -477,6 +477,7 @@ function PoRow({
     date_of_po_sign: po.date_of_po_sign ?? '',
   });
   const setI = (k: keyof typeof iss, v: string) => setIss((s) => ({ ...s, [k]: v }));
+  const [benchmark, setBenchmark] = useState(false);
   const canIssue = canEdit(role, 'draft');
   const issued = Boolean(po.po_issued_at);
 
@@ -496,6 +497,7 @@ function PoRow({
     const p = new FormData();
     p.set('id', String(po.id));
     Object.entries(iss).forEach(([k, v]) => p.set(k, v));
+    p.set('set_benchmark', benchmark ? 'true' : 'false');
     start(async () => {
       const res = await issuePoApproval(p);
       if (res.ok) window.location.reload();
@@ -632,6 +634,17 @@ function PoRow({
                   />
                 </Field>
               </div>
+              <label className="wf-check-field wf-benchmark">
+                <input
+                  type="checkbox"
+                  checked={benchmark}
+                  onChange={(e) => setBenchmark(e.target.checked)}
+                />
+                <span>
+                  Set as <strong>standard benchmark cost</strong> — freezes this
+                  product’s standard cost as the fixed reference (no later drift).
+                </span>
+              </label>
               <div className="wf-footer-actions">
                 <button
                   type="button"

@@ -234,6 +234,7 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     .from('sd_buying_plan')
     .select('*')
     .eq('plan_month', planMonth)
+    .eq('plan_type', 'fg')
     .maybeSingle();
 
   const lines: BuyingPlanLine[] = [];
@@ -307,6 +308,41 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     productMaster,
     standardCosts,
     pendingByCode,
+    planMonth,
+  };
+}
+
+/** The material (fabric/RM) buying plan for a month — same workflow, second track. */
+export async function loadMaterialPlan(planMonth = monthStart()) {
+  const supabase = await client();
+  const { data: plan } = await supabase
+    .from('sd_buying_plan')
+    .select('*')
+    .eq('plan_month', planMonth)
+    .eq('plan_type', 'material')
+    .maybeSingle();
+
+  const lines: BuyingPlanLine[] = [];
+  if (plan) {
+    const { data } = await supabase
+      .from('sd_buying_plan_line')
+      .select('*')
+      .eq('plan_id', (plan as BuyingPlan).id)
+      .order('product_code')
+      .limit(PAGE_SIZE);
+    lines.push(...((data ?? []) as BuyingPlanLine[]));
+  }
+
+  const { data: mats } = await supabase
+    .from('sd_material_codes')
+    .select('material_code, fabric_name')
+    .order('material_code')
+    .limit(PAGE_SIZE);
+
+  return {
+    plan: (plan as BuyingPlan | null) ?? null,
+    lines,
+    materialCodes: (mats ?? []) as { material_code: string; fabric_name: string | null }[],
     planMonth,
   };
 }

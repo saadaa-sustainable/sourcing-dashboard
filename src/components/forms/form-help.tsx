@@ -50,6 +50,7 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Reporting screen', source: 'Automatic', detail: 'POs issued in the last 7 days, and approved POs still waiting to be issued this week.' },
     { field: 'Issue & sign (fields 19–25)', source: 'You enter at issuance', detail: 'On an approved PO, “Issue / sign” opens a panel: EasyCom PO no. (maps back to sd_po_master_raw), first actual delivery date, and the DiGiO signed docs (PO, cost sheet, TNA), signed ref number and date of sign. EasyCom no. is required to issue; signed docs can be added after.' },
     { field: 'Suggest PO ref / DiGiO', source: 'Automatic / Phase 2', detail: 'Suggest builds the PO ref in the standard FY/type/product/vendor format (editable). The DiGiO fields are manual URLs for now — the DiGiO API integration will populate them automatically later.' },
+    { field: 'Set as standard benchmark cost', source: 'You choose at issuance', detail: 'Tick this at issuance to lock the product’s standard cost as the fixed benchmark — it freezes and can’t drift or be overwritten by later PO costs. Never automatic; it’s an explicit choice.' },
   ],
   '/inward-plan': [
     { field: 'PO / Product / Variant', source: 'Real PO data (GCP)', detail: 'Each row is one colour of one product on an open purchase order.' },
