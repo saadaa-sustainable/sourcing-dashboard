@@ -58,6 +58,13 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Expected', source: 'Real PO data (GCP)', detail: 'The soonest expected delivery date for that line.' },
     { field: 'What this shows', source: 'Open POs (Approved)', detail: 'Only Approved POs with stock still to come, soonest arrival first.' },
   ],
+  '/cash-flow': [
+    { field: 'Month due', source: 'Automatic', formula: 'commitment date + vendor payment terms', detail: 'Each buying commitment lands in the month its payment falls due.' },
+    { field: 'Received (invoiced)', source: 'GRN (GCP)', formula: 'Σ GRN value where invoice date + terms falls in the month', detail: 'Goods already received and invoiced — a firm payable.' },
+    { field: 'Projected (open PO)', source: 'Real PO data (GCP)', formula: 'Σ pending qty × price where delivery date + terms falls in the month', detail: 'Open POs not yet received — projected payable once they arrive.' },
+    { field: 'Vendor payment terms', source: 'You set', detail: 'Days from invoice/receipt to payment, per vendor (default 45). Editing recomputes the whole forecast.' },
+    { field: 'Past due', source: 'Automatic', detail: 'Invoiced obligations whose due date has already passed — assumed unpaid unless settled outside the system.' },
+  ],
   '/replenishment': [
     { field: 'Daily demand', source: 'Inventory planning (GCP)', formula: 'daily_quantity, else 45-day sales ÷ 45', detail: 'Average pieces sold per day for the colour, from the latest inventory-planning snapshot.' },
     { field: 'Stock / In process / DOQ', source: 'Inventory planning (GCP)', detail: 'Current stock, pieces already on order, and days-of-quantity coverage at the current sales rate.' },

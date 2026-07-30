@@ -181,6 +181,22 @@ export type ApprovalLogRow = {
   created_at: string;
 };
 
+/** One month of the cash-flow forecast (payment obligations coming due). */
+export type CashFlowMonth = {
+  due_month: string;
+  received: number;   // invoiced GRN value, due invoice + terms
+  projected: number;  // open-PO value, due EDD + terms
+  total: number;
+  items: number;
+};
+
+/** Vendor payment terms (days) — drives when a buying commitment becomes payable. */
+export type VendorTerm = {
+  vendor_code: string;
+  vendor_name: string | null;
+  payment_terms_days: number;
+};
+
 /** Replenishment / DOQ recommendation for one colour (product_variant). */
 export type ReplenishmentRow = {
   product_variant: string;

@@ -9,6 +9,7 @@ import type {
   BuyingPlan,
   BuyingPlanLine,
   BuyingPlanLineView,
+  CashFlowMonth,
   DiscontinueRequest,
   InwardPlanGroup,
   NpdPromotionCandidate,
@@ -18,6 +19,7 @@ import type {
   ReceivablePlanRow,
   ReplenishmentRow,
   SdUser,
+  VendorTerm,
   StandardCost,
   VendorCapacityLog,
   VendorCapacityView,
@@ -76,6 +78,41 @@ export async function currentUser(): Promise<SdUser | null> {
       is_active: true,
     }
   );
+}
+
+/** Cash-flow forecast (payment obligations by month) + editable vendor terms. */
+export async function loadCashFlow(): Promise<{
+  months: CashFlowMonth[];
+  vendorTerms: VendorTerm[];
+}> {
+  const supabase = await client();
+  const [{ data: rows }, { data: terms }] = await Promise.all([
+    supabase.from('sd_cash_flow_by_month').select('source, due_month, amount, items'),
+    supabase
+      .from('sd_vendor_payment_terms')
+      .select('vendor_code, vendor_name, payment_terms_days')
+      .order('vendor_code'),
+  ]);
+
+  const byMonth = new Map<string, CashFlowMonth>();
+  (
+    (rows ?? []) as { source: string; due_month: string; amount: number; items: number }[]
+  ).forEach((r) => {
+    const cur =
+      byMonth.get(r.due_month) ??
+      { due_month: r.due_month, received: 0, projected: 0, total: 0, items: 0 };
+    const amt = Number(r.amount) || 0;
+    if (r.source === 'received') cur.received += amt;
+    else cur.projected += amt;
+    cur.total += amt;
+    cur.items += Number(r.items) || 0;
+    byMonth.set(r.due_month, cur);
+  });
+
+  return {
+    months: [...byMonth.values()].sort((a, b) => a.due_month.localeCompare(b.due_month)),
+    vendorTerms: (terms ?? []) as VendorTerm[],
+  };
 }
 
 /** Replenishment recommendations (colours needing reorder), for the module page. */

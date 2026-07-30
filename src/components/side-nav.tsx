@@ -19,6 +19,7 @@ import {
   Tags,
   Truck,
   UserCog,
+  Wallet,
   Users,
   X,
   Zap,
@@ -48,6 +49,7 @@ const WORKFLOW_LINKS = [
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
+  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
   { href: '/discontinue', label: 'Discontinue', Icon: Ban },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
 ] as const;

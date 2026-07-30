@@ -827,6 +827,36 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
 }
 
 /* ================================================================== */
+/* Cash flow — vendor payment terms (drives the forecast)              */
+/* ================================================================== */
+
+export async function saveVendorTerms(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit vendor terms.');
+  }
+  const vendor_code = String(formData.get('vendor_code') ?? '').trim();
+  const days = Number(formData.get('payment_terms_days'));
+  if (!vendor_code) return fail('Invalid vendor.');
+  if (!Number.isFinite(days) || days < 0) return fail('Enter a valid number of days.');
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_vendor_payment_terms').upsert(
+    {
+      vendor_code,
+      payment_terms_days: Math.round(days),
+      updated_by: user.email,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'vendor_code' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/cash-flow');
+  return done(`Saved ${vendor_code} → ${Math.round(days)} days.`);
+}
+
+/* ================================================================== */
 /* User panel — admin (role manager) assigns roles                     */
 /* ================================================================== */
 
