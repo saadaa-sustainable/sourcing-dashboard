@@ -8,6 +8,8 @@ import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import type { DiscontinueRequest, SdRole } from '@/lib/forms/types';
 
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
+
 export function DiscontinueClient({
   requests,
   variants,
@@ -18,8 +20,10 @@ export function DiscontinueClient({
   role: SdRole;
 }) {
   const editable = canEdit(role, 'draft');
+  const [scope, setScope] = useState<'size' | 'colour' | 'product'>('colour');
   const [productCode, setProductCode] = useState('');
   const [variant, setVariant] = useState('');
+  const [size, setSize] = useState('');
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,12 +42,19 @@ export function DiscontinueClient({
     [variants, productCode],
   );
 
+  const canSubmit =
+    !!productCode &&
+    (scope === 'product' || !!variant) &&
+    (scope !== 'size' || !!size);
+
   function submit() {
     setError(null);
     setMessage(null);
     const payload = new FormData();
+    payload.set('scope', scope);
     payload.set('product_code', productCode);
-    payload.set('product_variant', variant);
+    payload.set('product_variant', scope === 'product' ? '' : variant);
+    payload.set('size', scope === 'size' ? size : '');
     payload.set('reason', reason);
     start(async () => {
       const result = await createDiscontinueRequest(payload);
@@ -51,6 +62,7 @@ export function DiscontinueClient({
         setMessage(result.message ?? 'Submitted.');
         setProductCode('');
         setVariant('');
+        setSize('');
         setReason('');
       } else setError(result.error);
     });
@@ -59,8 +71,10 @@ export function DiscontinueClient({
   return (
     <>
       <Notice tone="info">
-        Approval only — no PO is issued here. Once approved, the variant drops out
-        of the Buying Plan product list so it stops showing as in-process.
+        Approval only — no PO is issued here. Choose what to discontinue: a whole{' '}
+        <strong>product</strong>, a single <strong>colour</strong> (variant), or a
+        specific <strong>size</strong>. Once approved, it drops out of the active
+        product list so it stops showing as in-process.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -71,6 +85,18 @@ export function DiscontinueClient({
           <div className="panel-title">
             <h3>Raise a discontinue request</h3>
           </div>
+          <div className="segment wf-segment">
+            {(['size', 'colour', 'product'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={scope === s ? 'active' : ''}
+                onClick={() => setScope(s)}
+              >
+                Discontinue {s}
+              </button>
+            ))}
+          </div>
           <div className="wf-form-grid">
             <Field label="Product code">
               <select
@@ -78,6 +104,7 @@ export function DiscontinueClient({
                 onChange={(event) => {
                   setProductCode(event.target.value);
                   setVariant('');
+                  setSize('');
                 }}
               >
                 <option value="">Select…</option>
@@ -88,26 +115,44 @@ export function DiscontinueClient({
                 ))}
               </select>
             </Field>
-            <Field label="Variant" hint="Approval is at variant level">
-              <select
-                value={variant}
-                disabled={!productCode}
-                onChange={(event) => setVariant(event.target.value)}
-              >
-                <option value="">
-                  {productCode ? 'Select…' : 'Pick a product code first'}
-                </option>
-                {variantOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+            {scope !== 'product' && (
+              <Field label="Colour (variant)">
+                <select
+                  value={variant}
+                  disabled={!productCode}
+                  onChange={(event) => setVariant(event.target.value)}
+                >
+                  <option value="">
+                    {productCode ? 'Select…' : 'Pick a product code first'}
                   </option>
-                ))}
-              </select>
-            </Field>
+                  {variantOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {scope === 'size' && (
+              <Field label="Size">
+                <select
+                  value={size}
+                  disabled={!variant}
+                  onChange={(event) => setSize(event.target.value)}
+                >
+                  <option value="">{variant ? 'Select…' : 'Pick a colour first'}</option>
+                  {SIZES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <Field label="Reason">
               <input
                 value={reason}
-                placeholder="Why is this variant being discontinued?"
+                placeholder={`Why is this ${scope} being discontinued?`}
                 onChange={(event) => setReason(event.target.value)}
               />
             </Field>
@@ -117,7 +162,7 @@ export function DiscontinueClient({
               type="button"
               className="wf-btn wf-btn-primary"
               onClick={submit}
-              disabled={pending || !productCode || !variant}
+              disabled={pending || !canSubmit}
             >
               <Ban size={15} /> {pending ? 'Submitting…' : 'Submit for approval'}
             </button>
@@ -134,8 +179,9 @@ export function DiscontinueClient({
           <table className="wide-table">
             <thead>
               <tr>
+                <th>Scope</th>
                 <th>Product code</th>
-                <th>Variant</th>
+                <th>Target</th>
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Requested by</th>
@@ -145,8 +191,17 @@ export function DiscontinueClient({
             <tbody>
               {requests.map((request) => (
                 <tr key={request.id}>
+                  <td>
+                    <span className="badge info">{request.scope}</span>
+                  </td>
                   <td className="mono">{request.product_code}</td>
-                  <td>{request.product_variant}</td>
+                  <td>
+                    {request.scope === 'product'
+                      ? '— whole product —'
+                      : request.scope === 'size'
+                        ? `${request.product_variant} / ${request.size}`
+                        : request.product_variant}
+                  </td>
                   <td>{request.reason ?? '—'}</td>
                   <td>
                     <StatusBadge status={request.status} />
@@ -160,7 +215,9 @@ export function DiscontinueClient({
                       <ApprovalBar
                         entityType="discontinue"
                         entityId={String(request.id)}
-                        entityLabel={`${request.product_code} / ${request.product_variant}`}
+                        entityLabel={`Discontinue ${request.scope} — ${request.product_code}${
+                          request.product_variant ? ` / ${request.product_variant}` : ''
+                        }${request.size ? ` / ${request.size}` : ''}`}
                         onDone={(result) => {
                           if (result.ok) window.location.reload();
                         }}
@@ -175,7 +232,7 @@ export function DiscontinueClient({
               ))}
               {!requests.length && (
                 <tr>
-                  <td colSpan={6} className="wf-empty-cell">
+                  <td colSpan={7} className="wf-empty-cell">
                     No discontinue requests yet.
                   </td>
                 </tr>

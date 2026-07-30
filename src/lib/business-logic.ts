@@ -1,10 +1,15 @@
 import type { PendingPo, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
 
+// The critical-path stages, in order. Each carries its planned (TNA) date, the
+// actual completion date, and the delay-days field. Extended per Mahesh beyond
+// Inline through First Delivery and PO Closer (from the TNA Update sheet).
 export const TNA_STAGES = [
-  { name: 'PP Sample Pending', actualField: 'pp_sample_actual_date' },
-  { name: 'GPT Pending', actualField: 'gpt_actual_date' },
-  { name: 'Cutting Pending', actualField: 'cutting_actual_date_first' },
-  { name: 'Inline / Midline / QC Pending', actualField: 'in_line_actual_date' },
+  { name: 'PP Sample', tnaField: 'pp_sample_tna_date', actualField: 'pp_sample_actual_date', delayField: 'pp_sample_delay_days', core: true },
+  { name: 'GPT', tnaField: 'gpt_tna_date', actualField: 'gpt_actual_date', delayField: 'gpt_delay_days', core: true },
+  { name: 'Cutting', tnaField: 'cutting_tna_date', actualField: 'cutting_actual_date_first', delayField: 'cutting_delay_days', core: true },
+  { name: 'Inline / Midline QC', tnaField: 'in_line_tna_date', actualField: 'in_line_actual_date', delayField: 'in_line_qc_delay_days', core: true },
+  { name: 'First Delivery', tnaField: 'first_delivery_tna_date', actualField: 'first_delivery_actual_date', delayField: 'first_delivery_delay_days', core: false },
+  { name: 'PO Closer', tnaField: 'po_closer_tna_date', actualField: 'po_closer_actual_date', delayField: 'po_closer_delay_days', core: false },
 ] as const;
 
 const dayMs = 86_400_000;
@@ -37,6 +42,32 @@ export function isDelayedPo(row: PendingPo, today = new Date()) {
   return isOpenPo(row) && Boolean(edd && daysBetween(today, edd) > 0);
 }
 
+/**
+ * High Risk (Mahesh's rule): a PO is high risk if ANY critical-path stage is
+ * overdue as of today — its planned (TNA) date has passed with no actual date —
+ * regardless of how much runway remains to final delivery. A single overdue
+ * stage compounds forward, so it flags immediately to force recovery.
+ */
+export function isTnaHighRisk(tna: TnaRecord | null | undefined, today = new Date()) {
+  if (!tna) return false;
+  for (const stage of TNA_STAGES) {
+    if (tna[stage.actualField]) continue; // stage done
+    const planned = parseIsoDate(tna[stage.tnaField]);
+    if (planned && daysBetween(today, planned) > 0) return true; // planned date passed, not done
+  }
+  return false;
+}
+
+/** High-risk test for an open PO line, using its matched TNA record. */
+export function isHighRiskLine(
+  row: PendingPo,
+  tnaByPo: Map<string, TnaRecord>,
+  today = new Date(),
+) {
+  return isOpenPo(row) && isTnaHighRisk(tnaByPo.get(key(row.po_ref_num)), today);
+}
+
+/** Legacy EDD-proximity risk — retained for reference; the dashboard uses the TNA rule. */
 export function isHighRiskPo(row: PendingPo, today = new Date()) {
   const edd = parseIsoDate(row.expected_delivery_date);
   return isOpenPo(row) && Boolean(edd) && number(row.pending_quantity) === number(row.original_quantity) &&
@@ -54,10 +85,18 @@ export function ageingBucket(edd: string | null | undefined, today = new Date())
   return '30+ Days';
 }
 
+/**
+ * Where the PO currently sits on the critical path. Prefers the ingested
+ * "Current Production Stage" (from TNA Update) when present; otherwise walks the
+ * stages and returns the first not-yet-done one. Core stages (through Inline)
+ * always count; the extended stages count only once they carry a planned date.
+ */
 export function deriveTnaStage(tna: TnaRecord | null | undefined) {
   if (!tna) return 'Not in TNA Tracker';
+  if (text(tna.current_production_stage)) return text(tna.current_production_stage);
   for (const stage of TNA_STAGES) {
-    if (!tna[stage.actualField]) return stage.name;
+    if (tna[stage.actualField]) continue; // done
+    if (stage.core || tna[stage.tnaField]) return `${stage.name} Pending`;
   }
   return 'Production';
 }
@@ -111,7 +150,7 @@ export function buildTrackerRows(
       pendingQty: rows.reduce((sum, row) => sum + number(row.pending_qty_actual), 0),
       pendingValue: rows.reduce((sum, row) => sum + number(row.pending_qty_actual) * number(row.item_price), 0),
       edd: first.expected_delivery_date, delayDays, delayBucket: ageingBucket(first.expected_delivery_date, today),
-      stage: deriveTnaStage(tna), skuRows: rows, tna,
+      stage: deriveTnaStage(tna), highRisk: isTnaHighRisk(tna, today), skuRows: rows, tna,
     };
   }).sort((a, b) => b.pendingValue - a.pendingValue);
 }

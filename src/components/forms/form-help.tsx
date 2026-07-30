@@ -57,10 +57,17 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Expected', source: 'Real PO data (GCP)', detail: 'The soonest expected delivery date for that line.' },
     { field: 'What this shows', source: 'Open POs (Approved)', detail: 'Only Approved POs with stock still to come, soonest arrival first.' },
   ],
+  '/receivable-plan': [
+    { field: 'PO / Product / colour', source: 'Real PO data (GCP)', detail: 'Each row is one colour on an open (Approved) PO, split out by size.' },
+    { field: 'Arriving + size split (XS…5XL)', source: 'Real PO data (GCP)', formula: 'Σ pending qty per size', detail: 'Pieces still to arrive on this PO line, pivoted by size.' },
+    { field: 'DOQ / Stock / OOS', source: 'Inventory planning (GCP)', detail: 'Days-of-quantity, current stock and out-of-stock flag for the colour, from the latest inventory-planning snapshot.' },
+    { field: 'Deliver this week / Qty this week / Remarks', source: 'You enter', detail: 'The weekly receiving plan — when and how much you expect, plus notes. Saved per row.' },
+  ],
   '/discontinue': [
-    { field: 'Product · Variant', source: 'Active variants (sheet)', detail: 'The exact colour/variant that should be stopped.' },
-    { field: 'Reason', source: 'You enter', detail: 'Briefly explain why the variant should be discontinued.' },
-    { field: 'Status', source: 'Workflow', detail: 'Draft → Submitted → Approved / Rejected. Once Approved, the variant drops out of the Buying Plan’s product list.' },
+    { field: 'Scope (size / colour / product)', source: 'You choose', detail: 'Discontinue a specific size, a single colour (variant), or a whole product code. Colour and product drops remove it from the active list; size is finer-grained.' },
+    { field: 'Product / Colour / Size', source: 'Active variants', detail: 'What to stop — pick the code, then the colour, then (for size scope) the size.' },
+    { field: 'Reason', source: 'You enter', detail: 'Briefly explain why it is being discontinued.' },
+    { field: 'Status', source: 'Workflow', detail: 'Draft → Submitted → Approved / Rejected. Once approved (colour/product), it drops out of the active product list.' },
     { field: 'Requested by / Decision', source: 'Workflow', detail: 'Who raised the request, and the approve/reject action. Discontinue always needs an admin.' },
   ],
   '/approvals': [
@@ -83,6 +90,7 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Woven / Knitted', source: 'You set', detail: 'The fabric type for the product. The Buying Plan reads this — it is no longer derived from the vendor.' },
     { field: 'Active', source: 'You set', detail: 'Turn off to mark a product inactive without deleting its master row.' },
     { field: 'Where this is used', source: 'Buying Plan', detail: 'The Buying Plan pulls Status and Woven/Knitted from here, read-only, so they are never typed on the plan itself.' },
+    { field: 'Suggested NPD promotions', source: 'Automatic (inventory sales)', formula: 'NPD-Not-Launched product with any colour sold > 50 pcs (45 days)', detail: 'The FG-master auto-rule flags products that should move from NPD-Not-Launched to NPD. Review and apply with one click.' },
   ],
   '/users': [
     { field: 'Email', source: 'Login', detail: 'The person’s @saadaa.in login. Roles are matched to this email when they sign in.' },

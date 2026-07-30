@@ -62,6 +62,19 @@ export type TnaRecord = {
   in_line_tna_date: string | null;
   in_line_actual_date: string | null;
   in_line_qc_delay_days: number;
+  // Richer TNA Update milestones (from the merged "TNA Update" sheet). Optional
+  // because the current mirror only carries the four core stages — these flow
+  // through once the ingestion pulls the TNA Update columns.
+  first_delivery_tna_date?: string | null;
+  first_delivery_actual_date?: string | null;
+  first_delivery_delay_days?: number;
+  po_closer_tna_date?: string | null;
+  po_closer_actual_date?: string | null;
+  po_closer_delay_days?: number;
+  grn_qty?: number;
+  pending_qty?: number;
+  current_production_stage?: string | null;
+  total_delay_days?: number | null;
 };
 
 export type DashboardData = {
@@ -90,6 +103,8 @@ export type TrackerRow = {
   delayDays: number;
   delayBucket: string;
   stage: string;
+  // High risk = any critical-path TNA stage overdue as of today (Mahesh's rule).
+  highRisk: boolean;
   skuRows: PendingPo[];
   tna: TnaRecord | null;
 };

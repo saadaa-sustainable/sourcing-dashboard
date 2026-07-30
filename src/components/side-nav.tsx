@@ -12,6 +12,7 @@ import {
   IndianRupee,
   LayoutDashboard,
   Menu,
+  PackageCheck,
   PackageSearch,
   ShoppingCart,
   Tags,
@@ -44,6 +45,7 @@ const WORKFLOW_LINKS = [
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
+  { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/discontinue', label: 'Discontinue', Icon: Ban },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
 ] as const;

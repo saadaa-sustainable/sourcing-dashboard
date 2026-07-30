@@ -2,22 +2,22 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
-  loadProductMaster,
+  loadReceivablePlan,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { canEdit } from '@/lib/forms/approval';
-import { ProductMasterClient } from './product-master-client';
+import { ReceivablePlanClient } from './receivable-plan-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ProductMasterPage() {
+export default async function ReceivablePlanPage() {
   let user;
   try {
     user = await currentUser();
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Product Master" active="/product-master" role="viewer">
+        <FormLayout title="Receivable Plan" active="/receivable-plan" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -27,21 +27,17 @@ export default async function ProductMasterPage() {
 
   if (!user) redirect('/login');
 
-  const { products, npdCandidates } = await loadProductMaster();
+  const rows = await loadReceivablePlan();
 
   return (
     <FormLayout
-      title="Product Master"
-      subtitle="Product status and Woven/Knitted — the source of truth the Buying Plan reads."
-      active="/product-master"
+      title="Receivable Plan"
+      subtitle="Open POs pivoted to size level, with DOQ, stock and OOS — plus this week's expected delivery."
+      active="/receivable-plan"
       role={user.role}
       userEmail={user.email}
     >
-      <ProductMasterClient
-        products={products}
-        npdCandidates={npdCandidates}
-        editable={canEdit(user.role, 'draft')}
-      />
+      <ReceivablePlanClient rows={rows} editable={canEdit(user.role, 'draft')} />
     </FormLayout>
   );
 }

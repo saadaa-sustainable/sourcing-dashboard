@@ -34,19 +34,24 @@ try {
 }
 
 const TEST = process.argv.includes('--test');
-const {
-  NPD_SUPABASE_URL,
-  NPD_SUPABASE_SERVICE_ROLE,
-  BQ_BILLING_PROJECT = 'saadaa-wh',
-} = process.env;
+const { BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
 
-if (!NPD_SUPABASE_URL || !NPD_SUPABASE_SERVICE_ROLE) {
+// Target Supabase: NPD-Tracker v7 if its vars are set, otherwise the sourcing
+// project (whose SUPABASE_* creds are already in backfill/.env from the PO backfill).
+const TARGET_URL = process.env.NPD_SUPABASE_URL || process.env.SUPABASE_URL;
+const TARGET_KEY =
+  process.env.NPD_SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE;
+const NPD_SUPABASE_URL = TARGET_URL;
+const NPD_SUPABASE_SERVICE_ROLE = TARGET_KEY;
+
+if (!TARGET_URL || !TARGET_KEY) {
   console.error(
-    'Missing NPD_SUPABASE_URL or NPD_SUPABASE_SERVICE_ROLE — set them in backfill/.env\n' +
-      '(Settings → API → Project URL and the service_role key of the NPD-Tracker v7 project).',
+    'No Supabase target configured. Set NPD_SUPABASE_URL + NPD_SUPABASE_SERVICE_ROLE\n' +
+      '(for NPD-Tracker v7) or SUPABASE_URL + SUPABASE_SERVICE_ROLE (sourcing) in backfill/.env.',
   );
   process.exit(1);
 }
+console.log(`Target: ${TARGET_URL}`);
 
 const bq = new BigQuery({ projectId: BQ_BILLING_PROJECT, location: 'asia-south1' });
 const flat = (v) => (v && typeof v === 'object' && 'value' in v ? v.value : v);

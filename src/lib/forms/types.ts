@@ -35,6 +35,16 @@ export type ProductMaster = {
   updated_at: string;
 };
 
+/** FG-master auto-rule: NPD-not-launched product with a colour selling >50 pcs. */
+export type NpdPromotionCandidate = {
+  product_code: string;
+  product_name: string | null;
+  qualifying_colours: number;
+  top_colour_sales_45d: number;
+  total_sales_45d: number;
+  product_state: string | null;
+};
+
 /* ------------------------------------------------------------------ */
 /* Buying Plan                                                         */
 /* ------------------------------------------------------------------ */
@@ -114,10 +124,14 @@ export type VendorTypeMultiplier = {
 /* Discontinue                                                         */
 /* ------------------------------------------------------------------ */
 
+export type DiscontinueScope = 'size' | 'colour' | 'product';
+
 export type DiscontinueRequest = {
   id: number;
+  scope: DiscontinueScope;
   product_code: string;
-  product_variant: string;
+  product_variant: string | null;
+  size: string | null;
   reason: string | null;
   status: SdStatus;
   requested_by: string | null;
@@ -165,6 +179,39 @@ export type ApprovalLogRow = {
   actor_email: string;
   notes: string | null;
   created_at: string;
+};
+
+/** One size-pivoted receivable row (open PO colour + DOQ/stock/OOS enrichment). */
+export type ReceivablePlanRow = {
+  row_key: string;
+  po_number: string;
+  po_ref_num: string | null;
+  po_status: string | null;
+  po_created_date: string | null;
+  product_code: string | null;
+  product_variant: string;
+  vendor_name: string | null;
+  vendor_code: string | null;
+  expected_delivery_date: string | null;
+  arriving_qty: number;
+  size_xs: number | null;
+  size_s: number | null;
+  size_m: number | null;
+  size_l: number | null;
+  size_xl: number | null;
+  size_2xl: number | null;
+  size_3xl: number | null;
+  size_4xl: number | null;
+  size_5xl: number | null;
+  product_state: string | null;
+  doq_45: number | null;
+  current_stock: number | null;
+  sales_45d: number | null;
+  oos_flag: boolean | null;
+  // Merged-in weekly inputs (sd_receivable_input).
+  delivery_date_this_week: string | null;
+  qty_expected_this_week: number | null;
+  remarks: string | null;
 };
 
 /** One arriving-stock line for the Inward Plan (grouped PO × product × variant). */

@@ -11,9 +11,11 @@ import type {
   BuyingPlanLineView,
   DiscontinueRequest,
   InwardPlanGroup,
+  NpdPromotionCandidate,
   PoApproval,
   PoCycleTime,
   ProductMaster,
+  ReceivablePlanRow,
   SdUser,
   StandardCost,
   VendorCapacityLog,
@@ -75,15 +77,20 @@ export async function currentUser(): Promise<SdUser | null> {
   );
 }
 
-/** Every product's master row, for the Product Master panel + Buying Plan. */
-export async function loadProductMaster(): Promise<ProductMaster[]> {
+/** Every product's master row + the NPD-promotion candidates, for the panel. */
+export async function loadProductMaster(): Promise<{
+  products: ProductMaster[];
+  npdCandidates: NpdPromotionCandidate[];
+}> {
   const supabase = await client();
-  const { data } = await supabase
-    .from('sd_product_master')
-    .select('*')
-    .order('product_code')
-    .limit(PAGE_SIZE);
-  return (data ?? []) as ProductMaster[];
+  const [{ data: products }, { data: candidates }] = await Promise.all([
+    supabase.from('sd_product_master').select('*').order('product_code').limit(PAGE_SIZE),
+    supabase.from('sd_npd_promotion_candidates').select('*').limit(PAGE_SIZE),
+  ]);
+  return {
+    products: (products ?? []) as ProductMaster[],
+    npdCandidates: (candidates ?? []) as NpdPromotionCandidate[],
+  };
 }
 
 /** Every standard-cost row, for the Standard Cost sheet page. */
@@ -294,6 +301,43 @@ export async function loadLatestVendorCapacity(): Promise<
     }
   });
   return map;
+}
+
+/**
+ * Receivable Plan — size-pivoted open-PO receivables + DOQ/stock/OOS, merged with
+ * the weekly team inputs (delivery date / qty expected / remarks).
+ */
+export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
+  const supabase = await client();
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_receivable_plan')
+      .select('*')
+      .order('expected_delivery_date', { ascending: true, nullsFirst: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_receivable_plan: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as Record<string, unknown>[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+
+  const { data: inputs } = await supabase
+    .from('sd_receivable_input')
+    .select('row_key, delivery_date_this_week, qty_expected_this_week, remarks');
+  const inputByKey = new Map(
+    ((inputs ?? []) as Record<string, unknown>[]).map((i) => [String(i.row_key), i]),
+  );
+
+  return rows.map((r) => {
+    const inp = inputByKey.get(String(r.row_key));
+    return {
+      ...(r as unknown as ReceivablePlanRow),
+      delivery_date_this_week: (inp?.delivery_date_this_week as string | null) ?? null,
+      qty_expected_this_week: (inp?.qty_expected_this_week as number | null) ?? null,
+      remarks: (inp?.remarks as string | null) ?? null,
+    };
+  });
 }
 
 /**

@@ -16,6 +16,10 @@
 function syncAllSheets() { return SbSync_.syncAll(); }
 function onEditSync(e) { return SbSync_.onEdit(e); }
 function installSyncTriggers() { return SbSync_.install(); }
+// One-off debug: log a sheet's normalized header keys. e.g. logTnaHeaders('TNA Update')
+function logTnaHeaders(sheetName, headerRow) { return SbSync_.logHeaders(sheetName || 'TNA Update', headerRow || 1); }
+// One-off debug: log raw per-column values for the first few rows. logTnaRaw() -> 3 rows.
+function logTnaRaw(sheetName, headerRow, n) { return SbSync_.logRaw(sheetName || 'TNA Update', headerRow || 1, n || 3); }
 
 // ---- Everything else, sealed inside one uniquely-named global ----
 const SbSync_ = (function () {
@@ -33,7 +37,10 @@ const SbSync_ = (function () {
       conflict: 'vendor_code', map: mapVendorMasterRow,
     },
     {
-      sheet: 'TNA Tracker', table: 'tna_tracker', headerRow: 1,
+      // "TNA Update" is the merged tab: the 4 core stages PLUS First Delivery,
+      // PO Closer and the roll-ups (Current Stage, Total Delay, GRN/Pending Qty).
+      // Confirmed via logTnaHeaders('TNA Update'). If you rename the tab, update this.
+      sheet: 'TNA Update', table: 'tna_tracker', headerRow: 1,
       conflict: 'po_no', map: mapTnaRow,
     },
   ];
@@ -61,13 +68,17 @@ const SbSync_ = (function () {
   }
 
   function syncSheet(config) {
+    // A tab not present in THIS spreadsheet is skipped, not an error — so the same
+    // script can run in the sourcing-master project (Pending/Vendor tabs) and the
+    // TNA project (TNA Update tab); each syncs what it has.
+    const sheet = SpreadsheetApp.getActive().getSheetByName(config.sheet);
+    if (!sheet) { Logger.log('Skipping (not in this spreadsheet): ' + config.sheet); return; }
+
     const startedAt = new Date();
     const token = Utilities.getUuid();
     let rowsSynced = 0;
     let rowsDeleted = 0;
     try {
-      const sheet = SpreadsheetApp.getActive().getSheetByName(config.sheet);
-      if (!sheet) throw new Error('Missing sheet: ' + config.sheet);
       const values = sheet.getDataRange().getDisplayValues();
       const headers = values[config.headerRow - 1].map(normalizeHeader);
       const context = { headers: headers, literalHeaders: values[config.headerRow - 1] };
@@ -180,6 +191,28 @@ const SbSync_ = (function () {
       cutting_actual_date_first: date(row.cutting_actual_date_first),
       cutting_delay_days: integer(row.cutting_delay_days), in_line_tna_date: date(row.in_line_tna_date),
       in_line_actual_date: date(row.in_line_actual_date), in_line_qc_delay_days: integer(row.in_line_qc_delay_days),
+
+      // ---- Richer TNA Update milestones + roll-ups ----
+      // These read from the merged "TNA Update" tab (point the CONFIG entry at it).
+      // Keys below are the normalizeHeader() form of the sheet's column titles
+      // (lower-cased, non-alphanumerics -> "_"). Run logTnaHeaders('TNA Update')
+      // once and match any that differ. Absent columns map to null/0 safely.
+      first_delivery_tna_date: date(row.first_delivery_tna_date),
+      first_delivery_actual_date: date(row.first_delivery_actual_date),
+      // Per-stage first-delivery / PO-closer delays sit under bare, duplicated
+      // "delay_days" headers that overwrite each other — not readable. Rename them
+      // in-sheet to first_delivery_delay_days / po_closer_delay_days to populate.
+      // (The dashboard uses total_delay_days below, so this is optional.)
+      first_delivery_delay_days: integer(row.first_delivery_delay_days),
+      // Sheet headers are typo'd "_data" (not "_date") — read those, keep a fallback.
+      po_closer_tna_date: date(row.po_closer_tna_data || row.po_closer_tna_date),
+      po_closer_actual_date: date(row.po_closer_actual_data || row.po_closer_actual_date),
+      po_closer_delay_days: integer(row.po_closer_delay_days),
+      grn_qty: number(row.grn_qty),
+      pending_qty: number(row.pending_qty),
+      current_production_stage: text(row.current_production_stage),
+      // Null (not 0) when absent, so the dashboard falls back to summing the stages.
+      total_delay_days: integerOrNull(row.total_delay_days),
     };
   }
 
@@ -209,7 +242,19 @@ const SbSync_ = (function () {
   function normalizeHeader(value) {
     return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   }
-  function rowToObject(headers, values) { const out = {}; headers.forEach((h, i) => { if (h) out[h] = values[i]; }); return out; }
+  // When a sheet repeats a header (e.g. "po_closer_tna_data" appears twice, one a
+  // blank stray), the FIRST non-empty value wins — so the real column is never
+  // clobbered by a later empty duplicate.
+  function rowToObject(headers, values) {
+    const out = {};
+    headers.forEach((h, i) => {
+      if (!h) return;
+      const v = values[i];
+      if (!(h in out) || (isBlank(out[h]) && !isBlank(v))) out[h] = v;
+    });
+    return out;
+  }
+  function isBlank(v) { return v == null || String(v).trim() === '' || isSheetError(v); }
 
   // Sheets renders formula failures as literal text ("#N/A" while IMPORTRANGE resolves,
   // "#REF!" on a broken reference). These are absence of data, not data: passed through
@@ -225,6 +270,32 @@ const SbSync_ = (function () {
   }
   function number(v) { const s = text(v); if (!s) return 0; const n = Number(s.replace(/,/g, '')); return isFinite(n) ? n : 0; }
   function integer(v) { return Math.trunc(number(v)); }
+  function integerOrNull(v) { const s = text(v); return s == null ? null : Math.trunc(number(s)); }
+
+  // Debug: dump the normalized header keys of a sheet, so mapTnaRow's row.<key>
+  // names can be matched to the actual columns. Run from the Apps Script editor,
+  // e.g. logTnaHeaders('TNA Update'), then read View -> Logs.
+  function logHeaders(sheetName, headerRow) {
+    const sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+    if (!sheet) { Logger.log('Missing sheet: ' + sheetName); return; }
+    const values = sheet.getDataRange().getDisplayValues();
+    Logger.log((values[(headerRow || 1) - 1] || []).map(normalizeHeader).filter(Boolean).join('\n'));
+  }
+
+  // Read-only: for the first N data rows, log every column's index, normalized
+  // header and RAW displayed value — so you can see exactly what First Delivery /
+  // PO Closer hold and in what format. Nothing is written back to the sheet.
+  function logRaw(sheetName, headerRow, n) {
+    const sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+    if (!sheet) { Logger.log('Missing sheet: ' + sheetName); return; }
+    const values = sheet.getDataRange().getDisplayValues();
+    const headers = values[(headerRow || 1) - 1].map(normalizeHeader);
+    const dataRows = values.slice(headerRow || 1).filter((r) => r.some((v) => String(v).trim() !== ''));
+    dataRows.slice(0, n || 3).forEach((row, idx) => {
+      Logger.log('--- data row ' + (idx + 1) + ' ---');
+      headers.forEach((h, i) => { if (h) Logger.log(i + '  ' + h + ' = ' + JSON.stringify(row[i])); });
+    });
+  }
   function boolean(v) { return ['true', 'yes', 'y', '1'].indexOf(String(text(v) || '').toLowerCase()) > -1; }
   function timestamp(v) {
     const s = text(v); if (!s) return null;
@@ -233,6 +304,14 @@ const SbSync_ = (function () {
   }
   function date(v) {
     const s = text(v); if (!s) return null;
+    // Some cells store a date as a Google Sheets serial number (days since
+    // 1899-12-30, same epoch as Excel) — e.g. "45990". Convert those.
+    if (/^\d{4,6}$/.test(s)) {
+      const serial = Number(s);
+      if (serial >= 20000 && serial <= 80000) { // ~1954..2089 — real dates, not IDs
+        return new Date(Date.UTC(1899, 11, 30) + serial * 86400000).toISOString().slice(0, 10);
+      }
+    }
     const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     const iso = dmy ? [dmy[3], dmy[2].padStart(2, '0'), dmy[1].padStart(2, '0')].join('-') : s.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
@@ -256,5 +335,5 @@ const SbSync_ = (function () {
     .map((byte) => ('0' + (byte & 255).toString(16)).slice(-2)).join(''); }
   function chunk(items, size) { const chunks = []; for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size)); return chunks; }
 
-  return { syncAll: syncAll, onEdit: onEdit, install: install };
+  return { syncAll: syncAll, onEdit: onEdit, install: install, logHeaders: logHeaders, logRaw: logRaw };
 })();

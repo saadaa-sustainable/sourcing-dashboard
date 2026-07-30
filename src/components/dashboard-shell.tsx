@@ -36,7 +36,7 @@ import {
   buildVendorRollups,
   createLookups,
   isDelayedPo,
-  isHighRiskPo,
+  isHighRiskLine,
   isOpenPo,
   resolveVendor,
 } from "@/lib/business-logic";
@@ -57,7 +57,7 @@ const glossary: Record<string, string[]> = {
     "Open value — the money still tied up in undelivered goods. Formula: sum of (pending_qty_actual × item price) across open lines.",
     "Delayed PO — an open order whose promised delivery date has already passed. Formula: open PO where expected delivery date (EDD) is before today.",
     "Delayed % — out of all open orders, the share that are running late. Formula: delayed open POs ÷ total open POs × 100.",
-    "High Risk PO — nothing received yet AND delivery is close. Formula: open PO where received = 0 (pending_quantity = original_quantity) AND EDD is within 15 days from today (overdue counts too).",
+    "High Risk PO — any critical-path TNA stage is overdue as of today. Formula: open PO where at least one stage (PP Sample, GPT, Cutting, Inline, First Delivery or PO Closer) has its planned TNA date in the past with no actual date yet — regardless of how far off final delivery is. One overdue stage compounds forward.",
     "The All / Woven / Knitted buttons filter every card and chart to that vendor type. Tip: the Delayed and High Risk cards are clickable and open the full PO list.",
   ],
   "open-po": [
@@ -121,7 +121,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Open quantity", text: "The total number of pieces that vendors still need to deliver." },
     { title: "Open value", text: "The value of all pieces that are still pending." },
     { title: "Delayed POs", text: "Open orders whose promised delivery date has passed.", tip: "Delay % shows how many open orders are late." },
-    { title: "High-risk POs", text: "Orders with no received quantity and a delivery date that is close or already overdue." },
+    { title: "High-risk POs", text: "Orders where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet — an early-warning flag to force recovery." },
     { title: "Woven and Knitted", text: "Use these buttons to update every card and graph for one vendor type." },
   ],
   "open-po": [
@@ -403,10 +403,14 @@ const vendorCsvRows = (rows: VendorRollup[]): CsvValue[][] =>
   ]);
 const tnaTotalDays = (t: TrackerRow["tna"]) =>
   t
-    ? t.pp_sample_delay_days +
-      t.gpt_delay_days +
-      t.cutting_delay_days +
-      t.in_line_qc_delay_days
+    ? // Prefer the ingested "Total Delay Days" from TNA Update; else sum stages.
+      t.total_delay_days ??
+      t.pp_sample_delay_days +
+        t.gpt_delay_days +
+        t.cutting_delay_days +
+        t.in_line_qc_delay_days +
+        (t.first_delivery_delay_days ?? 0) +
+        (t.po_closer_delay_days ?? 0)
     : null;
 
 function Modal({
@@ -492,7 +496,7 @@ function DashboardTab({
   );
   const open = rows.filter(isOpenPo);
   const delayed = open.filter((row) => isDelayedPo(row, today));
-  const highRisk = open.filter((row) => isHighRiskPo(row, today));
+  const highRisk = open.filter((row) => isHighRiskLine(row, lookups.tnaByPo, today));
   const openRefs = unique(open.map((row) => row.po_ref_num ?? ""));
   const delayedRefs = unique(delayed.map((row) => row.po_ref_num ?? ""));
   const tracker = buildTrackerRows(
@@ -1018,6 +1022,7 @@ function TrackerTab({
                 "Delay days",
                 "Days Overdue",
                 "TNA stage",
+                "High risk",
                 "TNA days",
                 "PP TNA",
                 "PP Actual",
@@ -1027,6 +1032,10 @@ function TrackerTab({
                 "Cutting actual",
                 "Inline TNA",
                 "Inline actual",
+                "First Delivery TNA",
+                "First Delivery actual",
+                "PO Closer TNA",
+                "PO Closer actual",
               ]}
               rows={rows.map((row) => [
                 row.poRef,
@@ -1040,6 +1049,7 @@ function TrackerTab({
                 row.delayDays,
                 row.delayBucket,
                 row.stage,
+                row.highRisk ? "High risk" : "",
                 tnaTotalDays(row.tna) ?? "",
                 row.tna?.pp_sample_tna_date ?? "",
                 row.tna?.pp_sample_actual_date ?? "",
@@ -1049,6 +1059,10 @@ function TrackerTab({
                 row.tna?.cutting_actual_date_first ?? "",
                 row.tna?.in_line_tna_date ?? "",
                 row.tna?.in_line_actual_date ?? "",
+                row.tna?.first_delivery_tna_date ?? "",
+                row.tna?.first_delivery_actual_date ?? "",
+                row.tna?.po_closer_tna_date ?? "",
+                row.tna?.po_closer_actual_date ?? "",
               ])}
             />
           </span>
@@ -1068,6 +1082,7 @@ function TrackerTab({
                   <th>Delay</th>
                   <th>Days Overdue</th>
                   <th>TNA stage</th>
+                  <th>Risk</th>
                   <th>TNA days</th>
                   <th>PP TNA</th>
                   <th>PP Actual</th>
@@ -1077,6 +1092,10 @@ function TrackerTab({
                   <th>Cutting actual</th>
                   <th>Inline TNA</th>
                   <th>Inline actual</th>
+                  <th>First Del. TNA</th>
+                  <th>First Del. actual</th>
+                  <th>PO Closer TNA</th>
+                  <th>PO Closer actual</th>
                   <th></th>
                 </tr>
               </thead>
@@ -1105,6 +1124,13 @@ function TrackerTab({
                       <span className="badge info">{row.stage}</span>
                     </td>
                     <td>
+                      {row.highRisk ? (
+                        <span className="badge danger">High risk</span>
+                      ) : (
+                        <span className="badge success">OK</span>
+                      )}
+                    </td>
+                    <td>
                       {(() => {
                         const d = tnaTotalDays(row.tna);
                         return d === null ? (
@@ -1124,6 +1150,10 @@ function TrackerTab({
                     <td>{row.tna?.cutting_actual_date_first ?? "—"}</td>
                     <td>{row.tna?.in_line_tna_date ?? "—"}</td>
                     <td>{row.tna?.in_line_actual_date ?? "—"}</td>
+                    <td>{row.tna?.first_delivery_tna_date ?? "—"}</td>
+                    <td>{row.tna?.first_delivery_actual_date ?? "—"}</td>
+                    <td>{row.tna?.po_closer_tna_date ?? "—"}</td>
+                    <td>{row.tna?.po_closer_actual_date ?? "—"}</td>
                     <td>
                       <button
                         className="link-button"

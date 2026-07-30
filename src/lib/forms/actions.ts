@@ -285,17 +285,36 @@ export async function createDiscontinueRequest(
     return fail('You do not have permission to raise a discontinue request.');
   }
 
+  const rawScope = String(formData.get('scope') ?? 'colour');
+  const scope = (['size', 'colour', 'product'].includes(rawScope) ? rawScope : 'colour') as
+    | 'size' | 'colour' | 'product';
   const productCode = String(formData.get('product_code') ?? '').trim();
-  const variant = String(formData.get('product_variant') ?? '').trim();
+  // Colour/size discontinues need a variant; size needs a size too. A product-level
+  // discontinue is the whole product code, no variant.
+  const variant =
+    scope === 'product' ? null : String(formData.get('product_variant') ?? '').trim() || null;
+  const size = scope === 'size' ? String(formData.get('size') ?? '').trim() || null : null;
   const reason = String(formData.get('reason') ?? '').trim();
-  if (!productCode || !variant) return fail('Pick a product code and variant.');
+
+  if (!productCode) return fail('Pick a product code.');
+  if (scope !== 'product' && !variant) return fail('Pick a colour (variant).');
+  if (scope === 'size' && !size) return fail('Pick a size to discontinue.');
+
+  const label =
+    scope === 'product'
+      ? `Product ${productCode}`
+      : scope === 'size'
+        ? `${productCode} / ${variant} / ${size}`
+        : `${productCode} / ${variant}`;
 
   const supabase = await supa();
   const { data, error } = await supabase
     .from('sd_discontinue_request')
     .insert({
+      scope,
       product_code: productCode,
       product_variant: variant,
+      size,
       reason: reason || null,
       status: statusOnSubmit('discontinue'),
       requested_by: user.email,
@@ -307,7 +326,7 @@ export async function createDiscontinueRequest(
   if (error) {
     return fail(
       error.code === '23505'
-        ? 'A live request already exists for this variant.'
+        ? `A live ${scope}-level request already exists for this.`
         : error.message,
     );
   }
@@ -315,7 +334,7 @@ export async function createDiscontinueRequest(
   await writeLog(
     'discontinue',
     String(data.id),
-    `${productCode} / ${variant}`,
+    `Discontinue ${scope} — ${label}`,
     'draft',
     statusOnSubmit('discontinue'),
     user.email,
@@ -748,6 +767,63 @@ export async function saveProductMaster(formData: FormData): Promise<ActionResul
   revalidatePath('/product-master');
   revalidatePath('/buying-plan');
   return done(`Saved ${product_code}.`);
+}
+
+/** FG-master auto-rule action: promote an NPD-not-launched product to NPD. */
+export async function promoteToNpd(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to change product status.');
+  }
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+
+  const supabase = await supa();
+  // Upsert only the status — fabric_type on an existing row is preserved.
+  const { error } = await supabase
+    .from('sd_product_master')
+    .upsert(
+      { product_code, product_status: 'NPD', updated_at: new Date().toISOString() },
+      { onConflict: 'product_code' },
+    );
+  if (error) return fail(`Could not promote: ${error.message}`);
+  revalidatePath('/product-master');
+  revalidatePath('/buying-plan');
+  return done(`${product_code} promoted to NPD.`);
+}
+
+/* ================================================================== */
+/* Receivable Plan — weekly inputs (no approval)                       */
+/* ================================================================== */
+
+export async function saveReceivableInput(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit the receivable plan.');
+  }
+  const row_key = String(formData.get('row_key') ?? '').trim();
+  if (!row_key) return fail('Invalid row.');
+  const [po_number, product_variant] = row_key.split('|');
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_receivable_input').upsert(
+    {
+      row_key,
+      po_number: po_number ?? null,
+      product_variant: product_variant ?? null,
+      delivery_date_this_week: dateOrNull(formData.get('delivery_date_this_week')),
+      qty_expected_this_week: numOrNull(formData.get('qty_expected_this_week')),
+      remarks: textOrNull(formData.get('remarks')),
+      updated_by: user.email,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'row_key' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/receivable-plan');
+  return done('Saved.');
 }
 
 /* ================================================================== */

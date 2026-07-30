@@ -164,6 +164,16 @@ async function loadFixtures(): Promise<DashboardData> {
       cutting_tna_date: date(row.cutting_tna_date), cutting_actual_date_first: date(row.cutting_actual_date_first),
       cutting_delay_days: n(row.cutting_delay_days), in_line_tna_date: date(row.in_line_tna_date),
       in_line_actual_date: date(row.in_line_actual_date), in_line_qc_delay_days: n(row.in_line_qc_delay_days),
+      // Richer TNA Update milestones (null/0 until the mirror pulls these columns).
+      first_delivery_tna_date: date(row.first_delivery_tna_date),
+      first_delivery_actual_date: date(row.first_delivery_actual_date),
+      first_delivery_delay_days: n(row.first_delivery_delay_days),
+      po_closer_tna_date: date(row.po_closer_tna_date),
+      po_closer_actual_date: date(row.po_closer_actual_date),
+      po_closer_delay_days: n(row.po_closer_delay_days),
+      grn_qty: n(row.grn_qty), pending_qty: n(row.pending_qty),
+      current_production_stage: s(row.current_production_stage),
+      total_delay_days: row.total_delay_days == null || row.total_delay_days === '' ? null : n(row.total_delay_days),
     });
   });
 

@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { Plus, Save } from 'lucide-react';
-import { saveProductMaster } from '@/lib/forms/actions';
+import { Plus, Save, TrendingUp } from 'lucide-react';
+import { promoteToNpd, saveProductMaster } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
-import type { ProductMaster } from '@/lib/forms/types';
+import type { NpdPromotionCandidate, ProductMaster } from '@/lib/forms/types';
 
 const STATUSES = [
   'Active', 'Inactive', 'TBD', 'NPD', 'NPD-Not-Launched', 'Ongoing', 'Discontinued',
@@ -13,9 +13,11 @@ const FABRICS = ['Woven', 'Knitted'];
 
 export function ProductMasterClient({
   products,
+  npdCandidates,
   editable,
 }: {
   products: ProductMaster[];
+  npdCandidates: NpdPromotionCandidate[];
   editable: boolean;
 }) {
   const [message, setMessage] = useState<string | null>(null);
@@ -60,6 +62,20 @@ export function ProductMasterClient({
     submit(fd);
   }
 
+  function promote(productCode: string) {
+    setError(null);
+    setMessage(null);
+    const fd = new FormData();
+    fd.set('product_code', productCode);
+    start(async () => {
+      const result = await promoteToNpd(fd);
+      if (result.ok) {
+        setMessage(result.message ?? 'Promoted.');
+        window.location.reload();
+      } else setError(result.error);
+    });
+  }
+
   return (
     <>
       <Notice tone="info">
@@ -69,6 +85,59 @@ export function ProductMasterClient({
 
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
+
+      {npdCandidates.length > 0 && (
+        <div className="panel wf-form-panel">
+          <div className="panel-title">
+            <h3>
+              <TrendingUp size={16} /> Suggested NPD promotions
+            </h3>
+            <span className="wf-report-count">{npdCandidates.length}</span>
+          </div>
+          <Notice tone="warn">
+            These products are still <strong>NPD – Not Launched</strong> but a colour
+            has sold more than 50 pcs (last 45 days). The rule says promote them to
+            NPD. Review and apply.
+          </Notice>
+          <div className="table-scroll">
+            <table className="wf-grid">
+              <thead>
+                <tr>
+                  <th>Product code</th>
+                  <th>Name</th>
+                  <th className="num">Colours &gt;50</th>
+                  <th className="num">Top colour sales (45d)</th>
+                  {editable && <th aria-label="Promote" />}
+                </tr>
+              </thead>
+              <tbody>
+                {npdCandidates.map((c) => (
+                  <tr key={c.product_code}>
+                    <td className="mono">{c.product_code}</td>
+                    <td>{c.product_name ?? '—'}</td>
+                    <td className="num">{c.qualifying_colours}</td>
+                    <td className="num strong">
+                      {Number(c.top_colour_sales_45d).toLocaleString('en-IN')}
+                    </td>
+                    {editable && (
+                      <td>
+                        <button
+                          type="button"
+                          className="wf-btn wf-btn-primary wf-btn-sm"
+                          onClick={() => promote(c.product_code)}
+                          disabled={pending}
+                        >
+                          <TrendingUp size={13} /> Promote to NPD
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {editable && (
         <div className="wf-form-panel">
