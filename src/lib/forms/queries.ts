@@ -286,6 +286,11 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     };
   });
 
+  // Discontinued products (per the master) must not appear in the plan's add-list.
+  const activeCodes = productCodes.filter(
+    (code) => productMaster[code]?.status !== 'Discontinued',
+  );
+
   // Approved standard rates drive the per-PO-type buying value; the replenishment
   // roll-up drives the computed Pending Quantity (30-day ROP).
   const [standardCosts, replenishment] = await Promise.all([
@@ -298,7 +303,7 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
   return {
     plan: (plan as BuyingPlan | null) ?? null,
     lines,
-    productCodes,
+    productCodes: activeCodes,
     productMaster,
     standardCosts,
     pendingByCode,
