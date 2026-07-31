@@ -379,7 +379,9 @@ export function BuyingPlanClient({
                 <th className="num input-col">FOB qty</th>
                 <th className="num input-col">E-FOB qty</th>
                 <th className="num">Total quantity</th>
-                <th className="num">Standard cost</th>
+                <th className="num">
+                  Standard cost<small className="wf-subtle">Job · FOB · E-FOB</small>
+                </th>
                 <th className="num">Value to be bought</th>
                 <th className="num">Actual issued quantity</th>
                 <th className="num">Actual issued value</th>
@@ -410,9 +412,15 @@ export function BuyingPlanClient({
                   ))}
                   <td className="num strong">{fmt.format(totalQty)}</td>
                   <td className="num">
-                    {cost
-                      ? `${fmt.format(cost.job)} / ${fmt.format(cost.fob)} / ${fmt.format(cost.efob)}`
-                      : '—'}
+                    {cost ? (
+                      <div className="wf-cost-triple">
+                        <span><b>Job</b> {fmt.format(cost.job)}</span>
+                        <span><b>FOB</b> {fmt.format(cost.fob)}</span>
+                        <span><b>E-FOB</b> {fmt.format(cost.efob)}</span>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="num">
                     {missingCost ? (

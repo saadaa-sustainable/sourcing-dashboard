@@ -667,3 +667,24 @@
 .wf-doc-link { color: var(--purple-dark, #4b3fb0); background: rgba(109, 93, 252, 0.07); text-decoration: none; }
 .wf-doc-link:hover { background: rgba(109, 93, 252, 0.16); }
 .wf-doc-flat { color: #9aa0b4; background: transparent; }
+
+/* ---- Buying plan: labelled Job/FOB/E-FOB standard cost ---- */
+.wf-cost-triple {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-end;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.wf-cost-triple b {
+  display: inline-block;
+  min-width: 34px;
+  margin-right: 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-align: left;
+  color: #9098ac;
+}
