@@ -218,55 +218,43 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
 }
 
 /* ================================================================== */
-/* Vendor capacity — no approval, append only                          */
+/* Vendor capacity — no approval; one live row per vendor, saved singly */
 /* ================================================================== */
 
-export async function submitVendorCapacity(formData: FormData): Promise<ActionResult> {
+export async function saveVendorCapacityRow(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   if (!canEdit(user.role, 'draft')) {
-    return fail('You do not have permission to submit vendor capacity.');
+    return fail('You do not have permission to update vendor capacity.');
   }
 
-  const week = String(formData.get('week_of') ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return fail('Invalid week.');
+  const vendor_code = String(formData.get('vendor_code') ?? '').trim();
+  if (!vendor_code) return fail('Vendor code is required.');
 
-  let rows: Array<Record<string, unknown>>;
-  try {
-    rows = JSON.parse(String(formData.get('rows') ?? '[]'));
-  } catch {
-    return fail('Could not read the capacity rows.');
-  }
-
-  const payload = rows
-    .filter((row) => String(row.vendor_code ?? '').trim())
-    .map((row) => ({
-      vendor_code: String(row.vendor_code).trim(),
-      vendor_name: row.vendor_name ? String(row.vendor_name) : null,
-      week_of: week,
-      machines_allocated: numOrNull(row.machines_allocated),
-      active_karigar: numOrNull(row.active_karigar),
-      capacity_per_month: numOrNull(row.capacity_per_month),
-      machines_at_onboarding: numOrNull(row.machines_at_onboarding),
-      capacity_signed: numOrNull(row.capacity_signed),
-      submitted_by: user.email,
-      submitted_at: new Date().toISOString(),
-    }));
-
-  if (!payload.length) return fail('Nothing to submit.');
+  // One current row per vendor: this save overwrites just this vendor's record and
+  // re-stamps entry_date, without touching or requiring any other vendor.
+  const now = new Date().toISOString();
+  const row = {
+    vendor_code,
+    vendor_name: formData.get('vendor_name') ? String(formData.get('vendor_name')) : null,
+    machines_allocated: numOrNull(formData.get('machines_allocated')),
+    active_karigar: numOrNull(formData.get('active_karigar')),
+    capacity_per_month: numOrNull(formData.get('capacity_per_month')),
+    machines_at_onboarding: numOrNull(formData.get('machines_at_onboarding')),
+    capacity_signed: numOrNull(formData.get('capacity_signed')),
+    submitted_by: user.email,
+    submitted_at: now,
+    entry_date: now,
+  };
 
   const supabase = await supa();
-  // Append-only log. A resubmit within the same week overwrites that week's row
-  // rather than creating a second one; history across weeks is never touched.
-  for (let i = 0; i < payload.length; i += 500) {
-    const { error } = await supabase
-      .from('sd_vendor_capacity_log')
-      .upsert(payload.slice(i, i + 500), { onConflict: 'vendor_code,week_of' });
-    if (error) return fail(`Could not save capacity: ${error.message}`);
-  }
+  const { error } = await supabase
+    .from('sd_vendor_capacity_log')
+    .upsert(row, { onConflict: 'vendor_code' });
+  if (error) return fail(`Could not save capacity: ${error.message}`);
 
   revalidatePath('/vendor-capacity');
-  return done(`Capacity recorded for ${payload.length} vendors.`);
+  return done(`Saved capacity for ${vendor_code}.`);
 }
 
 function numOrNull(value: unknown) {
@@ -386,6 +374,19 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   const from = row.status as SdStatus;
   if (!canApprove(user.role, from)) {
     return fail('This decision is above your approval level.');
+  }
+
+  // Hard gate: a PO's cost cannot be approved until its TNA critical-path dates are
+  // confirmed and locked by the approver (see confirmTna). Rejection is always allowed.
+  if (entityType === 'po_approval' && decision === 'approve') {
+    const { data: po } = await supabase
+      .from('sd_po_approval')
+      .select('tna_confirmed')
+      .eq('id', entityId)
+      .maybeSingle();
+    if (!po?.tna_confirmed) {
+      return fail('Confirm the TNA dates before approving this PO.');
+    }
   }
 
   const to: SdStatus = decision === 'approve' ? 'approved' : 'rejected';
@@ -737,6 +738,65 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   return done(alreadyIssued ? 'Signing details saved.' : `Issued as EasyCom PO ${easycom}.`);
 }
 
+/**
+ * Approver-only: review and LOCK the PO's TNA critical-path dates. Only whoever can
+ * approve this PO (team for FG ≤5,000; admin for >5,000 / NPD / MAT) may enter or
+ * confirm them. decideApproval hard-blocks the cost decision until this has run, so a
+ * PO with a nonsensical delivery window can't get its cost approved unchecked.
+ */
+export async function confirmTna(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid PO.');
+
+  const supabase = await supa();
+  const { data: po } = await supabase
+    .from('sd_po_approval')
+    .select('id, status, po_ref_num')
+    .eq('id', id)
+    .maybeSingle();
+  if (!po) return fail('PO not found.');
+
+  const status = po.status as SdStatus;
+  if (!canApprove(user.role, status)) {
+    return fail('Only this PO’s approver can confirm its TNA dates.');
+  }
+
+  const now = new Date().toISOString();
+  const { data: updated, error } = await supabase
+    .from('sd_po_approval')
+    .update({
+      po_closing_date: dateOrNull(formData.get('po_closing_date')),
+      cs_pp_sample_due: dateOrNull(formData.get('cs_pp_sample_due')),
+      cs_gpt_due: dateOrNull(formData.get('cs_gpt_due')),
+      cs_cutting_start: dateOrNull(formData.get('cs_cutting_start')),
+      cs_inline_qc_due: dateOrNull(formData.get('cs_inline_qc_due')),
+      critical_path_first_delivery: dateOrNull(formData.get('critical_path_first_delivery')),
+      tna_confirmed: true,
+      tna_confirmed_by: user.email,
+      tna_confirmed_at: now,
+    })
+    .eq('id', id)
+    .eq('status', status)
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('This PO changed state — reload and try again.');
+
+  await writeLog(
+    'po_approval',
+    String(id),
+    `PO ${po.po_ref_num ?? `#${id}`} · TNA confirmed`,
+    status,
+    status,
+    user.email,
+    'TNA dates confirmed',
+  );
+  revalidatePath('/po-approval');
+  return done('TNA dates confirmed — cost approval is now unblocked.');
+}
+
 /* ================================================================== */
 /* Product master — status + woven/knitted, read by the Buying Plan    */
 /* ================================================================== */
@@ -802,6 +862,74 @@ export async function promoteToNpd(formData: FormData): Promise<ActionResult> {
   revalidatePath('/product-master');
   revalidatePath('/buying-plan');
   return done(`${product_code} promoted to NPD.`);
+}
+
+/* ================================================================== */
+/* Fabric master — manual code + composition, duplicate-blocked        */
+/* ================================================================== */
+
+function readFabricFields(formData: FormData) {
+  return {
+    composition: textOrNull(formData.get('composition')),
+    warp_count: textOrNull(formData.get('warp_count')),
+    weft_count: textOrNull(formData.get('weft_count')),
+    third_thread: textOrNull(formData.get('third_thread')),
+    weave: textOrNull(formData.get('weave')),
+    gsm: numOrNull(formData.get('gsm')),
+    raw_material_color: textOrNull(formData.get('raw_material_color')),
+    fabric_name: textOrNull(formData.get('fabric_name')),
+    is_active: formData.get('is_active') !== 'false',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/** Add a NEW fabric code. Insert-only so an existing code is blocked (the point). */
+export async function addFabric(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit the fabric master.');
+  }
+  const fabric_code = String(formData.get('fabric_code') ?? '').trim().toUpperCase();
+  if (!fabric_code) return fail('Fabric code is required.');
+
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_fabric_master')
+    .insert({ fabric_code, ...readFabricFields(formData) });
+  if (error) {
+    return fail(
+      error.code === '23505'
+        ? `Fabric code “${fabric_code}” already exists — use a different code.`
+        : `Could not add: ${error.message}`,
+    );
+  }
+  revalidatePath('/fabric-master');
+  revalidatePath('/buying-plan');
+  return done(`Added ${fabric_code}.`);
+}
+
+/** Update an existing fabric code's fields (code itself is the key, never changed). */
+export async function updateFabric(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit the fabric master.');
+  }
+  const fabric_code = String(formData.get('fabric_code') ?? '').trim().toUpperCase();
+  if (!fabric_code) return fail('Fabric code is required.');
+
+  const supabase = await supa();
+  const { data: updated, error } = await supabase
+    .from('sd_fabric_master')
+    .update(readFabricFields(formData))
+    .eq('fabric_code', fabric_code)
+    .select('fabric_code');
+  if (error) return fail(`Could not save: ${error.message}`);
+  if (!updated?.length) return fail('Fabric code not found.');
+  revalidatePath('/fabric-master');
+  revalidatePath('/buying-plan');
+  return done(`Saved ${fabric_code}.`);
 }
 
 /* ================================================================== */

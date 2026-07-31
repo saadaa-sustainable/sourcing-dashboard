@@ -9,6 +9,7 @@ import {
   Factory,
   FileCheck,
   IndianRupee,
+  Layers,
   LayoutDashboard,
   Menu,
   PackageCheck,
@@ -134,6 +135,14 @@ export function SideNav({
           >
             <Tags size={18} />
             <span>Product Master</span>
+          </a>
+          <a
+            href="/fabric-master"
+            className={activeWorkflow === '/fabric-master' ? 'active' : ''}
+            onClick={close}
+          >
+            <Layers size={18} />
+            <span>Fabric Master</span>
           </a>
           <a
             href="/users"

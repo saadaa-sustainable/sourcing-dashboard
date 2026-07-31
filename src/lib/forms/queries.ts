@@ -2,7 +2,7 @@ import 'server-only';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { buildVendorRollups } from '@/lib/business-logic';
 import { loadDashboardData } from '@/lib/data';
-import { monthStart, weekStart } from './approval';
+import { monthStart } from './approval';
 import type {
   ApprovalQueueItem,
   ApprovalLogRow,
@@ -11,6 +11,7 @@ import type {
   BuyingPlanLineView,
   CashFlowMonth,
   DiscontinueRequest,
+  FabricMaster,
   InwardPlanGroup,
   NpdPromotionCandidate,
   PoApproval,
@@ -22,7 +23,6 @@ import type {
   VendorTerm,
   StandardCost,
   VendorCapacityLog,
-  VendorCapacityView,
   VendorTypeMultiplier,
 } from './types';
 import { routeApproval } from './approval';
@@ -170,6 +170,17 @@ export async function loadProductMaster(): Promise<{
     products: (products ?? []) as ProductMaster[],
     npdCandidates: (candidates ?? []) as NpdPromotionCandidate[],
   };
+}
+
+/** Every fabric master row, for the Fabric Master admin page. */
+export async function loadFabricMaster(): Promise<FabricMaster[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_fabric_master')
+    .select('*')
+    .order('fabric_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as FabricMaster[];
 }
 
 /** Every standard-cost row, for the Standard Cost sheet page. */
@@ -555,27 +566,19 @@ export function buildBuyingPlanView(
 /* Vendor capacity                                                     */
 /* ------------------------------------------------------------------ */
 
-export async function loadVendorCapacity(week = weekStart()) {
+export async function loadVendorCapacity() {
   const supabase = await client();
 
+  // One live row per vendor — no week bucketing. entry_date carries when it was
+  // last updated, which drives the staleness flag on the screen.
   const { data: logs } = await supabase
     .from('sd_vendor_capacity_log')
     .select('*')
-    .eq('week_of', week)
     .order('vendor_code');
 
   const { data: multipliers } = await supabase
     .from('sd_vendor_type_multiplier')
     .select('*');
-
-  // Previous week, so the form can prefill instead of starting blank.
-  const prevWeek = new Date(new Date(`${week}T00:00:00Z`).getTime() - 7 * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  const { data: prior } = await supabase
-    .from('sd_vendor_capacity_log')
-    .select('*')
-    .eq('week_of', prevWeek);
 
   const dashboard = await loadDashboardData();
   const rollups = buildVendorRollups(
@@ -586,64 +589,12 @@ export async function loadVendorCapacity(week = weekStart()) {
   );
 
   return {
-    week,
     logs: (logs ?? []) as VendorCapacityLog[],
-    priorLogs: (prior ?? []) as VendorCapacityLog[],
     multipliers: (multipliers ?? []) as VendorTypeMultiplier[],
     rollups,
     vendorMasters: dashboard.vendorMasters,
     vendorTypes: dashboard.vendorTypes,
   };
-}
-
-export function buildCapacityView(
-  logs: VendorCapacityLog[],
-  multipliers: VendorTypeMultiplier[],
-  inProcessByVendor: Map<string, number>,
-  vendorTypeByCode: Map<string, string>,
-): VendorCapacityView[] {
-  const multiplierByType = new Map(
-    multipliers.map((m) => [m.vendor_type.toLowerCase(), m]),
-  );
-
-  return logs.map((log) => {
-    const rawType = (vendorTypeByCode.get(log.vendor_code.toLowerCase()) ?? '').toLowerCase();
-    const normalised = rawType.includes('job')
-      ? 'job_work'
-      : rawType.includes('e-fob') || rawType.includes('efob')
-        ? 'efob'
-        : rawType.includes('fob')
-          ? 'fob'
-          : 'job_work';
-    const config = multiplierByType.get(normalised);
-    const multiplier = config?.multiplier ?? 1;
-    const capacity = Number(log.capacity_per_month || 0);
-    const inProcess = inProcessByVendor.get(log.vendor_code.toLowerCase()) ?? 0;
-    const poCapacity = capacity * multiplier;
-    const available = poCapacity - inProcess;
-
-    return {
-      ...log,
-      vendorType: normalised,
-      multiplier,
-      stockDays: config?.stock_days ?? 0,
-      inProcessQty: inProcess,
-      poCapacity,
-      availablePoCapacity: available,
-      overProduction: available < 0,
-      machineUtilisationPct:
-        Number(log.machines_at_onboarding || 0) > 0
-          ? Math.round(
-              (Number(log.machines_allocated || 0) /
-                Number(log.machines_at_onboarding)) *
-                100,
-            )
-          : 0,
-      capacityUtilisationPct: poCapacity
-        ? Math.round((inProcess / poCapacity) * 100)
-        : 0,
-    };
-  });
 }
 
 /* ------------------------------------------------------------------ */

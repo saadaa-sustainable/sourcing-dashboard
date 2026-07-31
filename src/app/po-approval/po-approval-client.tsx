@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { FileCheck, Save, Send } from 'lucide-react';
+import { CalendarCheck, FileCheck, Save, Send } from 'lucide-react';
 import {
+  confirmTna,
   issuePoApproval,
   savePoApproval,
   submitPoApproval,
@@ -137,6 +138,8 @@ export function PoApprovalClient({
       {error && <Notice tone="error">{error}</Notice>}
 
       <ReportingScreen pos={pos} />
+
+      <CycleKpis cycle={cycle} />
 
       {editable && (
         <div className="panel wf-form-panel">
@@ -453,6 +456,48 @@ function ReportCard({
   );
 }
 
+/**
+ * Approval cycle-time KPI — rolling averages across POs, distinct from the TNA-stage
+ * delay numbers. Submission → approval → vendor sign-off (the DiGiO signed date).
+ */
+function CycleKpis({ cycle }: { cycle: Record<string, PoCycleTime> }) {
+  const rows = Object.values(cycle);
+  const avg = (pick: (c: PoCycleTime) => number | null) => {
+    const vals = rows.map(pick).filter((v): v is number => v != null);
+    if (!vals.length) return null;
+    return Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10) / 10;
+  };
+  const toApprove = avg((c) => c.days_to_approve);
+  const toSign = avg((c) => c.days_to_sign);
+  const total = avg((c) => c.total_cycle_days_signoff ?? c.total_cycle_days);
+  const measured = rows.filter((c) => c.days_to_approve != null).length;
+  const fmtDays = (v: number | null) => (v == null ? '—' : `${v}d`);
+
+  return (
+    <div className="wf-kpi-strip">
+      <div className="wf-kpi">
+        <span className="wf-kpi-label">Submission → approval</span>
+        <strong className="wf-kpi-value">{fmtDays(toApprove)}</strong>
+      </div>
+      <div className="wf-kpi">
+        <span className="wf-kpi-label">Approval → sign-off</span>
+        <strong className="wf-kpi-value">{fmtDays(toSign)}</strong>
+      </div>
+      <div className="wf-kpi">
+        <span className="wf-kpi-label">End-to-end</span>
+        <strong className="wf-kpi-value">{fmtDays(total)}</strong>
+      </div>
+      <div className="wf-kpi">
+        <span className="wf-kpi-label">POs measured</span>
+        <strong className="wf-kpi-value">{measured}</strong>
+      </div>
+      <p className="wf-kpi-note">
+        Average PO approval cycle — separate from TNA-stage production delays.
+      </p>
+    </div>
+  );
+}
+
 function PoRow({
   po,
   cycle,
@@ -481,6 +526,33 @@ function PoRow({
   const canIssue = canEdit(role, 'draft');
   const issued = Boolean(po.po_issued_at);
 
+  // TNA gate — only this PO's approver may review/lock the critical-path dates.
+  const isApprover =
+    (po.status === 'submitted' || po.status === 'pending_l2') &&
+    canApprove(role, po.status);
+  const [tnaOpen, setTnaOpen] = useState(false);
+  const [tna, setTna] = useState({
+    po_closing_date: po.po_closing_date ?? '',
+    cs_pp_sample_due: po.cs_pp_sample_due ?? '',
+    cs_gpt_due: po.cs_gpt_due ?? '',
+    cs_cutting_start: po.cs_cutting_start ?? '',
+    cs_inline_qc_due: po.cs_inline_qc_due ?? '',
+    critical_path_first_delivery: po.critical_path_first_delivery ?? '',
+  });
+  const setT = (k: keyof typeof tna, v: string) => setTna((s) => ({ ...s, [k]: v }));
+
+  function confirmTnaDates() {
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(po.id));
+    Object.entries(tna).forEach(([k, v]) => p.set(k, v));
+    start(async () => {
+      const res = await confirmTna(p);
+      if (res.ok) window.location.reload();
+      else setError(res.error);
+    });
+  }
+
   function submit() {
     setError(null);
     const p = new FormData();
@@ -507,7 +579,7 @@ function PoRow({
 
   return (
     <>
-      <tr className={signing ? 'wf-row-open' : ''}>
+      <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
         <td className="mono">{po.po_ref_num ?? `#${po.id}`}</td>
         <td>{catLabel(po.category)}</td>
         <td className="mono">{po.product_code ?? '—'}</td>
@@ -524,6 +596,11 @@ function PoRow({
         <td>{Number(po.po_qty).toLocaleString('en-IN')}</td>
         <td>
           <StatusBadge status={po.status} />
+          {(po.status === 'submitted' || po.status === 'pending_l2') && (
+            <small className={po.tna_confirmed ? 'wf-tna-ok' : 'wf-tna-pending'}>
+              {po.tna_confirmed ? 'TNA confirmed' : 'TNA pending'}
+            </small>
+          )}
           {po.status === 'rejected' && po.rejection_notes && (
             <small className="wf-subtle">{po.rejection_notes}</small>
           )}
@@ -537,6 +614,9 @@ function PoRow({
             : cycle?.days_to_approve != null
               ? `${cycle.days_to_approve} to approve`
               : '—'}
+          {cycle?.days_to_sign != null && (
+            <small className="wf-subtle">{cycle.days_to_sign}d to sign</small>
+          )}
         </td>
         <td>
           {error && <small className="wf-subtle wf-error-text">{error}</small>}
@@ -551,15 +631,25 @@ function PoRow({
             </button>
           )}
           {(po.status === 'submitted' || po.status === 'pending_l2') &&
-            (canApprove(role, po.status) ? (
-              <ApprovalBar
-                entityType="po_approval"
-                entityId={String(po.id)}
-                entityLabel={`PO ${po.po_ref_num ?? `#${po.id}`} · ${catLabel(po.category)}`}
-                onDone={(res) => {
-                  if (res.ok) window.location.reload();
-                }}
-              />
+            (isApprover ? (
+              po.tna_confirmed ? (
+                <ApprovalBar
+                  entityType="po_approval"
+                  entityId={String(po.id)}
+                  entityLabel={`PO ${po.po_ref_num ?? `#${po.id}`} · ${catLabel(po.category)}`}
+                  onDone={(res) => {
+                    if (res.ok) window.location.reload();
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary wf-btn-sm"
+                  onClick={() => setTnaOpen((v) => !v)}
+                >
+                  <CalendarCheck size={14} /> Review &amp; confirm TNA
+                </button>
+              )
             ) : (
               <span className="wf-subtle">Awaiting approval</span>
             ))}
@@ -577,6 +667,84 @@ function PoRow({
           )}
         </td>
       </tr>
+      {tnaOpen && isApprover && (
+        <tr className="wf-issue-panel-row">
+          <td colSpan={8}>
+            <div className="wf-issue-panel">
+              <strong className="wf-issue-title">
+                Review &amp; confirm TNA — {po.po_ref_num ?? `PO #${po.id}`}
+              </strong>
+              <p className="wf-subtle">
+                Check these critical-path dates make sense for the quantity (
+                {Number(po.po_qty).toLocaleString('en-IN')} pcs). Cost approval stays
+                blocked until you confirm — confirming locks them as the approved TNA.
+              </p>
+              <div className="wf-form-grid">
+                <Field label="PO closing date">
+                  <input
+                    type="date"
+                    value={tna.po_closing_date}
+                    onChange={(e) => setT('po_closing_date', e.target.value)}
+                  />
+                </Field>
+                <Field label="PP sample due">
+                  <input
+                    type="date"
+                    value={tna.cs_pp_sample_due}
+                    onChange={(e) => setT('cs_pp_sample_due', e.target.value)}
+                  />
+                </Field>
+                <Field label="GPT due">
+                  <input
+                    type="date"
+                    value={tna.cs_gpt_due}
+                    onChange={(e) => setT('cs_gpt_due', e.target.value)}
+                  />
+                </Field>
+                <Field label="Cutting start">
+                  <input
+                    type="date"
+                    value={tna.cs_cutting_start}
+                    onChange={(e) => setT('cs_cutting_start', e.target.value)}
+                  />
+                </Field>
+                <Field label="Inline QC due">
+                  <input
+                    type="date"
+                    value={tna.cs_inline_qc_due}
+                    onChange={(e) => setT('cs_inline_qc_due', e.target.value)}
+                  />
+                </Field>
+                <Field label="First delivery (critical path)">
+                  <input
+                    type="date"
+                    value={tna.critical_path_first_delivery}
+                    onChange={(e) => setT('critical_path_first_delivery', e.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="wf-footer-actions">
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary wf-btn-sm"
+                  onClick={confirmTnaDates}
+                  disabled={pending}
+                >
+                  <CalendarCheck size={14} />{' '}
+                  {po.tna_confirmed ? 'Re-confirm TNA' : 'Confirm TNA & unblock cost'}
+                </button>
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => setTnaOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
       {signing && po.status === 'approved' && canIssue && (
         <tr className="wf-issue-panel-row">
           <td colSpan={8}>

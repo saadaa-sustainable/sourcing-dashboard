@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { weekLabel } from '@/lib/forms/approval';
 import {
   currentUser,
   loadInProcessByVendor,
@@ -30,13 +29,12 @@ export default async function VendorCapacityPage() {
 
   if (!user) redirect('/login');
 
-  const { week, logs, priorLogs, multipliers, vendorMasters, vendorTypes } =
+  const { logs, multipliers, vendorMasters, vendorTypes } =
     await loadVendorCapacity();
   // Real in-process load from the PO pipeline (sd_vendor_in_process), not the sheet.
   const inProcessByCode = await loadInProcessByVendor();
 
   const currentByCode = new Map(logs.map((row) => [key(row.vendor_code), row]));
-  const priorByCode = new Map(priorLogs.map((row) => [key(row.vendor_code), row]));
   // Fallback type source if a master row has no primary_type set.
   const typeByCode = new Map(
     vendorTypes.map((row) => [key(row.vendor_code), row.vendor_type ?? '']),
@@ -56,7 +54,6 @@ export default async function VendorCapacityPage() {
         capacitySigned: master.capacity_per_month ?? 0,
         inProcessQty: inProcessByCode.get(code) ?? 0,
         current: currentByCode.get(code) ?? null,
-        prior: priorByCode.get(code) ?? null,
       };
     })
     .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name));
@@ -64,13 +61,12 @@ export default async function VendorCapacityPage() {
   return (
     <FormLayout
       title="Vendor Capacity"
-      subtitle={`Weekly capacity input — ${weekLabel(week)}. No approval; input and update only.`}
+      subtitle="Per-vendor capacity — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only."
       active="/vendor-capacity"
       role={user.role}
       userEmail={user.email}
     >
       <VendorCapacityClient
-        week={week}
         vendors={vendors}
         multipliers={multipliers}
         role={user.role}

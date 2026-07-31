@@ -35,6 +35,21 @@ export type ProductMaster = {
   updated_at: string;
 };
 
+/** Fabric master — manually-coded composition records; feeds the Buying Plan datalist. */
+export type FabricMaster = {
+  fabric_code: string;
+  composition: string | null;
+  warp_count: string | null;
+  weft_count: string | null;
+  third_thread: string | null;
+  weave: string | null;
+  gsm: number | null;
+  raw_material_color: string | null;
+  fabric_name: string | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
 /** FG-master auto-rule: NPD-not-launched product with a colour selling >50 pcs. */
 export type NpdPromotionCandidate = {
   product_code: string;
@@ -93,7 +108,8 @@ export type VendorCapacityLog = {
   id: number;
   vendor_code: string;
   vendor_name: string | null;
-  week_of: string; // Monday, ISO
+  week_of: string | null; // legacy — week bucketing dropped; kept nullable
+  entry_date: string; // when this row was actually entered
   machines_allocated: number | null;
   active_karigar: number | null;
   capacity_per_month: number | null;
@@ -113,6 +129,8 @@ export type VendorCapacityView = VendorCapacityLog & {
   overProduction: boolean;
   machineUtilisationPct: number;
   capacityUtilisationPct: number;
+  lastUpdated: string | null;
+  isStale: boolean;
 };
 
 export type VendorTypeMultiplier = {
@@ -299,6 +317,10 @@ export type PoApproval = {
   approved_by: string | null;
   approved_at: string | null;
   rejection_notes: string | null;
+  // TNA gate — approver-confirmed critical-path dates; cost approval is blocked until true
+  tna_confirmed: boolean;
+  tna_confirmed_by: string | null;
+  tna_confirmed_at: string | null;
   // issuance / DiGiO signing (phase 2 for the signed_* set)
   easycom_po_no: string | null;
   signed_po_document_url: string | null;
@@ -317,6 +339,8 @@ export type PoCycleTime = {
   days_to_approve: number | null;
   days_to_issue: number | null;
   total_cycle_days: number | null;
+  days_to_sign: number | null;
+  total_cycle_days_signoff: number | null;
 };
 
 /** One row in the unified /approvals queue. */
