@@ -16,6 +16,7 @@ import type {
   NpdPromotionCandidate,
   PoApproval,
   PoCycleTime,
+  PoDetails,
   ProductMaster,
   ReceivablePlanRow,
   ReplenishmentRow,
@@ -170,6 +171,17 @@ export async function loadProductMaster(): Promise<{
     products: (products ?? []) as ProductMaster[],
     npdCandidates: (candidates ?? []) as NpdPromotionCandidate[],
   };
+}
+
+/** PO Details Form submissions (Google Form), newest first, for the read-only page. */
+export async function loadPoDetails(): Promise<PoDetails[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_po_details')
+    .select('*')
+    .order('submitted_at', { ascending: false, nullsFirst: false })
+    .limit(PAGE_SIZE);
+  return (data ?? []) as PoDetails[];
 }
 
 /** Every fabric master row, for the Fabric Master admin page. */

@@ -53,6 +53,13 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Suggest PO ref / DiGiO', source: 'Automatic / Phase 2', detail: 'Suggest builds the PO ref in the standard FY/type/product/vendor format (editable). The DiGiO fields are manual URLs for now — the DiGiO API integration will populate them automatically later.' },
     { field: 'Set as standard benchmark cost', source: 'You choose at issuance', detail: 'Tick this at issuance to lock the product’s standard cost as the fixed benchmark — it freezes and can’t drift or be overwritten by later PO costs. Never automatic; it’s an explicit choice.' },
   ],
+  '/po-details': [
+    { field: 'Where this comes from', source: 'Google Form → Sheet → auto-sync', detail: 'The “PO Details Form” responses land in a Google Sheet tab that syncs to the dashboard every ~5 minutes. No manual entry here — it is a read-only mirror.' },
+    { field: 'What it holds', source: 'Form (issuance metadata)', detail: 'The sourcing metadata captured at PO issue time: signed PO / cost / TNA documents, the TNA sheet link, critical-stage dates (PP, GPT, cutting, inline), colours, buying-plan no.' },
+    { field: 'Source of truth', source: 'GCP / EasyEcom', detail: 'The PO’s transactional data (qty, delivery, status) is owned by GCP/EasyEcom — this form only supplements it. Matched by PO ref.' },
+    { field: 'In live pipeline', source: 'Automatic', formula: 'form PO ref = an open Approved PO in GCP', detail: '“live” means the PO is still an open Approved PO in the filtered GCP pipeline; otherwise it is a historically-issued PO now closed or excluded.' },
+    { field: 'Signed docs', source: 'Form (Drive links)', detail: 'PO / Cost / TNA / CAD links open the Google Drive document when the cell is a URL; a filename-only value shows as plain text.' },
+  ],
   '/inward-plan': [
     { field: 'PO / Product / Variant', source: 'Real PO data (GCP)', detail: 'Each row is one colour of one product on an open purchase order.' },
     { field: 'Ordered', source: 'Real PO data (GCP)', detail: 'How many pieces were ordered on that line.' },

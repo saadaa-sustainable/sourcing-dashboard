@@ -43,6 +43,15 @@ const SbSync_ = (function () {
       sheet: 'TNA Update', table: 'tna_tracker', headerRow: 1,
       conflict: 'po_no', map: mapTnaRow,
     },
+    {
+      // Google Form response tab. Row 1 is a category-label row (DERIVED/EE/INPUT…),
+      // so the real header is row 2. The left-hand form columns win over the derived
+      // duplicates further right (rowToObject keeps the first non-empty). GCP/EasyEcom
+      // stay the source of truth for PO transactional data — this carries the sourcing
+      // metadata (signed docs, TNA links, critical-stage dates, buying-plan no.).
+      sheet: 'PO Details Form', table: 'po_details_form', headerRow: 2,
+      conflict: 'source_row_key', map: mapPoDetailsRow,
+    },
   ];
 
   function syncAll() {
@@ -213,6 +222,43 @@ const SbSync_ = (function () {
       current_production_stage: text(row.current_production_stage),
       // Null (not 0) when absent, so the dashboard falls back to summing the stages.
       total_delay_days: integerOrNull(row.total_delay_days),
+    };
+  }
+
+  // "PO Details Form" Google Form responses. Header keys are the normalizeHeader()
+  // form of the row-2 titles. source_row_key = sha256(timestamp|po_number|easyecom)
+  // so repeat submissions for the same PO are kept distinct but exact repeats collapse.
+  function mapPoDetailsRow(row) {
+    const poNumber = text(row.po_number);
+    const easy = text(row.easyecom_po_no);
+    if (!poNumber && !easy) return null;
+    const keyRaw = [row.timestamp, row.po_number, row.easyecom_po_no]
+      .map((v) => String(v == null ? '' : v).trim()).join('|');
+    return {
+      source_row_key: sha256(keyRaw),
+      submitted_at: timestamp(row.timestamp),
+      email_address: text(row.email_address),
+      po_type: text(row.po_type),
+      product_code: text(row.product_code),
+      po_number: poNumber,
+      easyecom_po_no: easy,
+      date_of_po_sign: date(row.date_of_po_sign),
+      vendor_name: text(row.vendor_name),
+      signed_po_document: text(row.signed_po_document),
+      signed_po_cost_sheet: text(row.signed_po_cost_sheet),
+      signed_tna: text(row.signed_tna),
+      tna_sheet_link: text(row.tna_sheet_google_drive_link),
+      no_of_colors: integerOrNull(row.no_of_colors_issued_in_the_po),
+      po_qty: number(row.po_qty),
+      po_closing_date: date(row.po_closing_date_as_per_tna),
+      vendor_master_sheet_link: text(row.vendor_master_sheet_link),
+      trim_card_signed: boolean(row.trim_card_signed),
+      pp_sample_due: date(row.critical_stage_pp_sample_due_date),
+      gpt_due: date(row.critical_stage_gpt_due_date),
+      cutting_date: date(row.critical_stage_cutting_date),
+      inline_qc_date: date(row.critical_stage_inline_qc_date),
+      cad_folder_link: text(row.add_cad_file_folder_link_incase_of_efob_po),
+      buying_plan_no: text(row.buying_plan_no),
     };
   }
 

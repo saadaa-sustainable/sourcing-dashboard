@@ -333,6 +333,39 @@ export type PoApproval = {
   created_at: string;
 };
 
+/**
+ * A "PO Details Form" (Google Form) submission — the sourcing/issuance metadata layer.
+ * GCP/EasyEcom are the source of truth for the PO itself; matched_to_live_po flags
+ * whether this ref is still in the live open pipeline. From sd_po_details.
+ */
+export type PoDetails = {
+  source_row_key: string;
+  submitted_at: string | null;
+  merchandiser: string | null;
+  po_type: string | null;
+  product_code: string | null;
+  po_number: string | null;
+  easyecom_po_no: string | null;
+  vendor_name: string | null;
+  date_of_po_sign: string | null;
+  no_of_colors: number | null;
+  po_qty: number | null;
+  po_closing_date: string | null;
+  trim_card_signed: boolean | null;
+  buying_plan_no: string | null;
+  pp_sample_due: string | null;
+  gpt_due: string | null;
+  cutting_date: string | null;
+  inline_qc_date: string | null;
+  signed_po_document: string | null;
+  signed_po_cost_sheet: string | null;
+  signed_tna: string | null;
+  tna_sheet_link: string | null;
+  cad_folder_link: string | null;
+  vendor_master_sheet_link: string | null;
+  matched_to_live_po: boolean;
+};
+
 /** Cycle-time row from sd_po_cycle_time (days per lifecycle stage). */
 export type PoCycleTime = {
   id: number;

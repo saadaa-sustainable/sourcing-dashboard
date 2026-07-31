@@ -649,3 +649,21 @@
 }
 .wf-tna-ok { color: #2e7d32; }
 .wf-tna-pending { color: #b26a00; }
+
+/* ---- PO Details (form) doc links ---- */
+.wf-doc-cell { display: flex; flex-wrap: wrap; gap: 5px; }
+.wf-doc-link,
+.wf-doc-flat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 40, 74, 0.14);
+  white-space: nowrap;
+}
+.wf-doc-link { color: var(--purple-dark, #4b3fb0); background: rgba(109, 93, 252, 0.07); text-decoration: none; }
+.wf-doc-link:hover { background: rgba(109, 93, 252, 0.16); }
+.wf-doc-flat { color: #9aa0b4; background: transparent; }
