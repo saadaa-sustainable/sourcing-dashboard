@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import {
-  Award,
   Ban,
   Boxes,
   CalendarClock,
@@ -35,7 +34,6 @@ export const tabs = [
   ['merchants', 'Merchant Performance', Users],
   ['products', 'Product Tracker', Boxes],
   ['urgent-replenish', 'Urgent Replenishment', Zap],
-  ['recommend', 'Vendor Recommendation', Award],
   ['matrix', 'Product Matrix View', CalendarClock],
 ] as const;
 
