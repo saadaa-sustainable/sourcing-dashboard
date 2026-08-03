@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Boxes,
   CalendarClock,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   Download,
@@ -32,6 +33,7 @@ import {
 } from "recharts";
 import {
   aggregateProductRows,
+  buildTnaEvents,
   buildTrackerRows,
   buildVendorRollups,
   createLookups,
@@ -44,6 +46,7 @@ import { downloadCsv, type CsvValue } from "@/lib/download";
 import type {
   DashboardData,
   PendingPo,
+  TnaEvent,
   TrackerRow,
   VendorRollup,
 } from "@/lib/types";
@@ -883,6 +886,150 @@ function DashboardTab({
   );
 }
 
+// Collapsible "Today & delayed events" section for the Open PO Tracker. Lists
+// TNA milestones (PP Sample → PO Closer) that have no actual date yet and are
+// due today or already overdue. Respects the tab's filters (events are built
+// from the already-filtered rows).
+function TnaEventsSection({
+  events,
+  onView,
+}: {
+  events: TnaEvent[];
+  onView: (row: TrackerRow) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [mode, setMode] = useState<"today" | "delayed">("today");
+  const todayEvents = events.filter((e) => e.status === "today");
+  const delayedEvents = events.filter((e) => e.status === "delayed");
+  const shown = mode === "today" ? todayEvents : delayedEvents;
+  return (
+    <section className="panel events-panel">
+      <button
+        type="button"
+        className="events-head"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <span className="events-title">
+          <CalendarClock size={17} className="lead" />
+          <h3>Today&apos;s &amp; delayed events</h3>
+        </span>
+        <span className="events-counts">
+          <span className="badge info">{todayEvents.length} due today</span>
+          <span className="badge danger">{delayedEvents.length} delayed</span>
+          <ChevronDown
+            size={16}
+            className={`events-chevron${open ? " open" : ""}`}
+          />
+        </span>
+      </button>
+      {open && (
+        <div className="events-body">
+          <div className="events-toolbar">
+            <div className="segment">
+              <button
+                className={mode === "today" ? "active" : ""}
+                onClick={() => setMode("today")}
+              >
+                Due today ({todayEvents.length})
+              </button>
+              <button
+                className={mode === "delayed" ? "active" : ""}
+                onClick={() => setMode("delayed")}
+              >
+                Delayed ({delayedEvents.length})
+              </button>
+            </div>
+            <DownloadButton
+              filename={mode === "today" ? "events-due-today" : "events-delayed"}
+              headers={[
+                "Stage",
+                "PO reference",
+                "Vendor",
+                "Vendor code",
+                "Product",
+                "Planned (TNA) date",
+                "Status",
+                "Days overdue",
+              ]}
+              rows={shown.map((e) => [
+                e.stage,
+                e.poRef,
+                e.vendorName,
+                e.vendorCode,
+                e.productCode,
+                e.plannedDate,
+                e.status === "delayed" ? "Delayed" : "Due today",
+                e.overdueDays,
+              ])}
+            />
+          </div>
+          {shown.length ? (
+            <div className="table-scroll events-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Stage</th>
+                    <th>PO reference</th>
+                    <th>Vendor</th>
+                    <th>Product</th>
+                    <th>Planned (TNA)</th>
+                    <th>{mode === "delayed" ? "Overdue" : "Status"}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((e) => (
+                    <tr key={e.key}>
+                      <td>
+                        <span className="badge info">{e.stage}</span>
+                      </td>
+                      <td className="mono">{e.poRef}</td>
+                      <td>
+                        {e.vendorName}
+                        <small>{e.vendorCode}</small>
+                      </td>
+                      <td>{e.productCode}</td>
+                      <td>{e.plannedDate}</td>
+                      <td>
+                        {e.status === "delayed" ? (
+                          <span className="badge danger">
+                            {e.overdueDays}d overdue
+                          </span>
+                        ) : (
+                          <span className="badge success">Due today</span>
+                        )}
+                      </td>
+                      <td>
+                        <button
+                          className="link-button"
+                          onClick={() => onView(e.row)}
+                        >
+                          View <ChevronRight size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="event-empty">
+              No {mode === "today" ? "milestones scheduled for today" : "delayed milestones"} in the current view.
+            </div>
+          )}
+          <p className="events-note">
+            <Info size={13} /> Events are TNA milestones (PP Sample, GPT, Cutting,
+            Inline, First Delivery, PO Closer) with no actual date yet. “Due
+            today” = planned date is today; “Delayed” = planned date has passed.
+            The filters above apply.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function TrackerTab({
   data,
   onView,
@@ -925,6 +1072,7 @@ function TrackerTab({
           norm(v).includes(norm(filters.search)),
         )),
   );
+  const events = buildTnaEvents(rows, today);
   const paged = usePaged(rows);
   return (
     <>
@@ -987,6 +1135,7 @@ function TrackerTab({
           onChange={(v) => set({ ...filters, bucket: v })}
         />
       </div>
+      <TnaEventsSection events={events} onView={onView} />
       <div className="panel table-panel">
         <div className="table-meta">
           <span>{fmt.format(rows.length)} PO + product + EDD groups</span>

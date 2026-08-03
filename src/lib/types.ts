@@ -109,6 +109,23 @@ export type TrackerRow = {
   tna: TnaRecord | null;
 };
 
+// A single TNA milestone (stage) of an open PO that is not yet done, surfaced
+// as an "event": due today (planned date is today) or delayed (planned date has
+// passed). Same per-stage rule as the High Risk flag.
+export type TnaEvent = {
+  key: string;
+  poRef: string;
+  productCode: string;
+  vendorName: string;
+  vendorCode: string;
+  merchant: string;
+  stage: string;
+  plannedDate: string;
+  status: 'today' | 'delayed';
+  overdueDays: number;
+  row: TrackerRow;
+};
+
 export type VendorRollup = {
   vendorCode: string;
   vendorName: string;

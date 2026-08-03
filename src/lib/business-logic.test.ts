@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTrackerRows, buildVendorRollups, deriveTnaStage, isHighRiskPo, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, deriveTnaStage, isHighRiskPo, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -40,6 +40,20 @@ describe('sourcing business rules', () => {
     // Reversing the input must not change either verdict.
     const reversed=buildTrackerRows([upcoming,overdue],[],[],[tna],today);
     assert.deepEqual(reversed.map((r)=>[r.edd,r.delayDays]).sort(),rows.map((r)=>[r.edd,r.delayDays]).sort());
+  });
+  it('surfaces TNA milestones due today and overdue as events, skipping future ones', () => {
+    const today = new Date('2026-07-15T00:00:00Z');
+    const eventTna: TnaRecord = { ...tna,
+      pp_sample_tna_date:'2026-07-15', pp_sample_actual_date:null,   // due today
+      gpt_tna_date:'2026-07-10', gpt_actual_date:null,               // 5 days overdue
+      cutting_tna_date:'2026-07-20', cutting_actual_date_first:null }; // future — not an event
+    const rows = buildTrackerRows([base],[],[],[eventTna],today);
+    const events = buildTnaEvents(rows, today);
+    const due = events.filter((e)=>e.status==='today');
+    const late = events.filter((e)=>e.status==='delayed');
+    assert.equal(due.length,1); assert.equal(due[0].stage,'PP Sample'); assert.equal(due[0].overdueDays,0);
+    assert.equal(late.length,1); assert.equal(late[0].stage,'GPT'); assert.equal(late[0].overdueDays,5);
+    assert.equal(events.some((e)=>e.stage==='Cutting'),false);
   });
   it('still counts a split PO once per vendor and flags it delayed if any line is overdue', () => {
     const overdue={...base,po_detail_id:'A',expected_delivery_date:'2026-06-01',pending_qty_actual:4};

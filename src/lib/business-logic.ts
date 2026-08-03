@@ -1,4 +1,4 @@
-import type { PendingPo, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
+import type { PendingPo, TnaEvent, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
 
 // The critical-path stages, in order. Each carries its planned (TNA) date, the
 // actual completion date, and the delay-days field. Extended per Mahesh beyond
@@ -153,6 +153,38 @@ export function buildTrackerRows(
       stage: deriveTnaStage(tna), highRisk: isTnaHighRisk(tna, today), skuRows: rows, tna,
     };
   }).sort((a, b) => b.pendingValue - a.pendingValue);
+}
+
+/**
+ * Flattens tracker rows into per-stage TNA "events". For each open PO's matched
+ * TNA record, every critical-path stage that has no actual date yet and whose
+ * planned (TNA) date is today or earlier becomes an event:
+ *   - status 'today'   — planned date is today (overdueDays === 0)
+ *   - status 'delayed' — planned date has passed (overdueDays > 0)
+ * Future stages (planned date after today) are skipped. Same per-stage rule as
+ * isTnaHighRisk. Sorted most-overdue first.
+ */
+export function buildTnaEvents(rows: TrackerRow[], today = new Date()): TnaEvent[] {
+  const events: TnaEvent[] = [];
+  for (const row of rows) {
+    const tna = row.tna;
+    if (!tna) continue;
+    for (const stage of TNA_STAGES) {
+      if (tna[stage.actualField]) continue; // stage already completed
+      const planned = parseIsoDate(tna[stage.tnaField]);
+      if (!planned) continue;
+      const overdueDays = daysBetween(today, planned); // >0 late, 0 today, <0 upcoming
+      if (overdueDays < 0) continue; // not due yet
+      events.push({
+        key: `${row.key}${stage.name}`,
+        poRef: row.poRef, productCode: row.productCode,
+        vendorName: row.vendorName, vendorCode: row.vendorCode, merchant: row.merchant,
+        stage: stage.name, plannedDate: text(tna[stage.tnaField]),
+        status: overdueDays > 0 ? 'delayed' : 'today', overdueDays, row,
+      });
+    }
+  }
+  return events.sort((a, b) => b.overdueDays - a.overdueDays);
 }
 
 export function buildVendorRollups(
