@@ -29,6 +29,17 @@ export function daysBetween(later: Date, earlier: Date) {
     Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth(), earlier.getUTCDate())) / dayMs);
 }
 
+// Business dates (EDD, TNA milestones) are plain IST calendar dates, so "today"
+// must be the current calendar date in IST (UTC+5:30). A UTC "today" runs a day
+// behind between 00:00 and 05:30 IST and would mis-flag same-day events and delay
+// boundaries. Returned as UTC midnight of the IST date so it lines up with
+// parseIsoDate, which anchors every stored date at 00:00Z.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+export function istToday(now = new Date()): Date {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
+}
+
 export function vendorBucket(label: string | null | undefined): 'Woven' | 'Knit' {
   return key(label).includes('woven') ? 'Woven' : 'Knit';
 }
@@ -37,7 +48,7 @@ export function isOpenPo(row: PendingPo) {
   return number(row.pending_qty_actual) > 0;
 }
 
-export function isDelayedPo(row: PendingPo, today = new Date()) {
+export function isDelayedPo(row: PendingPo, today = istToday()) {
   const edd = parseIsoDate(row.expected_delivery_date);
   return isOpenPo(row) && Boolean(edd && daysBetween(today, edd) > 0);
 }
@@ -48,7 +59,7 @@ export function isDelayedPo(row: PendingPo, today = new Date()) {
  * regardless of how much runway remains to final delivery. A single overdue
  * stage compounds forward, so it flags immediately to force recovery.
  */
-export function isTnaHighRisk(tna: TnaRecord | null | undefined, today = new Date()) {
+export function isTnaHighRisk(tna: TnaRecord | null | undefined, today = istToday()) {
   if (!tna) return false;
   for (const stage of TNA_STAGES) {
     if (tna[stage.actualField]) continue; // stage done
@@ -62,19 +73,19 @@ export function isTnaHighRisk(tna: TnaRecord | null | undefined, today = new Dat
 export function isHighRiskLine(
   row: PendingPo,
   tnaByPo: Map<string, TnaRecord>,
-  today = new Date(),
+  today = istToday(),
 ) {
   return isOpenPo(row) && isTnaHighRisk(tnaByPo.get(key(row.po_ref_num)), today);
 }
 
 /** Legacy EDD-proximity risk — retained for reference; the dashboard uses the TNA rule. */
-export function isHighRiskPo(row: PendingPo, today = new Date()) {
+export function isHighRiskPo(row: PendingPo, today = istToday()) {
   const edd = parseIsoDate(row.expected_delivery_date);
   return isOpenPo(row) && Boolean(edd) && number(row.pending_quantity) === number(row.original_quantity) &&
     daysBetween(edd!, today) <= 15;
 }
 
-export function ageingBucket(edd: string | null | undefined, today = new Date()) {
+export function ageingBucket(edd: string | null | undefined, today = istToday()) {
   const date = parseIsoDate(edd);
   if (!date) return 'No EDD';
   const overdue = Math.max(0, daysBetween(today, date));
@@ -123,7 +134,7 @@ export function resolveVendor(row: PendingPo, lookups: ReturnType<typeof createL
 
 export function buildTrackerRows(
   pendingPos: PendingPo[], vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[],
-  today = new Date(),
+  today = istToday(),
 ): TrackerRow[] {
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);
   const groups = new Map<string, PendingPo[]>();
@@ -164,8 +175,12 @@ export function buildTrackerRows(
  * Future stages (planned date after today) are skipped. Same per-stage rule as
  * isTnaHighRisk. Sorted most-overdue first.
  */
-export function buildTnaEvents(rows: TrackerRow[], today = new Date()): TnaEvent[] {
+export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent[] {
   const events: TnaEvent[] = [];
+  // A TNA milestone belongs to the PO, but one PO can span several tracker
+  // rows (multiple EDDs/product codes) sharing the same TNA record. Emit each
+  // (PO, stage) milestone once - from the first, highest-value row.
+  const seen = new Set<string>();
   for (const row of rows) {
     const tna = row.tna;
     if (!tna) continue;
@@ -175,8 +190,11 @@ export function buildTnaEvents(rows: TrackerRow[], today = new Date()): TnaEvent
       if (!planned) continue;
       const overdueDays = daysBetween(today, planned); // >0 late, 0 today, <0 upcoming
       if (overdueDays < 0) continue; // not due yet
+      const dedupeKey = `${key(row.poRef)}${stage.name}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
       events.push({
-        key: `${row.key}${stage.name}`,
+        key: dedupeKey,
         poRef: row.poRef, productCode: row.productCode,
         vendorName: row.vendorName, vendorCode: row.vendorCode, merchant: row.merchant,
         stage: stage.name, plannedDate: text(tna[stage.tnaField]),
@@ -189,7 +207,7 @@ export function buildTnaEvents(rows: TrackerRow[], today = new Date()): TnaEvent
 
 export function buildVendorRollups(
   pendingPos: PendingPo[], vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[],
-  today = new Date(),
+  today = istToday(),
 ): VendorRollup[] {
   const tracker = buildTrackerRows(pendingPos, vendorTypes, vendorMasters, tnaRecords, today);
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);

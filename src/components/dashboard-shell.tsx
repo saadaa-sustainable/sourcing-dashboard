@@ -40,6 +40,7 @@ import {
   isDelayedPo,
   isHighRiskLine,
   isOpenPo,
+  istToday,
   resolveVendor,
 } from "@/lib/business-logic";
 import { downloadCsv, type CsvValue } from "@/lib/download";
@@ -172,7 +173,7 @@ const colors = [
   "#3b6fd4",
   "#b54f7a",
 ];
-const today = new Date();
+const today = istToday();
 const norm = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
 const unique = (values: string[]) =>
@@ -1021,8 +1022,8 @@ function TnaEventsSection({
           <p className="events-note">
             <Info size={13} /> Events are TNA milestones (PP Sample, GPT, Cutting,
             Inline, First Delivery, PO Closer) with no actual date yet. “Due
-            today” = planned date is today; “Delayed” = planned date has passed.
-            The filters above apply.
+            today” = planned date is today (IST); “Delayed” = planned date has
+            passed. The filters above apply, except Days Overdue.
           </p>
         </div>
       )}
@@ -1058,21 +1059,26 @@ function TrackerTab({
     bucket: "",
     search: "",
   });
+  // Everything except the "Days Overdue" bucket, which is an EDD-ageing axis.
+  // Events are TNA-milestone based, so a not-yet-due-by-EDD PO can still have an
+  // overdue stage — filtering events by the EDD bucket would wrongly hide those.
+  const passesBase = (row: TrackerRow) =>
+    (!filters.vendor || row.vendorName === filters.vendor) &&
+    (!filters.vendorCode || row.vendorCode === filters.vendorCode) &&
+    (!filters.vendorType || row.vendorBucket === filters.vendorType) &&
+    (!filters.type || row.poType === filters.type) &&
+    (!filters.product || row.productCode === filters.product) &&
+    (!filters.merchant || row.merchant === filters.merchant) &&
+    (!filters.search ||
+      [row.poRef, row.productCode, row.vendorName].some((v) =>
+        norm(v).includes(norm(filters.search)),
+      ));
   const rows = all.filter(
     (row) =>
-      (!filters.vendor || row.vendorName === filters.vendor) &&
-      (!filters.vendorCode || row.vendorCode === filters.vendorCode) &&
-      (!filters.vendorType || row.vendorBucket === filters.vendorType) &&
-      (!filters.type || row.poType === filters.type) &&
-      (!filters.product || row.productCode === filters.product) &&
-      (!filters.merchant || row.merchant === filters.merchant) &&
-      (!filters.bucket || row.delayBucket === filters.bucket) &&
-      (!filters.search ||
-        [row.poRef, row.productCode, row.vendorName].some((v) =>
-          norm(v).includes(norm(filters.search)),
-        )),
+      passesBase(row) && (!filters.bucket || row.delayBucket === filters.bucket),
   );
-  const events = buildTnaEvents(rows, today);
+  // Events respect every filter except Days Overdue (see passesBase).
+  const events = buildTnaEvents(all.filter(passesBase), today);
   const paged = usePaged(rows);
   return (
     <>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, deriveTnaStage, isHighRiskPo, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, deriveTnaStage, isHighRiskPo, istToday, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -21,6 +21,14 @@ describe('sourcing business rules', () => {
     assert.equal(deriveTnaStage(parsed),'PP Sample Pending');
   });
   it('keeps missing EDD rows in No EDD', () => { assert.equal(ageingBucket(null),'No EDD'); });
+  it('resolves today in IST, not UTC, so it is never a day behind', () => {
+    // 2026-08-03 20:30 UTC = 2026-08-04 02:00 IST → today must be Aug 4, not Aug 3.
+    assert.equal(istToday(new Date('2026-08-03T20:30:00Z')).toISOString(),'2026-08-04T00:00:00.000Z');
+    assert.equal(istToday(new Date('2026-08-04T10:00:00Z')).toISOString(),'2026-08-04T00:00:00.000Z');
+    // IST-midnight boundary is 18:30 UTC.
+    assert.equal(istToday(new Date('2026-08-03T18:30:00Z')).toISOString(),'2026-08-04T00:00:00.000Z');
+    assert.equal(istToday(new Date('2026-08-03T18:29:59Z')).toISOString(),'2026-08-03T00:00:00.000Z');
+  });
   it('groups by PO reference and product code and counts distinct variants', () => {
     const rows=buildTrackerRows([base,{...base,po_detail_id:'2',sku:'B',product_variant:'BLUE',pending_qty_actual:5},{...base,po_detail_id:'3',sku:'C',product_variant:'BLUE',pending_qty_actual:2}],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(rows.length,1); assert.equal(rows[0].variantCount,2); assert.equal(rows[0].pendingQty,17); assert.equal(rows[0].stage,'GPT Pending');
@@ -54,6 +62,18 @@ describe('sourcing business rules', () => {
     assert.equal(due.length,1); assert.equal(due[0].stage,'PP Sample'); assert.equal(due[0].overdueDays,0);
     assert.equal(late.length,1); assert.equal(late[0].stage,'GPT'); assert.equal(late[0].overdueDays,5);
     assert.equal(events.some((e)=>e.stage==='Cutting'),false);
+  });
+  it('emits each PO + stage event once even when the PO is split across EDDs', () => {
+    // A PO split across EDDs yields multiple tracker rows sharing one TNA record;
+    // the PO-level milestone must not be duplicated per row.
+    const today = new Date('2026-07-15T00:00:00Z');
+    const eventTna: TnaRecord = { ...tna, pp_sample_tna_date:'2026-07-15', pp_sample_actual_date:null };
+    const overdue={...base,po_detail_id:'A',expected_delivery_date:'2026-06-01',pending_qty_actual:4};
+    const upcoming={...base,po_detail_id:'B',expected_delivery_date:'2026-07-31',pending_qty_actual:6};
+    const rows=buildTrackerRows([overdue,upcoming],[],[],[eventTna],today);
+    assert.equal(rows.length,2);
+    const events=buildTnaEvents(rows,today);
+    assert.equal(events.filter((e)=>e.stage==='PP Sample').length,1);
   });
   it('still counts a split PO once per vendor and flags it delayed if any line is overdue', () => {
     const overdue={...base,po_detail_id:'A',expected_delivery_date:'2026-06-01',pending_qty_actual:4};
