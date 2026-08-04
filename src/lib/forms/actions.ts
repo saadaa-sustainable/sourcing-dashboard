@@ -23,6 +23,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
+import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { currentUser } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
 import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from './types';
@@ -1031,4 +1032,70 @@ export async function saveUser(formData: FormData): Promise<ActionResult> {
 
   revalidatePath('/users');
   return done(`Saved ${email}.`);
+}
+
+/**
+ * Create (or reset) an email+password login for a user, then provision their
+ * role. Admin-only. Uses the service-role Admin API (the publishable key cannot
+ * create auth users); the sd_user role row is still written with the actor's
+ * JWT so RLS applies. Domain is enforced here since the auth.users trigger is
+ * absent on this project.
+ */
+export async function createUserLogin(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can manage users.');
+
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  const fullName = String(formData.get('full_name') ?? '').trim() || null;
+  const role = String(formData.get('role') ?? '') as SdRole;
+  const isActive = formData.get('is_active') === 'true';
+  const password = String(formData.get('password') ?? '');
+
+  if (!/^[^@s]+@saadaa.in$/.test(email)) return fail('Enter a valid @saadaa.in email address.');
+  if (!ASSIGNABLE_ROLES.includes(role)) return fail('Invalid role.');
+  if (password.length < 8) return fail('Password must be at least 8 characters.');
+  if (!hasSupabaseAdminEnv()) {
+    return fail('SUPABASE_SERVICE_ROLE_KEY is not set on the server, so login accounts cannot be created.');
+  }
+
+  const admin = createAdminClient();
+  // Pre-confirm the email so the user can sign in immediately with the password.
+  const { error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: fullName ? { full_name: fullName } : undefined,
+  });
+  if (createErr) {
+    // Already registered -> treat as a password reset for the existing account.
+    const existing = await findAuthUserByEmail(email);
+    if (!existing) return fail(`Could not create login: ${createErr.message}`);
+    const { error: updErr } = await admin.auth.admin.updateUserById(existing.id, { password });
+    if (updErr) return fail(`Could not set password: ${updErr.message}`);
+  }
+
+  // Provision/refresh the role row with the actor's JWT (RLS: admin manage users).
+  const supabase = await supa();
+  const { error: roleErr } = await supabase
+    .from('sd_user')
+    .upsert({ email, full_name: fullName, role, is_active: isActive }, { onConflict: 'email' });
+  if (roleErr) return fail(`Login created, but saving the role failed: ${roleErr.message}`);
+
+  revalidatePath('/users');
+  return done(`${createErr ? 'Reset password for' : 'Created login for'} ${email}.`);
+}
+
+// Find an existing auth user by email (paginated; the user base is small).
+async function findAuthUserByEmail(email: string) {
+  const admin = createAdminClient();
+  const target = email.toLowerCase();
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    const users = data?.users ?? [];
+    if (error || !users.length) return null;
+    const found = users.find((u) => (u.email ?? '').toLowerCase() === target);
+    if (found) return found;
+    if (users.length < 1000) return null;
+  }
 }

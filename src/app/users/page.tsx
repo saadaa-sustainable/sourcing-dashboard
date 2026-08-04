@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import { currentUser, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
+import { hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { UsersClient } from './users-client';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,11 @@ export default async function UsersPage() {
       userEmail={user.email}
     >
       {isAdmin ? (
-        <UsersClient users={users} currentEmail={user.email} />
+        <UsersClient
+          users={users}
+          currentEmail={user.email}
+          canCreateLogins={hasSupabaseAdminEnv()}
+        />
       ) : (
         <Notice tone="warn">
           Only an admin (the role manager) can manage users. You are signed in as{' '}

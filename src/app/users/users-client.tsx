@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Save, UserPlus } from 'lucide-react';
-import { saveUser } from '@/lib/forms/actions';
+import { createUserLogin, saveUser } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ROLE_LABEL } from '@/lib/forms/approval';
 import type { SdRole, SdUser } from '@/lib/forms/types';
@@ -12,9 +12,11 @@ const ROLES: SdRole[] = ['admin', 'team', 'viewer'];
 export function UsersClient({
   users,
   currentEmail,
+  canCreateLogins,
 }: {
   users: SdUser[];
   currentEmail: string;
+  canCreateLogins: boolean;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,13 +25,18 @@ export function UsersClient({
     email: '',
     full_name: '',
     role: 'team' as SdRole,
+    password: '',
   });
 
-  function submit(payload: FormData, reloadOnOk = true) {
+  function submit(
+    payload: FormData,
+    action: (fd: FormData) => Promise<{ ok: true; message?: string } | { ok: false; error: string }> = saveUser,
+    reloadOnOk = true,
+  ) {
     setError(null);
     setMessage(null);
     start(async () => {
-      const result = await saveUser(payload);
+      const result = await action(payload);
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
         if (reloadOnOk) window.location.reload();
@@ -44,12 +51,24 @@ export function UsersClient({
       setError('Enter an email address.');
       return;
     }
+    const wantsLogin = draft.password.length > 0;
+    if (wantsLogin && draft.password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
     const fd = new FormData();
     fd.set('email', draft.email);
     fd.set('full_name', draft.full_name);
     fd.set('role', draft.role);
     fd.set('is_active', 'true');
-    submit(fd);
+    // A password provisions an email+password login via the Admin API; without
+    // one we only set the role (for people who sign in with Google).
+    if (wantsLogin) {
+      fd.set('password', draft.password);
+      submit(fd, createUserLogin);
+    } else {
+      submit(fd, saveUser);
+    }
   }
 
   return (
@@ -87,6 +106,16 @@ export function UsersClient({
               ))}
             </select>
           </Field>
+          <Field label="Password (optional)">
+            <input
+              type="password"
+              placeholder={canCreateLogins ? 'Min 8 chars — enables email login' : 'Service key not configured'}
+              value={draft.password}
+              autoComplete="new-password"
+              disabled={!canCreateLogins}
+              onChange={(e) => setDraft({ ...draft, password: e.target.value })}
+            />
+          </Field>
           <button
             type="button"
             className="wf-btn wf-btn-primary"
@@ -96,6 +125,14 @@ export function UsersClient({
             <UserPlus size={15} /> Add / update user
           </button>
         </div>
+        <p className="wf-subtle" style={{ marginTop: 10 }}>
+          Set a password to create an email + password login the person can use
+          immediately (re-entering an existing email resets their password).
+          Leave it blank to only assign a role — for people who sign in with
+          Google.{' '}
+          {!canCreateLogins &&
+            'Password login is disabled until SUPABASE_SERVICE_ROLE_KEY is set on the server.'}
+        </p>
       </div>
 
       <div className="table-panel wf-grid-panel">
