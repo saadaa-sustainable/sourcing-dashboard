@@ -52,6 +52,14 @@ const SbSync_ = (function () {
       sheet: 'PO Details Form', table: 'po_details_form', headerRow: 2,
       conflict: 'source_row_key', map: mapPoDetailsRow,
     },
+    {
+      // Discontinued Products — Available inventory view (serial-level). Read-only
+      // mirror feeding the inventory-ageing / liquidation dashboard page. The tab
+      // name below must match the spreadsheet tab exactly (gid 1523963622).
+      sheet: 'Discontinued Products - Available inventory view',
+      table: 'discontinued_inventory', headerRow: 1,
+      conflict: 'source_row_key', map: mapDiscontinuedRow,
+    },
   ];
 
   function syncAll() {
@@ -262,6 +270,31 @@ const SbSync_ = (function () {
     };
   }
 
+  function mapDiscontinuedRow(row) {
+    const sku = text(row.sku);
+    const serial = text(row.serial_number);
+    if (!sku && !serial) return null;
+    return {
+      source_row_key: serial || ('sku:' + sku),
+      sku: sku,
+      category: text(row.category),
+      sub_category: text(row.sub_category),
+      product_name: text(row.product_name),
+      color: text(row.color),
+      size: text(row.size),
+      mrp: number(row.mrp),
+      cost: number(row.cost),
+      product_launch_date: date(row.product_launch_date),
+      product_state: text(row.product_state),
+      available_inventory: number(row.available_inventory),
+      inventory_status: text(row.inventory_status),
+      status: text(row.status),
+      serial_number: serial,
+      inward_date: date(row.inward_date),
+      days_in_warehouse: integerOrNull(row.days_in_warehouse),
+    };
+  }
+
   function writeSyncLog(table, synced, deleted, status, message, startedAt) {
     rest('sync_log', 'post', [{ table_name: table, rows_synced: synced, rows_deleted: deleted,
       status: status, error_message: message, started_at: startedAt.toISOString(),
@@ -358,7 +391,7 @@ const SbSync_ = (function () {
         return new Date(Date.UTC(1899, 11, 30) + serial * 86400000).toISOString().slice(0, 10);
       }
     }
-    const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    const dmy = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
     const iso = dmy ? [dmy[3], dmy[2].padStart(2, '0'), dmy[1].padStart(2, '0')].join('-') : s.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
     const parts = iso.split('-').map(Number);

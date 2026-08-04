@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/lib/sheet-values.test.ts src/lib/business-logic.test.ts"
+    "test": "tsx --test src/lib/sheet-values.test.ts src/lib/business-logic.test.ts src/lib/discontinued.test.ts"
   },
   "engines": {
     "node": ">=22.13.0"
