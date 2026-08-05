@@ -18,8 +18,8 @@
  *      SUPABASE_SERVICE_ROLE_KEY = <service_role secret>
  * 3. Run `logProductionTabs()` — check View → Logs that the six SHEET names in
  *    CONFIG match the actual response-tab names; fix any that differ.
- * 4. Run `logProductionHeaders('PP SAMPLE FORM')` (etc.) to confirm the PO and
- *    date column keys per form (they are the normalized header names).
+ * 4. Run `logProductionHeaders('PP Sample Update Form')` (etc.) to confirm the PO
+ *    and date column keys per form (they are the normalized header names).
  * 5. Run `syncProductionForms()` once; confirm rows in Supabase.
  * 6. Run `installProductionFormsTriggers()` once to arm the 5-min + on-edit sync.
  * ────────────────────────────────────────────────────────────────────────────
@@ -36,12 +36,14 @@ const SbProd_ = (function () {
   // (verify with logProductionTabs). Each mapper extracts po_ref_num + actual_date.
   // ⚠ Column keys are the normalized header names — verify with logProductionHeaders.
   const CONFIG = [
-    { sheet: 'PP SAMPLE FORM',              table: 'pp_sample_form',  headerRow: 1, conflict: 'source_row_key', map: mapPpSample },
-    { sheet: 'GPT SAMPLE FORM',             table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
+    { sheet: 'PP Sample Update Form',       table: 'pp_sample_form',  headerRow: 1, conflict: 'source_row_key', map: mapPpSample },
+    { sheet: 'GPT Sample Form',             table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
+    // ⚠ Cutting: no cutting-register response tab exists in THIS spreadsheet — source TBD.
+    // The entry is harmless (syncSheet skips a missing tab); update 'sheet' once confirmed.
     { sheet: 'CUTTING REGISTER',            table: 'cutting_form',    headerRow: 1, conflict: 'source_row_key', map: mapCutting },
     { sheet: 'IN-LINE & MID LINE QC FORM',  table: 'inline_qc_form',  headerRow: 1, conflict: 'source_row_key', map: mapInline },
-    { sheet: 'PDI RESPONSES / REPORT',      table: 'pdi_form',        headerRow: 1, conflict: 'source_row_key', map: mapPdi },
-    { sheet: 'PO Closure Form',             table: 'po_closure_form', headerRow: 1, conflict: 'source_row_key', map: mapClosure },
+    { sheet: 'PRE-DISPATCH QC FORM',        table: 'pdi_form',        headerRow: 1, conflict: 'source_row_key', map: mapPdi },
+    { sheet: 'PO Closure Form responses',   table: 'po_closure_form', headerRow: 1, conflict: 'source_row_key', map: mapClosure },
   ];
 
   // ---- Per-stage mappers. Date source per form (see plan):
