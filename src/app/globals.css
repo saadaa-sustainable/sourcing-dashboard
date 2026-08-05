@@ -758,3 +758,4 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
   .help-intro { margin: 14px 14px 0; }
   .definition-grid { padding: 14px; }
 }
+.tracker-status-tabs { flex-wrap: wrap; max-width: 100%; }

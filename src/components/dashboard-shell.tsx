@@ -934,12 +934,17 @@ function TrackerTab({
       [row.poRef, row.productCode, row.vendorName].some((v) =>
         norm(v).includes(norm(filters.search)),
       ));
-  const rows = all.filter(
-    (row) =>
-      passesBase(row) &&
-      (!filters.bucket || row.delayBucket === filters.bucket) &&
-      (!filters.status || row.internalStatus === filters.status),
+  // Everything except the internal-status axis — that becomes the table tabs below.
+  const preStatus = all.filter(
+    (row) => passesBase(row) && (!filters.bucket || row.delayBucket === filters.bucket),
   );
+  const statusCounts: Record<string, number> = { All: preStatus.length };
+  for (const st of INTERNAL_STATUSES) {
+    statusCounts[st] = preStatus.filter((row) => row.internalStatus === st).length;
+  }
+  const rows = filters.status
+    ? preStatus.filter((row) => row.internalStatus === filters.status)
+    : preStatus;
   const paged = usePaged(rows);
   return (
     <>
@@ -1001,12 +1006,23 @@ function TrackerTab({
           ]}
           onChange={(v) => set({ ...filters, bucket: v })}
         />
-        <FilterSelect
-          label="Internal status"
-          value={filters.status}
-          options={[...INTERNAL_STATUSES]}
-          onChange={(v) => set({ ...filters, status: v })}
-        />
+      </div>
+      <div className="segment tracker-status-tabs">
+        <button
+          className={filters.status === "" ? "active" : ""}
+          onClick={() => set({ ...filters, status: "" })}
+        >
+          All ({fmt.format(statusCounts.All)})
+        </button>
+        {INTERNAL_STATUSES.map((st) => (
+          <button
+            key={st}
+            className={filters.status === st ? "active" : ""}
+            onClick={() => set({ ...filters, status: st })}
+          >
+            {st} ({fmt.format(statusCounts[st] ?? 0)})
+          </button>
+        ))}
       </div>
       <div className="panel table-panel">
         <div className="table-meta">
