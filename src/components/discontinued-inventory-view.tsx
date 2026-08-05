@@ -52,7 +52,7 @@ const ACTION_COLOR: Record<RecommendedAction, string> = {
 const uniq = (values: (string | null)[]) =>
   [...new Set(values.map((v) => (v ?? '').trim()).filter(Boolean))].sort();
 
-export function DiscontinuedInventoryClient({
+export function DiscontinuedInventoryView({
   rows,
   salesByVariant,
 }: {

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import {
-  Archive,
   Ban,
   Boxes,
   CalendarClock,
@@ -53,7 +52,6 @@ const WORKFLOW_LINKS = [
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
   { href: '/discontinue', label: 'Discontinue', Icon: Ban },
-  { href: '/discontinued-inventory', label: 'Discontinued Inventory', Icon: Archive },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
 ] as const;
 
