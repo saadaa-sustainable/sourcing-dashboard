@@ -183,15 +183,62 @@ async function loadFixtures(): Promise<DashboardData> {
   };
 }
 
+type StageActualsRow = {
+  po_ref_num: string;
+  pp_actual: string | null;
+  gpt_actual: string | null;
+  cutting_actual: string | null;
+  inline_actual: string | null;
+  first_delivery_actual: string | null;
+  po_closer_actual: string | null;
+};
+
+/** sd_po_stage_actuals — one row per PO ref with each stage's latest form actual date. */
+async function fetchStageActuals(supabase: Reader): Promise<StageActualsRow[]> {
+  const rows: StageActualsRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase.from('sd_po_stage_actuals').select('*')
+      .order('po_ref_num', { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`Supabase read failed for sd_po_stage_actuals: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as StageActualsRow[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/**
+ * The stage ACTUAL dates come SOLELY from the Google Forms (sd_po_stage_actuals);
+ * planned *_tna_date fields are untouched. A stage with no form submission is left
+ * BLANK, so a missing actual visibly signals a missing form. Joined on normalized PO ref.
+ */
+function mergeStageActuals(tnaRecords: TnaRecord[], actuals: StageActualsRow[]): void {
+  const norm = (v: string | null | undefined) => (v ?? '').trim().toUpperCase();
+  const byRef = new Map(actuals.map((a) => [norm(a.po_ref_num), a]));
+  for (const t of tnaRecords) {
+    const a = byRef.get(norm(t.po_no));
+    t.pp_sample_actual_date = a?.pp_actual ?? null;
+    t.gpt_actual_date = a?.gpt_actual ?? null;
+    t.cutting_actual_date_first = a?.cutting_actual ?? null;
+    t.in_line_actual_date = a?.inline_actual ?? null;
+    t.first_delivery_actual_date = a?.first_delivery_actual ?? null;
+    t.po_closer_actual_date = a?.po_closer_actual ?? null;
+  }
+}
+
 export async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseEnv()) return loadFixtures();
   const supabase = await createClient();
-  const [pendingPos, vendorTypes, vendorMasters, tnaRecords] = await Promise.all([
+  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals] = await Promise.all([
     fetchDashboardPos(supabase),
     fetchAllRows<VendorType>(supabase, 'vendor_type_master', 'vendor_name'),
     fetchAllRows<VendorMaster>(supabase, 'vendor_master_data', 'vendor_code'),
     fetchAllRows<TnaRecord>(supabase, 'tna_tracker', 'po_no'),
+    fetchStageActuals(supabase),
   ]);
+  // Stage ACTUAL dates come from the Google Forms (Production Dashboard); planned
+  // TNA dates stay from tna_tracker.
+  mergeStageActuals(tnaRecords, stageActuals);
   const warnings: string[] = [];
   if (!pendingPos.length) warnings.push('No PO rows returned from sd_po_dashboard — check the latest GCP pipeline load.');
   return {
