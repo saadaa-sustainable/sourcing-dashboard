@@ -208,22 +208,21 @@ async function fetchStageActuals(supabase: Reader): Promise<StageActualsRow[]> {
 }
 
 /**
- * Overlay the Google-Form-submitted ACTUAL stage dates onto the tna_tracker
- * records (planned *_tna_date fields untouched). Joined on the normalized PO ref;
- * a stage with no form submission keeps its existing tna_tracker actual.
+ * The stage ACTUAL dates come SOLELY from the Google Forms (sd_po_stage_actuals);
+ * planned *_tna_date fields are untouched. A stage with no form submission is left
+ * BLANK, so a missing actual visibly signals a missing form. Joined on normalized PO ref.
  */
 function mergeStageActuals(tnaRecords: TnaRecord[], actuals: StageActualsRow[]): void {
   const norm = (v: string | null | undefined) => (v ?? '').trim().toUpperCase();
   const byRef = new Map(actuals.map((a) => [norm(a.po_ref_num), a]));
   for (const t of tnaRecords) {
     const a = byRef.get(norm(t.po_no));
-    if (!a) continue;
-    if (a.pp_actual) t.pp_sample_actual_date = a.pp_actual;
-    if (a.gpt_actual) t.gpt_actual_date = a.gpt_actual;
-    if (a.cutting_actual) t.cutting_actual_date_first = a.cutting_actual;
-    if (a.inline_actual) t.in_line_actual_date = a.inline_actual;
-    if (a.first_delivery_actual) t.first_delivery_actual_date = a.first_delivery_actual;
-    if (a.po_closer_actual) t.po_closer_actual_date = a.po_closer_actual;
+    t.pp_sample_actual_date = a?.pp_actual ?? null;
+    t.gpt_actual_date = a?.gpt_actual ?? null;
+    t.cutting_actual_date_first = a?.cutting_actual ?? null;
+    t.in_line_actual_date = a?.inline_actual ?? null;
+    t.first_delivery_actual_date = a?.first_delivery_actual ?? null;
+    t.po_closer_actual_date = a?.po_closer_actual ?? null;
   }
 }
 
