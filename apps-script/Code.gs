@@ -52,14 +52,6 @@ const SbSync_ = (function () {
       sheet: 'PO Details Form', table: 'po_details_form', headerRow: 2,
       conflict: 'source_row_key', map: mapPoDetailsRow,
     },
-    {
-      // Discontinued Products — Available inventory view (serial-level). Read-only
-      // mirror feeding the inventory-ageing / liquidation dashboard page. The tab
-      // name below must match the spreadsheet tab exactly (gid 1523963622).
-      sheet: 'Discontinued Products - Available inventory view',
-      table: 'discontinued_inventory', headerRow: 1,
-      conflict: 'source_row_key', map: mapDiscontinuedRow,
-    },
   ];
 
   function syncAll() {
@@ -267,31 +259,6 @@ const SbSync_ = (function () {
       inline_qc_date: date(row.critical_stage_inline_qc_date),
       cad_folder_link: text(row.add_cad_file_folder_link_incase_of_efob_po),
       buying_plan_no: text(row.buying_plan_no),
-    };
-  }
-
-  function mapDiscontinuedRow(row) {
-    const sku = text(row.sku);
-    const serial = text(row.serial_number);
-    if (!sku && !serial) return null;
-    return {
-      source_row_key: serial || ('sku:' + sku),
-      sku: sku,
-      category: text(row.category),
-      sub_category: text(row.sub_category),
-      product_name: text(row.product_name),
-      color: text(row.color),
-      size: text(row.size),
-      mrp: number(row.mrp),
-      cost: number(row.cost),
-      product_launch_date: date(row.product_launch_date),
-      product_state: text(row.product_state),
-      available_inventory: number(row.available_inventory),
-      inventory_status: text(row.inventory_status),
-      status: text(row.status),
-      serial_number: serial,
-      inward_date: date(row.inward_date),
-      days_in_warehouse: integerOrNull(row.days_in_warehouse),
     };
   }
 
