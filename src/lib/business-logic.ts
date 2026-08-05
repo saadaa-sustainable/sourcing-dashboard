@@ -1,4 +1,4 @@
-import type { PendingPo, TnaEvent, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
+import type { EasycomStatus, InternalStatus, PendingPo, TnaEvent, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
 
 // The critical-path stages, in order. Each carries its planned (TNA) date, the
 // actual completion date, and the delay-days field. Extended per Mahesh beyond
@@ -132,6 +132,37 @@ export function resolveVendor(row: PendingPo, lookups: ReturnType<typeof createL
   };
 }
 
+/** Total accumulated TNA delay (ingested Total Delay Days, else sum of stage delays). */
+export function tnaTotalDelayDays(tna: TnaRecord | null | undefined): number {
+  if (!tna) return 0;
+  return tna.total_delay_days ??
+    (tna.pp_sample_delay_days + tna.gpt_delay_days + tna.cutting_delay_days + tna.in_line_qc_delay_days +
+      (tna.first_delivery_delay_days ?? 0) + (tna.po_closer_delay_days ?? 0));
+}
+
+// The five internal-status values, urgent-first (drives the tracker filter).
+export const INTERNAL_STATUSES: InternalStatus[] = ['Overdue', 'Due Today', 'High Risk', 'Delayed', 'On Track'];
+
+/**
+ * A single categorical internal status per open PO group, precedence top-down:
+ *   Overdue   - EDD has passed (delayDays > 0)
+ *   Due Today - EDD is today
+ *   High Risk - a TNA critical stage is currently overdue (Mahesh's rule)
+ *   Delayed   - production slipped on a stage (TNA delay > 0) but EDD not yet due
+ *   On Track  - none of the above
+ */
+export function computeInternalStatus(input: {
+  edd: string | null | undefined; delayDays: number; highRisk: boolean; tnaDelayDays: number; today?: Date;
+}): InternalStatus {
+  const today = input.today ?? istToday();
+  if (input.delayDays > 0) return 'Overdue';
+  const eddDate = parseIsoDate(input.edd);
+  if (eddDate && daysBetween(today, eddDate) === 0) return 'Due Today';
+  if (input.highRisk) return 'High Risk';
+  if (input.tnaDelayDays > 0) return 'Delayed';
+  return 'On Track';
+}
+
 export function buildTrackerRows(
   pendingPos: PendingPo[], vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[],
   today = istToday(),
@@ -153,6 +184,10 @@ export function buildTrackerRows(
     const tna = lookups.tnaByPo.get(key(first.po_ref_num)) ?? null;
     const delayDays = first.expected_delivery_date
       ? Math.max(0, daysBetween(today, parseIsoDate(first.expected_delivery_date)!)) : 0;
+    const highRisk = isTnaHighRisk(tna, today);
+    const orderedQty = rows.reduce((sum, row) => sum + number(row.original_quantity), 0);
+    const receivedQty = rows.reduce((sum, row) => sum + Math.max(0, number(row.original_quantity) - number(row.pending_qty_actual)), 0);
+    const easycomStatus: EasycomStatus = receivedQty > 0 ? 'Partially Delivered' : 'Approved';
     return {
       key: groupKey, poRef: text(first.po_ref_num), productCode: text(first.product_code) || 'Unmapped',
       vendorName: text(first.vendor_name) || 'Unknown', vendorCode: text(first.vendor_code),
@@ -161,7 +196,9 @@ export function buildTrackerRows(
       pendingQty: rows.reduce((sum, row) => sum + number(row.pending_qty_actual), 0),
       pendingValue: rows.reduce((sum, row) => sum + number(row.pending_qty_actual) * number(row.item_price), 0),
       edd: first.expected_delivery_date, delayDays, delayBucket: ageingBucket(first.expected_delivery_date, today),
-      stage: deriveTnaStage(tna), highRisk: isTnaHighRisk(tna, today), skuRows: rows, tna,
+      stage: deriveTnaStage(tna), highRisk, skuRows: rows, tna,
+      orderedQty, receivedQty, easycomStatus,
+      internalStatus: computeInternalStatus({ edd: first.expected_delivery_date, delayDays, highRisk, tnaDelayDays: tnaTotalDelayDays(tna), today }),
     };
   }).sort((a, b) => b.pendingValue - a.pendingValue);
 }

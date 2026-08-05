@@ -87,6 +87,15 @@ export type DashboardData = {
   loadedAt: string;
 };
 
+export type EasycomStatus = 'Approved' | 'Partially Delivered';
+
+export type InternalStatus =
+  | 'On Track'
+  | 'High Risk'
+  | 'Overdue'
+  | 'Due Today'
+  | 'Delayed';
+
 export type TrackerRow = {
   key: string;
   poRef: string;
@@ -105,6 +114,12 @@ export type TrackerRow = {
   stage: string;
   // High risk = any critical-path TNA stage overdue as of today (Mahesh's rule).
   highRisk: boolean;
+  // Four status dimensions (see business-logic): live EasyCom status refined
+  // with partial-delivery, and the single internal computed status.
+  orderedQty: number;
+  receivedQty: number;
+  easycomStatus: EasycomStatus;
+  internalStatus: InternalStatus;
   skuRows: PendingPo[];
   tna: TnaRecord | null;
 };

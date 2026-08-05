@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   Boxes,
   CalendarClock,
-  ChevronDown,
   ChevronRight,
   CircleHelp,
   Download,
@@ -33,8 +32,8 @@ import {
 } from "recharts";
 import {
   aggregateProductRows,
-  buildTnaEvents,
   buildTrackerRows,
+  INTERNAL_STATUSES,
   buildVendorRollups,
   createLookups,
   isDelayedPo,
@@ -47,7 +46,6 @@ import { downloadCsv, type CsvValue } from "@/lib/download";
 import type {
   DashboardData,
   PendingPo,
-  TnaEvent,
   TrackerRow,
   VendorRollup,
 } from "@/lib/types";
@@ -887,149 +885,13 @@ function DashboardTab({
   );
 }
 
-// Collapsible "Today & delayed events" section for the Open PO Tracker. Lists
-// TNA milestones (PP Sample → PO Closer) that have no actual date yet and are
-// due today or already overdue. Respects the tab's filters (events are built
-// from the already-filtered rows).
-function TnaEventsSection({
-  events,
-  onView,
-}: {
-  events: TnaEvent[];
-  onView: (row: TrackerRow) => void;
-}) {
-  const [open, setOpen] = useState(true);
-  const [mode, setMode] = useState<"today" | "delayed">("today");
-  const todayEvents = events.filter((e) => e.status === "today");
-  const delayedEvents = events.filter((e) => e.status === "delayed");
-  const shown = mode === "today" ? todayEvents : delayedEvents;
-  return (
-    <section className="panel events-panel">
-      <button
-        type="button"
-        className="events-head"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <span className="events-title">
-          <CalendarClock size={17} className="lead" />
-          <h3>Today&apos;s &amp; delayed events</h3>
-        </span>
-        <span className="events-counts">
-          <span className="badge info">{todayEvents.length} due today</span>
-          <span className="badge danger">{delayedEvents.length} delayed</span>
-          <ChevronDown
-            size={16}
-            className={`events-chevron${open ? " open" : ""}`}
-          />
-        </span>
-      </button>
-      {open && (
-        <div className="events-body">
-          <div className="events-toolbar">
-            <div className="segment">
-              <button
-                className={mode === "today" ? "active" : ""}
-                onClick={() => setMode("today")}
-              >
-                Due today ({todayEvents.length})
-              </button>
-              <button
-                className={mode === "delayed" ? "active" : ""}
-                onClick={() => setMode("delayed")}
-              >
-                Delayed ({delayedEvents.length})
-              </button>
-            </div>
-            <DownloadButton
-              filename={mode === "today" ? "events-due-today" : "events-delayed"}
-              headers={[
-                "Stage",
-                "PO reference",
-                "Vendor",
-                "Vendor code",
-                "Product",
-                "Planned (TNA) date",
-                "Status",
-                "Days overdue",
-              ]}
-              rows={shown.map((e) => [
-                e.stage,
-                e.poRef,
-                e.vendorName,
-                e.vendorCode,
-                e.productCode,
-                e.plannedDate,
-                e.status === "delayed" ? "Delayed" : "Due today",
-                e.overdueDays,
-              ])}
-            />
-          </div>
-          {shown.length ? (
-            <div className="table-scroll events-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Stage</th>
-                    <th>PO reference</th>
-                    <th>Vendor</th>
-                    <th>Product</th>
-                    <th>Planned (TNA)</th>
-                    <th>{mode === "delayed" ? "Overdue" : "Status"}</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((e) => (
-                    <tr key={e.key}>
-                      <td>
-                        <span className="badge info">{e.stage}</span>
-                      </td>
-                      <td className="mono">{e.poRef}</td>
-                      <td>
-                        {e.vendorName}
-                        <small>{e.vendorCode}</small>
-                      </td>
-                      <td>{e.productCode}</td>
-                      <td>{e.plannedDate}</td>
-                      <td>
-                        {e.status === "delayed" ? (
-                          <span className="badge danger">
-                            {e.overdueDays}d overdue
-                          </span>
-                        ) : (
-                          <span className="badge success">Due today</span>
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className="link-button"
-                          onClick={() => onView(e.row)}
-                        >
-                          View <ChevronRight size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="event-empty">
-              No {mode === "today" ? "milestones scheduled for today" : "delayed milestones"} in the current view.
-            </div>
-          )}
-          <p className="events-note">
-            <Info size={13} /> Events are TNA milestones (PP Sample, GPT, Cutting,
-            Inline, First Delivery, PO Closer) with no actual date yet. “Due
-            today” = planned date is today (IST); “Delayed” = planned date has
-            passed. The filters above apply, except Days Overdue.
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
+
+const internalStatusTone = (s: string) =>
+  s === "Overdue" || s === "High Risk"
+    ? "danger"
+    : s === "Due Today" || s === "Delayed"
+      ? "info"
+      : "success";
 
 function TrackerTab({
   data,
@@ -1057,11 +919,10 @@ function TrackerTab({
     product: "",
     merchant: "",
     bucket: "",
+    status: "",
     search: "",
   });
-  // Everything except the "Days Overdue" bucket, which is an EDD-ageing axis.
-  // Events are TNA-milestone based, so a not-yet-due-by-EDD PO can still have an
-  // overdue stage — filtering events by the EDD bucket would wrongly hide those.
+  // Base filters (every filter except the two status axes applied just below).
   const passesBase = (row: TrackerRow) =>
     (!filters.vendor || row.vendorName === filters.vendor) &&
     (!filters.vendorCode || row.vendorCode === filters.vendorCode) &&
@@ -1075,10 +936,10 @@ function TrackerTab({
       ));
   const rows = all.filter(
     (row) =>
-      passesBase(row) && (!filters.bucket || row.delayBucket === filters.bucket),
+      passesBase(row) &&
+      (!filters.bucket || row.delayBucket === filters.bucket) &&
+      (!filters.status || row.internalStatus === filters.status),
   );
-  // Events respect every filter except Days Overdue (see passesBase).
-  const events = buildTnaEvents(all.filter(passesBase), today);
   const paged = usePaged(rows);
   return (
     <>
@@ -1140,8 +1001,13 @@ function TrackerTab({
           ]}
           onChange={(v) => set({ ...filters, bucket: v })}
         />
+        <FilterSelect
+          label="Internal status"
+          value={filters.status}
+          options={[...INTERNAL_STATUSES]}
+          onChange={(v) => set({ ...filters, status: v })}
+        />
       </div>
-      <TnaEventsSection events={events} onView={onView} />
       <div className="panel table-panel">
         <div className="table-meta">
           <span>{fmt.format(rows.length)} PO + product + EDD groups</span>
@@ -1157,11 +1023,14 @@ function TrackerTab({
                 "Variants",
                 "Pending qty",
                 "Pending value",
+                "Received",
+                "Ordered",
+                "EasyCom status",
                 "EDD",
                 "Delay days",
                 "Days Overdue",
                 "TNA stage",
-                "High risk",
+                "Internal status",
                 "TNA days",
                 "PP TNA",
                 "PP Actual",
@@ -1184,11 +1053,14 @@ function TrackerTab({
                 row.variantCount,
                 row.pendingQty,
                 Math.round(row.pendingValue),
+                row.receivedQty,
+                row.orderedQty,
+                row.easycomStatus,
                 row.edd ?? "No EDD",
                 row.delayDays,
                 row.delayBucket,
                 row.stage,
-                row.highRisk ? "High risk" : "",
+                row.internalStatus,
                 tnaTotalDays(row.tna) ?? "",
                 row.tna?.pp_sample_tna_date ?? "",
                 row.tna?.pp_sample_actual_date ?? "",
@@ -1217,11 +1089,13 @@ function TrackerTab({
                   <th>Variants</th>
                   <th>Pending qty</th>
                   <th>Pending value</th>
+                  <th>Delivered</th>
+                  <th>EasyCom</th>
                   <th>EDD</th>
                   <th>Delay</th>
                   <th>Days Overdue</th>
                   <th>TNA stage</th>
-                  <th>Risk</th>
+                  <th>Internal status</th>
                   <th>TNA days</th>
                   <th>PP TNA</th>
                   <th>PP Actual</th>
@@ -1250,6 +1124,14 @@ function TrackerTab({
                     <td>{row.variantCount}</td>
                     <td>{fmt.format(row.pendingQty)}</td>
                     <td>{money.format(row.pendingValue)}</td>
+                    <td>
+                      {fmt.format(row.receivedQty)} / {fmt.format(row.orderedQty)}
+                    </td>
+                    <td>
+                      <span className={`badge ${row.easycomStatus === "Partially Delivered" ? "info" : "success"}`}>
+                        {row.easycomStatus}
+                      </span>
+                    </td>
                     <td>{row.edd ?? "No EDD"}</td>
                     <td>
                       {row.delayDays ? (
@@ -1263,11 +1145,9 @@ function TrackerTab({
                       <span className="badge info">{row.stage}</span>
                     </td>
                     <td>
-                      {row.highRisk ? (
-                        <span className="badge danger">High risk</span>
-                      ) : (
-                        <span className="badge success">OK</span>
-                      )}
+                      <span className={`badge ${internalStatusTone(row.internalStatus)}`}>
+                        {row.internalStatus}
+                      </span>
                     </td>
                     <td>
                       {(() => {

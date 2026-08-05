@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, deriveTnaStage, isHighRiskPo, istToday, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, isHighRiskPo, istToday, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -48,6 +48,21 @@ describe('sourcing business rules', () => {
     // Reversing the input must not change either verdict.
     const reversed=buildTrackerRows([upcoming,overdue],[],[],[tna],today);
     assert.deepEqual(reversed.map((r)=>[r.edd,r.delayDays]).sort(),rows.map((r)=>[r.edd,r.delayDays]).sort());
+  });
+  it('computes EasyCom partial-delivery and the internal-status precedence', () => {
+    const today = new Date('2026-07-15T00:00:00Z');
+    const partial = { ...base, original_quantity: 10, pending_qty_actual: 4 };
+    const [prow] = buildTrackerRows([partial], [], [], [], today);
+    assert.equal(prow.easycomStatus, 'Partially Delivered');
+    assert.equal(prow.receivedQty, 6); assert.equal(prow.orderedQty, 10);
+    const fresh = { ...base, original_quantity: 10, pending_qty_actual: 10 };
+    assert.equal(buildTrackerRows([fresh], [], [], [], today)[0].easycomStatus, 'Approved');
+    assert.equal(computeInternalStatus({ edd: '2026-07-01', delayDays: 14, highRisk: true, tnaDelayDays: 5, today }), 'Overdue');
+    assert.equal(computeInternalStatus({ edd: '2026-07-15', delayDays: 0, highRisk: true, tnaDelayDays: 0, today }), 'Due Today');
+    assert.equal(computeInternalStatus({ edd: '2026-08-01', delayDays: 0, highRisk: true, tnaDelayDays: 0, today }), 'High Risk');
+    assert.equal(computeInternalStatus({ edd: '2026-08-01', delayDays: 0, highRisk: false, tnaDelayDays: 3, today }), 'Delayed');
+    assert.equal(computeInternalStatus({ edd: '2026-08-01', delayDays: 0, highRisk: false, tnaDelayDays: 0, today }), 'On Track');
+    assert.equal(computeInternalStatus({ edd: null, delayDays: 0, highRisk: false, tnaDelayDays: 0, today }), 'On Track');
   });
   it('surfaces TNA milestones due today and overdue as events, skipping future ones', () => {
     const today = new Date('2026-07-15T00:00:00Z');
