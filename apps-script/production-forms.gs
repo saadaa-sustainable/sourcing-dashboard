@@ -46,14 +46,15 @@ const SbProd_ = (function () {
     { sheet: 'PO Closure Form responses',   table: 'po_closure_form', headerRow: 1, conflict: 'source_row_key', map: mapClosure },
   ];
 
-  // ---- Per-stage mappers. Date source per form (see plan):
-  //   PP / GPT  -> submission date (form = "stage approved"; no explicit date col)
-  //   Cutting   -> LAST GRN DATE  (confirm; swap to '__submitted__' if wrong)
-  //   Inline    -> DATE OF IN-LINE QC
-  //   PDI       -> Date of Pre Dispatch QC  (feeds First Delivery actual)
-  //   Closure   -> PO Closure Date - as per TNA
-  function mapPpSample(row) { return stageRow(row, 'po_number', '__submitted__'); }
-  function mapGpt(row)      { return stageRow(row, 'po_number', '__submitted__'); }
+  // ---- Per-stage mappers. Date source per form (verified against tab headers):
+  //   PP        -> "Date" column        (this tab has no Timestamp column)
+  //   GPT       -> "GPT Date" column
+  //   Cutting   -> no cutting tab in this spreadsheet; source TBD (left disabled)
+  //   Inline    -> "DATE OF IN-LINE QC"
+  //   PDI       -> "Date of Pre Dispatch QC"  (feeds First Delivery actual)
+  //   Closure   -> "PO Closure Date - as per TNA"
+  function mapPpSample(row) { return stageRow(row, 'po_number', 'date'); }
+  function mapGpt(row)      { return stageRow(row, 'po_number', 'gpt_date'); }
   function mapCutting(row)  { return stageRow(row, 'po_no',     'last_grn_date'); }
   function mapInline(row)   { return stageRow(row, 'po_number', 'date_of_in_line_qc'); }
   function mapPdi(row)      { return stageRow(row, 'po_number', 'date_of_pre_dispatch_qc'); }
