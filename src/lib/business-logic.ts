@@ -132,6 +132,24 @@ export function resolveVendor(row: PendingPo, lookups: ReturnType<typeof createL
   };
 }
 
+export type StageDelay = { state: 'On Time' | 'Delay' | 'Pending' | 'None'; days: number };
+
+/**
+ * Per-stage schedule variance for one TNA stage: planned (TNA) date vs actual.
+ *   - actual on/before planned  -> On Time (days = days early, >= 0)
+ *   - actual after planned       -> Delay   (days = days late)
+ *   - planned set, no actual yet  -> Pending
+ *   - no planned baseline         -> None
+ */
+export function stageDelay(planned: string | null | undefined, actual: string | null | undefined): StageDelay {
+  const a = parseIsoDate(actual);
+  const p = parseIsoDate(planned);
+  if (!a) return { state: p ? 'Pending' : 'None', days: 0 };
+  if (!p) return { state: 'None', days: 0 };
+  const d = daysBetween(a, p); // >0 = actual after planned = late
+  return d > 0 ? { state: 'Delay', days: d } : { state: 'On Time', days: -d || 0 };
+}
+
 /** Total accumulated TNA delay (ingested Total Delay Days, else sum of stage delays). */
 export function tnaTotalDelayDays(tna: TnaRecord | null | undefined): number {
   if (!tna) return 0;

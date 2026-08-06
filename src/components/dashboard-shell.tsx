@@ -41,6 +41,7 @@ import {
   isOpenPo,
   istToday,
   resolveVendor,
+  stageDelay,
 } from "@/lib/business-logic";
 import { downloadCsv, type CsvValue } from "@/lib/download";
 import type {
@@ -387,17 +388,6 @@ const vendorCsvRows = (rows: VendorRollup[]): CsvValue[][] =>
     r.capacityPerMonth,
     r.utilizationPct,
   ]);
-const tnaTotalDays = (t: TrackerRow["tna"]) =>
-  t
-    ? // Prefer the ingested "Total Delay Days" from TNA Update; else sum stages.
-      t.total_delay_days ??
-      t.pp_sample_delay_days +
-        t.gpt_delay_days +
-        t.cutting_delay_days +
-        t.in_line_qc_delay_days +
-        (t.first_delivery_delay_days ?? 0) +
-        (t.po_closer_delay_days ?? 0)
-    : null;
 
 function Modal({
   title,
@@ -893,6 +883,23 @@ const internalStatusTone = (s: string) =>
       ? "info"
       : "success";
 
+// One TNA stage's on-time/delay verdict (planned vs actual), for the tracker.
+function StageDelayCell({ planned, actual }: { planned?: string | null; actual?: string | null }) {
+  const { state, days } = stageDelay(planned, actual);
+  if (state === "None") return <>—</>;
+  if (state === "Pending") return <span className="badge info">Pending</span>;
+  if (state === "Delay") return <span className="badge danger">Delay {days}d</span>;
+  return <span className="badge success">{days ? `On Time · ${days}d early` : "On Time"}</span>;
+}
+
+const stageDelayText = (planned?: string | null, actual?: string | null) => {
+  const { state, days } = stageDelay(planned, actual);
+  if (state === "None") return "";
+  if (state === "Pending") return "Pending";
+  if (state === "Delay") return `Delay ${days}d`;
+  return days ? `On Time ${days}d early` : "On Time";
+};
+
 function TrackerTab({
   data,
   onView,
@@ -1047,17 +1054,21 @@ function TrackerTab({
                 "Days Overdue",
                 "TNA stage",
                 "Internal status",
-                "TNA days",
                 "PP TNA",
                 "PP Actual",
+                "PP on-time/delay",
                 "GPT TNA",
                 "GPT Actual",
+                "GPT on-time/delay",
                 "Cutting TNA",
                 "Cutting actual",
+                "Cutting on-time/delay",
                 "Inline TNA",
                 "Inline actual",
+                "Inline on-time/delay",
                 "PO Closer TNA",
                 "PO Closer actual",
+                "PO Closer on-time/delay",
               ]}
               rows={rows.map((row) => [
                 row.poRef,
@@ -1075,17 +1086,21 @@ function TrackerTab({
                 row.delayBucket,
                 row.stage,
                 row.internalStatus,
-                tnaTotalDays(row.tna) ?? "",
                 row.tna?.pp_sample_tna_date ?? "",
                 row.tna?.pp_sample_actual_date ?? "",
+                stageDelayText(row.tna?.pp_sample_tna_date, row.tna?.pp_sample_actual_date),
                 row.tna?.gpt_tna_date ?? "",
                 row.tna?.gpt_actual_date ?? "",
+                stageDelayText(row.tna?.gpt_tna_date, row.tna?.gpt_actual_date),
                 row.tna?.cutting_tna_date ?? "",
                 row.tna?.cutting_actual_date_first ?? "",
+                stageDelayText(row.tna?.cutting_tna_date, row.tna?.cutting_actual_date_first),
                 row.tna?.in_line_tna_date ?? "",
                 row.tna?.in_line_actual_date ?? "",
+                stageDelayText(row.tna?.in_line_tna_date, row.tna?.in_line_actual_date),
                 row.tna?.po_closer_tna_date ?? "",
                 row.tna?.po_closer_actual_date ?? "",
+                stageDelayText(row.tna?.po_closer_tna_date, row.tna?.po_closer_actual_date),
               ])}
             />
           </span>
@@ -1108,17 +1123,21 @@ function TrackerTab({
                   <th>Days Overdue</th>
                   <th>TNA stage</th>
                   <th>Internal status</th>
-                  <th>TNA days</th>
                   <th>PP TNA</th>
                   <th>PP Actual</th>
+                  <th>PP on-time/delay</th>
                   <th>GPT TNA</th>
                   <th>GPT Actual</th>
+                  <th>GPT on-time/delay</th>
                   <th>Cutting TNA</th>
                   <th>Cutting actual</th>
+                  <th>Cutting on-time/delay</th>
                   <th>Inline TNA</th>
                   <th>Inline actual</th>
+                  <th>Inline on-time/delay</th>
                   <th>PO Closer TNA</th>
                   <th>PO Closer actual</th>
+                  <th>PO Closer on-time/delay</th>
                   <th></th>
                 </tr>
               </thead>
@@ -1159,28 +1178,21 @@ function TrackerTab({
                         {row.internalStatus}
                       </span>
                     </td>
-                    <td>
-                      {(() => {
-                        const d = tnaTotalDays(row.tna);
-                        return d === null ? (
-                          "—"
-                        ) : d > 0 ? (
-                          <span className="badge danger">{d}d</span>
-                        ) : (
-                          <span className="badge success">{d}d</span>
-                        );
-                      })()}
-                    </td>
                     <td>{row.tna?.pp_sample_tna_date ?? "—"}</td>
                     <td>{row.tna?.pp_sample_actual_date ?? "—"}</td>
+                    <td><StageDelayCell planned={row.tna?.pp_sample_tna_date} actual={row.tna?.pp_sample_actual_date} /></td>
                     <td>{row.tna?.gpt_tna_date ?? "—"}</td>
                     <td>{row.tna?.gpt_actual_date ?? "—"}</td>
+                    <td><StageDelayCell planned={row.tna?.gpt_tna_date} actual={row.tna?.gpt_actual_date} /></td>
                     <td>{row.tna?.cutting_tna_date ?? "—"}</td>
                     <td>{row.tna?.cutting_actual_date_first ?? "—"}</td>
+                    <td><StageDelayCell planned={row.tna?.cutting_tna_date} actual={row.tna?.cutting_actual_date_first} /></td>
                     <td>{row.tna?.in_line_tna_date ?? "—"}</td>
                     <td>{row.tna?.in_line_actual_date ?? "—"}</td>
+                    <td><StageDelayCell planned={row.tna?.in_line_tna_date} actual={row.tna?.in_line_actual_date} /></td>
                     <td>{row.tna?.po_closer_tna_date ?? "—"}</td>
                     <td>{row.tna?.po_closer_actual_date ?? "—"}</td>
+                    <td><StageDelayCell planned={row.tna?.po_closer_tna_date} actual={row.tna?.po_closer_actual_date} /></td>
                     <td>
                       <button
                         className="link-button"

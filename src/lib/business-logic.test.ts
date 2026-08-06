@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, isHighRiskPo, istToday, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, isHighRiskPo, istToday, stageDelay, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -48,6 +48,14 @@ describe('sourcing business rules', () => {
     // Reversing the input must not change either verdict.
     const reversed=buildTrackerRows([upcoming,overdue],[],[],[tna],today);
     assert.deepEqual(reversed.map((r)=>[r.edd,r.delayDays]).sort(),rows.map((r)=>[r.edd,r.delayDays]).sort());
+  });
+  it('computes per-stage on-time / delay / pending variance', () => {
+    assert.deepEqual(stageDelay('2026-07-10', '2026-07-15'), { state: 'Delay', days: 5 });
+    assert.deepEqual(stageDelay('2026-07-15', '2026-07-10'), { state: 'On Time', days: 5 });
+    assert.deepEqual(stageDelay('2026-07-15', '2026-07-15'), { state: 'On Time', days: 0 });
+    assert.deepEqual(stageDelay('2026-07-15', null), { state: 'Pending', days: 0 });
+    assert.deepEqual(stageDelay(null, '2026-07-15'), { state: 'None', days: 0 });
+    assert.deepEqual(stageDelay(null, null), { state: 'None', days: 0 });
   });
   it('computes EasyCom partial-delivery and the internal-status precedence', () => {
     const today = new Date('2026-07-15T00:00:00Z');
