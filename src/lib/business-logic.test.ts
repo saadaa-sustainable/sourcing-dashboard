@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, isHighRiskPo, istToday, stageDelay, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, hasTnaSequenceError, isHighRiskPo, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -48,6 +48,21 @@ describe('sourcing business rules', () => {
     // Reversing the input must not change either verdict.
     const reversed=buildTrackerRows([upcoming,overdue],[],[],[tna],today);
     assert.deepEqual(reversed.map((r)=>[r.edd,r.delayDays]).sort(),rows.map((r)=>[r.edd,r.delayDays]).sort());
+  });
+  it('flags out-of-sequence TNA stages (later done while earlier blank)', () => {
+    // Valid: no actuals -> no error; unbroken prefix -> no error.
+    assert.deepEqual(tnaSequenceErrors({ ...tna, pp_sample_actual_date: null }), []);
+    assert.equal(hasTnaSequenceError({ ...tna, pp_sample_actual_date: '2026-01-01', gpt_actual_date: null }), false);
+    // Invalid: GPT done but PP Sample blank -> GPT is out of sequence; current stage is PP Sample.
+    const bad = { ...tna, pp_sample_actual_date: null, gpt_actual_date: '2026-02-01' };
+    assert.deepEqual(tnaSequenceErrors(bad), ['GPT']);
+    assert.equal(hasTnaSequenceError(bad), true);
+    assert.equal(deriveTnaStage(bad), 'PP Sample Pending');
+    // Gap in the middle: PP done, GPT blank, Cutting done -> Cutting flagged.
+    assert.deepEqual(
+      tnaSequenceErrors({ ...tna, pp_sample_actual_date: '2026-01-01', gpt_actual_date: null, cutting_actual_date_first: '2026-03-01' }),
+      ['Cutting'],
+    );
   });
   it('computes per-stage on-time / delay / pending variance', () => {
     assert.deepEqual(stageDelay('2026-07-10', '2026-07-15'), { state: 'Delay', days: 5 });

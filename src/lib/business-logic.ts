@@ -104,7 +104,7 @@ export function ageingBucket(edd: string | null | undefined, today = istToday())
  */
 export function deriveTnaStage(tna: TnaRecord | null | undefined) {
   if (!tna) return 'Not in TNA Tracker';
-  if (text(tna.current_production_stage)) return text(tna.current_production_stage);
+  // Current stage = the earliest stage whose actual date is not yet populated.
   for (const stage of TNA_STAGES) {
     if (tna[stage.actualField]) continue; // done
     if (stage.core || tna[stage.tnaField]) return `${stage.name} Pending`;
@@ -148,6 +148,32 @@ export function stageDelay(planned: string | null | undefined, actual: string | 
   if (!p) return { state: 'None', days: 0 };
   const d = daysBetween(a, p); // >0 = actual after planned = late
   return d > 0 ? { state: 'Delay', days: d } : { state: 'On Time', days: -d || 0 };
+}
+
+/**
+ * TNA stages are strictly linear (PP → GPT → Cutting → Inline → First Delivery →
+ * PO Closer). "Done" = the stage's actual date is populated. In a valid record the
+ * Done stages form an unbroken prefix: once a stage is not-done, no later stage may
+ * be done. Returns the names of stages that are Done while an earlier stage is still
+ * blank — a data-entry error (e.g. GPT done but PP Sample blank). Empty when valid.
+ */
+export function tnaSequenceErrors(tna: TnaRecord | null | undefined): string[] {
+  if (!tna) return [];
+  const out: string[] = [];
+  let seenPending = false;
+  for (const stage of TNA_STAGES) {
+    if (tna[stage.actualField]) {
+      if (seenPending) out.push(stage.name); // completed after an earlier pending stage
+    } else {
+      seenPending = true;
+    }
+  }
+  return out;
+}
+
+/** True when the TNA stages are out of order (a later stage done before an earlier). */
+export function hasTnaSequenceError(tna: TnaRecord | null | undefined): boolean {
+  return tnaSequenceErrors(tna).length > 0;
 }
 
 /** Total accumulated TNA delay (ingested Total Delay Days, else sum of stage delays). */
@@ -217,6 +243,7 @@ export function buildTrackerRows(
       stage: deriveTnaStage(tna), highRisk, skuRows: rows, tna,
       orderedQty, receivedQty, easycomStatus,
       internalStatus: computeInternalStatus({ edd: first.expected_delivery_date, delayDays, highRisk, tnaDelayDays: tnaTotalDelayDays(tna), today }),
+      sequenceError: hasTnaSequenceError(tna),
     };
   }).sort((a, b) => b.pendingValue - a.pendingValue);
 }

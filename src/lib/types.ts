@@ -120,6 +120,9 @@ export type TrackerRow = {
   receivedQty: number;
   easycomStatus: EasycomStatus;
   internalStatus: InternalStatus;
+  // True when a later TNA stage is completed while an earlier one is still blank
+  // (strictly-linear violation) — surfaced as a data-entry error in the tracker.
+  sequenceError: boolean;
   skuRows: PendingPo[];
   tna: TnaRecord | null;
 };

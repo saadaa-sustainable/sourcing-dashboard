@@ -11,6 +11,7 @@ import {
   Download,
   Info,
   LayoutDashboard,
+  Lock,
   LogOut,
   PackageSearch,
   Search,
@@ -1054,6 +1055,7 @@ function TrackerTab({
                 "Days Overdue",
                 "TNA stage",
                 "Internal status",
+                "TNA sequence",
                 "PP TNA",
                 "PP Actual",
                 "PP on-time/delay",
@@ -1086,6 +1088,7 @@ function TrackerTab({
                 row.delayBucket,
                 row.stage,
                 row.internalStatus,
+                row.sequenceError ? "ERROR - out of order" : "OK",
                 row.tna?.pp_sample_tna_date ?? "",
                 row.tna?.pp_sample_actual_date ?? "",
                 stageDelayText(row.tna?.pp_sample_tna_date, row.tna?.pp_sample_actual_date),
@@ -1123,6 +1126,7 @@ function TrackerTab({
                   <th>Days Overdue</th>
                   <th>TNA stage</th>
                   <th>Internal status</th>
+                  <th>TNA sequence</th>
                   <th>PP TNA</th>
                   <th>PP Actual</th>
                   <th>PP on-time/delay</th>
@@ -1171,12 +1175,30 @@ function TrackerTab({
                     </td>
                     <td>{row.delayBucket}</td>
                     <td>
-                      <span className="badge info">{row.stage}</span>
+                      {row.sequenceError ? (
+                        <span
+                          className="badge danger"
+                          title="Data-entry error: a later TNA stage is completed while an earlier stage is still pending."
+                        >
+                          <Lock size={11} /> {row.stage}
+                        </span>
+                      ) : (
+                        <span className="badge info">{row.stage}</span>
+                      )}
                     </td>
                     <td>
                       <span className={`badge ${internalStatusTone(row.internalStatus)}`}>
                         {row.internalStatus}
                       </span>
+                    </td>
+                    <td>
+                      {row.sequenceError ? (
+                        <span className="badge danger" title="Later stage completed before an earlier one.">
+                          <Lock size={11} /> Error
+                        </span>
+                      ) : (
+                        <span className="badge success">OK</span>
+                      )}
                     </td>
                     <td>{row.tna?.pp_sample_tna_date ?? "—"}</td>
                     <td>{row.tna?.pp_sample_actual_date ?? "—"}</td>
