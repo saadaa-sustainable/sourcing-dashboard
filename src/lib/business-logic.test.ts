@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, hasTnaSequenceError, isHighRiskPo, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, hasTnaSequenceError, isHighRiskPo, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -48,6 +48,16 @@ describe('sourcing business rules', () => {
     // Reversing the input must not change either verdict.
     const reversed=buildTrackerRows([upcoming,overdue],[],[],[tna],today);
     assert.deepEqual(reversed.map((r)=>[r.edd,r.delayDays]).sort(),rows.map((r)=>[r.edd,r.delayDays]).sort());
+  });
+  it('evaluates High Risk live, not as a sticky tag: due-and-not-done flags it; marking done (even late) clears it', () => {
+    const today = new Date('2026-07-21T00:00:00Z');
+    // GPT due the 20th, not done, today is the 21st -> High Risk today.
+    const gptOverdue = { ...tna, gpt_tna_date: '2026-07-20', gpt_actual_date: null };
+    assert.equal(isTnaHighRisk(gptOverdue, today), true);
+    // GPT marked done on the 22nd (late) -> immediately NOT High Risk (re-evaluated fresh).
+    assert.equal(isTnaHighRisk({ ...gptOverdue, gpt_actual_date: '2026-07-22' }, today), false);
+    // Planned date still in the future -> not High Risk.
+    assert.equal(isTnaHighRisk({ ...tna, gpt_tna_date: '2026-07-25', gpt_actual_date: null }, today), false);
   });
   it('flags out-of-sequence TNA stages (later done while earlier blank)', () => {
     // Valid: no actuals -> no error; unbroken prefix -> no error.
