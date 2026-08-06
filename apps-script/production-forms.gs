@@ -9,8 +9,8 @@
  * The stages live across THREE spreadsheets — deploy this SAME script (bound) to
  * each; every instance syncs only the tabs it finds and skips the rest:
  *   • "Production Dashboard" (15mC3l06…): PP, Inline, PDI, PO Closure
- *   • "Lab_Reports"          (1z1tbtnm…): tab "Lab_Reports - GPT/FPT"     → GPT
- *   • "Cutting Register"     (1pwgJGXT…): tab "Cutting Register - Cutting" → Cutting
+ *   • "Lab_Reports"          (1z1tbtnm…): tab "Lab_Reports"     → GPT (GPT+FPT rows)
+ *   • "Cutting Register"     (1pwgJGXT…): tab "<confirm via logProductionTabs>" → Cutting
  * Add Script Properties (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) to EACH of the
  * three projects — they are per-project and NOT shared.
  *
@@ -49,7 +49,7 @@ const SbProd_ = (function () {
     { sheet: 'PO Closure Form responses',   table: 'po_closure_form', headerRow: 1, conflict: 'source_row_key', map: mapClosure },
     // In the LAB-TEST REPORT spreadsheet (1z1tbtnmXxF…) — deploy this script there too;
     // set 'sheet' to that tab's exact name (run logProductionTabs there):
-    { sheet: 'Lab_Reports - GPT/FPT',       table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
+    { sheet: 'Lab_Reports',                 table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
     // In the CUTTING spreadsheet (1pwgJGXTLJp…) — deploy this script there too; set 'sheet'
     // to that tab's exact name (run logProductionTabs there):
     { sheet: 'Cutting Register - Cutting',  table: 'cutting_form',    headerRow: 1, conflict: 'source_row_key', map: mapCutting },
