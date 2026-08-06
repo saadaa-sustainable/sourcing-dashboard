@@ -1056,8 +1056,6 @@ function TrackerTab({
                 "Cutting actual",
                 "Inline TNA",
                 "Inline actual",
-                "First Delivery TNA",
-                "First Delivery actual",
                 "PO Closer TNA",
                 "PO Closer actual",
               ]}
@@ -1086,8 +1084,6 @@ function TrackerTab({
                 row.tna?.cutting_actual_date_first ?? "",
                 row.tna?.in_line_tna_date ?? "",
                 row.tna?.in_line_actual_date ?? "",
-                row.tna?.first_delivery_tna_date ?? "",
-                row.tna?.first_delivery_actual_date ?? "",
                 row.tna?.po_closer_tna_date ?? "",
                 row.tna?.po_closer_actual_date ?? "",
               ])}
@@ -1121,8 +1117,6 @@ function TrackerTab({
                   <th>Cutting actual</th>
                   <th>Inline TNA</th>
                   <th>Inline actual</th>
-                  <th>First Del. TNA</th>
-                  <th>First Del. actual</th>
                   <th>PO Closer TNA</th>
                   <th>PO Closer actual</th>
                   <th></th>
@@ -1185,8 +1179,6 @@ function TrackerTab({
                     <td>{row.tna?.cutting_actual_date_first ?? "—"}</td>
                     <td>{row.tna?.in_line_tna_date ?? "—"}</td>
                     <td>{row.tna?.in_line_actual_date ?? "—"}</td>
-                    <td>{row.tna?.first_delivery_tna_date ?? "—"}</td>
-                    <td>{row.tna?.first_delivery_actual_date ?? "—"}</td>
                     <td>{row.tna?.po_closer_tna_date ?? "—"}</td>
                     <td>{row.tna?.po_closer_actual_date ?? "—"}</td>
                     <td>
