@@ -48,10 +48,10 @@ const SbProd_ = (function () {
     { sheet: 'PO Closure Form responses',   table: 'po_closure_form', headerRow: 1, conflict: 'source_row_key', map: mapClosure },
     // In the LAB-TEST REPORT spreadsheet (1z1tbtnmXxF…) — deploy this script there too;
     // set 'sheet' to that tab's exact name (run logProductionTabs there):
-    { sheet: 'GPT LAB REPORT TAB',          table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
+    { sheet: 'Lab_Reports - GPT/FPT',       table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
     // In the CUTTING spreadsheet (1pwgJGXTLJp…) — deploy this script there too; set 'sheet'
     // to that tab's exact name (run logProductionTabs there):
-    { sheet: 'CUTTING TAB',                 table: 'cutting_form',    headerRow: 1, conflict: 'source_row_key', map: mapCutting },
+    { sheet: 'Cutting Register - Cutting',  table: 'cutting_form',    headerRow: 1, conflict: 'source_row_key', map: mapCutting },
   ];
 
   // ---- Per-stage mappers. Date source per form (verified against tab headers).
