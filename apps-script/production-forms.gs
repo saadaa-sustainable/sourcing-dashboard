@@ -8,10 +8,11 @@
  *
  * The stages live across THREE spreadsheets — deploy this SAME script (bound) to
  * each; every instance syncs only the tabs it finds and skips the rest:
- *   • Production Dashboard (15mC3l06…): PP, Inline, PDI, PO Closure
- *   • Lab-test report      (1z1tbtnm…): GPT   (set the GPT tab name in CONFIG)
- *   • Cutting              (1pwgJGXT…): Cutting (set the Cutting tab name in CONFIG)
- * Each project needs its own Script Properties (SUPABASE_URL + service key).
+ *   • "Production Dashboard" (15mC3l06…): PP, Inline, PDI, PO Closure
+ *   • "Lab_Reports"          (1z1tbtnm…): tab "Lab_Reports - GPT/FPT"     → GPT
+ *   • "Cutting Register"     (1pwgJGXT…): tab "Cutting Register - Cutting" → Cutting
+ * Add Script Properties (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) to EACH of the
+ * three projects — they are per-project and NOT shared.
  *
  * Self-contained and namespaced (SbProd_) so it won't collide with the other
  * sync scripts (SbSync_ / SbDisc_).
