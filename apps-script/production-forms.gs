@@ -1,12 +1,17 @@
 /**
  * SAADAA — Production Dashboard stage forms → Supabase sync (STANDALONE).
  *
- * Bind this to the "Production Dashboard" spreadsheet (id 15mC3l06…, owner
- * mukesh@saadaa.in) — a DIFFERENT spreadsheet from the sourcing/TNA one. It
- * mirrors six Google-Form response tabs into six Supabase tables, from which
- * the view sd_po_stage_actuals derives each PO's ACTUAL stage dates. The Open
- * PO Tracker then shows those as the "* ACTUAL" columns (planned "* TNA" dates
- * stay from the TNA Update sheet).
+ * Mirrors the production-stage Google-Form response tabs into six Supabase
+ * tables, from which the view sd_po_stage_actuals derives each PO's ACTUAL stage
+ * dates. The Open PO Tracker shows those as the "* ACTUAL" columns (planned
+ * "* TNA" dates stay from the TNA Update sheet).
+ *
+ * The stages live across THREE spreadsheets — deploy this SAME script (bound) to
+ * each; every instance syncs only the tabs it finds and skips the rest:
+ *   • Production Dashboard (15mC3l06…): PP, Inline, PDI, PO Closure
+ *   • Lab-test report      (1z1tbtnm…): GPT   (set the GPT tab name in CONFIG)
+ *   • Cutting              (1pwgJGXT…): Cutting (set the Cutting tab name in CONFIG)
+ * Each project needs its own Script Properties (SUPABASE_URL + service key).
  *
  * Self-contained and namespaced (SbProd_) so it won't collide with the other
  * sync scripts (SbSync_ / SbDisc_).
@@ -36,26 +41,34 @@ const SbProd_ = (function () {
   // (verify with logProductionTabs). Each mapper extracts po_ref_num + actual_date.
   // ⚠ Column keys are the normalized header names — verify with logProductionHeaders.
   const CONFIG = [
+    // In the Production Dashboard spreadsheet (15mC3l06…):
     { sheet: 'PP Sample Update Form',       table: 'pp_sample_form',  headerRow: 1, conflict: 'source_row_key', map: mapPpSample },
-    { sheet: 'GPT Sample Form',             table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
-    // ⚠ Cutting: no cutting-register response tab exists in THIS spreadsheet — source TBD.
-    // The entry is harmless (syncSheet skips a missing tab); update 'sheet' once confirmed.
-    { sheet: 'CUTTING REGISTER',            table: 'cutting_form',    headerRow: 1, conflict: 'source_row_key', map: mapCutting },
     { sheet: 'IN-LINE & MID LINE QC FORM',  table: 'inline_qc_form',  headerRow: 1, conflict: 'source_row_key', map: mapInline },
     { sheet: 'PRE-DISPATCH QC FORM',        table: 'pdi_form',        headerRow: 1, conflict: 'source_row_key', map: mapPdi },
     { sheet: 'PO Closure Form responses',   table: 'po_closure_form', headerRow: 1, conflict: 'source_row_key', map: mapClosure },
+    // In the LAB-TEST REPORT spreadsheet (1z1tbtnmXxF…) — deploy this script there too;
+    // set 'sheet' to that tab's exact name (run logProductionTabs there):
+    { sheet: 'GPT LAB REPORT TAB',          table: 'gpt_form',        headerRow: 1, conflict: 'source_row_key', map: mapGpt },
+    // In the CUTTING spreadsheet (1pwgJGXTLJp…) — deploy this script there too; set 'sheet'
+    // to that tab's exact name (run logProductionTabs there):
+    { sheet: 'CUTTING TAB',                 table: 'cutting_form',    headerRow: 1, conflict: 'source_row_key', map: mapCutting },
   ];
 
-  // ---- Per-stage mappers. Date source per form (verified against tab headers):
-  //   PP        -> "Date" column        (this tab has no Timestamp column)
-  //   GPT       -> "GPT Date" column
-  //   Cutting   -> no cutting tab in this spreadsheet; source TBD (left disabled)
+  // ---- Per-stage mappers. Date source per form (verified against tab headers).
+  //   PP        -> "Date"                         (Production Dashboard)
+  //   GPT       -> "Updated Date", GPT+FPT rows    (SEPARATE lab-test report sheet)
+  //   Cutting   -> "DATE OF CUTTING"               (SEPARATE cutting sheet)
   //   Inline    -> "DATE OF IN-LINE QC"
-  //   PDI       -> "Date of Pre Dispatch QC"  (feeds First Delivery actual)
+  //   PDI       -> "Date of Pre Dispatch QC"       (feeds First Delivery actual)
   //   Closure   -> "PO Closure Date - as per TNA"
   function mapPpSample(row) { return stageRow(row, 'po_number', 'date'); }
-  function mapGpt(row)      { return stageRow(row, 'po_number', 'gpt_date'); }
-  function mapCutting(row)  { return stageRow(row, 'po_no',     'last_grn_date'); }
+  function mapGpt(row) {
+    // Lab-test report sheet: keep GPT and FPT reports; the GPT actual is the latest
+    // "Updated Date" across them for a PO (joined on PO No).
+    if (!/gpt|fpt/i.test(text(row.test_type) || '')) return null;
+    return stageRow(row, 'po_no', 'updated_date');
+  }
+  function mapCutting(row)  { return stageRow(row, 'po_number', 'date_of_cutting'); }
   function mapInline(row)   { return stageRow(row, 'po_number', 'date_of_in_line_qc'); }
   function mapPdi(row)      { return stageRow(row, 'po_number', 'date_of_pre_dispatch_qc'); }
   function mapClosure(row)  { return stageRow(row, 'po_no',     'po_closure_date_as_per_tna'); }
