@@ -17,7 +17,7 @@ export default async function DiscontinuePage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Discontinue" active="/discontinue" role="viewer">
+        <FormLayout title="Discontinued Products View" active="/discontinue" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -34,7 +34,7 @@ export default async function DiscontinuePage() {
 
   return (
     <FormLayout
-      title="Discontinue"
+      title="Discontinued Products View"
       subtitle="Variant-level discontinue approval, plus the available-inventory ageing & liquidation view."
       active="/discontinue"
       role={user.role}

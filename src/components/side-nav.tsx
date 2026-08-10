@@ -51,7 +51,7 @@ const WORKFLOW_LINKS = [
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
-  { href: '/discontinue', label: 'Discontinue', Icon: Ban },
+  { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
 ] as const;
 

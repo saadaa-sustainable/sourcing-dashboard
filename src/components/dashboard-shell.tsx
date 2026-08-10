@@ -54,108 +54,55 @@ import type {
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { signOut } from "@/lib/auth-actions";
 
-const glossary: Record<string, string[]> = {
-  dashboard: [
-    "Open PO — a purchase order that still has garments left to receive. Formula: counted when pending_qty_actual > 0. Fully received orders are not counted.",
-    "Open Qty — the total pieces still to be delivered. Formula: sum of pending_qty_actual across all open lines.",
-    "Open value — the money still tied up in undelivered goods. Formula: sum of (pending_qty_actual × item price) across open lines.",
-    "Delayed PO — an open order whose promised delivery date has already passed. Formula: open PO where expected delivery date (EDD) is before today.",
-    "Delayed % — out of all open orders, the share that are running late. Formula: delayed open POs ÷ total open POs × 100.",
-    "High Risk PO — any critical-path TNA stage is overdue as of today. Formula: open PO where at least one stage (PP Sample, GPT, Cutting, Inline, First Delivery or PO Closer) has its planned TNA date in the past with no actual date yet — regardless of how far off final delivery is. One overdue stage compounds forward.",
-    "The All / Woven / Knitted buttons filter every card and chart to that vendor type. Tip: the Delayed and High Risk cards are clickable and open the full PO list.",
-  ],
-  "open-po": [
-    "Each row is one purchase order line, grouped by PO number + product + delivery date.",
-    "Variants — how many different variants (for example colours) that line covers, not a piece count.",
-    "Delay — days past the promised delivery date. Formula: today − EDD, never below 0 (0 is shown as 'On time').",
-    "Days Overdue — a bucket built from that delay: Not Due (0 days late), 0-7, 8-15, 16-30, 30+ days, or No EDD when no delivery date is set.",
-    "TNA stage — the first production step (PP Sample → GPT → Cutting → Inline) that has no actual date filled in yet. 'Not in TNA Tracker' means no production timeline exists.",
-    "TNA days — the total production delay for the order. Formula: PP delay + GPT delay + Cutting delay + Inline delay (days).",
-    "The PP / GPT / Cutting / Inline columns show the planned date (TNA) next to the actual date so you can see where time slipped. Scroll right to see them.",
-  ],
-  vendors: [
-    "Vendors are matched first by vendor code, and by name only when no code matches.",
-    "Open POs / Delayed — counts of that vendor's distinct PO numbers. Delayed = those whose delivery date has passed. Delay % formula: delayed POs ÷ open POs × 100.",
-    "Open qty — sum of the vendor's pending quantity. Open value — sum of (pending quantity × price).",
-    "Utilisation — how full a vendor's plate is. Formula: open quantity ÷ monthly capacity × 100. Above 100% means booked beyond capacity.",
-    "Total Open PO Quantity — the pending quantity of every vendor added together.",
-    "Vendors with no capacity data in the master sheet show 0 for capacity and utilisation.",
-  ],
-  "vendor-type": [
-    "Vendors are split into Woven and Knitted. Anything labelled 'woven' counts as Woven; everything else (including blank) is treated as Knit.",
-    "Per vendor: Open quantity = sum of pending quantity; Delayed quantity = sum of pending quantity on lines whose delivery date has already passed (delay days > 0).",
-    "Every vendor in each group is shown — if there are many, scroll inside the chart to see them all.",
-  ],
-  merchants: [
-    "Figures are grouped by merchant (the person who owns the vendor relationship). A merchant is read from the vendor capacity sheet first, then the vendor type sheet.",
-    "Each merchant's Open POs, Delayed, Open qty and Open value are the totals of its vendors. Delay % formula: delayed POs ÷ open POs × 100.",
-    "Vendors with no merchant assigned are grouped together under 'Unassigned'.",
-  ],
-  products: [
-    "Any filters you choose are applied to the raw PO lines first, then the totals are added up.",
-    "Product + variant rollup keeps each variant on its own row; Product code summary combines all variants of a product into one line.",
-    "Pending qty — sum of pending quantity. Pending value — sum of (pending quantity × item price).",
-  ],
-  "urgent-replenish": [
-    "Highlights products that need attention because stock is running low or has run out.",
-    "In Process (365d) — open PO stock arriving soon. Formula: open lines where the delivery date is between today and today + 365 days.",
-    "Out of Stock — products with no pending coverage. Formula: products whose pending_qty_actual is 0 across their lines.",
-  ],
-  matrix: [
-    "A grid: each row is a product (or product + variant), each column is a vendor, and each cell is the pending quantity that vendor owes for that product. Formula: cell = sum of pending_qty_actual for that product × vendor.",
-    "Use 'By Variant' to see each colour/variant separately, or 'By Product Code' to combine all variants of a product.",
-    "The Total row and column add up only the currently open PO quantities.",
-  ],
-};
 
 type HelpItem = { title: string; text: string; tip?: string };
 
 const simpleGlossary: Record<string, HelpItem[]> = {
   dashboard: [
-    { title: "Open POs", text: "Orders that still have items left to arrive." },
-    { title: "Open quantity", text: "The total number of pieces that vendors still need to deliver." },
-    { title: "Open value", text: "The value of all pieces that are still pending." },
-    { title: "Delayed POs", text: "Open orders whose promised delivery date has passed.", tip: "Delay % shows how many open orders are late." },
-    { title: "High-risk POs", text: "Orders where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet — an early-warning flag to force recovery." },
-    { title: "Woven and Knitted", text: "Use these buttons to update every card and graph for one vendor type." },
+    { title: "Open POs", text: "Purchase orders that still have pieces left to receive — counted as unique PO references where pending quantity (actual) is above 0. Fully received POs drop off.", tip: "Open quantity = sum of pending pieces; Open value = sum of (pending qty × item price)." },
+    { title: "Delayed POs", text: "Open POs whose expected delivery date (EDD) is already in the past. The % on the card is delayed ÷ open POs.", tip: "Click the card to open the overdue audit list." },
+    { title: "High-risk POs", text: "A live early-warning flag: an open PO where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet. It is a snapshot, not a permanent label — the moment that stage is marked done, even late, the PO stops being High Risk.", tip: "Independent of the final delivery date; click the card to see which POs and stages." },
+    { title: "PO ageing", text: "Open POs grouped by how overdue they are: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD when no delivery date is set." },
+    { title: "Vendor & product charts", text: "Open vs delayed POs per vendor with a delay-% line, plus the top product codes and product·variant pairs by pending quantity and by delay %." },
+    { title: "All / Woven / Knitted", text: "Filter every card and chart to a vendor type. A vendor whose type contains the word 'woven' counts as Woven; everything else, including blank, counts as Knitted." },
   ],
   "open-po": [
-    { title: "One row", text: "Each row shows one purchase order, product and delivery date." },
-    { title: "Variants", text: "The number of different product options, such as colours. It is not a piece count." },
-    { title: "Delay", text: "The number of days after the promised delivery date. On-time orders show 0." },
-    { title: "Days overdue", text: "Orders are grouped into simple delay ranges so urgent orders are easy to find." },
-    { title: "TNA stage", text: "The next production step that has not been completed yet." },
-    { title: "TNA days", text: "The total delay across sampling, GPT, cutting and inline checks." },
+    { title: "One row = one open PO", text: "Each row is a purchase order grouped by PO number, product and delivery date. 'Variants' counts the distinct variants (e.g. colours) on that PO — it is not a piece count." },
+    { title: "Pending & Delivered", text: "Pending qty and pending value are what is still to come. Delivered shows received ÷ ordered pieces." },
+    { title: "EDD, Delay & Days Overdue", text: "EDD is the promised delivery date. Delay = today − EDD (0 shows as On time). Days Overdue buckets that delay: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD." },
+    { title: "Internal status tabs", text: "Each PO gets one live status, chosen by priority: Overdue (past EDD) → Due Today → High Risk (a TNA stage is overdue) → Delayed (production behind, EDD not yet passed) → On Track. The tabs filter to each.", tip: "High Risk is a snapshot — it clears the moment the overdue stage is marked done." },
+    { title: "TNA stage", text: "The earliest production stage not yet completed: PP Sample → GPT → Cutting → Inline / Midline QC → First Delivery → PO Closer. Shows '… Pending', 'Production' when every stage is done, or 'Not in TNA Tracker' when no timeline exists." },
+    { title: "Per-stage TNA vs Actual", text: "Each stage shows its planned (TNA) date next to the actual date, plus a per-stage verdict: On Time, 'On Time · N days early', 'Delay N d', or Pending. There is no single lumped total — delay is read stage by stage.", tip: "Scroll right for PP, GPT, Cutting, Inline and PO Closer." },
+    { title: "TNA sequence (data-entry check)", text: "Stages are strictly linear. If a later stage is marked done while an earlier one is still blank, it is flagged as a data-entry error with a lock icon, and the earliest still-pending stage is treated as the real status rather than skipping ahead." },
   ],
   vendors: [
-    { title: "Open and delayed POs", text: "Shows how many open orders each vendor has and how many are late." },
-    { title: "Open quantity", text: "The number of pieces the vendor still needs to deliver." },
-    { title: "Monthly capacity", text: "The number of pieces the vendor can normally handle in one month." },
-    { title: "Utilisation", text: "How much of the vendor's monthly capacity is already booked.", tip: "More than 100% means the vendor is over capacity." },
-    { title: "Woven and Knitted charts", text: "Compare open and delayed quantities for vendors in each group." },
+    { title: "Active vendors", text: "Vendors marked active in the vendor master, and how many of them currently have no open PO at all." },
+    { title: "Capacity & open quantity", text: "Total monthly capacity is the sum of every vendor's signed monthly capacity; Total Open PO Quantity is the sum of their pending pieces." },
+    { title: "Open / Delayed / Delay %", text: "Per vendor: distinct open PO references, how many are past EDD, and delayed ÷ open × 100." },
+    { title: "Utilisation", text: "How full a vendor is: open quantity ÷ monthly capacity × 100. Above 100% means booked beyond capacity; shows 0 when the master has no capacity for that vendor.", tip: "Vendors are matched by vendor code first, then by name." },
+    { title: "Woven & Knitted charts", text: "Open vs delayed quantity for each vendor, split into Woven and Knitted groups." },
   ],
   merchants: [
-    { title: "Merchant totals", text: "All vendor orders owned by the same merchant are added together." },
-    { title: "Open POs", text: "Orders that still have pieces left to arrive." },
-    { title: "Delayed POs", text: "Open orders whose promised date has passed." },
-    { title: "Unassigned", text: "Vendors with no merchant in the source data appear in this group." },
+    { title: "Grouped by merchant", text: "Every vendor's figures roll up to the merchant who owns the relationship. The merchant is read from the vendor master first, then the vendor-type sheet." },
+    { title: "Merchant totals", text: "Open POs, delayed POs, open quantity and open value are the sums of that merchant's vendors; delay % and utilisation are recomputed on those totals.", tip: "Rows are sorted by open value." },
+    { title: "Charts", text: "Open vs delayed PO count per merchant, and open quantity per merchant." },
+    { title: "Unassigned", text: "Vendors with no merchant in the source data are grouped together under 'Unassigned'." },
   ],
   products: [
-    { title: "Filters", text: "Choose a merchant, vendor, vendor code, PO type or product to narrow the results." },
-    { title: "Product and variant", text: "Keeps each product option, such as a colour, on its own row." },
-    { title: "Product summary", text: "Combines all variants of the same product into one row." },
-    { title: "Pending quantity and value", text: "Shows the pieces still due and their total value." },
+    { title: "Filters first, then totals", text: "Merchant, vendor, vendor code, PO type, product and variant filters are applied to the raw PO lines, then the quantities are added up." },
+    { title: "Product + variant rollup", text: "Keeps each variant (e.g. colour) on its own row." },
+    { title: "Product code summary", text: "Combines all variants of a product into one row; 'Variants' is the count of distinct variants." },
+    { title: "Pending qty & value", text: "Pending qty = sum of pending pieces; Pending value = sum of (pending qty × item price). Both tables sort by quantity." },
   ],
   "urgent-replenish": [
-    { title: "In process", text: "Open stock that is expected to arrive within the next 365 days." },
-    { title: "Out of stock", text: "Products that currently have no pending quantity coming in." },
-    { title: "How to use this page", text: "Start with out-of-stock products, then check what stock is already on the way." },
+    { title: "In Process (365d)", text: "Open PO stock arriving soon — open lines whose EDD is set and falls between today and today + 365 days." },
+    { title: "Out of Stock", text: "Products with 0 pending quantity across their lines: nothing is currently on the way to replenish them." },
+    { title: "How to use this page", text: "Start with the out-of-stock products, then check the In Process table to see what stock is already coming and when." },
   ],
   matrix: [
-    { title: "How to read the grid", text: "Rows are products, columns are vendors and each cell shows pending quantity." },
-    { title: "By variant", text: "Shows every product option separately." },
-    { title: "By product code", text: "Combines all variants into one product row." },
-    { title: "Totals", text: "The final row and column add the visible pending quantities." },
+    { title: "How to read the grid", text: "Each row is a product (or product · variant), each column is a vendor, and each cell is the pending quantity that vendor still owes for that product." },
+    { title: "By Variant / By Product Code", text: "Switch between one row per colour/variant and one combined row per product code." },
+    { title: "Totals", text: "The Total row, Total column and grand total add only the currently-open pending quantities." },
   ],
 };
 
@@ -2374,12 +2321,7 @@ export function DashboardShell({
     }
   }, []);
   const current = tabs.find(([id]) => id === tab)!;
-  const helpItems: HelpItem[] =
-    simpleGlossary[tab] ??
-    (glossary[tab] ?? []).map((text, index) => ({
-      title: `Guide ${index + 1}`,
-      text,
-    }));
+  const helpItems: HelpItem[] = simpleGlossary[tab] ?? [];
   return (
     <div className="app-shell">
       <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} />
