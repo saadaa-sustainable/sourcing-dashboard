@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, hasTnaSequenceError, isHighRiskPo, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, hasTnaSequenceError, isEasycomActive, isTnaDataMissing, isHighRiskPo, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -32,6 +32,22 @@ describe('sourcing business rules', () => {
   it('groups by PO reference and product code and counts distinct variants', () => {
     const rows=buildTrackerRows([base,{...base,po_detail_id:'2',sku:'B',product_variant:'BLUE',pending_qty_actual:5},{...base,po_detail_id:'3',sku:'C',product_variant:'BLUE',pending_qty_actual:2}],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(rows.length,1); assert.equal(rows[0].variantCount,2); assert.equal(rows[0].pendingQty,17); assert.equal(rows[0].stage,'GPT Pending');
+  });
+  it('flags a PO with no TNA data as an adoption gap (not partially-filled)', () => {
+    assert.equal(isTnaDataMissing(null), true);
+    assert.equal(isTnaDataMissing({ ...tna, pp_sample_actual_date: null }), true);
+    assert.equal(isTnaDataMissing(tna), false);
+    assert.equal(isTnaDataMissing({ ...tna, pp_sample_actual_date: null, gpt_tna_date: '2026-05-01' }), false);
+  });
+  it('drops non-Approved EasyCom lines and sets poNumber/variantName/tnaMissing', () => {
+    assert.equal(isEasycomActive(base), true);
+    assert.equal(isEasycomActive({ ...base, po_status: 'Completed' }), false);
+    assert.equal(isEasycomActive({ ...base, po_status: 'cancelled' }), false);
+    const rows = buildTrackerRows([base, { ...base, po_detail_id: 'X', po_status: 'Completed' }], [], [], [tna], new Date('2026-07-15T00:00:00Z'));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].poNumber, '1');
+    assert.equal(rows[0].variantName, 'RED');
+    assert.equal(rows[0].tnaMissing, false);
   });
   it('attaches per-stage inspections to the tracker row by normalized PO ref', () => {
     const insp = { 'PO-1': { gpt: { passDate:'2026-07-10', reportUrl:'http://x/pass', count:3, failCount:2, entries:[] } } };

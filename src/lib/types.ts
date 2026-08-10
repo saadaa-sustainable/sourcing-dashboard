@@ -123,6 +123,7 @@ export type InternalStatus =
 export type TrackerRow = {
   key: string;
   poRef: string;
+  poNumber: string;
   productCode: string;
   vendorName: string;
   vendorCode: string;
@@ -130,6 +131,7 @@ export type TrackerRow = {
   vendorBucket: 'Woven' | 'Knit';
   poType: string;
   variantCount: number;
+  variantName: string;
   pendingQty: number;
   pendingValue: number;
   edd: string | null;
@@ -147,6 +149,7 @@ export type TrackerRow = {
   // True when a later TNA stage is completed while an earlier one is still blank
   // (strictly-linear violation) — surfaced as a data-entry error in the tracker.
   sequenceError: boolean;
+  tnaMissing: boolean;
   skuRows: PendingPo[];
   tna: TnaRecord | null;
   // Per-stage inspection detail for the inline TNA breakdown (optional; present

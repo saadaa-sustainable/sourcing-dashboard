@@ -112,6 +112,27 @@ export function deriveTnaStage(tna: TnaRecord | null | undefined) {
   return 'Production';
 }
 
+// A PO with NO TNA stage data ever entered (no record, or every core stage blank on
+// both planned and actual). This is an ADOPTION GAP, distinct from delayed/pending -
+// surfaced so missing entry can be chased and mandated.
+export function isTnaDataMissing(tna: TnaRecord | null | undefined): boolean {
+  if (!tna) return true;
+  for (const stage of TNA_STAGES) {
+    if (!stage.core) continue;
+    if (tna[stage.tnaField] || tna[stage.actualField]) return false;
+  }
+  return true;
+}
+
+// EasyCom lifecycle guard: the tracker is the ACTIVE/open view, so a PO that has left
+// the Approved state (Completed/Closed/Cancelled/Rejected on EasyCom) drops out. The
+// data source (sd_po_dashboard) is already Approved-only; this is a defensive backstop.
+const EASYCOM_INACTIVE = new Set(['completed', 'closed', 'cancelled', 'canceled', 'rejected']);
+export function isEasycomActive(row: PendingPo): boolean {
+  const status = key(row.po_status);
+  return !status || !EASYCOM_INACTIVE.has(status);
+}
+
 export function createLookups(vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[]) {
   const typesByCode = new Map(vendorTypes.map((row) => [key(row.vendor_code), row]));
   const typesByName = new Map(vendorTypes.map((row) => [key(row.vendor_name), row]));
@@ -214,7 +235,7 @@ export function buildTrackerRows(
 ): TrackerRow[] {
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);
   const groups = new Map<string, PendingPo[]>();
-  pendingPos.filter(isOpenPo).forEach((row) => {
+  pendingPos.filter((row) => isOpenPo(row) && isEasycomActive(row)).forEach((row) => {
     // Grouped by PO ref + product code + EDD. The EDD belongs in the key because a
     // single (po_ref_num, product_code) pair can legitimately carry lines with
     // different delivery dates; keying on the first two alone let one arbitrary
@@ -225,6 +246,7 @@ export function buildTrackerRows(
   });
   return [...groups.entries()].map(([groupKey, rows]) => {
     const first = rows[0];
+    const variants = unique(rows.map((row) => text(row.product_variant)).filter(Boolean));
     const vendor = resolveVendor(first, lookups);
     const tna = lookups.tnaByPo.get(key(first.po_ref_num)) ?? null;
     const delayDays = first.expected_delivery_date
@@ -237,7 +259,8 @@ export function buildTrackerRows(
       key: groupKey, poRef: text(first.po_ref_num), productCode: text(first.product_code) || 'Unmapped',
       vendorName: text(first.vendor_name) || 'Unknown', vendorCode: text(first.vendor_code),
       merchant: vendor.merchant, vendorBucket: vendor.bucket, poType: text(first.po_type) || 'Unknown',
-      variantCount: unique(rows.map((row) => text(row.product_variant)).filter(Boolean)).length,
+      poNumber: text(first.po_number),
+      variantCount: variants.length, variantName: variants.length === 1 ? variants[0] : '',
       pendingQty: rows.reduce((sum, row) => sum + number(row.pending_qty_actual), 0),
       pendingValue: rows.reduce((sum, row) => sum + number(row.pending_qty_actual) * number(row.item_price), 0),
       edd: first.expected_delivery_date, delayDays, delayBucket: ageingBucket(first.expected_delivery_date, today),
@@ -245,6 +268,7 @@ export function buildTrackerRows(
       orderedQty, receivedQty, easycomStatus,
       internalStatus: computeInternalStatus({ edd: first.expected_delivery_date, delayDays, highRisk, tnaDelayDays: tnaTotalDelayDays(tna), today }),
       sequenceError: hasTnaSequenceError(tna),
+      tnaMissing: isTnaDataMissing(tna),
       inspections: inspectionsByPo?.[text(first.po_ref_num).toUpperCase()],
     };
   }).sort((a, b) => b.pendingValue - a.pendingValue);

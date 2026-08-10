@@ -870,8 +870,10 @@ function TrackerTab({
     bucket: "",
     status: "",
     search: "",
+    easycom: "",
   });
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
+  const [missingOnly, setMissingOnly] = useState(false);
   // Base filters (every filter except the two status axes applied just below).
   const passesBase = (row: TrackerRow) =>
     (!filters.vendor || row.vendorName === filters.vendor) &&
@@ -880,8 +882,10 @@ function TrackerTab({
     (!filters.type || row.poType === filters.type) &&
     (!filters.product || row.productCode === filters.product) &&
     (!filters.merchant || row.merchant === filters.merchant) &&
+    (!filters.easycom || row.easycomStatus === filters.easycom) &&
+    (!missingOnly || row.tnaMissing) &&
     (!filters.search ||
-      [row.poRef, row.productCode, row.vendorName].some((v) =>
+      [row.poRef, row.poNumber, row.productCode, row.vendorName].some((v) =>
         norm(v).includes(norm(filters.search)),
       ));
   // Everything except the internal-status axis — that becomes the table tabs below.
@@ -895,6 +899,7 @@ function TrackerTab({
   const rows = filters.status
     ? preStatus.filter((row) => row.internalStatus === filters.status)
     : preStatus;
+  const missingTnaCount = all.filter((r) => r.tnaMissing).length;
   const paged = usePaged(rows);
   return (
     <>
@@ -944,6 +949,12 @@ function TrackerTab({
           onChange={(v) => set({ ...filters, merchant: v })}
         />
         <FilterSelect
+          label="EasyCom"
+          value={filters.easycom}
+          options={["Approved", "Partially Delivered"]}
+          onChange={(v) => set({ ...filters, easycom: v })}
+        />
+        <FilterSelect
           label="Days Overdue"
           value={filters.bucket}
           options={[
@@ -977,16 +988,25 @@ function TrackerTab({
       <div className="panel table-panel">
         <div className="table-meta">
           <span>{fmt.format(rows.length)} PO + product + EDD groups</span>
+          <button
+            type="button"
+            className={missingOnly ? "gap-chip active" : "gap-chip"}
+            onClick={() => setMissingOnly((v) => !v)}
+            title="Show only POs with no TNA stage data ever entered (adoption gaps)"
+          >
+            <AlertTriangle size={12} /> {fmt.format(missingTnaCount)} missing TNA
+          </button>
           <span className="table-meta-actions">
             <small>Click a TNA stage to expand its full breakdown</small>
             <DownloadButton
               filename="open-po-tracker"
               headers={[
+                "PO number",
                 "PO reference",
                 "Vendor",
                 "Vendor code",
                 "Product",
-                "Variants",
+                "Product variant",
                 "Pending qty",
                 "Pending value",
                 "Received",
@@ -998,6 +1018,7 @@ function TrackerTab({
                 "TNA stage",
                 "Internal status",
                 "TNA sequence",
+                "TNA data",
                 "PP TNA",
                 "PP Actual",
                 "PP on-time/delay",
@@ -1015,11 +1036,12 @@ function TrackerTab({
                 "PO Closer on-time/delay",
               ]}
               rows={rows.map((row) => [
+                row.poNumber,
                 row.poRef,
                 row.vendorName,
                 row.vendorCode,
                 row.productCode,
-                row.variantCount,
+                row.variantName || `${row.variantCount} variants`,
                 row.pendingQty,
                 Math.round(row.pendingValue),
                 row.receivedQty,
@@ -1031,6 +1053,7 @@ function TrackerTab({
                 row.stage,
                 row.internalStatus,
                 row.sequenceError ? "ERROR - out of order" : "OK",
+                row.tnaMissing ? "Missing" : "OK",
                 row.tna?.pp_sample_tna_date ?? "",
                 row.tna?.pp_sample_actual_date ?? "",
                 stageDelayText(row.tna?.pp_sample_tna_date, row.tna?.pp_sample_actual_date),
@@ -1055,11 +1078,12 @@ function TrackerTab({
             <table>
               <thead>
                 <tr>
-                  <th>PO reference</th>
-                  <th>Vendor</th>
-                  <th>Product</th>
-                  <th>Variants</th>
-                  <th>Pending qty</th>
+                  <th className="frz frz-1">PO number</th>
+                  <th className="frz frz-2">PO reference</th>
+                  <th className="frz frz-3">Vendor</th>
+                  <th className="frz frz-4">Product</th>
+                  <th className="frz frz-5">Product variant</th>
+                  <th className="frz frz-6 frz-edge">Pending qty</th>
                   <th>Pending value</th>
                   <th>Delivered</th>
                   <th>EasyCom</th>
@@ -1076,14 +1100,15 @@ function TrackerTab({
                 {paged.pageRows.map((row) => (
                   <Fragment key={row.key}>
                   <tr>
-                    <td className="mono">{row.poRef}</td>
-                    <td>
+                    <td className="frz frz-1 mono">{row.poNumber || "—"}</td>
+                    <td className="frz frz-2 mono">{row.poRef}</td>
+                    <td className="frz frz-3">
                       {row.vendorName}
                       <small>{row.vendorCode}</small>
                     </td>
-                    <td>{row.productCode}</td>
-                    <td>{row.variantCount}</td>
-                    <td>{fmt.format(row.pendingQty)}</td>
+                    <td className="frz frz-4">{row.productCode}</td>
+                    <td className="frz frz-5">{row.variantName || `${row.variantCount} variants`}</td>
+                    <td className="frz frz-6 frz-edge">{fmt.format(row.pendingQty)}</td>
                     <td>{money.format(row.pendingValue)}</td>
                     <td>
                       {fmt.format(row.receivedQty)} / {fmt.format(row.orderedQty)}
@@ -1117,6 +1142,10 @@ function TrackerTab({
                             title="Data-entry error: a later TNA stage is completed while an earlier stage is still pending."
                           >
                             <Lock size={11} /> {row.stage}
+                          </span>
+                        ) : row.tnaMissing ? (
+                          <span className="badge warn" title="No TNA stage data has ever been entered for this PO (adoption gap).">
+                            <AlertTriangle size={11} /> TNA not entered
                           </span>
                         ) : (
                           <span className="badge info">{row.stage}</span>
@@ -1152,7 +1181,7 @@ function TrackerTab({
                   </tr>
                   {expandedRowKey === row.key && (
                     <tr className="tna-expand-row">
-                      <td colSpan={15}>
+                      <td colSpan={16}>
                         <TnaBreakdown row={row} />
                       </td>
                     </tr>
