@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Cell,
   LabelList,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -121,6 +122,20 @@ export function DiscontinuedInventoryView({
     [shown],
   );
 
+  // Product-category × ageing-bucket × available units (unit-level), most first.
+  const categoryChart = useMemo(() => {
+    const byCat = new Map<string, Record<AgeingBucket, number>>();
+    for (const r of shown) {
+      const cat = (r.category ?? '').trim() || '—';
+      const acc = byCat.get(cat) ?? { New: 0, Aging: 0, Old: 0, 'Dead Stock': 0 };
+      for (const b of AGEING_BUCKETS) acc[b] += r.unitsByBucket[b];
+      byCat.set(cat, acc);
+    }
+    return [...byCat.entries()]
+      .map(([category, b]) => ({ category, ...b, total: AGEING_BUCKETS.reduce((s, k) => s + b[k], 0) }))
+      .sort((a, b) => b.total - a.total);
+  }, [shown]);
+
   function exportCsv() {
     downloadCsv(
       'discontinued-inventory',
@@ -132,8 +147,7 @@ export function DiscontinuedInventoryView({
         'Available qty',
         'Oldest days',
         'Ageing bucket',
-        'Suggested discount',
-        'Sales (45d)',
+        'Recommended discount',
         'Recommended action',
         'Value at cost',
         'Value at MRP',
@@ -147,7 +161,6 @@ export function DiscontinuedInventoryView({
         r.oldestDays,
         r.bucket,
         r.suggestedDiscount,
-        r.sales45d ?? '',
         r.action,
         Math.round(r.valueAtCost),
         Math.round(r.valueAtMrp),
@@ -157,6 +170,7 @@ export function DiscontinuedInventoryView({
 
   return (
     <>
+      <h2 style={{ margin: '0 0 12px' }}>Discontinued Products View</h2>
       <Notice tone="info">
         Discontinued-product stock, aged by <strong>days in warehouse</strong> (from
         the sheet). Qty is counted <strong>per SKU (colour + size)</strong>; a SKU&apos;s
@@ -207,6 +221,33 @@ export function DiscontinuedInventoryView({
           </ResponsiveContainer>
         </div>
       </div>
+
+      <section className="table-panel wf-grid-panel" style={{ padding: '16px' }}>
+        <h3 style={{ margin: '0 0 4px' }}>Products Discontinued but Inventory Available</h3>
+        <p className="wf-subtle" style={{ margin: '0 0 10px' }}>
+          Available units by product category and ageing bucket.
+        </p>
+        {categoryChart.length ? (
+          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+            <div style={{ height: Math.max(320, categoryChart.length * 26) }}>
+              <ResponsiveContainer>
+                <BarChart data={categoryChart} layout="vertical" margin={{ left: 24, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" />
+                  <YAxis type="category" dataKey="category" width={80} interval={0} />
+                  <Tooltip formatter={(v) => fmt.format(Number(v))} />
+                  <Legend />
+                  {AGEING_BUCKETS.map((b) => (
+                    <Bar key={b} dataKey={b} stackId="age" name={b} fill={BUCKET_COLOR[b]} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        ) : (
+          <div className="wf-empty-cell">No discontinued stock matches these filters.</div>
+        )}
+      </section>
 
       <div className="wf-toolbar">
         <input
@@ -271,8 +312,7 @@ export function DiscontinuedInventoryView({
                 <th className="num">Qty</th>
                 <th className="num">Oldest (days)</th>
                 <th>Ageing</th>
-                <th>Discount</th>
-                <th className="num">Sales 45d</th>
+                <th>Recommended Discount</th>
                 <th>Recommended action</th>
                 <th className="num">Value (cost)</th>
                 <th className="num">Value (MRP)</th>
@@ -300,7 +340,6 @@ export function DiscontinuedInventoryView({
                   <td className={r.suggestedDiscount === '—' ? 'wf-subtle' : 'strong'}>
                     {r.suggestedDiscount}
                   </td>
-                  <td className="num">{r.sales45d ?? '—'}</td>
                   <td>
                     <span className="wf-status" style={{ color: ACTION_COLOR[r.action] }}>
                       {r.action}
@@ -312,7 +351,7 @@ export function DiscontinuedInventoryView({
               ))}
               {!shown.length && (
                 <tr>
-                  <td colSpan={11} className="wf-empty-cell">
+                  <td colSpan={10} className="wf-empty-cell">
                     No discontinued stock matches these filters.
                   </td>
                 </tr>

@@ -40,7 +40,7 @@ export function DiscontinueTabs({
           className={view === 'inventory' ? 'active' : ''}
           onClick={() => setView('inventory')}
         >
-          Available inventory (ageing)
+          Discontinued Products View
         </button>
       </div>
       {view === 'requests' ? (
