@@ -77,11 +77,35 @@ export type TnaRecord = {
   total_delay_days?: number | null;
 };
 
+export type StageInspectionEntry = {
+  actualDate: string | null;
+  submittedAt: string | null;
+  result: 'pass' | 'fail' | null;
+  reportUrl: string | null;
+  remarks: string | null;
+};
+
+// Per-stage inspection rollup for one PO (from sd_po_stage_inspections). Forms log
+// both fail and pass entries; passDate is the pass, count is total attempts.
+export type StageInspection = {
+  passDate: string | null;
+  reportUrl: string | null;
+  count: number;
+  failCount: number;
+  entries: StageInspectionEntry[];
+};
+
+// Keyed by stage token (pp | gpt | cutting | inline | closer).
+export type StageInspections = Partial<Record<string, StageInspection>>;
+
 export type DashboardData = {
   pendingPos: PendingPo[];
   vendorTypes: VendorType[];
   vendorMasters: VendorMaster[];
   tnaRecords: TnaRecord[];
+  // Per-PO, per-stage inspection detail (pass/fail entries, report links) keyed by
+  // normalized (UPPER) PO ref; powers the tracker inline TNA breakdown.
+  stageInspections?: Record<string, StageInspections>;
   source: 'supabase' | 'fixtures';
   warnings: string[];
   loadedAt: string;
@@ -125,6 +149,9 @@ export type TrackerRow = {
   sequenceError: boolean;
   skuRows: PendingPo[];
   tna: TnaRecord | null;
+  // Per-stage inspection detail for the inline TNA breakdown (optional; present
+  // only when form inspection data exists for this PO).
+  inspections?: StageInspections;
 };
 
 // A single TNA milestone (stage) of an open PO that is not yet done, surfaced

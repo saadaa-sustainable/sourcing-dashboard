@@ -62,27 +62,55 @@ const SbProd_ = (function () {
   //   Inline    -> "DATE OF IN-LINE QC"
   //   PDI       -> "Date of Pre Dispatch QC"       (feeds First Delivery actual)
   //   Closure   -> "PO Closure Date - as per TNA"
-  function mapPpSample(row) { return stageRow(row, 'po_number', 'date'); }
+  // ⚠ STEP 0 (inspection columns): the resultKey / reportKey / remarksKey below are
+  //   NORMALIZED header names — run logProductionHeaders and confirm/replace them per
+  //   form. A wrong or absent key just yields null (non-fatal). QC stages (PP, GPT,
+  //   Inline, PDI) carry a pass/fail answer + an uploaded report link; Cutting and
+  //   Closure usually do not, so they pass no inspection keys.
+  function mapPpSample(row) { return stageRow(row, 'po_number', 'date', { resultKey: 'pp_result', reportKey: 'pp_report_upload', remarksKey: 'remarks' }); }
   function mapGpt(row) {
     // Lab-test report sheet: keep GPT and FPT reports; the GPT actual is the latest
-    // "Updated Date" across them for a PO (joined on PO No).
+    // "Updated Date" across them for a PO (joined on PO No). Seam-strength etc. fails
+    // are logged here too and captured as fail rows with a remark.
     if (!/gpt|fpt/i.test(text(row.test_type) || '')) return null;
-    return stageRow(row, 'po_no', 'updated_date');
+    return stageRow(row, 'po_no', 'updated_date', { resultKey: 'result', reportKey: 'report_link', remarksKey: 'remarks' });
   }
   function mapCutting(row)  { return stageRow(row, 'po_number', 'date_of_cutting'); }
-  function mapInline(row)   { return stageRow(row, 'po_number', 'date_of_in_line_qc'); }
-  function mapPdi(row)      { return stageRow(row, 'po_number', 'date_of_pre_dispatch_qc'); }
+  function mapInline(row)   { return stageRow(row, 'po_number', 'date_of_in_line_qc', { resultKey: 'result', reportKey: 'report_upload', remarksKey: 'remarks' }); }
+  function mapPdi(row)      { return stageRow(row, 'po_number', 'date_of_pre_dispatch_qc', { resultKey: 'result', reportKey: 'report_upload', remarksKey: 'remarks' }); }
   function mapClosure(row)  { return stageRow(row, 'po_no',     'po_closure_date_as_per_tna'); }
 
-  function stageRow(row, poKey, dateKey) {
+  // Normalize a form pass/fail answer to 'pass' | 'fail' | null. ⚠ Add any local
+  // spellings seen in the sheets (e.g. 'ok', 'approved', 'rejected', 'ng').
+  function passFail(v) {
+    const s = (text(v) || '').toLowerCase();
+    if (!s) return null;
+    if (/(^|[^a-z])(pass|passed|ok|approved|accept|accepted)([^a-z]|$)/.test(s)) return 'pass';
+    if (/(^|[^a-z])(fail|failed|reject|rejected|not ?ok|ng)([^a-z]|$)/.test(s)) return 'fail';
+    return null;
+  }
+
+  // Keep only a URL-looking value (the Drive link from a form file-upload column).
+  function urlOnly(v) {
+    const s = text(v);
+    return s && /^https?:\/\//i.test(s) ? s : null;
+  }
+
+  function stageRow(row, poKey, dateKey, opts) {
     const po = text(row[poKey]);
     if (!po) return null;
     const actual = dateKey === '__submitted__' ? submittedDate(row) : date(row[dateKey]);
+    opts = opts || {};
+    const result = opts.resultKey ? passFail(row[opts.resultKey]) : null;
     return {
-      source_row_key: sha256([text(row.timestamp) || '', po, actual || ''].join('|')),
+      // result is in the key so a same-timestamp pass + fail do not collide.
+      source_row_key: sha256([text(row.timestamp) || '', po, actual || '', result || ''].join('|')),
       po_ref_num: po,
       actual_date: actual,
       submitted_at: formTimestamp(row.timestamp),
+      result: result,
+      report_url: opts.reportKey ? urlOnly(row[opts.reportKey]) : null,
+      remarks: opts.remarksKey ? text(row[opts.remarksKey]) : null,
     };
   }
 

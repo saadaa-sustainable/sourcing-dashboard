@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { csvObjects, csvTable } from './csv';
 import { sheetBoolean, sheetDate, sheetNumber, sheetText } from './sheet-values';
 import { createClient, hasSupabaseEnv } from './supabase/server';
-import type { DashboardData, PendingPo, TnaRecord, VendorMaster, VendorType } from './types';
+import type { DashboardData, PendingPo, StageInspection, StageInspectionEntry, TnaRecord, VendorMaster, VendorType } from './types';
 
 const n = sheetNumber;
 const s = sheetText;
@@ -226,15 +226,77 @@ function mergeStageActuals(tnaRecords: TnaRecord[], actuals: StageActualsRow[]):
   }
 }
 
+type StageInspectionRow = {
+  po_ref_num: string;
+  stage: string;
+  actual_date: string | null;
+  submitted_at: string | null;
+  result: string | null;
+  report_url: string | null;
+  remarks: string | null;
+};
+
+/** sd_po_stage_inspections - one row per form submission (pass or fail) per stage. */
+async function fetchStageInspections(supabase: Reader): Promise<StageInspectionRow[]> {
+  const rows: StageInspectionRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase.from('sd_po_stage_inspections').select('*')
+      .order('po_ref_num', { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`Supabase read failed for sd_po_stage_inspections: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as StageInspectionRow[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/**
+ * Groups per-submission inspection rows into { [UPPER po ref]: { [stage]: rollup } }.
+ * Per stage: the pass date (latest pass), a report link (pass entry preferred, else
+ * latest with a link), total attempts, fail count, and every entry (fail + pass).
+ */
+function groupStageInspections(rows: StageInspectionRow[]): Record<string, Record<string, StageInspection>> {
+  const norm = (v: string | null | undefined) => (v ?? '').trim().toUpperCase();
+  const isPass = (v: string | null) => (v ?? '').trim().toLowerCase() === 'pass';
+  const byPo: Record<string, Record<string, StageInspectionEntry[]>> = {};
+  for (const r of rows) {
+    const po = norm(r.po_ref_num);
+    const stage = (r.stage ?? '').trim().toLowerCase();
+    if (!po || !stage) continue;
+    ((byPo[po] ??= {})[stage] ??= []).push({
+      actualDate: r.actual_date, submittedAt: r.submitted_at,
+      result: isPass(r.result) ? 'pass' : ((r.result ?? '').trim() ? 'fail' : null),
+      reportUrl: r.report_url, remarks: r.remarks,
+    });
+  }
+  const out: Record<string, Record<string, StageInspection>> = {};
+  for (const [po, stages] of Object.entries(byPo)) {
+    out[po] = {};
+    for (const [stage, entries] of Object.entries(stages)) {
+      entries.sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? ''));
+      const passes = entries.filter((e) => e.result === 'pass');
+      const passDate = passes.map((e) => e.actualDate).filter(Boolean).sort().at(-1) ?? null;
+      const reportUrl = passes.slice().reverse().find((e) => e.reportUrl)?.reportUrl
+        ?? entries.slice().reverse().find((e) => e.reportUrl)?.reportUrl ?? null;
+      out[po][stage] = {
+        passDate, reportUrl, count: entries.length,
+        failCount: entries.filter((e) => e.result === 'fail').length, entries,
+      };
+    }
+  }
+  return out;
+}
+
 export async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseEnv()) return loadFixtures();
   const supabase = await createClient();
-  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals] = await Promise.all([
+  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals, stageInspectionRows] = await Promise.all([
     fetchDashboardPos(supabase),
     fetchAllRows<VendorType>(supabase, 'vendor_type_master', 'vendor_name'),
     fetchAllRows<VendorMaster>(supabase, 'vendor_master_data', 'vendor_code'),
     fetchAllRows<TnaRecord>(supabase, 'tna_tracker', 'po_no'),
     fetchStageActuals(supabase),
+    fetchStageInspections(supabase),
   ]);
   // Stage ACTUAL dates come from the Google Forms (Production Dashboard); planned
   // TNA dates stay from tna_tracker.
@@ -243,6 +305,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
   if (!pendingPos.length) warnings.push('No PO rows returned from sd_po_dashboard — check the latest GCP pipeline load.');
   return {
     pendingPos, vendorTypes, vendorMasters, tnaRecords,
+    stageInspections: groupStageInspections(stageInspectionRows),
     source: 'supabase', warnings, loadedAt: new Date().toISOString(),
   };
 }

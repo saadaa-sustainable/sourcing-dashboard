@@ -1,4 +1,4 @@
-import type { EasycomStatus, InternalStatus, PendingPo, TnaEvent, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
+import type { EasycomStatus, InternalStatus, PendingPo, StageInspections, TnaEvent, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
 
 // The critical-path stages, in order. Each carries its planned (TNA) date, the
 // actual completion date, and the delay-days field. Extended per Mahesh beyond
@@ -210,6 +210,7 @@ export function computeInternalStatus(input: {
 export function buildTrackerRows(
   pendingPos: PendingPo[], vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[],
   today = istToday(),
+  inspectionsByPo?: Record<string, StageInspections>,
 ): TrackerRow[] {
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);
   const groups = new Map<string, PendingPo[]>();
@@ -244,6 +245,7 @@ export function buildTrackerRows(
       orderedQty, receivedQty, easycomStatus,
       internalStatus: computeInternalStatus({ edd: first.expected_delivery_date, delayDays, highRisk, tnaDelayDays: tnaTotalDelayDays(tna), today }),
       sequenceError: hasTnaSequenceError(tna),
+      inspections: inspectionsByPo?.[text(first.po_ref_num).toUpperCase()],
     };
   }).sort((a, b) => b.pendingValue - a.pendingValue);
 }

@@ -33,6 +33,14 @@ describe('sourcing business rules', () => {
     const rows=buildTrackerRows([base,{...base,po_detail_id:'2',sku:'B',product_variant:'BLUE',pending_qty_actual:5},{...base,po_detail_id:'3',sku:'C',product_variant:'BLUE',pending_qty_actual:2}],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(rows.length,1); assert.equal(rows[0].variantCount,2); assert.equal(rows[0].pendingQty,17); assert.equal(rows[0].stage,'GPT Pending');
   });
+  it('attaches per-stage inspections to the tracker row by normalized PO ref', () => {
+    const insp = { 'PO-1': { gpt: { passDate:'2026-07-10', reportUrl:'http://x/pass', count:3, failCount:2, entries:[] } } };
+    const [row] = buildTrackerRows([base],[],[],[tna],new Date('2026-07-15T00:00:00Z'), insp);
+    assert.equal(row.inspections?.gpt?.count, 3);
+    assert.equal(row.inspections?.gpt?.failCount, 2);
+    assert.equal(row.inspections?.gpt?.reportUrl, 'http://x/pass');
+    assert.equal(row.inspections?.pp, undefined);
+  });
   it('splits one PO + product code across its distinct EDDs instead of letting row order pick one', () => {
     // Mirrors FY26-27/JOB/SDAMK/STN-01: same PO and product, lines dated two months apart.
     // Keyed on PO + product alone, whichever line sorted first silently decided whether the

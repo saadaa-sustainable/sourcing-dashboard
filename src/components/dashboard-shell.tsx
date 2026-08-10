@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
   Boxes,
   CalendarClock,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   Download,
@@ -51,6 +52,7 @@ import type {
   TrackerRow,
   VendorRollup,
 } from "@/lib/types";
+import { TnaBreakdown } from "./tna-breakdown";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { signOut } from "@/lib/auth-actions";
 
@@ -831,15 +833,6 @@ const internalStatusTone = (s: string) =>
       ? "info"
       : "success";
 
-// One TNA stage's on-time/delay verdict (planned vs actual), for the tracker.
-function StageDelayCell({ planned, actual }: { planned?: string | null; actual?: string | null }) {
-  const { state, days } = stageDelay(planned, actual);
-  if (state === "None") return <>—</>;
-  if (state === "Pending") return <span className="badge info">Pending</span>;
-  if (state === "Delay") return <span className="badge danger">Delay {days}d</span>;
-  return <span className="badge success">{days ? `On Time · ${days}d early` : "On Time"}</span>;
-}
-
 const stageDelayText = (planned?: string | null, actual?: string | null) => {
   const { state, days } = stageDelay(planned, actual);
   if (state === "None") return "";
@@ -863,6 +856,7 @@ function TrackerTab({
         data.vendorMasters,
         data.tnaRecords,
         today,
+        data.stageInspections,
       ),
     [data],
   );
@@ -877,6 +871,7 @@ function TrackerTab({
     status: "",
     search: "",
   });
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
   // Base filters (every filter except the two status axes applied just below).
   const passesBase = (row: TrackerRow) =>
     (!filters.vendor || row.vendorName === filters.vendor) &&
@@ -983,7 +978,7 @@ function TrackerTab({
         <div className="table-meta">
           <span>{fmt.format(rows.length)} PO + product + EDD groups</span>
           <span className="table-meta-actions">
-            <small>Scroll horizontally for TNA →</small>
+            <small>Click a TNA stage to expand its full breakdown</small>
             <DownloadButton
               filename="open-po-tracker"
               headers={[
@@ -1074,27 +1069,13 @@ function TrackerTab({
                   <th>TNA stage</th>
                   <th>Internal status</th>
                   <th>TNA sequence</th>
-                  <th>PP TNA</th>
-                  <th>PP Actual</th>
-                  <th>PP on-time/delay</th>
-                  <th>GPT TNA</th>
-                  <th>GPT Actual</th>
-                  <th>GPT on-time/delay</th>
-                  <th>Cutting TNA</th>
-                  <th>Cutting actual</th>
-                  <th>Cutting on-time/delay</th>
-                  <th>Inline TNA</th>
-                  <th>Inline actual</th>
-                  <th>Inline on-time/delay</th>
-                  <th>PO Closer TNA</th>
-                  <th>PO Closer actual</th>
-                  <th>PO Closer on-time/delay</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {paged.pageRows.map((row) => (
-                  <tr key={row.key}>
+                  <Fragment key={row.key}>
+                  <tr>
                     <td className="mono">{row.poRef}</td>
                     <td>
                       {row.vendorName}
@@ -1122,16 +1103,29 @@ function TrackerTab({
                     </td>
                     <td>{row.delayBucket}</td>
                     <td>
-                      {row.sequenceError ? (
-                        <span
-                          className="badge danger"
-                          title="Data-entry error: a later TNA stage is completed while an earlier stage is still pending."
-                        >
-                          <Lock size={11} /> {row.stage}
-                        </span>
-                      ) : (
-                        <span className="badge info">{row.stage}</span>
-                      )}
+                      <button
+                        type="button"
+                        className="tna-stage-button"
+                        onClick={() =>
+                          setExpandedRowKey(expandedRowKey === row.key ? null : row.key)
+                        }
+                        aria-expanded={expandedRowKey === row.key}
+                      >
+                        {row.sequenceError ? (
+                          <span
+                            className="badge danger"
+                            title="Data-entry error: a later TNA stage is completed while an earlier stage is still pending."
+                          >
+                            <Lock size={11} /> {row.stage}
+                          </span>
+                        ) : (
+                          <span className="badge info">{row.stage}</span>
+                        )}
+                        <ChevronDown
+                          size={13}
+                          className={expandedRowKey === row.key ? "tna-chevron open" : "tna-chevron"}
+                        />
+                      </button>
                     </td>
                     <td>
                       <span className={`badge ${internalStatusTone(row.internalStatus)}`}>
@@ -1147,21 +1141,6 @@ function TrackerTab({
                         <span className="badge success">OK</span>
                       )}
                     </td>
-                    <td>{row.tna?.pp_sample_tna_date ?? "—"}</td>
-                    <td>{row.tna?.pp_sample_actual_date ?? "—"}</td>
-                    <td><StageDelayCell planned={row.tna?.pp_sample_tna_date} actual={row.tna?.pp_sample_actual_date} /></td>
-                    <td>{row.tna?.gpt_tna_date ?? "—"}</td>
-                    <td>{row.tna?.gpt_actual_date ?? "—"}</td>
-                    <td><StageDelayCell planned={row.tna?.gpt_tna_date} actual={row.tna?.gpt_actual_date} /></td>
-                    <td>{row.tna?.cutting_tna_date ?? "—"}</td>
-                    <td>{row.tna?.cutting_actual_date_first ?? "—"}</td>
-                    <td><StageDelayCell planned={row.tna?.cutting_tna_date} actual={row.tna?.cutting_actual_date_first} /></td>
-                    <td>{row.tna?.in_line_tna_date ?? "—"}</td>
-                    <td>{row.tna?.in_line_actual_date ?? "—"}</td>
-                    <td><StageDelayCell planned={row.tna?.in_line_tna_date} actual={row.tna?.in_line_actual_date} /></td>
-                    <td>{row.tna?.po_closer_tna_date ?? "—"}</td>
-                    <td>{row.tna?.po_closer_actual_date ?? "—"}</td>
-                    <td><StageDelayCell planned={row.tna?.po_closer_tna_date} actual={row.tna?.po_closer_actual_date} /></td>
                     <td>
                       <button
                         className="link-button"
@@ -1171,6 +1150,14 @@ function TrackerTab({
                       </button>
                     </td>
                   </tr>
+                  {expandedRowKey === row.key && (
+                    <tr className="tna-expand-row">
+                      <td colSpan={15}>
+                        <TnaBreakdown row={row} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
