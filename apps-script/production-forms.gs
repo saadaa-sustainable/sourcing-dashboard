@@ -6,6 +6,11 @@
  * dates. The Open PO Tracker shows those as the "* ACTUAL" columns (planned
  * "* TNA" dates stay from the TNA Update sheet).
  *
+ * APPEND-ONLY: these six tables are an immutable event log. The sync inserts new
+ * submissions and merges (backfills columns) on existing ones, but NEVER deactivates
+ * rows missing from the current sheet read — an upstream edit or deletion must not
+ * remove already-ingested data.
+ *
  * The stages live across THREE spreadsheets — deploy this SAME script (bound) to
  * each; every instance syncs only the tabs it finds and skips the rest:
  *   • "Production Dashboard" (15mC3l06…): PP, Inline, PDI, PO Closure
@@ -103,8 +108,9 @@ const SbProd_ = (function () {
     opts = opts || {};
     const result = opts.resultKey ? passFail(row[opts.resultKey]) : null;
     return {
-      // result is in the key so a same-timestamp pass + fail do not collide.
-      source_row_key: sha256([text(row.timestamp) || '', po, actual || '', result || ''].join('|')),
+      // Stable per-submission key (the form Timestamp is unique per response) so a
+      // re-sync MERGES onto the same row and backfills columns instead of duplicating.
+      source_row_key: sha256([text(row.timestamp) || '', po, actual || ''].join('|')),
       po_ref_num: po,
       actual_date: actual,
       submitted_at: formTimestamp(row.timestamp),
@@ -157,10 +163,10 @@ const SbProd_ = (function () {
         });
         rowsSynced += batch.length;
       });
-      const stale = rest(
-        config.table + '?is_active=eq.true&sync_token=neq.' + encodeURIComponent(token),
-        'patch', { is_active: false, synced_at: new Date().toISOString() }, { Prefer: 'return=representation' });
-      rowsDeleted = Array.isArray(stale) ? stale.length : 0;
+      // APPEND-ONLY: production form submissions are immutable events. We NEVER sweep
+      // rows absent from the current sheet read — an upstream edit or delete must not
+      // remove already-ingested data. Existing keys merge (backfill columns); brand-new
+      // submissions insert. Nothing is ever deactivated here (rowsDeleted stays 0).
       writeSyncLog(config.table, rowsSynced, rowsDeleted, 'success', null, startedAt);
     } catch (error) {
       writeSyncLog(config.table, rowsSynced, rowsDeleted, 'error', String(error.stack || error), startedAt);
