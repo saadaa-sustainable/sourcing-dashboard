@@ -6,6 +6,7 @@ import { ShieldCheck } from 'lucide-react';
 import { canApprove, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
+import { LineRework } from '@/components/forms/line-rework';
 import type { ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
 
 export function ApprovalsClient({
@@ -114,6 +115,17 @@ export function ApprovalsClient({
               <Link href={item.href} className="wf-btn wf-btn-ghost">
                 Open record
               </Link>
+              {canApprove(role, item.status) && !!item.lines?.length && (
+                <LineRework
+                  entityType={item.entityType}
+                  entityId={item.entityId}
+                  entityLabel={item.label}
+                  lines={item.lines}
+                  onDone={(result) => {
+                    if (result.ok) window.location.reload();
+                  }}
+                />
+              )}
               {canApprove(role, item.status) && (
                 <ApprovalBar
                   entityType={item.entityType}

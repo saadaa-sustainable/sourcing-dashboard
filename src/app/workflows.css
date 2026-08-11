@@ -275,6 +275,10 @@
   color: #8a5a00; background: rgba(240, 165, 30, 0.18);
   padding: 1px 6px; border-radius: 999px; vertical-align: middle;
 }
+/* Per-line rework pop-up (Approvals queue) */
+.wf-line-rework { padding: 6px 2px 2px; display: flex; flex-direction: column; gap: 8px; }
+.wf-line-rework-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; align-items: center; font-size: 13px; }
+.wf-line-rework-row input { padding: 6px 8px; border: 1px solid rgba(0, 0, 0, 0.16); border-radius: 6px; }
 
 /* ---- Buying Plan: View module (progress + grouped view) ---- */
 .wf-progress {

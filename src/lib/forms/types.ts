@@ -389,6 +389,8 @@ export type ApprovalQueueItem = {
   submittedBy: string | null;
   submittedAt: string | null;
   href: string;
+  // Line items (Buying Plan / PO Approval) for line-item rework, if any.
+  lines?: { id: string; label: string }[];
   // PO Approval only: the vendor's live capacity, shown on the card so the
   // approver sees the load and the last-updated signed capacity before deciding.
   vendorCode?: string | null;

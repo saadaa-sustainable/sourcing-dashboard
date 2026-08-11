@@ -776,7 +776,7 @@ export async function loadApprovalQueue(): Promise<{
   for (const plan of (plans ?? []) as BuyingPlan[]) {
     const { data: lines } = await supabase
       .from('sd_buying_plan_line')
-      .select('job_work_qty, fob_qty, efob_qty')
+      .select('id, product_code, job_work_qty, fob_qty, efob_qty')
       .eq('plan_id', plan.id);
     const qty = ((lines ?? []) as BuyingPlanLine[]).reduce(
       (sum, l) =>
@@ -797,6 +797,10 @@ export async function loadApprovalQueue(): Promise<{
       submittedBy: plan.submitted_by,
       submittedAt: plan.submitted_at,
       href: `/buying-plan?month=${plan.plan_month}`,
+      lines: ((lines ?? []) as BuyingPlanLine[]).map((l) => ({
+        id: String(l.id),
+        label: `${l.product_code ?? '—'} · ${(Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0)).toLocaleString('en-IN')} pcs`,
+      })),
     });
   }
 
@@ -823,6 +827,10 @@ export async function loadApprovalQueue(): Promise<{
     for (const po of (pos ?? []) as PoApproval[]) {
       const qty = Number(po.po_qty || 0);
       const vendor = (po.vendor_code ?? '').trim();
+      const { data: poLines } = await supabase
+        .from('sd_po_approval_line')
+        .select('id, product_variant, size, qty')
+        .eq('po_id', po.id);
       const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
       items.push({
         entityType: 'po_approval',
@@ -841,6 +849,10 @@ export async function loadApprovalQueue(): Promise<{
           : null,
         vendorCapacityPerMonth: cap?.capacityPerMonth ?? null,
         vendorCapacityUpdatedAt: cap?.weekOf ?? null,
+        lines: ((poLines ?? []) as { id: number; product_variant: string | null; size: string | null; qty: number | null }[]).map((l) => ({
+          id: String(l.id),
+          label: `${l.product_variant ?? '—'}${l.size ? ' / ' + l.size : ''} · ${Number(l.qty || 0).toLocaleString('en-IN')} pcs`,
+        })),
       });
     }
   }

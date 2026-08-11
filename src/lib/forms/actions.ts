@@ -346,6 +346,12 @@ const TABLE: Record<ApprovalEntity, string> = {
   standard_cost: 'sd_standard_cost',
 };
 
+// Entities that carry line items eligible for line-item rework.
+const LINE_TABLE: Partial<Record<ApprovalEntity, string>> = {
+  buying_plan: 'sd_buying_plan_line',
+  po_approval: 'sd_po_approval_line',
+};
+
 export async function decideApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -429,6 +435,65 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   return done(
     decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
   );
+}
+
+/**
+ * Line-item rework: send specific lines back with their own reason (the per-line
+ * pop-up). Each flagged line gets line_status='rework' + its note; the parent
+ * record moves to 'rework' and is marked edited so a later approval counts as edited.
+ */
+export async function reworkLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const entityType = String(formData.get('entity_type') ?? '') as ApprovalEntity;
+  const entityId = Number(formData.get('entity_id'));
+  const label = String(formData.get('entity_label') ?? '');
+  const table = TABLE[entityType];
+  const lineTable = LINE_TABLE[entityType];
+  if (!table || !lineTable || !entityId) return fail('Invalid rework request.');
+  let decisions: { lineId: string; note: string }[] = [];
+  try {
+    decisions = JSON.parse(String(formData.get('line_decisions') ?? '[]'));
+  } catch {
+    decisions = [];
+  }
+  decisions = decisions.filter((d) => d && d.lineId && String(d.note ?? '').trim());
+  if (!decisions.length) return fail('Flag at least one line and give each a reason.');
+
+  const supabase = await supa();
+  const { data: row } = await supabase.from(table).select('id, status').eq('id', entityId).maybeSingle();
+  if (!row) return fail('Record not found.');
+  const from = row.status as SdStatus;
+  if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
+
+  const now = new Date().toISOString();
+  for (const d of decisions) {
+    await supabase
+      .from(lineTable)
+      .update({ line_status: 'rework', rework_notes: d.note.trim() })
+      .eq('id', Number(d.lineId));
+  }
+  const summary = `${decisions.length} line(s) sent for rework`;
+  const { data: updated, error } = await supabase
+    .from(table)
+    .update({
+      status: 'rework',
+      rework_notes: summary,
+      reworked_by: user.email,
+      reworked_at: now,
+      edited_before_approval: true,
+    })
+    .eq('id', entityId)
+    .eq('status', from)
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Already processed by another approver.');
+
+  await writeLog(entityType, String(entityId), label, from, 'rework', user.email, summary);
+  revalidatePath('/approvals');
+  revalidatePath('/buying-plan');
+  revalidatePath('/po-approval');
+  return done('Lines sent for rework.');
 }
 
 /* ================================================================== */
