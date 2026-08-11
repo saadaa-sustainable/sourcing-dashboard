@@ -48,9 +48,7 @@ type Row = {
   material_code: string;
   material_type: MaterialType;
   job_qty: string; // Job Work (e.g. paying for dyeing) quantity
-  job_rate: string;
   purchase_qty: string; // Purchase / FOB (buying outright) quantity
-  purchase_rate: string;
   uom: string;
   remark: string;
 };
@@ -66,9 +64,7 @@ function toRow(l: BuyingPlanLine): Row {
     material_code: l.product_code,
     material_type: asType(l.material_type),
     job_qty: l.job_work_qty?.toString() ?? '',
-    job_rate: l.job_rate?.toString() ?? '',
     purchase_qty: l.fob_qty?.toString() ?? '',
-    purchase_rate: l.standard_value?.toString() ?? '',
     uom: l.uom ?? 'metres',
     remark: l.remark ?? '',
   };
@@ -86,6 +82,7 @@ export function MaterialPlanClient({
   plan,
   lines,
   materialCodes,
+  materialCosts,
   role,
 }: {
   planMonth: string;
@@ -93,6 +90,7 @@ export function MaterialPlanClient({
   lines: BuyingPlanLine[];
   materialCodes: MaterialCode[];
   colours: string[];
+  materialCosts: Record<string, { job: number; fob: number }>;
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
@@ -111,14 +109,21 @@ export function MaterialPlanClient({
     [materialCodes],
   );
 
+  // Rates now come from the approved Material Standard Cost (job = Job Work,
+  // fob = Purchase). A planned line with no approved cost is flagged, not blocked.
   const view = rows.map((r) => {
-    const jobValue = num(r.job_qty) * num(r.job_rate);
-    const purchaseValue = num(r.purchase_qty) * num(r.purchase_rate);
+    const cost = materialCosts[r.material_code];
+    const jobQty = num(r.job_qty);
+    const purchaseQty = num(r.purchase_qty);
+    const jobValue = jobQty * (cost?.job ?? 0);
+    const purchaseValue = purchaseQty * (cost?.fob ?? 0);
     return {
       row: r,
+      cost: cost ?? null,
       jobValue,
       purchaseValue,
       value: jobValue + purchaseValue,
+      missingCost: (jobQty > 0 || purchaseQty > 0) && !cost,
       colour: codeMap.get(r.material_code)?.colour ?? null,
     };
   });
@@ -148,9 +153,7 @@ export function MaterialPlanClient({
         material_code: code,
         material_type: (meta?.material_type as MaterialType) ?? type,
         job_qty: '',
-        job_rate: '',
         purchase_qty: '',
-        purchase_rate: '',
         uom: 'metres',
         remark: '',
       },
@@ -217,9 +220,7 @@ export function MaterialPlanClient({
           material_code: code,
           material_type: (meta?.material_type as MaterialType) ?? 'raw',
           job_qty: '',
-          job_rate: '',
           purchase_qty: '',
-          purchase_rate: '',
           uom: meta?.material_type === 'trim' ? 'pcs' : 'metres',
           remark: '',
         };
@@ -249,9 +250,7 @@ export function MaterialPlanClient({
         product_code: r.material_code.trim(),
         material_type: r.material_type,
         job_work_qty: r.job_qty,
-        job_rate: r.job_rate,
         fob_qty: r.purchase_qty,
-        standard_value: r.purchase_rate,
         uom: r.uom,
         remark: r.remark,
       }));
@@ -381,7 +380,9 @@ export function MaterialPlanClient({
       <Notice tone="info">
         Fabric / raw-material buying, on its own approval track. <strong>Job Work</strong> pays for a
         service (e.g. dyeing); <strong>Purchase</strong> buys the material outright — two distinct
-        budgets. Rates are entered here for now; a shared Standard Cost will value them automatically.
+        budgets. Rates come from the approved{' '}
+        <a href="/standard-cost?track=material">Material Standard Cost</a>; enter a quantity and the
+        value computes automatically.
       </Notice>
 
       {!editable && mode === 'input' && (
@@ -413,9 +414,9 @@ export function MaterialPlanClient({
                     <th>{TYPE_LABEL[type]} code</th>
                     {type === 'dyed' && <th>Colour</th>}
                     <th className="num input-col">Job Work qty</th>
-                    <th className="num input-col">Job rate</th>
+                    <th className="num">Job rate</th>
                     <th className="num input-col">Purchase qty</th>
-                    <th className="num input-col">Purchase rate</th>
+                    <th className="num">Purchase rate</th>
                     <th>UOM</th>
                     <th className="input-col">Remark</th>
                     <th className="num">Value</th>
@@ -423,22 +424,18 @@ export function MaterialPlanClient({
                   </tr>
                 </thead>
                 <tbody>
-                  {shownRows.map(({ row, value, colour }) => (
+                  {shownRows.map(({ row, value, colour, cost, missingCost }) => (
                     <tr key={row.key}>
                       <td className="mono">{row.material_code}</td>
                       {type === 'dyed' && <td>{colour || '—'}</td>}
                       <td className="num input-col">
                         <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
                       </td>
-                      <td className="num input-col">
-                        <input type="number" min={0} value={row.job_rate} disabled={!editable} onChange={(e) => set(row.key, 'job_rate', e.target.value)} />
-                      </td>
+                      <td className="num">{cost ? fmt.format(cost.job) : '—'}</td>
                       <td className="num input-col">
                         <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
                       </td>
-                      <td className="num input-col">
-                        <input type="number" min={0} value={row.purchase_rate} disabled={!editable} onChange={(e) => set(row.key, 'purchase_rate', e.target.value)} />
-                      </td>
+                      <td className="num">{cost ? fmt.format(cost.fob) : '—'}</td>
                       <td>
                         <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
                           {UOMS.map((u) => (
@@ -451,7 +448,9 @@ export function MaterialPlanClient({
                       <td className="input-col">
                         <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
                       </td>
-                      <td className="num strong">{money.format(value)}</td>
+                      <td className="num strong">
+                        {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
+                      </td>
                       {editable && (
                         <td>
                           <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>

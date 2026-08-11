@@ -2,14 +2,22 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadMaterialStandardCosts,
   loadStandardCosts,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostClient } from './standard-cost-client';
+import { CostTrackTabs } from './cost-track-tabs';
 
 export const dynamic = 'force-dynamic';
 
-export default async function StandardCostPage() {
+export default async function StandardCostPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ track?: string }>;
+}) {
+  const track = (await searchParams).track === 'material' ? 'material' : 'fg';
+
   let user;
   try {
     user = await currentUser();
@@ -26,17 +34,22 @@ export default async function StandardCostPage() {
 
   if (!user) redirect('/login');
 
-  const costs = await loadStandardCosts();
+  const costs = track === 'material' ? await loadMaterialStandardCosts() : await loadStandardCosts();
 
   return (
     <FormLayout
       title="Standard Cost"
-      subtitle="Final job / FOB / E-FOB rates per product. Approved rates drive the Buying Plan value; frozen at first PO issuance."
+      subtitle={
+        track === 'material'
+          ? 'Job Work / Purchase rates per material. Approved rates value the Buying Plan material track.'
+          : 'Final job / FOB / E-FOB rates per product. Approved rates drive the Buying Plan value; frozen at first PO issuance.'
+      }
       active="/standard-cost"
       role={user.role}
       userEmail={user.email}
     >
-      <StandardCostClient costs={costs} role={user.role} />
+      <CostTrackTabs track={track} />
+      <StandardCostClient costs={costs} role={user.role} track={track} />
     </FormLayout>
   );
 }

@@ -2,7 +2,12 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { Lock, Save, Send } from 'lucide-react';
-import { saveStandardCost, submitStandardCost } from '@/lib/forms/actions';
+import {
+  saveMaterialCost,
+  saveStandardCost,
+  submitMaterialCost,
+  submitStandardCost,
+} from '@/lib/forms/actions';
 import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -11,10 +16,18 @@ import type { SdRole, StandardCost } from '@/lib/forms/types';
 export function StandardCostClient({
   costs,
   role,
+  track = 'fg',
 }: {
   costs: StandardCost[];
   role: SdRole;
+  track?: 'fg' | 'material';
 }) {
+  const isMat = track === 'material';
+  const saveAction = isMat ? saveMaterialCost : saveStandardCost;
+  const submitAction = isMat ? submitMaterialCost : submitStandardCost;
+  const codeLabel = isMat ? 'Material code' : 'Product code';
+  const fobLabel = isMat ? 'Purchase cost' : 'FOB cost';
+
   const editable = canEdit(role, 'draft');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,23 +58,26 @@ export function StandardCostClient({
 
   function addCost() {
     if (!draft.product_code.trim()) {
-      setError('Enter a product code.');
+      setError(`Enter a ${codeLabel.toLowerCase()}.`);
       return;
     }
     const fd = new FormData();
     fd.set('product_code', draft.product_code.trim());
     fd.set('job_cost', draft.job_cost);
     fd.set('fob_cost', draft.fob_cost);
-    fd.set('efob_cost', draft.efob_cost);
-    run(fd, saveStandardCost);
+    if (!isMat) fd.set('efob_cost', draft.efob_cost);
+    run(fd, saveAction);
   }
 
   return (
     <>
       <Notice tone="info">
-        {approved} of {costs.length} products have an approved standard cost. The
-        Buying Plan multiplies each PO-type quantity by its own rate. Rates freeze
-        once a PO is issued for the product.
+        {approved} of {costs.length} {isMat ? 'materials' : 'products'} have an approved
+        standard cost. The Buying Plan multiplies each{' '}
+        {isMat ? 'Job Work / Purchase' : 'PO-type'} quantity by its own rate.
+        {isMat
+          ? ' Job Work is a service (e.g. dyeing); Purchase buys the material outright.'
+          : ' Rates freeze once a PO is issued for the product.'}
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -70,14 +86,14 @@ export function StandardCostClient({
       {editable && (
         <div className="wf-form-panel">
           <div className="wf-form-grid">
-            <Field label="Product code" hint="Add a code not already listed">
+            <Field label={codeLabel} hint="Add a code not already listed">
               <input
                 value={draft.product_code}
-                placeholder="e.g. SDRPT"
+                placeholder={isMat ? 'e.g. TRM07' : 'e.g. SDRPT'}
                 onChange={(e) => setDraft({ ...draft, product_code: e.target.value })}
               />
             </Field>
-            <Field label="Job cost">
+            <Field label={isMat ? 'Job Work cost' : 'Job cost'}>
               <input
                 type="number"
                 min={0}
@@ -85,7 +101,7 @@ export function StandardCostClient({
                 onChange={(e) => setDraft({ ...draft, job_cost: e.target.value })}
               />
             </Field>
-            <Field label="FOB cost">
+            <Field label={fobLabel}>
               <input
                 type="number"
                 min={0}
@@ -93,14 +109,16 @@ export function StandardCostClient({
                 onChange={(e) => setDraft({ ...draft, fob_cost: e.target.value })}
               />
             </Field>
-            <Field label="E-FOB cost">
-              <input
-                type="number"
-                min={0}
-                value={draft.efob_cost}
-                onChange={(e) => setDraft({ ...draft, efob_cost: e.target.value })}
-              />
-            </Field>
+            {!isMat && (
+              <Field label="E-FOB cost">
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.efob_cost}
+                  onChange={(e) => setDraft({ ...draft, efob_cost: e.target.value })}
+                />
+              </Field>
+            )}
             <button
               type="button"
               className="wf-btn wf-btn-primary"
@@ -128,10 +146,10 @@ export function StandardCostClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Product code</th>
-                <th className="num input-col">Job cost</th>
-                <th className="num input-col">FOB cost</th>
-                <th className="num input-col">E-FOB cost</th>
+                <th>{codeLabel}</th>
+                <th className="num input-col">{isMat ? 'Job Work cost' : 'Job cost'}</th>
+                <th className="num input-col">{fobLabel}</th>
+                {!isMat && <th className="num input-col">E-FOB cost</th>}
                 <th>Status</th>
                 <th aria-label="Actions" />
               </tr>
@@ -143,14 +161,15 @@ export function StandardCostClient({
                   cost={cost}
                   role={role}
                   pending={pending}
-                  onSave={(fd) => run(fd, saveStandardCost)}
-                  onSubmit={(fd) => run(fd, submitStandardCost)}
+                  track={track}
+                  onSave={(fd) => run(fd, saveAction)}
+                  onSubmit={(fd) => run(fd, submitAction)}
                 />
               ))}
               {!shown.length && (
                 <tr>
-                  <td colSpan={6} className="wf-empty-cell">
-                    No products match.
+                  <td colSpan={isMat ? 5 : 6} className="wf-empty-cell">
+                    No {isMat ? 'materials' : 'products'} match.
                   </td>
                 </tr>
               )}
@@ -166,15 +185,18 @@ function CostRow({
   cost,
   role,
   pending,
+  track,
   onSave,
   onSubmit,
 }: {
   cost: StandardCost;
   role: SdRole;
   pending: boolean;
+  track: 'fg' | 'material';
   onSave: (fd: FormData) => void;
   onSubmit: (fd: FormData) => void;
 }) {
+  const isMat = track === 'material';
   const [job, setJob] = useState(cost.job_cost?.toString() ?? '');
   const [fob, setFob] = useState(cost.fob_cost?.toString() ?? '');
   const [efob, setEfob] = useState(cost.efob_cost?.toString() ?? '');
@@ -183,14 +205,14 @@ function CostRow({
   const dirty =
     job !== (cost.job_cost?.toString() ?? '') ||
     fob !== (cost.fob_cost?.toString() ?? '') ||
-    efob !== (cost.efob_cost?.toString() ?? '');
+    (!isMat && efob !== (cost.efob_cost?.toString() ?? ''));
 
   const save = () => {
     const fd = new FormData();
     fd.set('product_code', cost.product_code);
     fd.set('job_cost', job);
     fd.set('fob_cost', fob);
-    fd.set('efob_cost', efob);
+    if (!isMat) fd.set('efob_cost', efob);
     onSave(fd);
   };
   const submit = () => {
@@ -218,7 +240,7 @@ function CostRow({
       </td>
       <td className="num input-col">{cell(job, setJob)}</td>
       <td className="num input-col">{cell(fob, setFob)}</td>
-      <td className="num input-col">{cell(efob, setEfob)}</td>
+      {!isMat && <td className="num input-col">{cell(efob, setEfob)}</td>}
       <td>
         <StatusBadge status={cost.status} />
         {cost.status === 'rejected' && cost.rejection_notes && (
@@ -251,9 +273,9 @@ function CostRow({
           {(cost.status === 'submitted' || cost.status === 'pending_l2') &&
             (canApprove(role, cost.status) ? (
               <ApprovalBar
-                entityType="standard_cost"
+                entityType={isMat ? 'material_cost' : 'standard_cost'}
                 entityId={String(cost.id)}
-                entityLabel={`Standard cost — ${cost.product_code}`}
+                entityLabel={`${isMat ? 'Material' : 'Standard'} cost — ${cost.product_code}`}
                 onDone={(res) => {
                   if (res.ok) window.location.reload();
                 }}

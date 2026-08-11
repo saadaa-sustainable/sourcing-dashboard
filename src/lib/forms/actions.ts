@@ -481,6 +481,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   discontinue: 'sd_discontinue_request',
   po_approval: 'sd_po_approval',
   standard_cost: 'sd_standard_cost',
+  material_cost: 'sd_material_standard_cost',
   receivable_plan: 'sd_receivable_input',
 };
 
@@ -828,6 +829,107 @@ export async function submitStandardCost(formData: FormData): Promise<ActionResu
     'standard_cost',
     String(id),
     `Standard cost — ${row.product_code}`,
+    'draft',
+    next,
+    user.email,
+  );
+  revalidatePath('/standard-cost');
+  revalidatePath('/approvals');
+  return done('Submitted for approval.');
+}
+
+/* ------------------------------------------------------------------ */
+/* Material standard cost — parallel sheet for raw/dyed/trim materials  */
+/* ------------------------------------------------------------------ */
+
+export async function saveMaterialCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit material costs.');
+  }
+
+  const product_code = String(formData.get('product_code') ?? '').trim().toUpperCase();
+  if (!product_code) return fail('Material code is required.');
+
+  const supabase = await supa();
+  const { data: existing } = await supabase
+    .from('sd_material_standard_cost')
+    .select('id, status, frozen')
+    .eq('product_code', product_code)
+    .maybeSingle();
+
+  if (existing?.frozen) {
+    return fail('This cost is frozen and can no longer be edited.');
+  }
+  const status = (existing?.status ?? 'draft') as SdStatus;
+  if (!canEdit(user.role, status)) {
+    return fail(
+      status === 'approved'
+        ? 'This cost is approved — resubmit to change it.'
+        : 'You cannot edit this cost right now.',
+    );
+  }
+
+  const patch = {
+    product_code,
+    job_cost: numOrNull(formData.get('job_cost')),
+    fob_cost: numOrNull(formData.get('fob_cost')),
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('sd_material_standard_cost')
+    .upsert(patch, { onConflict: 'product_code' })
+    .select('id')
+    .single();
+  if (error) return fail(`Could not save: ${error.message}`);
+
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  return { ok: true, message: `Saved ${product_code}.`, id: data.id as number };
+}
+
+export async function submitMaterialCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Save the cost before submitting it.');
+
+  const supabase = await supa();
+  const { data: row } = await supabase
+    .from('sd_material_standard_cost')
+    .select('id, product_code, status, frozen, job_cost, fob_cost')
+    .eq('id', id)
+    .maybeSingle();
+  if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen and cannot be resubmitted.');
+  if (!canSubmit(user.role, row.status as SdStatus)) {
+    return fail('This cost cannot be submitted from its current state.');
+  }
+  if (row.job_cost == null && row.fob_cost == null) {
+    return fail('Enter a Job Work or Purchase rate before submitting.');
+  }
+
+  const next = statusOnSubmit('material_cost');
+  const { data: updated, error } = await supabase
+    .from('sd_material_standard_cost')
+    .update({
+      status: next,
+      submitted_by: user.email,
+      submitted_at: new Date().toISOString(),
+      rejection_notes: null,
+    })
+    .eq('id', id)
+    .in('status', ['draft', 'rework'])
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Already submitted by someone else.');
+
+  await writeLog(
+    'material_cost',
+    String(id),
+    `Material cost — ${row.product_code}`,
     'draft',
     next,
     user.email,

@@ -213,6 +213,7 @@ export type ApprovalEntity =
   | 'discontinue'
   | 'po_approval'
   | 'standard_cost'
+  | 'material_cost'
   | 'receivable_plan';
 
 /** Standard cost sheet row — final job/FOB/EFOB rates per product (sd_standard_cost). */

@@ -212,6 +212,36 @@ export async function loadStandardCosts(): Promise<StandardCost[]> {
   return (data ?? []) as StandardCost[];
 }
 
+/** Every material-cost row, for the Material tab of the Standard Cost page. */
+export async function loadMaterialStandardCosts(): Promise<StandardCost[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_material_standard_cost')
+    .select('*')
+    .order('product_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as StandardCost[];
+}
+
+/** Approved material rates → Map material_code → { job (Job Work), fob (Purchase) }. */
+export async function loadApprovedMaterialCosts(): Promise<
+  Record<string, { job: number; fob: number }>
+> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_material_standard_cost')
+    .select('product_code, job_cost, fob_cost, status')
+    .eq('status', 'approved')
+    .limit(PAGE_SIZE);
+  const map: Record<string, { job: number; fob: number }> = {};
+  (
+    (data ?? []) as { product_code: string; job_cost: number | null; fob_cost: number | null }[]
+  ).forEach((r) => {
+    map[r.product_code] = { job: Number(r.job_cost) || 0, fob: Number(r.fob_cost) || 0 };
+  });
+  return map;
+}
+
 /** Approved standard rates per product, for the Buying Plan value calc. */
 export async function loadApprovedStandardCosts(): Promise<
   Record<string, { job: number; fob: number; efob: number }>
@@ -403,7 +433,7 @@ export async function loadMaterialPlan(planMonth = monthStart()) {
     lines.push(...((data ?? []) as BuyingPlanLine[]));
   }
 
-  const [{ data: mats }, { data: colours }] = await Promise.all([
+  const [{ data: mats }, { data: colours }, materialCosts] = await Promise.all([
     supabase
       .from('sd_material_codes')
       .select('material_code, material_type, fabric_name, colour, base_fabric_code')
@@ -414,6 +444,7 @@ export async function loadMaterialPlan(planMonth = monthStart()) {
       .eq('is_active', true)
       .order('colour')
       .limit(PAGE_SIZE),
+    loadApprovedMaterialCosts(),
   ]);
 
   return {
@@ -421,6 +452,7 @@ export async function loadMaterialPlan(planMonth = monthStart()) {
     lines,
     materialCodes: (mats ?? []) as MaterialCode[],
     colours: ((colours ?? []) as Colour[]).map((c) => c.colour),
+    materialCosts,
     planMonth,
   };
 }
@@ -778,6 +810,7 @@ export async function loadApprovalQueue(): Promise<{
     { data: pos },
     { data: costs },
     { data: log },
+    { data: materialCosts },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
@@ -791,6 +824,7 @@ export async function loadApprovalQueue(): Promise<{
       .select('*')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabase.from('sd_material_standard_cost').select('*').in('status', ['submitted', 'pending_l2']),
   ]);
 
   const items: ApprovalQueueItem[] = [];
@@ -812,6 +846,25 @@ export async function loadApprovalQueue(): Promise<{
       submittedBy: cost.submitted_by,
       submittedAt: cost.submitted_at,
       href: '/standard-cost',
+    });
+  }
+
+  for (const cost of (materialCosts ?? []) as StandardCost[]) {
+    const rates = [
+      cost.job_cost != null ? `Job ${cost.job_cost}` : null,
+      cost.fob_cost != null ? `Purchase ${cost.fob_cost}` : null,
+    ].filter(Boolean).join(' · ');
+    items.push({
+      entityType: 'material_cost',
+      entityId: String(cost.id),
+      label: `Material cost — ${cost.product_code}`,
+      sublabel: rates || 'No rates entered',
+      status: cost.status,
+      quantity: 0,
+      requiredRole: routeApproval('material_cost'),
+      submittedBy: cost.submitted_by,
+      submittedAt: cost.submitted_at,
+      href: '/standard-cost?track=material',
     });
   }
 

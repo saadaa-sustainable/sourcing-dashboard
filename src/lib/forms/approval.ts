@@ -11,7 +11,7 @@ import type { ApprovalEntity, SdRole, SdStatus } from './types';
 export const ADMIN_THRESHOLD_QTY = 5_000;
 
 /** Entities that always need admin (founder) approval, whatever the quantity. */
-const ALWAYS_ADMIN: ApprovalEntity[] = ['discontinue', 'standard_cost'];
+const ALWAYS_ADMIN: ApprovalEntity[] = ['discontinue', 'standard_cost', 'material_cost'];
 
 /** PO categories that always need 2-level (admin) approval, whatever the qty. */
 const PO_ALWAYS_ADMIN = ['npd', 'mat'];
