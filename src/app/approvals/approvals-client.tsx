@@ -1,13 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { ShieldCheck } from 'lucide-react';
+import { CheckCheck, ShieldCheck } from 'lucide-react';
 import { canApprove, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
+import { approveBuyingPlanLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { LineRework } from '@/components/forms/line-rework';
+import { PlanPivot } from '@/components/forms/plan-pivot';
 import type { ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
+
+const money = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+});
+const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
 export function ApprovalsClient({
   items,
@@ -25,8 +34,23 @@ export function ApprovalsClient({
   const mine = items.filter((item) => canApprove(role, item.status));
   const shown = filter === 'mine' ? mine : items;
 
+  // Buying-plan pivot: full scale (Total Qty/Value) + Woven-vs-Knitted split
+  // across every plan in the queue, so the approver sees the shape before drilling.
+  const pivotRows = items
+    .filter((item) => item.entityType === 'buying_plan')
+    .flatMap((item) =>
+      (item.lines ?? []).map((l) => ({
+        fabricType: l.fabricType ?? null,
+        qty: l.qty ?? 0,
+        value: l.value ?? 0,
+        approved: l.lineStatus === 'approved',
+      })),
+    );
+
   return (
     <>
+      <PlanPivot rows={pivotRows} title="Buying plans awaiting approval — Woven vs Knitted" />
+
       <div className="metric-grid wf-metric-grid">
         <div className="metric-card tone-orange">
           <span className="metric-label">Awaiting my decision</span>
@@ -120,6 +144,9 @@ export function ApprovalsClient({
                 </>
               )}
             </dl>
+            {item.entityType === 'buying_plan' &&
+              canApprove(role, item.status) &&
+              !!item.lines?.length && <BuyingPlanApprovalLines item={item} />}
             <div className="wf-queue-foot">
               <Link href={item.href} className="wf-btn wf-btn-ghost">
                 Open record
@@ -199,5 +226,118 @@ export function ApprovalsClient({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Per-line multi-select approval for a Buying Plan. The approver ticks the lines
+ * they're happy with (individually or select-all) and approves them in one action;
+ * the header only flips to Approved once every non-zero line is approved. Lines
+ * that need re-evaluation go back via the separate LineRework modal.
+ */
+function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
+  const lines = item.lines ?? [];
+  const pendingLines = lines.filter((l) => l.lineStatus !== 'approved');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isBusy, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const allChecked = pendingLines.length > 0 && pendingLines.every((l) => selected.has(l.id));
+
+  function toggle(id: string) {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allChecked ? new Set() : new Set(pendingLines.map((l) => l.id)));
+  }
+
+  function approve() {
+    if (!selected.size) return;
+    setError(null);
+    const payload = new FormData();
+    payload.set('plan_id', item.entityId);
+    payload.set('line_ids', JSON.stringify([...selected]));
+    start(async () => {
+      const result = await approveBuyingPlanLines(payload);
+      if (result.ok) window.location.reload();
+      else setError(result.error);
+    });
+  }
+
+  return (
+    <div className="wf-line-approve">
+      <div className="table-scroll">
+        <table className="wide-table wf-line-table">
+          <thead>
+            <tr>
+              <th className="wf-line-check">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={toggleAll}
+                  disabled={!pendingLines.length}
+                  aria-label="Select all pending lines"
+                />
+              </th>
+              <th>Product</th>
+              <th className="num">Qty</th>
+              <th className="num">Value</th>
+              <th>Fabric</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l) => {
+              const approved = l.lineStatus === 'approved';
+              return (
+                <tr key={l.id} className={approved ? 'wf-line-approved' : ''}>
+                  <td className="wf-line-check">
+                    {!approved && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(l.id)}
+                        onChange={() => toggle(l.id)}
+                        aria-label={`Select ${l.label}`}
+                      />
+                    )}
+                  </td>
+                  <td className="mono">{l.label}</td>
+                  <td className="num">{fmt.format(l.qty ?? 0)}</td>
+                  <td className="num">{money.format(l.value ?? 0)}</td>
+                  <td>{l.fabricType || '—'}</td>
+                  <td>
+                    {approved ? (
+                      <span className="wf-tag-approved">approved</span>
+                    ) : (
+                      <span className="wf-subtle">pending</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {error && <p className="wf-line-error">{error}</p>}
+      <div className="wf-line-approve-foot">
+        <span className="wf-subtle">
+          {pendingLines.length} line(s) pending · {lines.length - pendingLines.length} approved
+        </span>
+        <button
+          type="button"
+          className="wf-btn wf-btn-primary wf-btn-sm"
+          onClick={approve}
+          disabled={isBusy || !selected.size}
+        >
+          <CheckCheck size={14} /> {isBusy ? 'Approving…' : `Approve selected (${selected.size})`}
+        </button>
+      </div>
+    </div>
   );
 }

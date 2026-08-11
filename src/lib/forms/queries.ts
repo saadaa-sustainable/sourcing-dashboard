@@ -21,6 +21,7 @@ import type {
   ProductMaster,
   ReceivablePlanRow,
   ReplenishmentRow,
+  SdStatus,
   SdUser,
   VendorTerm,
   StandardCost,
@@ -784,10 +785,15 @@ export async function loadApprovalQueue(): Promise<{
     });
   }
 
+  // Per-line value on the approvals cards uses the same approved standard costs
+  // the buying-plan grid values with (per-PO-type rate × its quantity).
+  const stdCosts: Record<string, { job: number; fob: number; efob: number }> =
+    (plans ?? []).length ? await loadApprovedStandardCosts() : {};
+
   for (const plan of (plans ?? []) as BuyingPlan[]) {
     const { data: lines } = await supabase
       .from('sd_buying_plan_line')
-      .select('id, product_code, job_work_qty, fob_qty, efob_qty')
+      .select('id, product_code, fabric_type, line_status, job_work_qty, fob_qty, efob_qty')
       .eq('plan_id', plan.id);
     const qty = ((lines ?? []) as BuyingPlanLine[]).reduce(
       (sum, l) =>
@@ -808,10 +814,22 @@ export async function loadApprovalQueue(): Promise<{
       submittedBy: plan.submitted_by,
       submittedAt: plan.submitted_at,
       href: `/buying-plan?month=${plan.plan_month}`,
-      lines: ((lines ?? []) as BuyingPlanLine[]).map((l) => ({
-        id: String(l.id),
-        label: `${l.product_code ?? '—'} · ${(Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0)).toLocaleString('en-IN')} pcs`,
-      })),
+      lines: ((lines ?? []) as BuyingPlanLine[]).map((l) => {
+        const job = Number(l.job_work_qty || 0);
+        const fob = Number(l.fob_qty || 0);
+        const efob = Number(l.efob_qty || 0);
+        const lineQty = job + fob + efob;
+        const cost = stdCosts[l.product_code ?? ''];
+        const value = cost ? job * cost.job + fob * cost.fob + efob * cost.efob : 0;
+        return {
+          id: String(l.id),
+          label: `${l.product_code ?? '—'} · ${lineQty.toLocaleString('en-IN')} pcs`,
+          qty: lineQty,
+          value,
+          fabricType: l.fabric_type ?? null,
+          lineStatus: (l.line_status ?? null) as SdStatus | null,
+        };
+      }),
     });
   }
 

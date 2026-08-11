@@ -701,3 +701,70 @@
   text-align: left;
   color: #9098ac;
 }
+
+/* ---- Buying-plan pivot (Woven vs Knitted) + big totals ---- */
+.wf-pivot-wrap { margin-bottom: 16px; }
+.wf-pivot-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6e695e;
+}
+.wf-bignum-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 12px;
+}
+.wf-bignum {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #e7e2d2;
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(40, 36, 28, 0.04), 0 4px 14px rgba(40, 36, 28, 0.06);
+}
+.wf-bignum strong { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; color: #161513; }
+.wf-bignum small { color: #6e695e; font-size: 11px; }
+.wf-pivot th.wf-pivot-pending { background: rgba(181, 117, 20, 0.09); color: #8a5a10; }
+.wf-pivot th.wf-pivot-approved { background: rgba(79, 124, 77, 0.12); color: #3c6b3a; }
+.wf-pivot tfoot td { font-weight: 700; border-top: 2px solid #e7e2d2; }
+
+/* ---- Per-line multi-select approval (Buying Plan on /approvals) ---- */
+.wf-line-approve {
+  margin: 10px 0 12px;
+  border: 1px solid #ece7d9;
+  border-radius: 12px;
+  background: #fcfbf7;
+  overflow: hidden;
+}
+.wf-line-table { min-width: 0 !important; }
+.wf-line-table th, .wf-line-table td { padding: 7px 10px; font-size: 12px; }
+.wf-line-check { width: 34px; text-align: center; }
+.wf-line-check input { width: 15px; height: 15px; cursor: pointer; }
+.wf-line-approved { background: rgba(79, 124, 77, 0.07); }
+.wf-tag-approved {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: #4f7c4d;
+}
+.wf-line-error { margin: 0; padding: 8px 12px; color: #b3261e; font-size: 12px; }
+.wf-line-approve-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-top: 1px solid #ece7d9;
+  background: #fff;
+}

@@ -90,6 +90,8 @@ export type BuyingPlanLine = {
   efob_qty: number;
   standard_value: number | null;
   uom: string | null; // material track only
+  line_status: SdStatus | null; // per-line approval state (line-item granularity)
+  rework_notes: string | null;
 };
 
 /** Everything derived. Never stored — same discipline as business-logic.ts. */
@@ -401,8 +403,16 @@ export type ApprovalQueueItem = {
   submittedBy: string | null;
   submittedAt: string | null;
   href: string;
-  // Line items (Buying Plan / PO Approval) for line-item rework, if any.
-  lines?: { id: string; label: string }[];
+  // Line items (Buying Plan / PO Approval) for line-item rework and, for the
+  // Buying Plan, per-line multi-select approval + the Woven/Knitted pivot.
+  lines?: {
+    id: string;
+    label: string;
+    qty?: number;
+    value?: number;
+    fabricType?: string | null;
+    lineStatus?: SdStatus | null;
+  }[];
   // PO Approval only: the vendor's live capacity, shown on the card so the
   // approver sees the load and the last-updated signed capacity before deciding.
   vendorCode?: string | null;

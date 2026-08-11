@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -10,8 +10,11 @@ import {
   Save,
   Send,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
+import { csvObjects } from '@/lib/csv';
+import { PlanPivot } from '@/components/forms/plan-pivot';
 import {
   addMonths,
   canApprove,
@@ -39,6 +42,7 @@ type Draft = {
   fob_qty: string;
   efob_qty: string;
   standard_value: string;
+  line_status: string; // read-only snapshot; drives the Pending/Approved pivot split
 };
 
 const money = new Intl.NumberFormat('en-IN', {
@@ -60,6 +64,7 @@ function toDraft(line: BuyingPlanLine): Draft {
     fob_qty: line.fob_qty?.toString() ?? '0',
     efob_qty: line.efob_qty?.toString() ?? '0',
     standard_value: line.standard_value?.toString() ?? '',
+    line_status: line.line_status ?? '',
   };
 }
 
@@ -76,6 +81,7 @@ function blankDraft(code: string, key: string): Draft {
     fob_qty: '0',
     efob_qty: '0',
     standard_value: '',
+    line_status: '',
   };
 }
 
@@ -116,6 +122,7 @@ export function BuyingPlanClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const fileRef = useRef<HTMLInputElement>(null);
 
   // Input module (fill the plan) vs View module (running read-only view). Default
   // to View — "एक view चलता रहे"; supply chain switches to Input to fill it.
@@ -171,6 +178,12 @@ export function BuyingPlanClient({
 
   // View module works over products that actually have a planned quantity.
   const planned = view.filter((v) => v.totalQty > 0);
+  const pivotRows = planned.map((v) => ({
+    fabricType: v.fabricType,
+    qty: v.totalQty,
+    value: v.valueToBeBought,
+    approved: v.row.line_status === 'approved',
+  }));
   const overdueCount = planned.filter((v) => v.isOverdue).length;
   const viewRows = overdueOnly ? planned.filter((v) => v.isOverdue) : planned;
   const groups: [string, ViewItem[]][] = (() => {
@@ -225,6 +238,75 @@ export function BuyingPlanClient({
       ...current,
       ...available.map((code, index) => blankDraft(code, `bulk-${code}-${index}`)),
     ]);
+  }
+
+  // Bulk-load a month's plan from a `product_code,po_type,qty` CSV (long form:
+  // one row per PO type). Each product code is validated against the active list;
+  // po_type is pivoted into the Job/FOB/E-FOB columns. Invalid or zero rows are
+  // skipped with a summary — they never block the rest of the import.
+  const codeSet = useMemo(() => new Set(productCodes), [productCodes]);
+
+  function poTypeOf(value: string): 'job_work_qty' | 'fob_qty' | 'efob_qty' | null {
+    const n = value.trim().toLowerCase().replace(/[^a-z]/g, '');
+    if (n === 'job' || n === 'jobwork') return 'job_work_qty';
+    if (n === 'fob') return 'fob_qty';
+    if (n === 'efob') return 'efob_qty';
+    return null;
+  }
+
+  async function onCsvFile(file: File) {
+    setError(null);
+    setMessage(null);
+    let objects: Record<string, string>[];
+    try {
+      objects = csvObjects(await file.text());
+    } catch {
+      setError('Could not read that file as CSV.');
+      return;
+    }
+    const acc = new Map<string, { job_work_qty: number; fob_qty: number; efob_qty: number }>();
+    const skipped: string[] = [];
+    objects.forEach((r, i) => {
+      const line = i + 2; // +1 header, +1 to 1-index
+      const code = String(r.product_code ?? '').trim();
+      const field = poTypeOf(String(r.po_type ?? ''));
+      const qty = Number(r.qty);
+      if (!code) return skipped.push(`row ${line}: missing product code`);
+      if (!codeSet.has(code)) return skipped.push(`row ${line}: unknown code "${code}"`);
+      if (!field) return skipped.push(`row ${line}: unknown po_type "${r.po_type ?? ''}"`);
+      if (!Number.isFinite(qty) || qty <= 0) return skipped.push(`row ${line}: non-positive qty`);
+      const cur = acc.get(code) ?? { job_work_qty: 0, fob_qty: 0, efob_qty: 0 };
+      cur[field] += qty;
+      acc.set(code, cur);
+    });
+
+    if (!acc.size) {
+      setError(
+        `No valid rows imported.${skipped.length ? ` ${skipped.slice(0, 5).join('; ')}` : ' Expected headers: product_code, po_type, qty.'}`,
+      );
+      return;
+    }
+
+    setRows((current) => {
+      const map = new Map(current.map((row) => [row.product_code, row] as const));
+      let seq = 0;
+      for (const [code, q] of acc) {
+        const base = map.get(code) ?? blankDraft(code, `csv-${code}-${seq++}`);
+        map.set(code, {
+          ...base,
+          job_work_qty: String(q.job_work_qty),
+          fob_qty: String(q.fob_qty),
+          efob_qty: String(q.efob_qty),
+        });
+      }
+      return [...map.values()];
+    });
+    setMessage(
+      `Imported ${acc.size} product(s).` +
+        (skipped.length
+          ? ` Skipped ${skipped.length} row(s): ${skipped.slice(0, 6).join('; ')}${skipped.length > 6 ? '…' : ''}`
+          : ''),
+    );
   }
 
   function save() {
@@ -305,6 +387,25 @@ export function BuyingPlanClient({
 
         {editable && mode === 'input' && (
           <div className="wf-toolbar-right">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void onCsvFile(file);
+                event.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost"
+              onClick={() => fileRef.current?.click()}
+              title="Import a product_code, po_type, qty CSV"
+            >
+              <Upload size={15} /> Import CSV
+            </button>
             <select
               className="wf-add-select"
               value=""
@@ -351,6 +452,8 @@ export function BuyingPlanClient({
       {error && <Notice tone="error">{error}</Notice>}
 
       {mode === 'view' && (
+        <>
+        <PlanPivot rows={pivotRows} title="Woven vs Knitted — pending & approved" />
         <PlanView
           groups={groups}
           totals={plannedTotals}
@@ -362,6 +465,7 @@ export function BuyingPlanClient({
           setCollapsed={setCollapsed}
           plannedCount={planned.length}
         />
+        </>
       )}
 
       {mode === 'input' && (
