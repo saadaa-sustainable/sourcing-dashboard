@@ -106,6 +106,8 @@ export type DashboardData = {
   // Per-PO, per-stage inspection detail (pass/fail entries, report links) keyed by
   // normalized (UPPER) PO ref; powers the tracker inline TNA breakdown.
   stageInspections?: Record<string, StageInspections>;
+  // Live per-vendor machines/karigar (sd_vendor_capacity_log) for PO-capacity utilisation.
+  vendorCapacity?: { vendor_code: string; machines_allocated: number | null; active_karigar: number | null }[];
   source: 'supabase' | 'fixtures';
   warnings: string[];
   loadedAt: string;
@@ -188,5 +190,6 @@ export type VendorRollup = {
   totalActiveKarigar: number;
   karigarLatest: number;
   capacityPerMonth: number;
+  poCapacity: number;
   utilizationPct: number;
 };

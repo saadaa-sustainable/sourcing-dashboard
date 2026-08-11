@@ -287,16 +287,26 @@ function groupStageInspections(rows: StageInspectionRow[]): Record<string, Recor
   return out;
 }
 
+type VendorCapacityRow = { vendor_code: string; machines_allocated: number | null; active_karigar: number | null };
+
+/** sd_vendor_capacity_log — live per-vendor machines/karigar for PO-capacity utilisation. */
+async function fetchVendorCapacity(supabase: Reader): Promise<VendorCapacityRow[]> {
+  const { data, error } = await supabase.from('sd_vendor_capacity_log').select('vendor_code, machines_allocated, active_karigar');
+  if (error) throw new Error(`Supabase read failed for sd_vendor_capacity_log: ${error.message}`);
+  return (data ?? []) as VendorCapacityRow[];
+}
+
 export async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseEnv()) return loadFixtures();
   const supabase = await createClient();
-  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals, stageInspectionRows] = await Promise.all([
+  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals, stageInspectionRows, vendorCapacity] = await Promise.all([
     fetchDashboardPos(supabase),
     fetchAllRows<VendorType>(supabase, 'vendor_type_master', 'vendor_name'),
     fetchAllRows<VendorMaster>(supabase, 'vendor_master_data', 'vendor_code'),
     fetchAllRows<TnaRecord>(supabase, 'tna_tracker', 'po_no'),
     fetchStageActuals(supabase),
     fetchStageInspections(supabase),
+    fetchVendorCapacity(supabase),
   ]);
   // Stage ACTUAL dates come from the Google Forms (Production Dashboard); planned
   // TNA dates stay from tna_tracker.
@@ -306,6 +316,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
   return {
     pendingPos, vendorTypes, vendorMasters, tnaRecords,
     stageInspections: groupStageInspections(stageInspectionRows),
+    vendorCapacity,
     source: 'supabase', warnings, loadedAt: new Date().toISOString(),
   };
 }

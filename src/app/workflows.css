@@ -266,6 +266,15 @@
   padding: 1px 6px; border-radius: 999px; vertical-align: middle;
 }
 .wf-fixed-value { font-weight: 600; opacity: 0.85; }
+/* Computed (auto-derived) capacity cells — orange so they never get mistaken for inputs. */
+.wf-computed { background: rgba(240, 165, 30, 0.13); color: #8a5a00; font-weight: 600; }
+.wf-computed.strong { font-weight: 700; }
+.wf-computed-tag {
+  display: inline-flex; align-items: center;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.04em;
+  color: #8a5a00; background: rgba(240, 165, 30, 0.18);
+  padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+}
 
 /* ---- Buying Plan: View module (progress + grouped view) ---- */
 .wf-progress {

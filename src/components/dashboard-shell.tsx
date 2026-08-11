@@ -1249,6 +1249,7 @@ function VendorTable({
                 <th>Active karigar</th>
                 <th>Latest karigar</th>
                 <th>Capacity/mo</th>
+                <th>PO capacity</th>
                 <th>Utilization</th>
               </tr>
             </thead>
@@ -1271,6 +1272,7 @@ function VendorTable({
                   <td>{fmt.format(row.totalActiveKarigar)}</td>
                   <td>{fmt.format(row.karigarLatest)}</td>
                   <td>{fmt.format(row.capacityPerMonth)}</td>
+                  <td>{fmt.format(row.poCapacity)}</td>
                   <td>
                     <span
                       className={`badge ${row.utilizationPct > 100 ? "danger" : "info"}`}
@@ -1297,17 +1299,22 @@ function VendorTable({
 }
 
 function VendorTab({ data }: { data: DashboardData }) {
-  const rows = useMemo(
-    () =>
-      buildVendorRollups(
-        data.pendingPos,
-        data.vendorTypes,
-        data.vendorMasters,
-        data.tnaRecords,
-        today,
-      ),
-    [data],
-  );
+  const rows = useMemo(() => {
+    const capacityByVendor = new Map(
+      (data.vendorCapacity ?? []).map((c) => [
+        norm(c.vendor_code),
+        { machines: Number(c.machines_allocated) || 0, karigar: Number(c.active_karigar) || 0 },
+      ]),
+    );
+    return buildVendorRollups(
+      data.pendingPos,
+      data.vendorTypes,
+      data.vendorMasters,
+      data.tnaRecords,
+      today,
+      capacityByVendor,
+    );
+  }, [data]);
   const openCodes = new Set(rows.map((row) => norm(row.vendorCode)));
   const zero = data.vendorTypes.filter(
     (v) => norm(v.status) === "active" && !openCodes.has(norm(v.vendor_code)),

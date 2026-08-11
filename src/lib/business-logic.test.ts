@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorPoCapacity } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -162,5 +162,17 @@ describe('sourcing business rules', () => {
     const upcoming={...base,po_detail_id:'B',expected_delivery_date:'2026-07-31',pending_qty_actual:6};
     const [vendor]=buildVendorRollups([overdue,upcoming],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(vendor.openPoCount,1); assert.equal(vendor.delayedPoCount,1); assert.equal(vendor.openQty,10);
+  });
+  it('derives vendor PO capacity + utilisation from live machines x karigar x type multiplier', () => {
+    assert.equal(vendorPoCapacity(20, 25, 'E-FOB'), 750);
+    assert.equal(vendorPoCapacity(10, 10, 'FOB'), 250);
+    assert.equal(vendorPoCapacity(5, 4, 'EFOB/FOB'), 40);
+    assert.equal(normaliseVendorType('EFOB/FOB'), 'efob_fob');
+    const cap = new Map([['v1', { machines: 20, karigar: 25 }]]);
+    const line = { ...base, po_ref_num: 'PO-9', vendor_code: 'V1', pending_qty_actual: 300, expected_delivery_date: '2026-09-01' };
+    const vt = { vendor_name: 'V1', vendor_code: 'V1', vendor_type: 'E-FOB', merchant_name: null, status: 'active' };
+    const [v] = buildVendorRollups([line], [vt], [], [], new Date('2026-07-15T00:00:00Z'), cap);
+    assert.equal(v.poCapacity, 750);
+    assert.equal(v.utilizationPct, 40);
   });
 });

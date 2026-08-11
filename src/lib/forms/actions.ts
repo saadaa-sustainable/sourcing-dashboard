@@ -241,8 +241,6 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
     machines_allocated: numOrNull(formData.get('machines_allocated')),
     active_karigar: numOrNull(formData.get('active_karigar')),
     capacity_per_month: numOrNull(formData.get('capacity_per_month')),
-    machines_at_onboarding: numOrNull(formData.get('machines_at_onboarding')),
-    capacity_signed: numOrNull(formData.get('capacity_signed')),
     submitted_by: user.email,
     submitted_at: now,
     entry_date: now,

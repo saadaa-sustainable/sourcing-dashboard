@@ -331,9 +331,36 @@ export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent
   return events.sort((a, b) => b.overdueDays - a.overdueDays);
 }
 
+// Vendor-type capacity model (single source of truth). PO capacity = machines ×
+// karigar × multiplier; stockDays = day-coverage (multiplier × 30). E-FOB corrected
+// to 45 days (was 41). Only Machines & Karigar are ever hand-entered; the rest derive.
+export const VENDOR_TYPE_MULTIPLIER: Record<string, { label: string; multiplier: number; stockDays: number }> = {
+  job_work: { label: 'Job work', multiplier: 1.0, stockDays: 30 },
+  efob: { label: 'E-FOB', multiplier: 1.5, stockDays: 45 },
+  fob: { label: 'FOB', multiplier: 2.5, stockDays: 75 },
+  efob_fob: { label: 'E-FOB/FOB', multiplier: 2.0, stockDays: 60 },
+};
+
+export function normaliseVendorType(raw: string | null | undefined): string {
+  const v = key(raw);
+  if (v.includes('job')) return 'job_work';
+  const hasEfob = v.includes('efob') || v.includes('e-fob');
+  if (hasEfob && v.includes('/')) return 'efob_fob';
+  if (hasEfob) return 'efob';
+  if (v.includes('fob')) return 'fob';
+  return 'job_work';
+}
+
+// PO capacity for a vendor = machines × karigar × type multiplier (rounded).
+export function vendorPoCapacity(machines: number | null | undefined, karigar: number | null | undefined, type: string | null | undefined): number {
+  const mult = VENDOR_TYPE_MULTIPLIER[normaliseVendorType(type)]?.multiplier ?? 1;
+  return Math.round(number(machines) * number(karigar) * mult);
+}
+
 export function buildVendorRollups(
   pendingPos: PendingPo[], vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[],
   today = istToday(),
+  capacityByVendor: Map<string, { machines: number; karigar: number }> = new Map(),
 ): VendorRollup[] {
   const tracker = buildTrackerRows(pendingPos, vendorTypes, vendorMasters, tnaRecords, today);
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);
@@ -344,6 +371,12 @@ export function buildVendorRollups(
     const sample = rows[0].skuRows[0];
     const resolved = resolveVendor(sample, lookups);
     const capacity = number(resolved.master?.capacity_per_month);
+    const live = capacityByVendor.get(key(first.vendorCode)) ?? capacityByVendor.get(key(first.vendorName));
+    const poCapacity = vendorPoCapacity(
+      live?.machines ?? resolved.master?.total_machines,
+      live?.karigar ?? resolved.master?.total_active_karigar,
+      resolved.master?.primary_type ?? resolved.type?.vendor_type,
+    );
     const openQty = rows.reduce((sum, row) => sum + row.pendingQty, 0);
     const openPoRefs = unique(rows.map((row) => row.poRef));
     const delayedRefs = unique(rows.filter((row) => row.delayDays > 0).map((row) => row.poRef));
@@ -354,8 +387,8 @@ export function buildVendorRollups(
       openQty, openValue: rows.reduce((sum, row) => sum + row.pendingValue, 0),
       totalMachines: number(resolved.master?.total_machines),
       totalActiveKarigar: number(resolved.master?.total_active_karigar),
-      karigarLatest: number(resolved.master?.karigar_latest), capacityPerMonth: capacity,
-      utilizationPct: capacity ? Math.round(openQty / capacity * 100) : 0,
+      karigarLatest: number(resolved.master?.karigar_latest), capacityPerMonth: capacity, poCapacity,
+      utilizationPct: poCapacity ? Math.round(openQty / poCapacity * 100) : 0,
     };
   }).sort((a, b) => b.openValue - a.openValue);
 }

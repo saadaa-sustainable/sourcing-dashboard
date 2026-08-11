@@ -29,8 +29,7 @@ export default async function VendorCapacityPage() {
 
   if (!user) redirect('/login');
 
-  const { logs, multipliers, vendorMasters, vendorTypes } =
-    await loadVendorCapacity();
+  const { logs, vendorMasters, vendorTypes } = await loadVendorCapacity();
   // Real in-process load from the PO pipeline (sd_vendor_in_process), not the sheet.
   const inProcessByCode = await loadInProcessByVendor();
 
@@ -66,11 +65,7 @@ export default async function VendorCapacityPage() {
       role={user.role}
       userEmail={user.email}
     >
-      <VendorCapacityClient
-        vendors={vendors}
-        multipliers={multipliers}
-        role={user.role}
-      />
+      <VendorCapacityClient vendors={vendors} role={user.role} />
     </FormLayout>
   );
 }
