@@ -12,6 +12,7 @@ import type {
   CashFlowMonth,
   Colour,
   DiscontinueRequest,
+  FabricCostBase,
   FabricMaster,
   MaterialCode,
   MaterialMaster,
@@ -200,6 +201,17 @@ export async function loadFabricMaster(): Promise<FabricMaster[]> {
     .order('fabric_code')
     .limit(PAGE_SIZE);
   return (data ?? []) as FabricMaster[];
+}
+
+/** Fabric cost base sheet (grey / processing / finished + yarn→grey), for /fabric-cost. */
+export async function loadFabricCostBase(): Promise<FabricCostBase[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_fabric_cost_base')
+    .select('*')
+    .order('fabric_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as FabricCostBase[];
 }
 
 /** Every standard-cost row, for the Standard Cost sheet page. */

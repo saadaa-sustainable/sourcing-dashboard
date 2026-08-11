@@ -899,6 +899,11 @@
 .wf-cat-mat { background: rgba(63, 120, 200, 0.14); color: #2f6bbf; }
 .wf-cat-npd { background: rgba(181, 117, 20, 0.18); color: #8a5a10; }
 
+/* ---- Fabric cost base: yarn→grey group + dirty rows ---- */
+.wf-yarn-col { background: rgba(63, 120, 200, 0.055); }
+th.wf-yarn-col { color: #2f6bbf; }
+.wf-row-dirty > td { background: rgba(240, 198, 30, 0.12); }
+
 /* ---- Cost negotiation row controls ---- */
 .wf-cost-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .wf-mini-input {

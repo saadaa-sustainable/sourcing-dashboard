@@ -51,6 +51,18 @@ export type FabricMaster = {
   updated_at: string;
 };
 
+/** Fabric cost base sheet row (sd_fabric_cost_base) — direct reference costing. */
+export type FabricCostBase = {
+  fabric_code: string;
+  yarn_cost: number | null;
+  conversion_cost: number | null;
+  grey_rate: number | null;
+  processing_cost: number | null;
+  finished_fabric_cost: number | null;
+  notes: string | null;
+  updated_at: string;
+};
+
 export type MaterialType = 'raw' | 'dyed' | 'trim';
 
 /** One row of the unified material master (raw fabric / dyed fabric / trim). */

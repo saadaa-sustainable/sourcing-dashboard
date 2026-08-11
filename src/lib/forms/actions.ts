@@ -1618,6 +1618,35 @@ export async function updateFabric(formData: FormData): Promise<ActionResult> {
   return done(`Saved ${fabric_code}.`);
 }
 
+/** Fabric cost base sheet — one row per fabric_code (grey / processing / finished + yarn→grey). */
+export async function saveFabricCostBase(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit fabric costs.');
+  }
+  const fabric_code = String(formData.get('fabric_code') ?? '').trim().toUpperCase();
+  if (!fabric_code) return fail('Fabric code is required.');
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_fabric_cost_base').upsert(
+    {
+      fabric_code,
+      yarn_cost: numOrNull(formData.get('yarn_cost')),
+      conversion_cost: numOrNull(formData.get('conversion_cost')),
+      grey_rate: numOrNull(formData.get('grey_rate')),
+      processing_cost: numOrNull(formData.get('processing_cost')),
+      finished_fabric_cost: numOrNull(formData.get('finished_fabric_cost')),
+      notes: textOrNull(formData.get('notes')),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'fabric_code' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/fabric-cost');
+  return done(`Saved ${fabric_code}.`);
+}
+
 /* ================================================================== */
 /* Material master — one code list for raw / dyed / trim + colours     */
 /* ================================================================== */

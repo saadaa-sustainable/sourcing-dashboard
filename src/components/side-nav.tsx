@@ -155,6 +155,14 @@ export function SideNav({
             <span>Material Master</span>
           </a>
           <a
+            href="/fabric-cost"
+            className={activeWorkflow === '/fabric-cost' ? 'active' : ''}
+            onClick={close}
+          >
+            <IndianRupee size={18} />
+            <span>Fabric Cost</span>
+          </a>
+          <a
             href="/users"
             className={activeWorkflow === '/users' ? 'active' : ''}
             onClick={close}
