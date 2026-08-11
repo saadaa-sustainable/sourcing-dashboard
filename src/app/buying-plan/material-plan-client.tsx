@@ -1,10 +1,17 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Plus, Save, Send, Trash2 } from 'lucide-react';
+import { ClipboardList, Eye, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
-import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
-import { Notice, StatusBadge } from '@/components/forms/form-layout';
+import {
+  addMonths,
+  canApprove,
+  canEdit,
+  canSubmit,
+  isPlanWindowOpen,
+  monthLabel,
+} from '@/lib/forms/approval';
+import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import type { BuyingPlan, BuyingPlanLine, SdRole, SdStatus } from '@/lib/forms/types';
 
@@ -45,6 +52,10 @@ export function MaterialPlanClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  // Same View / Input split as the Finished-Goods track: a running read-only
+  // view by default, switch to Input to fill or edit the month.
+  const [mode, setMode] = useState<'view' | 'input'>('view');
 
   const view = rows.map((r) => ({ row: r, value: num(r.quantity) * num(r.rate) }));
   const total = view.reduce((s, v) => s + v.value, 0);
@@ -101,9 +112,42 @@ export function MaterialPlanClient({
     <>
       <div className="wf-toolbar">
         <div className="wf-toolbar-left">
+          <Field label="Month">
+            <select
+              value={planMonth}
+              onChange={(event) => {
+                window.location.href = `/buying-plan?month=${event.target.value}&type=material`;
+              }}
+            >
+              {[-1, 0, 1, 2].map((delta) => {
+                const month = addMonths(planMonth, delta);
+                return (
+                  <option key={month} value={month}>
+                    {monthLabel(month)}
+                  </option>
+                );
+              })}
+            </select>
+          </Field>
           <StatusBadge status={status} />
+          <div className="segment wf-segment">
+            <button
+              type="button"
+              className={mode === 'view' ? 'active' : ''}
+              onClick={() => setMode('view')}
+            >
+              <Eye size={14} /> View
+            </button>
+            <button
+              type="button"
+              className={mode === 'input' ? 'active' : ''}
+              onClick={() => setMode('input')}
+            >
+              <ClipboardList size={14} /> Input
+            </button>
+          </div>
         </div>
-        {editable && (
+        {editable && mode === 'input' && (
           <div className="wf-toolbar-right">
             <button type="button" className="wf-btn wf-btn-ghost" onClick={addRow}>
               <Plus size={15} /> Add fabric / material
@@ -112,10 +156,24 @@ export function MaterialPlanClient({
         )}
       </div>
 
+      {!isPlanWindowOpen(planMonth) && (
+        <Notice tone="warn">
+          The window for {monthLabel(planMonth)} opens seven days before the month
+          starts. You can still draft ahead.
+        </Notice>
+      )}
+
       <Notice tone="info">
         Fabric / raw-material buying for the month — the same Save → Submit → Approve
         flow as Finished Goods, on its own track. Value = quantity × rate.
       </Notice>
+
+      {!editable && mode === 'input' && (
+        <Notice tone="warn">
+          This month’s plan is {status === 'approved' ? 'approved and locked' : 'read-only'}.
+          Pick another month above to draft a new fabric / material plan.
+        </Notice>
+      )}
 
       {plan?.rejection_notes && status === 'rejected' && (
         <Notice tone="error">
@@ -125,144 +183,204 @@ export function MaterialPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wide-table wf-grid">
-            <thead>
-              <tr>
-                <th>Fabric / material code</th>
-                <th className="num input-col">Quantity</th>
-                <th>UOM</th>
-                <th className="num input-col">Rate</th>
-                <th className="num">Value</th>
-                {editable && <th aria-label="Remove" />}
-              </tr>
-            </thead>
-            <tbody>
-              {view.map(({ row, value }) => (
-                <tr key={row.key}>
-                  <td className="input-col">
-                    <input
-                      list="material-codes"
-                      value={row.material_code}
-                      placeholder="RM code / fabric"
-                      disabled={!editable}
-                      onChange={(e) => set(row.key, 'material_code', e.target.value)}
-                    />
-                  </td>
-                  <td className="num input-col">
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.quantity}
-                      disabled={!editable}
-                      onChange={(e) => set(row.key, 'quantity', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={row.uom}
-                      disabled={!editable}
-                      onChange={(e) => set(row.key, 'uom', e.target.value)}
-                    >
-                      {UOMS.map((u) => (
-                        <option key={u} value={u}>
-                          {u}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="num input-col">
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.rate}
-                      disabled={!editable}
-                      onChange={(e) => set(row.key, 'rate', e.target.value)}
-                    />
-                  </td>
-                  <td className="num strong">{money.format(value)}</td>
-                  {editable && (
-                    <td>
-                      <button
-                        type="button"
-                        className="wf-icon-btn"
-                        aria-label={`Remove ${row.material_code}`}
-                        onClick={() =>
-                          setRows((cur) => cur.filter((r) => r.key !== row.key))
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              {!view.length && (
-                <tr>
-                  <td colSpan={editable ? 6 : 5} className="wf-empty-cell">
-                    No fabric lines yet — add one above.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {view.length > 0 && (
-              <tfoot>
-                <tr>
-                  <td colSpan={4}>Total</td>
-                  <td className="num strong">{money.format(total)}</td>
-                  {editable && <td />}
-                </tr>
-              </tfoot>
-            )}
-          </table>
-          <datalist id="material-codes">
-            {materialCodes.map((m) => (
-              <option key={m.material_code} value={m.material_code}>
-                {m.fabric_name ?? ''}
-              </option>
-            ))}
-          </datalist>
-        </div>
-      </div>
+      {mode === 'view' &&
+        (view.length ? (
+          <>
+            <div className="wf-bignum-grid">
+              <div className="wf-bignum">
+                <span className="metric-label">Total fabric / material value</span>
+                <strong>{money.format(total)}</strong>
+                <small>
+                  {view.length} line(s) · {planMonth.slice(0, 7)}
+                </small>
+              </div>
+            </div>
+            <div className="table-panel">
+              <div className="table-scroll">
+                <table className="wide-table">
+                  <thead>
+                    <tr>
+                      <th>Fabric / material code</th>
+                      <th className="num">Quantity</th>
+                      <th>UOM</th>
+                      <th className="num">Rate</th>
+                      <th className="num">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {view.map(({ row, value }) => (
+                      <tr key={row.key}>
+                        <td className="mono">{row.material_code || '—'}</td>
+                        <td className="num">{row.quantity || '—'}</td>
+                        <td>{row.uom}</td>
+                        <td className="num">{row.rate ? money.format(num(row.rate)) : '—'}</td>
+                        <td className="num strong">{money.format(value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4}>Total</td>
+                      <td className="num strong">{money.format(total)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <p>
+              Nothing planned yet — switch to Input to fill this month’s fabric /
+              material plan.
+            </p>
+          </div>
+        ))}
 
-      <div className="wf-footer-bar">
-        <p className="wf-footer-note">
-          Fabric buying value for the month, on its own approval track.
-        </p>
-        <div className="wf-footer-actions">
-          {editable && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              onClick={save}
-              disabled={pending}
-            >
-              <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
-            </button>
-          )}
-          {canSubmit(role, status) && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary"
-              onClick={submit}
-              disabled={pending || !plan?.id}
-            >
-              <Send size={15} /> Submit for approval
-            </button>
-          )}
-          {canApprove(role, status) && plan && (
-            <ApprovalBar
-              entityType="buying_plan"
-              entityId={String(plan.id)}
-              entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
-              onDone={(result) => {
-                if (result.ok) window.location.reload();
-              }}
-            />
-          )}
-        </div>
-      </div>
+      {mode === 'input' && (
+        <>
+          <div className="table-panel wf-grid-panel">
+            <div className="table-scroll">
+              <table className="wide-table wf-grid">
+                <thead>
+                  <tr>
+                    <th>Fabric / material code</th>
+                    <th className="num input-col">Quantity</th>
+                    <th>UOM</th>
+                    <th className="num input-col">Rate</th>
+                    <th className="num">Value</th>
+                    {editable && <th aria-label="Remove" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.map(({ row, value }) => (
+                    <tr key={row.key}>
+                      <td className="input-col">
+                        <input
+                          list="material-codes"
+                          value={row.material_code}
+                          placeholder="RM code / fabric"
+                          disabled={!editable}
+                          onChange={(e) => set(row.key, 'material_code', e.target.value)}
+                        />
+                      </td>
+                      <td className="num input-col">
+                        <input
+                          type="number"
+                          min={0}
+                          value={row.quantity}
+                          disabled={!editable}
+                          onChange={(e) => set(row.key, 'quantity', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={row.uom}
+                          disabled={!editable}
+                          onChange={(e) => set(row.key, 'uom', e.target.value)}
+                        >
+                          {UOMS.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="num input-col">
+                        <input
+                          type="number"
+                          min={0}
+                          value={row.rate}
+                          disabled={!editable}
+                          onChange={(e) => set(row.key, 'rate', e.target.value)}
+                        />
+                      </td>
+                      <td className="num strong">{money.format(value)}</td>
+                      {editable && (
+                        <td>
+                          <button
+                            type="button"
+                            className="wf-icon-btn"
+                            aria-label={`Remove ${row.material_code}`}
+                            onClick={() =>
+                              setRows((cur) => cur.filter((r) => r.key !== row.key))
+                            }
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {!view.length && (
+                    <tr>
+                      <td colSpan={editable ? 6 : 5} className="wf-empty-cell">
+                        {editable
+                          ? 'No fabric lines yet — add one above.'
+                          : 'No fabric lines for this month.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {view.length > 0 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4}>Total</td>
+                      <td className="num strong">{money.format(total)}</td>
+                      {editable && <td />}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+              <datalist id="material-codes">
+                {materialCodes.map((m) => (
+                  <option key={m.material_code} value={m.material_code}>
+                    {m.fabric_name ?? ''}
+                  </option>
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div className="wf-footer-bar">
+            <p className="wf-footer-note">
+              Fabric buying value for the month, on its own approval track.
+            </p>
+            <div className="wf-footer-actions">
+              {editable && (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost"
+                  onClick={save}
+                  disabled={pending}
+                >
+                  <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
+                </button>
+              )}
+              {canSubmit(role, status) && (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary"
+                  onClick={submit}
+                  disabled={pending || !plan?.id}
+                >
+                  <Send size={15} /> Submit for approval
+                </button>
+              )}
+              {canApprove(role, status) && plan && (
+                <ApprovalBar
+                  entityType="buying_plan"
+                  entityId={String(plan.id)}
+                  entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+                  onDone={(result) => {
+                    if (result.ok) window.location.reload();
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
