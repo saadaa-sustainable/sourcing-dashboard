@@ -46,7 +46,6 @@ const BLANK = {
   cs_cutting_start: '',
   cs_inline_qc_due: '',
   critical_path_first_delivery: '',
-  trim_card_signed: 'false',
   buying_plan_no: '',
 };
 
@@ -312,16 +311,6 @@ export function PoApprovalClient({
                 onChange={(e) => set('buying_plan_no', e.target.value)}
               />
             </Field>
-            <label className="field wf-field wf-check-field">
-              <span>Trim card signed</span>
-              <input
-                type="checkbox"
-                checked={form.trim_card_signed === 'true'}
-                onChange={(e) =>
-                  set('trim_card_signed', e.target.checked ? 'true' : 'false')
-                }
-              />
-            </label>
           </div>
           <div className="wf-footer-actions">
             <button
@@ -519,6 +508,7 @@ function PoRow({
     signed_tna_url: po.signed_tna_url ?? '',
     signed_po_ref_number: po.signed_po_ref_number ?? '',
     date_of_po_sign: po.date_of_po_sign ?? '',
+    trim_card_signed: po.trim_card_signed ? 'true' : 'false',
   });
   const setI = (k: keyof typeof iss, v: string) => setIss((s) => ({ ...s, [k]: v }));
   const [benchmark, setBenchmark] = useState(false);
@@ -798,6 +788,16 @@ function PoRow({
                   />
                 </Field>
               </div>
+              <label className="wf-check-field">
+                <input
+                  type="checkbox"
+                  checked={iss.trim_card_signed === 'true'}
+                  onChange={(e) =>
+                    setI('trim_card_signed', e.target.checked ? 'true' : 'false')
+                  }
+                />
+                <span>Trim card signed — captured at issuance, not before</span>
+              </label>
               <label className="wf-check-field wf-benchmark">
                 <input
                   type="checkbox"

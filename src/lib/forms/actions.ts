@@ -565,7 +565,6 @@ function readPoFields(formData: FormData) {
     cs_cutting_start: dateOrNull(formData.get('cs_cutting_start')),
     cs_inline_qc_due: dateOrNull(formData.get('cs_inline_qc_due')),
     critical_path_first_delivery: dateOrNull(formData.get('critical_path_first_delivery')),
-    trim_card_signed: formData.get('trim_card_signed') === 'true',
     buying_plan_no: textOrNull(formData.get('buying_plan_no')),
     category: (PO_CATEGORIES.includes(rawCat as PoCategory) ? rawCat : 'fg') as PoCategory,
   };
@@ -711,6 +710,8 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     signed_po_ref_number: textOrNull(formData.get('signed_po_ref_number')),
     date_of_po_sign: dateOrNull(formData.get('date_of_po_sign')),
     first_actual_delivery_date: dateOrNull(formData.get('first_actual_delivery_date')),
+    // Trim-card signing happens after the PO is raised, so it is captured here at issuance.
+    trim_card_signed: formData.get('trim_card_signed') === 'true',
   };
   if (easycom) patch.easycom_po_no = easycom;
   if (!alreadyIssued) patch.po_issued_at = new Date().toISOString();
