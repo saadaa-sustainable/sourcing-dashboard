@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadApprovalQueue,
+  loadApprovalStats,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { ApprovalsClient } from './approvals-client';
@@ -26,7 +27,10 @@ export default async function ApprovalsPage() {
 
   if (!user) redirect('/login');
 
-  const { items, log } = await loadApprovalQueue();
+  const [{ items, log }, stats] = await Promise.all([
+    loadApprovalQueue(),
+    loadApprovalStats(),
+  ]);
 
   return (
     <FormLayout
@@ -36,7 +40,7 @@ export default async function ApprovalsPage() {
       role={user.role}
       userEmail={user.email}
     >
-      <ApprovalsClient items={items} log={log} role={user.role} />
+      <ApprovalsClient items={items} log={log} role={user.role} stats={stats} />
     </FormLayout>
   );
 }

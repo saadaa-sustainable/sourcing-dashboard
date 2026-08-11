@@ -1,17 +1,19 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { CalendarCheck, FileCheck, Save, Send } from 'lucide-react';
+import { CalendarCheck, FileCheck, Layers, Save, Send, X } from 'lucide-react';
 import {
   confirmTna,
   issuePoApproval,
   savePoApproval,
+  savePoLines,
   submitPoApproval,
 } from '@/lib/forms/actions';
 import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import type {
   PoApproval,
+  PoApprovalLine,
   PoCategory,
   PoCycleTime,
   PoType,
@@ -55,6 +57,7 @@ const catLabel = (c: PoCategory) =>
 export function PoApprovalClient({
   pos,
   cycle,
+  linesByPo,
   capacity,
   productCodes,
   vendorCodes,
@@ -62,6 +65,7 @@ export function PoApprovalClient({
 }: {
   pos: PoApproval[];
   cycle: Record<string, PoCycleTime>;
+  linesByPo: Record<string, PoApprovalLine[]>;
   capacity: Record<string, number>;
   productCodes: string[];
   vendorCodes: string[];
@@ -358,6 +362,7 @@ export function PoApprovalClient({
                   key={po.id}
                   po={po}
                   cycle={cycle[String(po.id)]}
+                  lines={linesByPo[String(po.id)] ?? []}
                   liveLoad={
                     po.vendor_code
                       ? capacity[po.vendor_code.toLowerCase()]
@@ -490,11 +495,13 @@ function PoRow({
   po,
   cycle,
   liveLoad,
+  lines,
   role,
 }: {
   po: PoApproval;
   cycle?: PoCycleTime;
   liveLoad?: number;
+  lines: PoApprovalLine[];
   role: SdRole;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -529,6 +536,47 @@ function PoRow({
     critical_path_first_delivery: po.critical_path_first_delivery ?? '',
   });
   const setT = (k: keyof typeof tna, v: string) => setTna((s) => ({ ...s, [k]: v }));
+
+  // Colour/size line items — editable until the PO is approved.
+  const linesEditable = po.status !== 'approved' && canIssue;
+  const [linesOpen, setLinesOpen] = useState(false);
+  const [lineRows, setLineRows] = useState(
+    lines.map((l) => ({
+      product_variant: l.product_variant ?? '',
+      size: l.size ?? '',
+      qty: l.qty != null ? String(l.qty) : '',
+      line_status: l.line_status,
+      rework_notes: l.rework_notes,
+    })),
+  );
+  const patchLine = (i: number, k: 'product_variant' | 'size' | 'qty', v: string) =>
+    setLineRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const addLine = () =>
+    setLineRows((rows) => [
+      ...rows,
+      { product_variant: '', size: '', qty: '', line_status: null, rework_notes: null },
+    ]);
+  const removeLine = (i: number) => setLineRows((rows) => rows.filter((_, idx) => idx !== i));
+  function saveLines() {
+    setError(null);
+    const p = new FormData();
+    p.set('po_id', String(po.id));
+    p.set(
+      'lines',
+      JSON.stringify(
+        lineRows.map((r) => ({
+          product_variant: r.product_variant,
+          size: r.size,
+          qty: Number(r.qty) || 0,
+        })),
+      ),
+    );
+    start(async () => {
+      const res = await savePoLines(p);
+      if (res.ok) window.location.reload();
+      else setError(res.error);
+    });
+  }
 
   function confirmTnaDates() {
     setError(null);
@@ -648,6 +696,13 @@ function PoRow({
               <FileCheck size={14} /> {issued ? 'Signing' : 'Issue / sign'}
             </button>
           )}
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm"
+            onClick={() => setLinesOpen((v) => !v)}
+          >
+            <Layers size={14} /> Lines ({lineRows.length})
+          </button>
           {po.status === 'approved' && !canIssue && issued && (
             <span className="wf-subtle">Issued</span>
           )}
@@ -827,6 +882,112 @@ function PoRow({
                   Close
                 </button>
               </div>
+            </div>
+          </td>
+        </tr>
+      )}
+      {linesOpen && (
+        <tr className="wf-issue-panel-row">
+          <td colSpan={8}>
+            <div className="wf-issue-panel">
+              <strong className="wf-issue-title">
+                Colour / size lines — {po.po_ref_num ?? `PO #${po.id}`}
+              </strong>
+              <table className="wide-table wf-grid">
+                <thead>
+                  <tr>
+                    <th>Colour / variant</th>
+                    <th>Size</th>
+                    <th className="num">Qty</th>
+                    <th>Line status</th>
+                    {linesEditable && <th aria-label="Remove" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineRows.map((ln, i) => (
+                    <tr key={i}>
+                      <td className="input-col">
+                        <input
+                          value={ln.product_variant}
+                          disabled={!linesEditable}
+                          onChange={(e) => patchLine(i, 'product_variant', e.target.value)}
+                        />
+                      </td>
+                      <td className="input-col">
+                        <input
+                          value={ln.size}
+                          disabled={!linesEditable}
+                          onChange={(e) => patchLine(i, 'size', e.target.value)}
+                        />
+                      </td>
+                      <td className="num input-col">
+                        <input
+                          type="number"
+                          min={0}
+                          value={ln.qty}
+                          disabled={!linesEditable}
+                          onChange={(e) => patchLine(i, 'qty', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        {ln.line_status === 'rework' ? (
+                          <span className="wf-over-tag" title={ln.rework_notes ?? ''}>
+                            rework
+                          </span>
+                        ) : (
+                          <span className="wf-subtle">—</span>
+                        )}
+                      </td>
+                      {linesEditable && (
+                        <td>
+                          <button
+                            type="button"
+                            className="wf-btn wf-btn-ghost wf-btn-sm"
+                            onClick={() => removeLine(i)}
+                          >
+                            <X size={13} />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                  {!lineRows.length && (
+                    <tr>
+                      <td colSpan={linesEditable ? 5 : 4} className="wf-empty-cell">
+                        No colour/size lines yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              {linesEditable ? (
+                <div className="wf-footer-actions">
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-ghost wf-btn-sm"
+                    onClick={addLine}
+                  >
+                    Add line
+                  </button>
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-primary wf-btn-sm"
+                    onClick={saveLines}
+                    disabled={pending}
+                  >
+                    <Save size={14} /> Save lines
+                  </button>
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-ghost wf-btn-sm"
+                    onClick={() => setLinesOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <p className="wf-subtle">Read-only — this PO is approved.</p>
+              )}
             </div>
           </td>
         </tr>

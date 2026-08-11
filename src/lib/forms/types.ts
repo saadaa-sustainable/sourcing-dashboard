@@ -166,6 +166,17 @@ export type DiscontinueRequest = {
 /* Approval log                                                        */
 /* ------------------------------------------------------------------ */
 
+/** One colour/size line of a PO (sd_po_approval_line) — for line-item rework. */
+export type PoApprovalLine = {
+  id: number;
+  po_id: number;
+  product_variant: string | null;
+  size: string | null;
+  qty: number;
+  line_status: SdStatus | null;
+  rework_notes: string | null;
+};
+
 export type ApprovalEntity =
   | 'buying_plan'
   | 'discontinue'

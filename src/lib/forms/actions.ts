@@ -560,6 +560,45 @@ export async function submitReceivablePlan(): Promise<ActionResult> {
   return done(`Submitted ${data?.length ?? 0} row(s) for approval.`);
 }
 
+/**
+ * Replace a PO's colour/size line items (sd_po_approval_line). Editable while the
+ * PO is not yet approved — this is what makes PO line-item rework actionable.
+ */
+export async function savePoLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to edit PO lines.');
+  const poId = Number(formData.get('po_id'));
+  if (!poId) return fail('Invalid PO.');
+  let lines: { product_variant?: string; size?: string; qty?: number }[] = [];
+  try {
+    lines = JSON.parse(String(formData.get('lines') ?? '[]'));
+  } catch {
+    lines = [];
+  }
+  const clean = lines
+    .map((l) => ({
+      product_variant: String(l.product_variant ?? '').trim() || null,
+      size: String(l.size ?? '').trim() || null,
+      qty: Number(l.qty) || 0,
+    }))
+    .filter((l) => l.product_variant || l.qty);
+  const supabase = await supa();
+  const { data: po } = await supabase.from('sd_po_approval').select('status').eq('id', poId).maybeSingle();
+  if (!po) return fail('PO not found.');
+  if (po.status === 'approved') return fail('An approved PO cannot have its lines changed.');
+  await supabase.from('sd_po_approval_line').delete().eq('po_id', poId);
+  if (clean.length) {
+    const { error } = await supabase
+      .from('sd_po_approval_line')
+      .insert(clean.map((l) => ({ po_id: poId, ...l })));
+    if (error) return fail(error.message);
+  }
+  revalidatePath('/po-approval');
+  revalidatePath('/approvals');
+  return done(`Saved ${clean.length} line(s).`);
+}
+
 /* ================================================================== */
 /* Standard cost sheet                                                 */
 /* ================================================================== */

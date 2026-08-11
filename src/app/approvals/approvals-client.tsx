@@ -13,26 +13,17 @@ export function ApprovalsClient({
   items,
   log,
   role,
+  stats,
 }: {
   items: ApprovalQueueItem[];
   log: ApprovalLogRow[];
   role: SdRole;
+  stats: { approved: number; edited: number; pct: number };
 }) {
   const [filter, setFilter] = useState<'all' | 'mine'>('mine');
 
   const mine = items.filter((item) => canApprove(role, item.status));
   const shown = filter === 'mine' ? mine : items;
-
-  // % of approvals that needed edits: approved records that were sent to rework at
-  // least once (within the recent log window).
-  const approvedKeys = new Set(
-    log.filter((l) => l.to_status === 'approved').map((l) => `${l.entity_type}:${l.entity_id}`),
-  );
-  const reworkedKeys = new Set(
-    log.filter((l) => l.to_status === 'rework').map((l) => `${l.entity_type}:${l.entity_id}`),
-  );
-  const editedApproved = [...approvedKeys].filter((k) => reworkedKeys.has(k)).length;
-  const editPct = approvedKeys.size ? Math.round((editedApproved / approvedKeys.size) * 100) : 0;
 
   return (
     <>
@@ -51,7 +42,10 @@ export function ApprovalsClient({
         </div>
         <div className="metric-card tone-red">
           <span className="metric-label">Approvals that needed edits</span>
-          <strong>{editPct}%</strong>
+          <strong>{stats.pct}%</strong>
+          <small>
+            {stats.edited} of {stats.approved} approved
+          </small>
         </div>
       </div>
 

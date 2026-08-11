@@ -15,6 +15,7 @@ import type {
   InwardPlanGroup,
   NpdPromotionCandidate,
   PoApproval,
+  PoApprovalLine,
   PoCycleTime,
   PoDetails,
   ProductMaster,
@@ -696,6 +697,15 @@ export async function loadPoApprovals() {
     supabase.from('sd_active_variants').select('product_code').limit(PAGE_SIZE),
   ]);
 
+  const poIds = ((pos ?? []) as PoApproval[]).map((p) => p.id);
+  const { data: poLines } = poIds.length
+    ? await supabase.from('sd_po_approval_line').select('*').in('po_id', poIds)
+    : { data: [] as PoApprovalLine[] };
+  const linesByPo = new Map<number, PoApprovalLine[]>();
+  ((poLines ?? []) as PoApprovalLine[]).forEach((l) => {
+    linesByPo.set(l.po_id, [...(linesByPo.get(l.po_id) ?? []), l]);
+  });
+
   const capacityByVendor = await loadInProcessByVendor();
 
   const productCodes = [
@@ -714,6 +724,7 @@ export async function loadPoApprovals() {
   return {
     pos: (pos ?? []) as PoApproval[],
     cycleById,
+    linesByPo,
     productCodes,
     vendorCodes,
     capacityByVendor,
@@ -877,4 +888,27 @@ export async function loadApprovalQueue(): Promise<{
   }
   items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));
   return { items, log: (log ?? []) as ApprovalLogRow[] };
+}
+
+/** Exact, all-time %-of-approvals-that-needed-edits across the record entities. */
+export async function loadApprovalStats(): Promise<{ approved: number; edited: number; pct: number }> {
+  const supabase = await client();
+  const tables = ['sd_buying_plan', 'sd_po_approval', 'sd_standard_cost', 'sd_discontinue_request'];
+  const counts = await Promise.all(
+    tables.flatMap((t) => [
+      supabase.from(t).select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+      supabase
+        .from(t)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'approved')
+        .eq('edited_before_approval', true),
+    ]),
+  );
+  let approved = 0;
+  let edited = 0;
+  for (let i = 0; i < counts.length; i += 2) {
+    approved += counts[i].count ?? 0;
+    edited += counts[i + 1].count ?? 0;
+  }
+  return { approved, edited, pct: approved ? Math.round((edited / approved) * 100) : 0 };
 }
