@@ -323,6 +323,9 @@ export type ReceivablePlanRow = {
   current_stock: number | null;
   sales_45d: number | null;
   oos_flag: boolean | null;
+  // Current in-stock qty split by size (keyed size_xs…size_5xl), from the
+  // inventory snapshot — so the arriving-by-size row has a stock-by-size row.
+  stock_by_size: Record<string, number>;
   // Merged-in weekly inputs (sd_receivable_input).
   delivery_date_this_week: string | null;
   qty_expected_this_week: number | null;

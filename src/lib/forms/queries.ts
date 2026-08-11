@@ -599,15 +599,58 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
     ((inputs ?? []) as Record<string, unknown>[]).map((i) => [String(i.row_key), i]),
   );
 
+  // Current stock split by size, from the inventory snapshot. Its SKUs are
+  // <product_variant><size> (e.g. SDVCTWH + XS), so size = the SKU tail after
+  // the variant prefix. Fetch only the variants present in the plan.
+  const stockByVariant = await loadStockByVariantSize(
+    supabase,
+    [...new Set(rows.map((r) => String(r.product_variant ?? '')).filter(Boolean))],
+  );
+
   return rows.map((r) => {
     const inp = inputByKey.get(String(r.row_key));
     return {
       ...(r as unknown as ReceivablePlanRow),
+      stock_by_size: stockByVariant.get(String(r.product_variant ?? '')) ?? {},
       delivery_date_this_week: (inp?.delivery_date_this_week as string | null) ?? null,
       qty_expected_this_week: (inp?.qty_expected_this_week as number | null) ?? null,
       remarks: (inp?.remarks as string | null) ?? null,
     };
   });
+}
+
+const SIZE_LABEL_TO_KEY: Record<string, string> = {
+  XS: 'size_xs', S: 'size_s', M: 'size_m', L: 'size_l', XL: 'size_xl',
+  '2XL': 'size_2xl', '3XL': 'size_3xl', '4XL': 'size_4xl', '5XL': 'size_5xl',
+};
+
+async function loadStockByVariantSize(
+  supabase: Awaited<ReturnType<typeof client>>,
+  variants: string[],
+): Promise<Map<string, Record<string, number>>> {
+  const byVariant = new Map<string, Record<string, number>>();
+  // Chunk the variant filter so each response stays under the row cap
+  // (≤100 variants × ≤9 sizes < 1000 rows).
+  for (let i = 0; i < variants.length; i += 100) {
+    const chunk = variants.slice(i, i + 100);
+    if (!chunk.length) continue;
+    const { data } = await supabase
+      .from('sd_inventory_planning')
+      .select('sku, product_variant, current_stock')
+      .in('product_variant', chunk);
+    for (const iv of (data ?? []) as Record<string, unknown>[]) {
+      const variant = String(iv.product_variant ?? '');
+      const sku = String(iv.sku ?? '');
+      const stock = Number(iv.current_stock) || 0;
+      if (!variant || !stock || !sku.startsWith(variant)) continue;
+      const key = SIZE_LABEL_TO_KEY[sku.slice(variant.length).toUpperCase()];
+      if (!key) continue;
+      const rec = byVariant.get(variant) ?? {};
+      rec[key] = (rec[key] ?? 0) + stock;
+      byVariant.set(variant, rec);
+    }
+  }
+  return byVariant;
 }
 
 /**

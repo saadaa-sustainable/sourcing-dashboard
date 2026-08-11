@@ -17,11 +17,19 @@ const cell = (v: number | null) => (v ? fmt.format(v) : '');
 export function ReceivablePlanClient({
   rows,
   editable,
+  weekStart,
+  weekEnd,
 }: {
   rows: ReceivablePlanRow[];
   editable: boolean;
+  weekStart: string;
+  weekEnd: string;
 }) {
   const [search, setSearch] = useState('');
+  const [vendor, setVendor] = useState('');
+  const [state, setState] = useState('');
+  const [oosOnly, setOosOnly] = useState(false);
+  const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
 
@@ -32,35 +40,77 @@ export function ReceivablePlanClient({
     });
   }
 
+  const vendors = useMemo(
+    () => [...new Set(rows.map((r) => r.vendor_name).filter(Boolean))].sort() as string[],
+    [rows],
+  );
+  const states = useMemo(
+    () => [...new Set(rows.map((r) => r.product_state).filter(Boolean))].sort() as string[],
+    [rows],
+  );
+
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`
-        .toLowerCase()
-        .includes(q),
-    );
-  }, [rows, search]);
+    return rows.filter((r) => {
+      if (q &&
+        !`${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`
+          .toLowerCase()
+          .includes(q)
+      ) return false;
+      if (vendor && r.vendor_name !== vendor) return false;
+      if (state && r.product_state !== state) return false;
+      if (oosOnly && !r.oos_flag) return false;
+      if (edd === 'has' && !r.expected_delivery_date) return false;
+      if (edd === 'week') {
+        const d = r.expected_delivery_date;
+        if (!d || d < weekStart || d > weekEnd) return false;
+      }
+      return true;
+    });
+  }, [rows, search, vendor, state, oosOnly, edd, weekStart, weekEnd]);
 
   const oosCount = rows.filter((r) => r.oos_flag).length;
 
   return (
     <>
       <Notice tone="info">
-        Each row is one colour on an open PO, split by size. DOQ, stock and OOS come
-        from the inventory-planning snapshot. Fill <strong>delivery date</strong> and{' '}
-        <strong>qty expected this week</strong> for the receiving plan.
+        Each row is one colour on an open PO, split by size — each size cell shows{' '}
+        <strong>arriving</strong> (top) over <strong>in stock</strong> (below, muted). DOQ,
+        stock and OOS come from the inventory-planning snapshot. Fill{' '}
+        <strong>delivery date</strong> and <strong>qty expected this week</strong> for the
+        receiving plan.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
 
-      <div className="wf-toolbar">
+      <div className="wf-toolbar wf-filter-bar">
         <input
           className="wf-search"
           placeholder="Filter PO / product / vendor…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <select value={vendor} onChange={(e) => setVendor(e.target.value)} aria-label="Vendor">
+          <option value="">All vendors</option>
+          {vendors.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select value={state} onChange={(e) => setState(e.target.value)} aria-label="Product state">
+          <option value="">All states</option>
+          {states.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select value={edd} onChange={(e) => setEdd(e.target.value as 'all' | 'has' | 'week')} aria-label="Delivery">
+          <option value="all">Any delivery</option>
+          <option value="has">Has EDD</option>
+          <option value="week">Arriving this week</option>
+        </select>
+        <label className="wf-check">
+          <input type="checkbox" checked={oosOnly} onChange={(e) => setOosOnly(e.target.checked)} />
+          OOS only
+        </label>
         <span className="wf-chip">
           {shown.length} rows
           {oosCount > 0 && <em className="wf-chip-warn">{oosCount} OOS</em>}
@@ -168,9 +218,15 @@ function ReceivableRow({
       <td>{row.vendor_name || row.vendor_code || '—'}</td>
       <td className="wf-subtle">{row.po_status ?? '—'}</td>
       <td className="num strong">{fmt.format(row.arriving_qty)}</td>
-      {SIZE_KEYS.map(([key]) => (
-        <td key={key} className="num">{cell(row[key])}</td>
-      ))}
+      {SIZE_KEYS.map(([key]) => {
+        const stock = row.stock_by_size?.[key];
+        return (
+          <td key={key} className="num wf-size-cell">
+            <span className="wf-size-arr">{cell(row[key])}</span>
+            <small className="wf-size-stk">{stock ? fmt.format(stock) : ''}</small>
+          </td>
+        );
+      })}
       <td className="num">{row.doq_45 != null ? row.doq_45 : '—'}</td>
       <td className="num">{row.current_stock != null ? fmt.format(row.current_stock) : '—'}</td>
       <td>{row.oos_flag ? <span className="wf-over-tag">OOS</span> : ''}</td>

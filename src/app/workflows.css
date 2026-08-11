@@ -850,3 +850,26 @@
 .wf-cost-lines { min-width: 0 !important; background: #fff; border: 1px solid #ece7d9; border-radius: 10px; }
 .wf-cost-lines th, .wf-cost-lines td { padding: 6px 8px; }
 .wf-cost-detail-foot { display: flex; justify-content: flex-end; }
+
+/* ---- Receivable Plan: filter bar + arriving/in-stock size cells ---- */
+.wf-filter-bar { flex-wrap: wrap; gap: 8px; align-items: center; }
+.wf-filter-bar select {
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid #e7e2d2;
+  background: #fff;
+}
+.wf-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 560;
+  color: #33302b;
+}
+.wf-check input { width: 14px; height: 14px; cursor: pointer; }
+.wf-size-cell { line-height: 1.2; }
+.wf-size-arr { display: block; }
+.wf-size-stk { display: block; color: #6e695e; opacity: 0.75; font-size: 10.5px; }
