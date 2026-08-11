@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, hasTnaSequenceError, isEasycomActive, isTnaDataMissing, isHighRiskPo, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -9,7 +9,6 @@ const tna: TnaRecord = { po_no:'PO-1',po_issued_date:null,po_qty:10,pp_sample_tn
 
 describe('sourcing business rules', () => {
   it('buckets only labels containing woven as Woven', () => { assert.equal(vendorBucket('Premium Woven Unit'),'Woven'); assert.equal(vendorBucket('Knitted'),'Knit'); assert.equal(vendorBucket(null),'Knit'); });
-  it('treats overdue zero-GRN rows as high risk', () => { assert.equal(isHighRiskPo({...base,expected_delivery_date:'2026-07-01'},new Date('2026-07-15T00:00:00Z')),true); assert.equal(isHighRiskPo({...base,pending_quantity:5},new Date('2026-07-15T00:00:00Z')),false); });
   it('derives the first missing TNA actual stage', () => { assert.equal(deriveTnaStage(tna),'GPT Pending'); assert.equal(deriveTnaStage(null),'Not in TNA Tracker'); });
   it('does not report an unresolved #N/A milestone as complete', () => {
     // Mirrors FY25-26/EFOB/SDLNS/STR-02: PP sample never taken, later stages filled in.
@@ -110,16 +109,20 @@ describe('sourcing business rules', () => {
     const today = new Date('2026-07-15T00:00:00Z');
     const partial = { ...base, original_quantity: 10, pending_qty_actual: 4 };
     const [prow] = buildTrackerRows([partial], [], [], [], today);
-    assert.equal(prow.easycomStatus, 'Partially Delivered');
+    assert.equal(prow.easycomStatus, 'Partially Received');
     assert.equal(prow.receivedQty, 6); assert.equal(prow.orderedQty, 10);
     const fresh = { ...base, original_quantity: 10, pending_qty_actual: 10 };
     assert.equal(buildTrackerRows([fresh], [], [], [], today)[0].easycomStatus, 'Approved');
-    assert.equal(computeInternalStatus({ edd: '2026-07-01', delayDays: 14, highRisk: true, tnaDelayDays: 5, today }), 'Overdue');
-    assert.equal(computeInternalStatus({ edd: '2026-07-15', delayDays: 0, highRisk: true, tnaDelayDays: 0, today }), 'Due Today');
-    assert.equal(computeInternalStatus({ edd: '2026-08-01', delayDays: 0, highRisk: true, tnaDelayDays: 0, today }), 'High Risk');
-    assert.equal(computeInternalStatus({ edd: '2026-08-01', delayDays: 0, highRisk: false, tnaDelayDays: 3, today }), 'Delayed');
-    assert.equal(computeInternalStatus({ edd: '2026-08-01', delayDays: 0, highRisk: false, tnaDelayDays: 0, today }), 'On Track');
-    assert.equal(computeInternalStatus({ edd: null, delayDays: 0, highRisk: false, tnaDelayDays: 0, today }), 'On Track');
+    assert.equal(easycomBucket(10, 0), 'Approved');
+    assert.equal(easycomBucket(10, 5), 'Partially Received');
+    assert.equal(easycomBucket(10, 10), 'Closure Pending');
+    assert.equal(easycomBucket(100, 96), 'Closure Pending');
+    const done = { ...base, po_detail_id: 'D', original_quantity: 10, pending_qty_actual: 0 };
+    assert.equal(buildTrackerRows([done], [], [], [], today).length, 0);
+    assert.equal(buildTrackerRows([done], [], [], [], today, undefined, { includeClosurePending: true })[0].easycomStatus, 'Closure Pending');
+    assert.equal(computeInternalStatus({ delayDays: 14, highRisk: true }), 'Overdue');
+    assert.equal(computeInternalStatus({ delayDays: 0, highRisk: true }), 'High Risk');
+    assert.equal(computeInternalStatus({ delayDays: 0, highRisk: false }), 'On Track');
   });
   it('surfaces TNA milestones due today and overdue as events, skipping future ones', () => {
     const today = new Date('2026-07-15T00:00:00Z');

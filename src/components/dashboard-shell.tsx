@@ -62,7 +62,7 @@ type HelpItem = { title: string; text: string; tip?: string };
 const simpleGlossary: Record<string, HelpItem[]> = {
   dashboard: [
     { title: "Open POs", text: "Purchase orders that still have pieces left to receive — counted as unique PO references where pending quantity (actual) is above 0. Fully received POs drop off.", tip: "Open quantity = sum of pending pieces; Open value = sum of (pending qty × item price)." },
-    { title: "Delayed POs", text: "Open POs whose expected delivery date (EDD) is already in the past. The % on the card is delayed ÷ open POs.", tip: "Click the card to open the overdue audit list." },
+    { title: "Overdue POs", text: "Open POs whose expected delivery date (EDD) is already in the past (Layer 2 · Overdue). The % on the card is overdue ÷ open POs.", tip: "Click the card to open the overdue audit list." },
     { title: "High-risk POs", text: "A live early-warning flag: an open PO where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet. It is a snapshot, not a permanent label — the moment that stage is marked done, even late, the PO stops being High Risk.", tip: "Independent of the final delivery date; click the card to see which POs and stages." },
     { title: "PO ageing", text: "Open POs grouped by how overdue they are: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD when no delivery date is set." },
     { title: "Vendor & product charts", text: "Open vs delayed POs per vendor with a delay-% line, plus the top product codes and product·variant pairs by pending quantity and by delay %." },
@@ -70,9 +70,9 @@ const simpleGlossary: Record<string, HelpItem[]> = {
   ],
   "open-po": [
     { title: "One row = one open PO", text: "Each row is a purchase order grouped by PO number, product and delivery date. 'Variants' counts the distinct variants (e.g. colours) on that PO — it is not a piece count." },
-    { title: "Pending & Delivered", text: "Pending qty and pending value are what is still to come. Delivered shows received ÷ ordered pieces." },
+    { title: "Pending, Delivered & EasyCom", text: "Pending qty/value are what is still to come; Delivered is received ÷ ordered. The EasyCom column is the delivery/closure state (Layer 1): Approved (nothing received), Partially Received, or Closure Pending (≥95% received — functionally done but not yet closed on EasyCom, shown amber). Completed / Approval-Pending POs stay out of this open view." },
     { title: "EDD, Delay & Days Overdue", text: "EDD is the promised delivery date. Delay = today − EDD (0 shows as On time). Days Overdue buckets that delay: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD." },
-    { title: "Internal status tabs", text: "Each PO gets one live status, chosen by priority: Overdue (past EDD) → Due Today → High Risk (a TNA stage is overdue) → Delayed (production behind, EDD not yet passed) → On Track. The tabs filter to each.", tip: "High Risk is a snapshot — it clears the moment the overdue stage is marked done." },
+    { title: "TNA / Risk status (Layer 2)", text: "One live status by precedence: Overdue (EDD is past — EDD-only) → High Risk (any critical-path TNA stage is past its planned date with no actual yet — purely TNA, not demand or inventory) → On Track (inverse of High Risk). The tabs filter to each.", tip: "High Risk is a snapshot — it clears the moment the overdue stage is marked done." },
     { title: "TNA stage", text: "The earliest production stage not yet completed: PP Sample → GPT → Cutting → Inline / Midline QC → First Delivery → PO Closer. Shows '… Pending', 'Production' when every stage is done, or 'Not in TNA Tracker' when no timeline exists." },
     { title: "Per-stage TNA vs Actual", text: "Each stage shows its planned (TNA) date next to the actual date, plus a per-stage verdict: On Time, 'On Time · N days early', 'Delay N d', or Pending. There is no single lumped total — delay is read stage by stage.", tip: "Scroll right for PP, GPT, Cutting, Inline and PO Closer." },
     { title: "TNA sequence (data-entry check)", text: "Stages are strictly linear. If a later stage is marked done while an earlier one is still blank, it is flagged as a data-entry error with a lock icon, and the earliest still-pending stage is treated as the real status rather than skipping ahead." },
@@ -561,7 +561,7 @@ function DashboardTab({
           tone="blue"
         />
         <Card
-          label="Delayed POs"
+          label="Overdue POs"
           value={fmt.format(delayedRefs.length)}
           note={`${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · audit`}
           tone="orange"
@@ -827,11 +827,7 @@ function DashboardTab({
 
 
 const internalStatusTone = (s: string) =>
-  s === "Overdue" || s === "High Risk"
-    ? "danger"
-    : s === "Due Today" || s === "Delayed"
-      ? "info"
-      : "success";
+  s === "Overdue" ? "danger" : s === "High Risk" ? "warn" : "success";
 
 const stageDelayText = (planned?: string | null, actual?: string | null) => {
   const { state, days } = stageDelay(planned, actual);
@@ -857,6 +853,7 @@ function TrackerTab({
         data.tnaRecords,
         today,
         data.stageInspections,
+        { includeClosurePending: true },
       ),
     [data],
   );
@@ -951,7 +948,7 @@ function TrackerTab({
         <FilterSelect
           label="EasyCom"
           value={filters.easycom}
-          options={["Approved", "Partially Delivered"]}
+          options={["Approved", "Partially Received", "Closure Pending"]}
           onChange={(v) => set({ ...filters, easycom: v })}
         />
         <FilterSelect
@@ -1114,7 +1111,7 @@ function TrackerTab({
                       {fmt.format(row.receivedQty)} / {fmt.format(row.orderedQty)}
                     </td>
                     <td>
-                      <span className={`badge ${row.easycomStatus === "Partially Delivered" ? "info" : "success"}`}>
+                      <span className={`badge ${row.easycomStatus === "Closure Pending" ? "warn" : row.easycomStatus === "Partially Received" ? "info" : "success"}`}>
                         {row.easycomStatus}
                       </span>
                     </td>

@@ -111,14 +111,12 @@ export type DashboardData = {
   loadedAt: string;
 };
 
-export type EasycomStatus = 'Approved' | 'Partially Delivered';
+export type EasycomStatus = 'Approved' | 'Partially Received' | 'Closure Pending';
 
 export type InternalStatus =
   | 'On Track'
   | 'High Risk'
-  | 'Overdue'
-  | 'Due Today'
-  | 'Delayed';
+  | 'Overdue';
 
 export type TrackerRow = {
   key: string;
