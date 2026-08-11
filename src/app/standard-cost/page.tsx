@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadFabricCostBase,
   loadMaterialStandardCosts,
   loadStandardCostLines,
   loadStandardCosts,
@@ -15,9 +16,11 @@ export const dynamic = 'force-dynamic';
 export default async function StandardCostPage({
   searchParams,
 }: {
-  searchParams: Promise<{ track?: string }>;
+  searchParams: Promise<{ track?: string; open?: string }>;
 }) {
-  const track = (await searchParams).track === 'material' ? 'material' : 'fg';
+  const params = await searchParams;
+  const track = params.track === 'material' ? 'material' : 'fg';
+  const openCode = params.open ?? null;
 
   let user;
   try {
@@ -35,10 +38,19 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const [costs, lines] =
+  const [costs, lines, fabricBase] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), []]
-      : await Promise.all([loadStandardCosts(), loadStandardCostLines()]);
+      ? [await loadMaterialStandardCosts(), [], []]
+      : await Promise.all([loadStandardCosts(), loadStandardCostLines(), loadFabricCostBase()]);
+
+  // Fabric rate map (finished fabric cost) + code list, for the CM matrix's
+  // auto-pulled Fabric column.
+  const fabricRates: Record<string, number> = {};
+  const fabricCodes: string[] = [];
+  for (const f of fabricBase) {
+    fabricCodes.push(f.fabric_code);
+    if (f.finished_fabric_cost != null) fabricRates[f.fabric_code] = Number(f.finished_fabric_cost);
+  }
 
   return (
     <FormLayout
@@ -54,7 +66,15 @@ export default async function StandardCostPage({
       accent="purple"
     >
       <CostTrackTabs track={track} />
-      <StandardCostClient costs={costs} lines={lines} role={user.role} track={track} />
+      <StandardCostClient
+        costs={costs}
+        lines={lines}
+        fabricRates={fabricRates}
+        fabricCodes={fabricCodes}
+        initialOpen={openCode}
+        role={user.role}
+        track={track}
+      />
     </FormLayout>
   );
 }

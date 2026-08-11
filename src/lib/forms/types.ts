@@ -242,6 +242,7 @@ export type StandardCost = {
   cad_link: string | null;
   rfp_link: string | null;
   documented: boolean;
+  fabric_code: string | null; // fabric whose rate feeds the CM cost matrix
   status: SdStatus;
   submitted_by: string | null;
   submitted_at: string | null;

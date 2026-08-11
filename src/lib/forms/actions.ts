@@ -787,6 +787,7 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
     cad_link: textOrNull(formData.get('cad_link')),
     rfp_link: textOrNull(formData.get('rfp_link')),
+    fabric_code: textOrNull(formData.get('fabric_code')),
     // Saving is the act of documenting — clears the "data gap" flag.
     documented: true,
     updated_at: new Date().toISOString(),

@@ -1,16 +1,7 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  Lock,
-  Plus,
-  Save,
-  Trash2,
-  Upload,
-} from 'lucide-react';
+import { Fragment, useMemo, useState, useTransition } from 'react';
+import { ChevronDown, ChevronRight, Lock, Plus, Save } from 'lucide-react';
 import {
   proposeCost,
   rejectCost,
@@ -35,7 +26,6 @@ import {
   nextActor,
 } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
-import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice } from '@/components/forms/form-layout';
 import type { SdRole, StandardCost, StandardCostLine } from '@/lib/forms/types';
 
@@ -44,11 +34,17 @@ const disp = (v: number | null) => (v == null ? '—' : String(v));
 export function StandardCostClient({
   costs,
   lines = [],
+  fabricRates = {},
+  fabricCodes = [],
+  initialOpen = null,
   role,
   track = 'fg',
 }: {
   costs: StandardCost[];
   lines?: StandardCostLine[];
+  fabricRates?: Record<string, number>;
+  fabricCodes?: string[];
+  initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
 }) {
@@ -62,7 +58,8 @@ export function StandardCostClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // A newly-added product opens straight into its cost format.
+  const [expanded, setExpanded] = useState<string | null>(initialOpen);
   const [newCode, setNewCode] = useState('');
 
   const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
@@ -85,13 +82,17 @@ export function StandardCostClient({
     }
     setError(null);
     setMessage(null);
+    const code = newCode.trim();
     const fd = new FormData();
-    fd.set('product_code', newCode.trim());
+    fd.set('product_code', code);
     start(async () => {
-      // upsert by code — seeds a row on the right track to then propose.
+      // upsert by code — seeds a row; then open straight into its cost format.
       const result = await (isMat ? saveMaterialCost : saveStandardCost)(fd);
-      if (result.ok) window.location.reload();
-      else setError(result.error);
+      if (result.ok) {
+        window.location.href = isMat
+          ? '/standard-cost?track=material'
+          : `/standard-cost?open=${encodeURIComponent(code.toUpperCase())}`;
+      } else setError(result.error);
     });
   }
 
@@ -172,6 +173,8 @@ export function StandardCostClient({
                         <CostDetail
                           cost={cost}
                           lines={linesByCode.get(cost.product_code) ?? []}
+                          fabricRates={fabricRates}
+                          fabricCodes={fabricCodes}
                           editable={!cost.frozen && canEdit(role, cost.status)}
                         />
                       </td>
@@ -423,107 +426,91 @@ function CostRow({
   );
 }
 
-type LineDraft = {
-  key: string;
-  colour: string;
-  size: string;
-  fabric_cost: string;
-  cm_cost: string;
-  total_cost: string;
-};
-
-function toLineDraft(l: StandardCostLine): LineDraft {
-  return {
-    key: `line-${l.id}`,
-    colour: l.colour ?? '',
-    size: l.size ?? '',
-    fabric_cost: l.fabric_cost?.toString() ?? '',
-    cm_cost: l.cm_cost?.toString() ?? '',
-    total_cost: l.total_cost?.toString() ?? '',
-  };
-}
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'] as const;
+const numv = (s: string) => Number(s) || 0;
 
 /**
- * The expandable "actual standard cost" panel — the detailed record the approver
- * reviews. Documents CM cost, Total PO Average cost, CAD/RFP links, and the
- * colour/size cost breakdown (editable + CSV-importable).
+ * The expandable cost record — an Excel-paste-friendly CM cost matrix (sizes as
+ * rows). Fabric rate is pulled from the Fabric Cost sheet (computed, read-only);
+ * CM is entered (paste a column straight from Excel); Total and the size-wise
+ * average compute automatically. Two output views: the editable matrix, a formal
+ * Document view, and View More for the full record.
  */
 function CostDetail({
   cost,
   lines,
+  fabricRates,
+  fabricCodes,
   editable,
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
+  fabricRates: Record<string, number>;
+  fabricCodes: string[];
   editable: boolean;
 }) {
-  const [cm, setCm] = useState(cost.cm_cost?.toString() ?? '');
+  const [view, setView] = useState<'matrix' | 'document' | 'more'>('matrix');
+  const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? '');
+  const [cmBySize, setCmBySize] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const l of lines) {
+      if (l.size && l.cm_cost != null) m[l.size.toUpperCase()] = String(l.cm_cost);
+    }
+    return m;
+  });
   const [total, setTotal] = useState(cost.total_po_avg_cost?.toString() ?? '');
   const [cad, setCad] = useState(cost.cad_link ?? '');
   const [rfp, setRfp] = useState(cost.rfp_link ?? '');
-  const [rows, setRows] = useState<LineDraft[]>(() => lines.map(toLineDraft));
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  function setRow(key: string, field: keyof LineDraft, value: string) {
-    setRows((cur) => cur.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
-  }
-  function addRow() {
-    setRows((cur) => [
-      ...cur,
-      { key: `new-${cur.length}-${Date.now()}`, colour: '', size: '', fabric_cost: '', cm_cost: '', total_cost: '' },
-    ]);
-  }
+  const fabricRate = fabricCode ? fabricRates[fabricCode] : undefined;
 
-  function downloadTemplate() {
-    const examples = rows.length
-      ? rows.map((r) => [cost.product_code, r.colour, r.size, r.fabric_cost, r.cm_cost, r.total_cost])
-      : [[cost.product_code, 'Navy', 'M', '190', '65', '255']];
-    downloadCsv(
-      `standard-cost-${cost.product_code}.csv`,
-      ['product_code', 'colour', 'size', 'fabric_cost', 'cm_cost', 'total_cost'],
-      examples,
-    );
+  // Per-size computed rows.
+  const matrix = SIZES.map((size) => {
+    const cm = cmBySize[size] ?? '';
+    const has = cm !== '';
+    const totalCell = has ? (fabricRate ?? 0) + numv(cm) : null;
+    return { size, cm, fabric: fabricRate ?? null, total: totalCell, has };
+  });
+  const filled = matrix.filter((r) => r.has);
+  const sizeAvg = filled.length
+    ? Math.round(filled.reduce((s, r) => s + (r.total ?? 0), 0) / filled.length)
+    : null;
+
+  function setCm(size: string, value: string) {
+    setCmBySize((cur) => ({ ...cur, [size]: value }));
   }
 
-  async function onCsvFile(file: File) {
-    setErr(null);
-    setMsg(null);
-    let objects: Record<string, string>[];
-    try {
-      objects = csvObjects(await file.text());
-    } catch {
-      setErr('Could not read that file as CSV.');
-      return;
-    }
-    const imported: LineDraft[] = [];
-    const skipped: string[] = [];
-    objects.forEach((r, i) => {
-      const line = i + 2;
-      const code = String(r.product_code ?? '').trim();
-      if (code && code.toUpperCase() !== cost.product_code.toUpperCase()) {
-        return skipped.push(`row ${line}: different product "${code}"`);
-      }
-      if (!r.colour && !r.size && !r.fabric_cost && !r.cm_cost && !r.total_cost) {
-        return skipped.push(`row ${line}: empty`);
-      }
-      imported.push({
-        key: `csv-${i}`,
-        colour: String(r.colour ?? '').trim(),
-        size: String(r.size ?? '').trim(),
-        fabric_cost: String(r.fabric_cost ?? '').trim(),
-        cm_cost: String(r.cm_cost ?? '').trim(),
-        total_cost: String(r.total_cost ?? '').trim(),
+  // Excel paste: a column of CM values (newline-separated) fills down from the
+  // pasted cell. Tabs are tolerated — first token per line is taken as the CM.
+  function onCmPaste(e: React.ClipboardEvent, startIdx: number) {
+    const text = e.clipboardData.getData('text');
+    if (!text || !/[\n\t]/.test(text)) return; // single value → let it paste normally
+    e.preventDefault();
+    const vals = text
+      .split(/\r\n|\r|\n/)
+      .map((line) => line.split('\t')[0].trim())
+      .filter((_, i, arr) => i < arr.length);
+    setCmBySize((cur) => {
+      const next = { ...cur };
+      vals.forEach((v, k) => {
+        const size = SIZES[startIdx + k];
+        if (size && v !== '') next[size] = v;
       });
+      return next;
     });
-    if (!imported.length) {
-      setErr(`No rows imported.${skipped.length ? ` ${skipped.slice(0, 4).join('; ')}` : ' Expected headers: product_code, colour, size, fabric_cost, cm_cost, total_cost.'}`);
-      return;
-    }
-    setRows(imported);
-    setMsg(`Loaded ${imported.length} line(s)${skipped.length ? `, skipped ${skipped.length}` : ''}. Review, then Save.`);
+  }
+
+  function copyMatrix() {
+    const head = 'Size\tFabric\tCM\tTotal';
+    const body = matrix
+      .filter((r) => r.has)
+      .map((r) => `${r.size}\t${r.fabric ?? ''}\t${r.cm}\t${r.total ?? ''}`)
+      .join('\n');
+    void navigator.clipboard?.writeText(`${head}\n${body}`);
+    setMsg('Matrix copied to clipboard.');
   }
 
   function saveDetail() {
@@ -534,23 +521,26 @@ function CostDetail({
     header.set('job_cost', cost.job_cost?.toString() ?? '');
     header.set('fob_cost', cost.fob_cost?.toString() ?? '');
     header.set('efob_cost', cost.efob_cost?.toString() ?? '');
-    header.set('cm_cost', cm);
+    header.set('cm_cost', sizeAvg != null ? String(sizeAvg) : ''); // header CM = size-wise average
     header.set('total_po_avg_cost', total);
     header.set('cad_link', cad);
     header.set('rfp_link', rfp);
+    header.set('fabric_code', fabricCode);
 
     const detail = new FormData();
     detail.set('product_code', cost.product_code);
     detail.set(
       'lines',
       JSON.stringify(
-        rows.map((r) => ({
-          colour: r.colour,
-          size: r.size,
-          fabric_cost: r.fabric_cost,
-          cm_cost: r.cm_cost,
-          total_cost: r.total_cost,
-        })),
+        matrix
+          .filter((r) => r.has)
+          .map((r) => ({
+            colour: '',
+            size: r.size,
+            fabric_cost: r.fabric != null ? String(r.fabric) : '',
+            cm_cost: r.cm,
+            total_cost: r.total != null ? String(r.total) : '',
+          })),
       ),
     );
 
@@ -563,98 +553,134 @@ function CostDetail({
     });
   }
 
+  const rw = editable && view !== 'document';
+
   return (
     <div className="wf-cost-detail">
       {err && <Notice tone="error">{err}</Notice>}
       {msg && <Notice tone="ok">{msg}</Notice>}
 
-      <div className="wf-form-grid">
-        <Field label="CM cost" hint="stitching / cost of manufacturing">
-          <input type="number" min={0} value={cm} disabled={!editable} onChange={(e) => setCm(e.target.value)} />
-        </Field>
-        <Field label="Total PO average cost" hint="entered directly">
-          <input type="number" min={0} value={total} disabled={!editable} onChange={(e) => setTotal(e.target.value)} />
-        </Field>
-        <Field label="CAD link">
-          <input value={cad} disabled={!editable} placeholder="https://…" onChange={(e) => setCad(e.target.value)} />
-        </Field>
-        <Field label="RFP link">
-          <input value={rfp} disabled={!editable} placeholder="https://…" onChange={(e) => setRfp(e.target.value)} />
-        </Field>
-      </div>
-
       <div className="wf-cost-detail-head">
-        <h4>Colour / size costing</h4>
-        {editable && (
+        <div className="segment wf-segment">
+          <button type="button" className={view === 'matrix' ? 'active' : ''} onClick={() => setView('matrix')}>Matrix</button>
+          <button type="button" className={view === 'document' ? 'active' : ''} onClick={() => setView('document')}>Document</button>
+          <button type="button" className={view === 'more' ? 'active' : ''} onClick={() => setView('more')}>View more</button>
+        </div>
+        {view === 'matrix' && (
           <div className="wf-toolbar-right">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onCsvFile(f);
-                e.target.value = '';
-              }}
-            />
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
-              <Download size={13} /> Template
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
-              <Upload size={13} /> Import CSV
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={addRow}>
-              <Plus size={13} /> Add line
-            </button>
+            <label className="wf-inline-field">
+              Fabric
+              <select value={fabricCode} disabled={!rw} onChange={(e) => setFabricCode(e.target.value)}>
+                <option value="">—</option>
+                {fabricCodes.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </label>
+            <span className="wf-subtle">
+              Fabric rate {fabricRate != null ? fabricRate : '— (set in Fabric Cost)'}
+            </span>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={copyMatrix}>Copy</button>
           </div>
         )}
       </div>
 
-      <table className="wf-grid wf-cost-lines">
-        <thead>
-          <tr>
-            <th>Colour</th>
-            <th>Size</th>
-            <th className="num input-col">Fabric</th>
-            <th className="num input-col">CM</th>
-            <th className="num input-col">Total</th>
-            {editable && <th aria-label="Remove" />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.key}>
-              <td className="input-col"><input value={r.colour} disabled={!editable} onChange={(e) => setRow(r.key, 'colour', e.target.value)} /></td>
-              <td className="input-col"><input value={r.size} disabled={!editable} onChange={(e) => setRow(r.key, 'size', e.target.value)} /></td>
-              <td className="num input-col"><input type="number" min={0} value={r.fabric_cost} disabled={!editable} onChange={(e) => setRow(r.key, 'fabric_cost', e.target.value)} /></td>
-              <td className="num input-col"><input type="number" min={0} value={r.cm_cost} disabled={!editable} onChange={(e) => setRow(r.key, 'cm_cost', e.target.value)} /></td>
-              <td className="num input-col"><input type="number" min={0} value={r.total_cost} disabled={!editable} onChange={(e) => setRow(r.key, 'total_cost', e.target.value)} /></td>
-              {editable && (
-                <td>
-                  <button type="button" className="wf-icon-btn" aria-label="Remove line" onClick={() => setRows((cur) => cur.filter((x) => x.key !== r.key))}>
-                    <Trash2 size={13} />
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
-          {!rows.length && (
-            <tr>
-              <td colSpan={editable ? 6 : 5} className="wf-empty-cell">
-                No colour/size cost lines yet{editable ? ' — add one, or import a CSV.' : '.'}
-              </td>
-            </tr>
+      {view === 'document' ? (
+        <div className="wf-cost-doc">
+          <h3>Cost sheet — {cost.product_code}</h3>
+          <dl className="wf-doc-meta">
+            <div><dt>Fabric</dt><dd>{fabricCode || '—'}</dd></div>
+            <div><dt>Fabric rate</dt><dd>{fabricRate ?? '—'}</dd></div>
+            <div><dt>Size-wise avg</dt><dd>{sizeAvg ?? '—'}</dd></div>
+            <div><dt>Total PO avg</dt><dd>{total || '—'}</dd></div>
+          </dl>
+          <table className="wf-grid wf-cost-lines">
+            <thead><tr><th>Size</th><th className="num">Fabric</th><th className="num">CM</th><th className="num">Total</th></tr></thead>
+            <tbody>
+              {filled.map((r) => (
+                <tr key={r.size}><td>{r.size}</td><td className="num">{r.fabric ?? '—'}</td><td className="num">{r.cm}</td><td className="num">{r.total ?? '—'}</td></tr>
+              ))}
+              {!filled.length && <tr><td colSpan={4} className="wf-empty-cell">No costed sizes yet.</td></tr>}
+            </tbody>
+            {filled.length > 0 && (
+              <tfoot><tr><td colSpan={3}>Size-wise average</td><td className="num strong">{sizeAvg}</td></tr></tfoot>
+            )}
+          </table>
+          {(cad || rfp) && (
+            <p className="wf-subtle">
+              {cad && <>CAD: <a href={cad}>{cad}</a> </>}
+              {rfp && <>· RFP: <a href={rfp}>{rfp}</a></>}
+            </p>
           )}
-        </tbody>
-      </table>
-
-      {editable && (
-        <div className="wf-cost-detail-foot">
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={saveDetail} disabled={busy}>
-            <Save size={13} /> {busy ? 'Saving…' : 'Save cost detail'}
-          </button>
         </div>
+      ) : (
+        <>
+          {view === 'more' && (
+            <div className="wf-form-grid">
+              <label className="field wf-field">
+                <span>Fabric<small>rate pulled from Fabric Cost</small></span>
+                <select value={fabricCode} disabled={!rw} onChange={(e) => setFabricCode(e.target.value)}>
+                  <option value="">—</option>
+                  {fabricCodes.map((f) => (<option key={f} value={f}>{f}</option>))}
+                </select>
+              </label>
+              <Field label="Total PO average cost" hint="entered directly">
+                <input type="number" min={0} value={total} disabled={!rw} onChange={(e) => setTotal(e.target.value)} />
+              </Field>
+              <Field label="CAD link">
+                <input value={cad} disabled={!rw} placeholder="https://…" onChange={(e) => setCad(e.target.value)} />
+              </Field>
+              <Field label="RFP link">
+                <input value={rfp} disabled={!rw} placeholder="https://…" onChange={(e) => setRfp(e.target.value)} />
+              </Field>
+            </div>
+          )}
+
+          <table className="wf-grid wf-cost-lines wf-cost-matrix">
+            <thead>
+              <tr>
+                <th>Size</th>
+                <th className="num">Fabric*</th>
+                <th className="num input-col">CM</th>
+                <th className="num">Total*</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.map((r, i) => (
+                <tr key={r.size}>
+                  <td className="strong">{r.size}</td>
+                  <td className="num wf-cell-calc">{r.fabric ?? '—'}</td>
+                  <td className="num input-col">
+                    <input
+                      type="number"
+                      min={0}
+                      value={r.cm}
+                      disabled={!rw}
+                      onChange={(e) => setCm(r.size, e.target.value)}
+                      onPaste={(e) => rw && onCmPaste(e, i)}
+                    />
+                  </td>
+                  <td className="num wf-cell-calc">{r.total ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3}>Size-wise average*</td>
+                <td className="num strong wf-cell-calc">{sizeAvg ?? '—'}</td>
+              </tr>
+            </tfoot>
+          </table>
+          <p className="wf-subtle">* computed — fabric pulled from the Fabric Cost sheet, total = fabric + CM. Paste a CM column straight from Excel.</p>
+
+          {editable && (
+            <div className="wf-cost-detail-foot">
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={saveDetail} disabled={busy}>
+                <Save size={13} /> {busy ? 'Saving…' : 'Save cost sheet'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

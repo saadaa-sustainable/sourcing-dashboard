@@ -904,6 +904,25 @@
 th.wf-yarn-col { color: #2f6bbf; }
 .wf-row-dirty > td { background: rgba(240, 198, 30, 0.12); }
 
+/* ---- CM cost matrix: computed (yellow) cells + document view ---- */
+.wf-cost-matrix { max-width: 520px; }
+.wf-cell-calc { background: #fdf6d8; color: #6b5a12; font-weight: 600; }
+.wf-inline-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 560; }
+.wf-inline-field select { padding: 4px 8px; font-size: 12px; border-radius: 8px; border: 1px solid #e7e2d2; }
+.wf-cost-doc {
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #e7e2d2;
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(40, 36, 28, 0.04), 0 4px 14px rgba(40, 36, 28, 0.06);
+  max-width: 560px;
+}
+.wf-cost-doc h3 { margin: 0 0 12px; font-size: 15px; }
+.wf-doc-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 20px; margin: 0 0 12px; }
+.wf-doc-meta div { display: flex; justify-content: space-between; border-bottom: 1px dotted #e7e2d2; padding: 2px 0; }
+.wf-doc-meta dt { color: #6e695e; font-size: 11px; }
+.wf-doc-meta dd { margin: 0; font-weight: 600; font-size: 12px; }
+
 /* ---- Cost negotiation row controls ---- */
 .wf-cost-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .wf-mini-input {
