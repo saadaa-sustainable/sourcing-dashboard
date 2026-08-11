@@ -57,12 +57,14 @@ export function FormLayout({
   );
 }
 
-export function StatusBadge({ status }: { status: SdStatus }) {
-  return (
-    <span className={`wf-status tone-${STATUS_TONE[status]}`}>
-      {STATUS_LABEL[status]}
-    </span>
-  );
+export function StatusBadge({ status, edited }: { status: SdStatus; edited?: boolean }) {
+  // For an approved record, surface whether it went through edits (rework) or was
+  // approved first time — this drives the "% of approvals that needed edits" metric.
+  const label =
+    status === 'approved' && edited !== undefined
+      ? `${STATUS_LABEL.approved} · ${edited ? 'edited' : 'first-time'}`
+      : STATUS_LABEL[status];
+  return <span className={`wf-status tone-${STATUS_TONE[status]}`}>{label}</span>;
 }
 
 export function Notice({

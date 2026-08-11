@@ -61,7 +61,8 @@ export function canEdit(role: SdRole, status: SdStatus) {
 }
 
 export function canSubmit(role: SdRole, status: SdStatus) {
-  return status === 'draft' && RANK[role] >= RANK.team;
+  // A reworked record can be fixed and re-submitted, same as a draft.
+  return (status === 'draft' || status === 'rework') && RANK[role] >= RANK.team;
 }
 
 export function canApprove(role: SdRole, status: SdStatus) {
@@ -72,14 +73,20 @@ export function canApprove(role: SdRole, status: SdStatus) {
   return false;
 }
 
+/** Sending back for Rework/Reassign is an approver action — same gate as approve. */
+export function canRework(role: SdRole, status: SdStatus) {
+  return canApprove(role, status);
+}
+
 /* ------------------------------------------------------------------ */
 /* Display                                                             */
 /* ------------------------------------------------------------------ */
 
 export const STATUS_LABEL: Record<SdStatus, string> = {
   draft: 'Draft',
-  submitted: 'Awaiting team approval',
-  pending_l2: 'Awaiting admin approval',
+  submitted: 'Approval Pending',
+  pending_l2: 'Approval Pending',
+  rework: 'Rework/Reassign',
   approved: 'Approved',
   rejected: 'Rejected',
 };
@@ -89,6 +96,7 @@ export const STATUS_TONE: Record<SdStatus, string> = {
   draft: 'purple',
   submitted: 'orange',
   pending_l2: 'orange',
+  rework: 'orange',
   approved: 'teal',
   rejected: 'red',
 };

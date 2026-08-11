@@ -200,7 +200,7 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
       rejection_notes: null,
     })
     .eq('id', planId)
-    .eq('status', 'draft')
+    .in('status', ['draft', 'rework'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
@@ -358,8 +358,11 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   const table = TABLE[entityType];
 
   if (!table || !entityId) return fail('Invalid approval request.');
-  if (decision !== 'approve' && decision !== 'reject') {
+  if (decision !== 'approve' && decision !== 'reject' && decision !== 'rework') {
     return fail('Invalid decision.');
+  }
+  if ((decision === 'reject' || decision === 'rework') && !notes) {
+    return fail('A reason is required to reject or send for rework.');
   }
 
   const supabase = await supa();
@@ -388,11 +391,22 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     }
   }
 
-  const to: SdStatus = decision === 'approve' ? 'approved' : 'rejected';
+  const to: SdStatus =
+    decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
+  const now = new Date().toISOString();
   const patch: Record<string, unknown> =
     decision === 'approve'
-      ? { status: to, approved_by: user.email, approved_at: new Date().toISOString() }
-      : { status: to, rejection_notes: notes || null };
+      ? { status: to, approved_by: user.email, approved_at: now }
+      : decision === 'rework'
+        ? {
+            status: to,
+            rework_notes: notes,
+            reworked_by: user.email,
+            reworked_at: now,
+            // Mark so a later approval counts as Edited-and-Approved.
+            edited_before_approval: true,
+          }
+        : { status: to, rejection_notes: notes || null };
 
   // Atomic: the status guard means a second approver gets zero rows back.
   const { data: updated, error } = await supabase
@@ -412,7 +426,9 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/discontinue');
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
-  return done(decision === 'approve' ? 'Approved.' : 'Rejected.');
+  return done(
+    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+  );
 }
 
 /* ================================================================== */
@@ -498,7 +514,7 @@ export async function submitStandardCost(formData: FormData): Promise<ActionResu
       rejection_notes: null,
     })
     .eq('id', id)
-    .eq('status', 'draft')
+    .in('status', ['draft', 'rework'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
@@ -588,7 +604,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
       .from('sd_po_approval')
       .update(fields)
       .eq('id', id)
-      .eq('status', 'draft');
+      .in('status', ['draft', 'rework']);
     if (error) return fail(`Could not save: ${error.message}`);
     revalidatePath('/po-approval');
     return { ok: true, message: 'Saved.', id };
@@ -633,7 +649,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
       rejection_notes: null,
     })
     .eq('id', id)
-    .eq('status', 'draft')
+    .in('status', ['draft', 'rework'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');

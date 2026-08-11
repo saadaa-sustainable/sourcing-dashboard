@@ -16,6 +16,7 @@ export type SdStatus =
   | 'draft'
   | 'submitted'
   | 'pending_l2'
+  | 'rework'
   | 'approved'
   | 'rejected';
 

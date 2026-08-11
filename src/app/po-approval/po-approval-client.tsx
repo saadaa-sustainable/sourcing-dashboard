@@ -10,7 +10,6 @@ import {
 } from '@/lib/forms/actions';
 import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
-import { ApprovalBar } from '@/components/forms/approval-bar';
 import type {
   PoApproval,
   PoCategory,
@@ -633,14 +632,11 @@ function PoRow({
           {(po.status === 'submitted' || po.status === 'pending_l2') &&
             (isApprover ? (
               po.tna_confirmed ? (
-                <ApprovalBar
-                  entityType="po_approval"
-                  entityId={String(po.id)}
-                  entityLabel={`PO ${po.po_ref_num ?? `#${po.id}`} · ${catLabel(po.category)}`}
-                  onDone={(res) => {
-                    if (res.ok) window.location.reload();
-                  }}
-                />
+                // Approve / Reject / Rework happen only in the Approvals queue — not
+                // inline here — so admin decisions route through one place.
+                <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/approvals">
+                  Decide in Approvals &rarr;
+                </a>
               ) : (
                 <button
                   type="button"

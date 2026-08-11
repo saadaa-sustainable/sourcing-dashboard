@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, RotateCcw, X } from 'lucide-react';
 import { decideApproval, type ActionResult } from '@/lib/forms/actions';
 import type { ApprovalEntity } from '@/lib/forms/types';
 
@@ -23,13 +23,13 @@ export function ApprovalBar({
   onDone?: (result: ActionResult) => void;
 }) {
   const [pending, start] = useTransition();
-  const [rejecting, setRejecting] = useState(false);
+  const [mode, setMode] = useState<null | 'reject' | 'rework'>(null);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  function decide(decision: 'approve' | 'reject') {
+  function decide(decision: 'approve' | 'reject' | 'rework') {
     setError(null);
-    if (decision === 'reject' && !notes.trim()) {
+    if ((decision === 'reject' || decision === 'rework') && !notes.trim()) {
       setError('Give a reason so the submitter knows what to change.');
       return;
     }
@@ -44,7 +44,7 @@ export function ApprovalBar({
       const result = await decideApproval(payload);
       if (!result.ok) setError(result.error);
       else {
-        setRejecting(false);
+        setMode(null);
         setNotes('');
       }
       onDone?.(result);
@@ -53,31 +53,39 @@ export function ApprovalBar({
 
   return (
     <div className="wf-approval-bar">
-      {rejecting && (
+      {mode && (
         <textarea
           className="wf-textarea"
           rows={2}
-          placeholder="Reason for rejection — sent to the submitter"
+          placeholder={
+            mode === 'reject'
+              ? 'Reason for rejection — sent to the submitter'
+              : 'Reason for rework/reassign — sent to the submitter'
+          }
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
         />
       )}
       <div className="wf-approval-actions">
-        {rejecting ? (
+        {mode ? (
           <>
             <button
               type="button"
-              className="wf-btn wf-btn-danger"
+              className={mode === 'reject' ? 'wf-btn wf-btn-danger' : 'wf-btn wf-btn-primary'}
               disabled={pending}
-              onClick={() => decide('reject')}
+              onClick={() => decide(mode)}
             >
-              {pending ? 'Working…' : 'Confirm reject'}
+              {pending
+                ? 'Working…'
+                : mode === 'reject'
+                  ? 'Confirm reject'
+                  : 'Confirm rework'}
             </button>
             <button
               type="button"
               className="wf-btn wf-btn-ghost"
               onClick={() => {
-                setRejecting(false);
+                setMode(null);
                 setError(null);
               }}
             >
@@ -97,7 +105,14 @@ export function ApprovalBar({
             <button
               type="button"
               className="wf-btn wf-btn-ghost"
-              onClick={() => setRejecting(true)}
+              onClick={() => setMode('rework')}
+            >
+              <RotateCcw size={15} /> Rework/Reassign
+            </button>
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost"
+              onClick={() => setMode('reject')}
             >
               <X size={15} /> Reject
             </button>
