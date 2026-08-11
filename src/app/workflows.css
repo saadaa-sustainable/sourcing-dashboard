@@ -768,3 +768,42 @@
   border-top: 1px solid #ece7d9;
   background: #fff;
 }
+
+/* ---- Material Master: colour chips + segment counts ---- */
+.wf-chip-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
+.wf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #33302b;
+  background: #f2efe6;
+  border: 1px solid #e7e2d2;
+}
+.wf-chip-off { opacity: 0.5; text-decoration: line-through; }
+.wf-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6e695e;
+  background: rgba(0, 0, 0, 0.06);
+}
+.wf-chip-x:hover { background: rgba(0, 0, 0, 0.12); color: #161513; }
+.wf-seg-count {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.1);
+}

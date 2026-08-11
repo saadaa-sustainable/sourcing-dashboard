@@ -87,13 +87,14 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
 }
 
 async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
-  const { plan, lines, materialCodes } = await loadMaterialPlan(planMonth);
+  const { plan, lines, materialCodes, colours } = await loadMaterialPlan(planMonth);
   return (
     <MaterialPlanClient
       planMonth={planMonth}
       plan={plan}
       lines={lines}
       materialCodes={materialCodes}
+      colours={colours}
       role={role}
     />
   );

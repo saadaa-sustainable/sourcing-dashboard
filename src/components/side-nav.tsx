@@ -147,6 +147,14 @@ export function SideNav({
             <span>Fabric Master</span>
           </a>
           <a
+            href="/material-master"
+            className={activeWorkflow === '/material-master' ? 'active' : ''}
+            onClick={close}
+          >
+            <Boxes size={18} />
+            <span>Material Master</span>
+          </a>
+          <a
             href="/users"
             className={activeWorkflow === '/users' ? 'active' : ''}
             onClick={close}

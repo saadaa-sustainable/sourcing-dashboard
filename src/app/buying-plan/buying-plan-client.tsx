@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Download,
   Eye,
   Plus,
   Save,
@@ -13,7 +14,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
-import { csvObjects } from '@/lib/csv';
+import { csvObjects, downloadCsv } from '@/lib/csv';
 import { PlanPivot } from '@/components/forms/plan-pivot';
 import {
   addMonths,
@@ -43,6 +44,7 @@ type Draft = {
   efob_qty: string;
   standard_value: string;
   line_status: string; // read-only snapshot; drives the Pending/Approved pivot split
+  remark: string; // optional note, shared import contract with the material track
 };
 
 const money = new Intl.NumberFormat('en-IN', {
@@ -65,6 +67,7 @@ function toDraft(line: BuyingPlanLine): Draft {
     efob_qty: line.efob_qty?.toString() ?? '0',
     standard_value: line.standard_value?.toString() ?? '',
     line_status: line.line_status ?? '',
+    remark: line.remark ?? '',
   };
 }
 
@@ -82,6 +85,7 @@ function blankDraft(code: string, key: string): Draft {
     efob_qty: '0',
     standard_value: '',
     line_status: '',
+    remark: '',
   };
 }
 
@@ -254,6 +258,15 @@ export function BuyingPlanClient({
     return null;
   }
 
+  function downloadTemplate() {
+    const examples = productCodes.slice(0, 2).map((code) => [code, 'fob', '100', '']);
+    downloadCsv(
+      'buying-plan-template.csv',
+      ['product_code', 'po_type', 'qty', 'remark'],
+      examples,
+    );
+  }
+
   async function onCsvFile(file: File) {
     setError(null);
     setMessage(null);
@@ -264,7 +277,7 @@ export function BuyingPlanClient({
       setError('Could not read that file as CSV.');
       return;
     }
-    const acc = new Map<string, { job_work_qty: number; fob_qty: number; efob_qty: number }>();
+    const acc = new Map<string, { job_work_qty: number; fob_qty: number; efob_qty: number; remark: string }>();
     const skipped: string[] = [];
     objects.forEach((r, i) => {
       const line = i + 2; // +1 header, +1 to 1-index
@@ -275,8 +288,9 @@ export function BuyingPlanClient({
       if (!codeSet.has(code)) return skipped.push(`row ${line}: unknown code "${code}"`);
       if (!field) return skipped.push(`row ${line}: unknown po_type "${r.po_type ?? ''}"`);
       if (!Number.isFinite(qty) || qty <= 0) return skipped.push(`row ${line}: non-positive qty`);
-      const cur = acc.get(code) ?? { job_work_qty: 0, fob_qty: 0, efob_qty: 0 };
+      const cur = acc.get(code) ?? { job_work_qty: 0, fob_qty: 0, efob_qty: 0, remark: '' };
       cur[field] += qty;
+      if (r.remark) cur.remark = String(r.remark);
       acc.set(code, cur);
     });
 
@@ -297,6 +311,7 @@ export function BuyingPlanClient({
           job_work_qty: String(q.job_work_qty),
           fob_qty: String(q.fob_qty),
           efob_qty: String(q.efob_qty),
+          remark: q.remark || base.remark,
         });
       }
       return [...map.values()];
@@ -398,6 +413,9 @@ export function BuyingPlanClient({
                 event.target.value = '';
               }}
             />
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={downloadTemplate}>
+              <Download size={15} /> Template
+            </button>
             <button
               type="button"
               className="wf-btn wf-btn-ghost"
@@ -489,6 +507,7 @@ export function BuyingPlanClient({
                 <th className="num">Value to be bought</th>
                 <th className="num">Actual issued quantity</th>
                 <th className="num">Actual issued value</th>
+                <th className="input-col">Remark</th>
                 {editable && <th aria-label="Remove" />}
               </tr>
             </thead>
@@ -538,6 +557,14 @@ export function BuyingPlanClient({
                     {overPlan && <span className="wf-over-tag">over plan</span>}
                   </td>
                   <td className="num">{money.format(actualValue)}</td>
+                  <td className="input-col">
+                    <input
+                      value={row.remark}
+                      disabled={!editable}
+                      placeholder="optional"
+                      onChange={(event) => patch(row.key, 'remark', event.target.value)}
+                    />
+                  </td>
                   {editable && (
                     <td>
                       <button
@@ -558,7 +585,7 @@ export function BuyingPlanClient({
               ))}
               {!view.length && (
                 <tr>
-                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
+                  <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
                     No product codes added yet. Discontinued variants are excluded
                     automatically.
                   </td>
@@ -574,6 +601,7 @@ export function BuyingPlanClient({
                   <td className="num strong">{money.format(totals.value)}</td>
                   <td className="num strong">{fmt.format(totals.actualQty)}</td>
                   <td className="num strong">{money.format(totals.actualValue)}</td>
+                  <td />
                   {editable && <td />}
                 </tr>
               </tfoot>

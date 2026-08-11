@@ -10,8 +10,11 @@ import type {
   BuyingPlanLine,
   BuyingPlanLineView,
   CashFlowMonth,
+  Colour,
   DiscontinueRequest,
   FabricMaster,
+  MaterialCode,
+  MaterialMaster,
   InwardPlanGroup,
   NpdPromotionCandidate,
   PoApproval,
@@ -400,17 +403,44 @@ export async function loadMaterialPlan(planMonth = monthStart()) {
     lines.push(...((data ?? []) as BuyingPlanLine[]));
   }
 
-  const { data: mats } = await supabase
-    .from('sd_material_codes')
-    .select('material_code, fabric_name')
-    .order('material_code')
-    .limit(PAGE_SIZE);
+  const [{ data: mats }, { data: colours }] = await Promise.all([
+    supabase
+      .from('sd_material_codes')
+      .select('material_code, material_type, fabric_name, colour, base_fabric_code')
+      .limit(PAGE_SIZE),
+    supabase
+      .from('sd_colour_master')
+      .select('colour, is_active')
+      .eq('is_active', true)
+      .order('colour')
+      .limit(PAGE_SIZE),
+  ]);
 
   return {
     plan: (plan as BuyingPlan | null) ?? null,
     lines,
-    materialCodes: (mats ?? []) as { material_code: string; fabric_name: string | null }[],
+    materialCodes: (mats ?? []) as MaterialCode[],
+    colours: ((colours ?? []) as Colour[]).map((c) => c.colour),
     planMonth,
+  };
+}
+
+/** Full material master (all types) + active colours, for the Material Master page. */
+export async function loadMaterialMaster(): Promise<{
+  materials: MaterialMaster[];
+  colours: Colour[];
+  fabricCodes: string[];
+}> {
+  const supabase = await client();
+  const [{ data: materials }, { data: colours }, { data: fabrics }] = await Promise.all([
+    supabase.from('sd_material_master').select('*').order('material_type').order('material_code').limit(PAGE_SIZE),
+    supabase.from('sd_colour_master').select('colour, is_active').order('colour').limit(PAGE_SIZE),
+    supabase.from('sd_fabric_master').select('fabric_code').eq('is_active', true).order('fabric_code').limit(PAGE_SIZE),
+  ]);
+  return {
+    materials: (materials ?? []) as MaterialMaster[],
+    colours: (colours ?? []) as Colour[],
+    fabricCodes: ((fabrics ?? []) as { fabric_code: string }[]).map((f) => f.fabric_code),
   };
 }
 

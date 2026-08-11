@@ -51,6 +51,32 @@ export type FabricMaster = {
   updated_at: string;
 };
 
+export type MaterialType = 'raw' | 'dyed' | 'trim';
+
+/** One row of the unified material master (raw fabric / dyed fabric / trim). */
+export type MaterialMaster = {
+  material_code: string;
+  material_type: MaterialType;
+  name: string | null;
+  colour: string | null; // dyed only
+  base_fabric_code: string | null; // dyed only
+  default_uom: string | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
+/** A managed colour, used to build dyed-fabric codes. */
+export type Colour = { colour: string; is_active: boolean };
+
+/** Active material code as consumed by the Buying Plan (sd_material_codes view). */
+export type MaterialCode = {
+  material_code: string;
+  material_type: MaterialType;
+  fabric_name: string | null;
+  colour: string | null;
+  base_fabric_code: string | null;
+};
+
 /** FG-master auto-rule: NPD-not-launched product with a colour selling >50 pcs. */
 export type NpdPromotionCandidate = {
   product_code: string;
@@ -92,6 +118,9 @@ export type BuyingPlanLine = {
   uom: string | null; // material track only
   line_status: SdStatus | null; // per-line approval state (line-item granularity)
   rework_notes: string | null;
+  remark: string | null; // free note, e.g. carried from a CSV import
+  material_type: string | null; // material track: raw | dyed | trim
+  job_rate: number | null; // material track: Job-Work rate (purchase rate = standard_value)
 };
 
 /** Everything derived. Never stored — same discipline as business-logic.ts. */

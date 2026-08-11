@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { ClipboardList, Eye, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { useMemo, useRef, useState, useTransition } from 'react';
+import { ClipboardList, Download, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
   addMonths,
@@ -11,19 +11,75 @@ import {
   isPlanWindowOpen,
   monthLabel,
 } from '@/lib/forms/approval';
+import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
-import type { BuyingPlan, BuyingPlanLine, SdRole, SdStatus } from '@/lib/forms/types';
+import type {
+  BuyingPlan,
+  BuyingPlanLine,
+  MaterialCode,
+  MaterialType,
+  SdRole,
+  SdStatus,
+} from '@/lib/forms/types';
 
 const money = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
   maximumFractionDigits: 0,
 });
+const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const num = (v: string) => Number(v) || 0;
 const UOMS = ['metres', 'kg', 'pcs', 'rolls', 'sets'];
 
-type Row = { key: string; material_code: string; quantity: string; uom: string; rate: string };
+const TYPES: { key: MaterialType; label: string }[] = [
+  { key: 'raw', label: 'Raw material' },
+  { key: 'dyed', label: 'Dyed / finished' },
+  { key: 'trim', label: 'Trims' },
+];
+const TYPE_LABEL: Record<MaterialType, string> = {
+  raw: 'Raw material',
+  dyed: 'Dyed / finished',
+  trim: 'Trim',
+};
+
+type Row = {
+  key: string;
+  material_code: string;
+  material_type: MaterialType;
+  job_qty: string; // Job Work (e.g. paying for dyeing) quantity
+  job_rate: string;
+  purchase_qty: string; // Purchase / FOB (buying outright) quantity
+  purchase_rate: string;
+  uom: string;
+  remark: string;
+};
+
+// Legacy material lines predate material_type — treat them as raw.
+function asType(v: string | null): MaterialType {
+  return v === 'dyed' || v === 'trim' ? v : 'raw';
+}
+
+function toRow(l: BuyingPlanLine): Row {
+  return {
+    key: `line-${l.id}`,
+    material_code: l.product_code,
+    material_type: asType(l.material_type),
+    job_qty: l.job_work_qty?.toString() ?? '',
+    job_rate: l.job_rate?.toString() ?? '',
+    purchase_qty: l.fob_qty?.toString() ?? '',
+    purchase_rate: l.standard_value?.toString() ?? '',
+    uom: l.uom ?? 'metres',
+    remark: l.remark ?? '',
+  };
+}
+
+function poTypeToField(value: string): 'job' | 'purchase' | null {
+  const n = value.trim().toLowerCase().replace(/[^a-z]/g, '');
+  if (n === 'job' || n === 'jobwork') return 'job';
+  if (n === 'purchase' || n === 'fob' || n === 'buy') return 'purchase';
+  return null;
+}
 
 export function MaterialPlanClient({
   planMonth,
@@ -35,39 +91,153 @@ export function MaterialPlanClient({
   planMonth: string;
   plan: BuyingPlan | null;
   lines: BuyingPlanLine[];
-  materialCodes: { material_code: string; fabric_name: string | null }[];
+  materialCodes: MaterialCode[];
+  colours: string[];
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
   const editable = canEdit(role, status);
-  const [rows, setRows] = useState<Row[]>(() =>
-    lines.map((l) => ({
-      key: `line-${l.id}`,
-      material_code: l.product_code,
-      quantity: l.fob_qty?.toString() ?? '',
-      uom: l.uom ?? 'metres',
-      rate: l.standard_value?.toString() ?? '',
-    })),
-  );
+  const [rows, setRows] = useState<Row[]>(() => lines.map(toRow));
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-
-  // Same View / Input split as the Finished-Goods track: a running read-only
-  // view by default, switch to Input to fill or edit the month.
   const [mode, setMode] = useState<'view' | 'input'>('view');
+  const [type, setType] = useState<MaterialType>('raw');
+  const [addCode, setAddCode] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const view = rows.map((r) => ({ row: r, value: num(r.quantity) * num(r.rate) }));
-  const total = view.reduce((s, v) => s + v.value, 0);
+  const codeMap = useMemo(
+    () => new Map(materialCodes.map((c) => [c.material_code, c])),
+    [materialCodes],
+  );
+
+  const view = rows.map((r) => {
+    const jobValue = num(r.job_qty) * num(r.job_rate);
+    const purchaseValue = num(r.purchase_qty) * num(r.purchase_rate);
+    return {
+      row: r,
+      jobValue,
+      purchaseValue,
+      value: jobValue + purchaseValue,
+      colour: codeMap.get(r.material_code)?.colour ?? null,
+    };
+  });
+  const totals = view.reduce(
+    (a, v) => ({ job: a.job + v.jobValue, purchase: a.purchase + v.purchaseValue }),
+    { job: 0, purchase: 0 },
+  );
+  const grandTotal = totals.job + totals.purchase;
+
+  // Codes for the active type not already added — for the "Add code" picker.
+  const usedCodes = useMemo(() => new Set(rows.map((r) => r.material_code)), [rows]);
+  const available = materialCodes.filter(
+    (c) => c.material_type === type && !usedCodes.has(c.material_code),
+  );
+  const shownRows = view.filter((v) => v.row.material_type === type);
 
   const set = (key: string, field: keyof Row, value: string) =>
     setRows((cur) => cur.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
 
-  function addRow() {
+  function addRow(code: string) {
+    if (!code) return;
+    const meta = codeMap.get(code);
     setRows((cur) => [
       ...cur,
-      { key: `new-${Date.now()}`, material_code: '', quantity: '', uom: 'metres', rate: '' },
+      {
+        key: `new-${code}-${Date.now()}`,
+        material_code: code,
+        material_type: (meta?.material_type as MaterialType) ?? type,
+        job_qty: '',
+        job_rate: '',
+        purchase_qty: '',
+        purchase_rate: '',
+        uom: 'metres',
+        remark: '',
+      },
     ]);
+    setAddCode('');
+  }
+
+  function downloadTemplate() {
+    const examples = materialCodes.slice(0, 2).map((c) => [
+      c.material_type,
+      c.material_code,
+      c.material_type === 'trim' ? 'purchase' : 'job',
+      '100',
+      '',
+    ]);
+    downloadCsv(
+      'material-buying-plan-template.csv',
+      ['material_type', 'material_code', 'po_type', 'quantity', 'remark'],
+      examples,
+    );
+  }
+
+  async function onCsvFile(file: File) {
+    setError(null);
+    setMessage(null);
+    let objects: Record<string, string>[];
+    try {
+      objects = csvObjects(await file.text());
+    } catch {
+      setError('Could not read that file as CSV.');
+      return;
+    }
+    const acc = new Map<string, { job: number; purchase: number; remark: string }>();
+    const skipped: string[] = [];
+    objects.forEach((r, i) => {
+      const line = i + 2;
+      const code = String(r.material_code ?? '').trim().toUpperCase();
+      const field = poTypeToField(String(r.po_type ?? ''));
+      const qty = Number(r.quantity);
+      if (!code) return skipped.push(`row ${line}: missing material code`);
+      if (!codeMap.has(code)) return skipped.push(`row ${line}: unknown code "${code}"`);
+      if (!field) return skipped.push(`row ${line}: unknown po_type "${r.po_type ?? ''}"`);
+      if (!Number.isFinite(qty) || qty <= 0) return skipped.push(`row ${line}: non-positive quantity`);
+      const cur = acc.get(code) ?? { job: 0, purchase: 0, remark: '' };
+      cur[field] += qty;
+      if (r.remark) cur.remark = String(r.remark);
+      acc.set(code, cur);
+    });
+
+    if (!acc.size) {
+      setError(
+        `No valid rows imported.${skipped.length ? ` ${skipped.slice(0, 5).join('; ')}` : ' Expected headers: material_code, po_type, quantity.'}`,
+      );
+      return;
+    }
+
+    setRows((cur) => {
+      const map = new Map(cur.map((r) => [r.material_code, r] as const));
+      let seq = 0;
+      for (const [code, q] of acc) {
+        const meta = codeMap.get(code);
+        const base: Row = map.get(code) ?? {
+          key: `csv-${code}-${seq++}`,
+          material_code: code,
+          material_type: (meta?.material_type as MaterialType) ?? 'raw',
+          job_qty: '',
+          job_rate: '',
+          purchase_qty: '',
+          purchase_rate: '',
+          uom: meta?.material_type === 'trim' ? 'pcs' : 'metres',
+          remark: '',
+        };
+        map.set(code, {
+          ...base,
+          job_qty: q.job ? String(q.job) : base.job_qty,
+          purchase_qty: q.purchase ? String(q.purchase) : base.purchase_qty,
+          remark: q.remark || base.remark,
+        });
+      }
+      return [...map.values()];
+    });
+    setMessage(
+      `Imported ${acc.size} material(s).` +
+        (skipped.length
+          ? ` Skipped ${skipped.length} row(s): ${skipped.slice(0, 6).join('; ')}${skipped.length > 6 ? '…' : ''}`
+          : ''),
+    );
   }
 
   function save() {
@@ -77,9 +247,13 @@ export function MaterialPlanClient({
       .filter((r) => r.material_code.trim())
       .map((r) => ({
         product_code: r.material_code.trim(),
-        fob_qty: r.quantity,
-        standard_value: r.rate,
+        material_type: r.material_type,
+        job_work_qty: r.job_qty,
+        job_rate: r.job_rate,
+        fob_qty: r.purchase_qty,
+        standard_value: r.purchase_rate,
         uom: r.uom,
+        remark: r.remark,
       }));
     const payload = new FormData();
     payload.set('plan_month', planMonth);
@@ -131,47 +305,89 @@ export function MaterialPlanClient({
           </Field>
           <StatusBadge status={status} />
           <div className="segment wf-segment">
-            <button
-              type="button"
-              className={mode === 'view' ? 'active' : ''}
-              onClick={() => setMode('view')}
-            >
+            <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
             </button>
-            <button
-              type="button"
-              className={mode === 'input' ? 'active' : ''}
-              onClick={() => setMode('input')}
-            >
+            <button type="button" className={mode === 'input' ? 'active' : ''} onClick={() => setMode('input')}>
               <ClipboardList size={14} /> Input
             </button>
           </div>
         </div>
         {editable && mode === 'input' && (
           <div className="wf-toolbar-right">
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={addRow}>
-              <Plus size={15} /> Add fabric / material
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void onCsvFile(file);
+                event.target.value = '';
+              }}
+            />
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={downloadTemplate}>
+              <Download size={15} /> Template
             </button>
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => fileRef.current?.click()}>
+              <Upload size={15} /> Import CSV
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Material type — the primary filter across the track */}
+      <div className="wf-toolbar">
+        <div className="segment wf-segment">
+          {TYPES.map((t) => {
+            const count = rows.filter((r) => r.material_type === t.key).length;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                className={type === t.key ? 'active' : ''}
+                onClick={() => setType(t.key)}
+              >
+                {t.label}
+                {count > 0 && <span className="wf-seg-count">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {editable && mode === 'input' && (
+          <div className="wf-toolbar-right">
+            <select className="wf-add-select" value={addCode} onChange={(e) => addRow(e.target.value)} disabled={!available.length}>
+              <option value="">
+                {available.length ? `Add ${TYPE_LABEL[type].toLowerCase()} code (${available.length})` : 'All codes added'}
+              </option>
+              {available.map((c) => (
+                <option key={c.material_code} value={c.material_code}>
+                  {c.material_code}
+                  {c.colour ? ` · ${c.colour}` : ''}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
 
       {!isPlanWindowOpen(planMonth) && (
         <Notice tone="warn">
-          The window for {monthLabel(planMonth)} opens seven days before the month
-          starts. You can still draft ahead.
+          The window for {monthLabel(planMonth)} opens seven days before the month starts. You can
+          still draft ahead.
         </Notice>
       )}
 
       <Notice tone="info">
-        Fabric / raw-material buying for the month — the same Save → Submit → Approve
-        flow as Finished Goods, on its own track. Value = quantity × rate.
+        Fabric / raw-material buying, on its own approval track. <strong>Job Work</strong> pays for a
+        service (e.g. dyeing); <strong>Purchase</strong> buys the material outright — two distinct
+        budgets. Rates are entered here for now; a shared Standard Cost will value them automatically.
       </Notice>
 
       {!editable && mode === 'input' && (
         <Notice tone="warn">
-          This month’s plan is {status === 'approved' ? 'approved and locked' : 'read-only'}.
-          Pick another month above to draft a new fabric / material plan.
+          This month’s plan is {status === 'approved' ? 'approved and locked' : 'read-only'}. Pick
+          another month above to draft a new plan.
         </Notice>
       )}
 
@@ -183,59 +399,9 @@ export function MaterialPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {mode === 'view' &&
-        (view.length ? (
-          <>
-            <div className="wf-bignum-grid">
-              <div className="wf-bignum">
-                <span className="metric-label">Total fabric / material value</span>
-                <strong>{money.format(total)}</strong>
-                <small>
-                  {view.length} line(s) · {planMonth.slice(0, 7)}
-                </small>
-              </div>
-            </div>
-            <div className="table-panel">
-              <div className="table-scroll">
-                <table className="wide-table">
-                  <thead>
-                    <tr>
-                      <th>Fabric / material code</th>
-                      <th className="num">Quantity</th>
-                      <th>UOM</th>
-                      <th className="num">Rate</th>
-                      <th className="num">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {view.map(({ row, value }) => (
-                      <tr key={row.key}>
-                        <td className="mono">{row.material_code || '—'}</td>
-                        <td className="num">{row.quantity || '—'}</td>
-                        <td>{row.uom}</td>
-                        <td className="num">{row.rate ? money.format(num(row.rate)) : '—'}</td>
-                        <td className="num strong">{money.format(value)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={4}>Total</td>
-                      <td className="num strong">{money.format(total)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="empty-state">
-            <p>
-              Nothing planned yet — switch to Input to fill this month’s fabric /
-              material plan.
-            </p>
-          </div>
-        ))}
+      {mode === 'view' && (
+        <MaterialView view={view} />
+      )}
 
       {mode === 'input' && (
         <>
@@ -244,41 +410,37 @@ export function MaterialPlanClient({
               <table className="wide-table wf-grid">
                 <thead>
                   <tr>
-                    <th>Fabric / material code</th>
-                    <th className="num input-col">Quantity</th>
+                    <th>{TYPE_LABEL[type]} code</th>
+                    {type === 'dyed' && <th>Colour</th>}
+                    <th className="num input-col">Job Work qty</th>
+                    <th className="num input-col">Job rate</th>
+                    <th className="num input-col">Purchase qty</th>
+                    <th className="num input-col">Purchase rate</th>
                     <th>UOM</th>
-                    <th className="num input-col">Rate</th>
+                    <th className="input-col">Remark</th>
                     <th className="num">Value</th>
                     {editable && <th aria-label="Remove" />}
                   </tr>
                 </thead>
                 <tbody>
-                  {view.map(({ row, value }) => (
+                  {shownRows.map(({ row, value, colour }) => (
                     <tr key={row.key}>
-                      <td className="input-col">
-                        <input
-                          list="material-codes"
-                          value={row.material_code}
-                          placeholder="RM code / fabric"
-                          disabled={!editable}
-                          onChange={(e) => set(row.key, 'material_code', e.target.value)}
-                        />
+                      <td className="mono">{row.material_code}</td>
+                      {type === 'dyed' && <td>{colour || '—'}</td>}
+                      <td className="num input-col">
+                        <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
                       </td>
                       <td className="num input-col">
-                        <input
-                          type="number"
-                          min={0}
-                          value={row.quantity}
-                          disabled={!editable}
-                          onChange={(e) => set(row.key, 'quantity', e.target.value)}
-                        />
+                        <input type="number" min={0} value={row.job_rate} disabled={!editable} onChange={(e) => set(row.key, 'job_rate', e.target.value)} />
+                      </td>
+                      <td className="num input-col">
+                        <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
+                      </td>
+                      <td className="num input-col">
+                        <input type="number" min={0} value={row.purchase_rate} disabled={!editable} onChange={(e) => set(row.key, 'purchase_rate', e.target.value)} />
                       </td>
                       <td>
-                        <select
-                          value={row.uom}
-                          disabled={!editable}
-                          onChange={(e) => set(row.key, 'uom', e.target.value)}
-                        >
+                        <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
                           {UOMS.map((u) => (
                             <option key={u} value={u}>
                               {u}
@@ -286,84 +448,45 @@ export function MaterialPlanClient({
                           ))}
                         </select>
                       </td>
-                      <td className="num input-col">
-                        <input
-                          type="number"
-                          min={0}
-                          value={row.rate}
-                          disabled={!editable}
-                          onChange={(e) => set(row.key, 'rate', e.target.value)}
-                        />
+                      <td className="input-col">
+                        <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
                       </td>
                       <td className="num strong">{money.format(value)}</td>
                       {editable && (
                         <td>
-                          <button
-                            type="button"
-                            className="wf-icon-btn"
-                            aria-label={`Remove ${row.material_code}`}
-                            onClick={() =>
-                              setRows((cur) => cur.filter((r) => r.key !== row.key))
-                            }
-                          >
+                          <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
                             <Trash2 size={14} />
                           </button>
                         </td>
                       )}
                     </tr>
                   ))}
-                  {!view.length && (
+                  {!shownRows.length && (
                     <tr>
-                      <td colSpan={editable ? 6 : 5} className="wf-empty-cell">
-                        {editable
-                          ? 'No fabric lines yet — add one above.'
-                          : 'No fabric lines for this month.'}
+                      <td colSpan={type === 'dyed' ? (editable ? 10 : 9) : editable ? 9 : 8} className="wf-empty-cell">
+                        No {TYPE_LABEL[type].toLowerCase()} lines yet
+                        {editable ? ' — add a code above or import a CSV.' : '.'}
                       </td>
                     </tr>
                   )}
                 </tbody>
-                {view.length > 0 && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={4}>Total</td>
-                      <td className="num strong">{money.format(total)}</td>
-                      {editable && <td />}
-                    </tr>
-                  </tfoot>
-                )}
               </table>
-              <datalist id="material-codes">
-                {materialCodes.map((m) => (
-                  <option key={m.material_code} value={m.material_code}>
-                    {m.fabric_name ?? ''}
-                  </option>
-                ))}
-              </datalist>
             </div>
           </div>
 
           <div className="wf-footer-bar">
             <p className="wf-footer-note">
-              Fabric buying value for the month, on its own approval track.
+              Job Work {money.format(totals.job)} · Purchase {money.format(totals.purchase)} ·{' '}
+              <strong>Total {money.format(grandTotal)}</strong>
             </p>
             <div className="wf-footer-actions">
               {editable && (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost"
-                  onClick={save}
-                  disabled={pending}
-                >
+                <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
                   <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
                 </button>
               )}
               {canSubmit(role, status) && (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary"
-                  onClick={submit}
-                  disabled={pending || !plan?.id}
-                >
+                <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id}>
                   <Send size={15} /> Submit for approval
                 </button>
               )}
@@ -381,6 +504,97 @@ export function MaterialPlanClient({
           </div>
         </>
       )}
+    </>
+  );
+}
+
+type ViewItem = {
+  row: Row;
+  jobValue: number;
+  purchaseValue: number;
+  value: number;
+  colour: string | null;
+};
+
+function MaterialView({ view }: { view: ViewItem[] }) {
+  const planned = view.filter((v) => v.value > 0);
+  if (!planned.length) {
+    return (
+      <div className="empty-state">
+        <p>Nothing planned yet — switch to Input to fill this month’s material plan.</p>
+      </div>
+    );
+  }
+  const groups = TYPES.map((t) => {
+    const items = planned.filter((v) => v.row.material_type === t.key);
+    const job = items.reduce((a, v) => a + v.jobValue, 0);
+    const purchase = items.reduce((a, v) => a + v.purchaseValue, 0);
+    return { ...t, items, job, purchase, total: job + purchase };
+  }).filter((g) => g.items.length);
+  const gt = groups.reduce(
+    (a, g) => ({ job: a.job + g.job, purchase: a.purchase + g.purchase }),
+    { job: 0, purchase: 0 },
+  );
+
+  return (
+    <>
+      <div className="wf-bignum-grid">
+        <div className="wf-bignum">
+          <span className="metric-label">Job Work budget</span>
+          <strong>{money.format(gt.job)}</strong>
+          <small>services (e.g. dyeing)</small>
+        </div>
+        <div className="wf-bignum">
+          <span className="metric-label">Purchase budget</span>
+          <strong>{money.format(gt.purchase)}</strong>
+          <small>material bought outright</small>
+        </div>
+        <div className="wf-bignum">
+          <span className="metric-label">Total material value</span>
+          <strong>{money.format(gt.job + gt.purchase)}</strong>
+          <small>{planned.length} line(s)</small>
+        </div>
+      </div>
+
+      {groups.map((g) => (
+        <div className="table-panel" key={g.key}>
+          <div className="table-meta">
+            <h3>{g.label}</h3>
+            <span>
+              Job {money.format(g.job)} · Purchase {money.format(g.purchase)} · Total{' '}
+              {money.format(g.total)}
+            </span>
+          </div>
+          <div className="table-scroll">
+            <table className="wide-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  {g.key === 'dyed' && <th>Colour</th>}
+                  <th className="num">Job qty</th>
+                  <th className="num">Purchase qty</th>
+                  <th>UOM</th>
+                  <th>Remark</th>
+                  <th className="num">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.items.map((v) => (
+                  <tr key={v.row.key}>
+                    <td className="mono">{v.row.material_code}</td>
+                    {g.key === 'dyed' && <td>{v.colour || '—'}</td>}
+                    <td className="num">{v.row.job_qty ? fmt.format(num(v.row.job_qty)) : '—'}</td>
+                    <td className="num">{v.row.purchase_qty ? fmt.format(num(v.row.purchase_qty)) : '—'}</td>
+                    <td>{v.row.uom}</td>
+                    <td>{v.row.remark || '—'}</td>
+                    <td className="num strong">{money.format(v.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </>
   );
 }
