@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, tnaSequenceErrors, vendorBucket } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -123,6 +123,13 @@ describe('sourcing business rules', () => {
     assert.equal(computeInternalStatus({ delayDays: 14, highRisk: true }), 'Overdue');
     assert.equal(computeInternalStatus({ delayDays: 0, highRisk: true }), 'High Risk');
     assert.equal(computeInternalStatus({ delayDays: 0, highRisk: false }), 'On Track');
+  });
+  it('flags a stage due today, distinct from overdue (Layer 3 Due Today)', () => {
+    const t = new Date('2026-07-15T00:00:00Z');
+    assert.equal(isTnaDueToday({ ...tna, gpt_tna_date: '2026-07-15' }, t), true);
+    assert.equal(isTnaDueToday({ ...tna, gpt_tna_date: '2026-07-10' }, t), false);
+    assert.equal(isTnaDueToday(tna, t), false);
+    assert.equal(buildTrackerRows([base], [], [], [{ ...tna, gpt_tna_date: '2026-07-15' }], t)[0].dueToday, true);
   });
   it('surfaces TNA milestones due today and overdue as events, skipping future ones', () => {
     const today = new Date('2026-07-15T00:00:00Z');

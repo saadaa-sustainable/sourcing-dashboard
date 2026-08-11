@@ -138,6 +138,8 @@ export type TrackerRow = {
   stage: string;
   // High risk = any critical-path TNA stage overdue as of today (Mahesh's rule).
   highRisk: boolean;
+  // A TNA critical-path stage is planned for today and not yet done (Layer 3 - act now).
+  dueToday: boolean;
   // Four status dimensions (see business-logic): live EasyCom status refined
   // with partial-delivery, and the single internal computed status.
   orderedQty: number;

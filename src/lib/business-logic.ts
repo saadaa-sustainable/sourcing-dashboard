@@ -78,6 +78,18 @@ export function isHighRiskLine(
   return isOpenPo(row) && isTnaHighRisk(tnaByPo.get(key(row.po_ref_num)), today);
 }
 
+// Layer 3 (Due Today): a critical-path TNA stage is planned for TODAY and not yet
+// done. Distinct from High Risk / Overdue (already-past) - a live act-now signal.
+export function isTnaDueToday(tna: TnaRecord | null | undefined, today = istToday()): boolean {
+  if (!tna) return false;
+  for (const stage of TNA_STAGES) {
+    if (tna[stage.actualField]) continue; // stage done
+    const planned = parseIsoDate(tna[stage.tnaField]);
+    if (planned && daysBetween(today, planned) === 0) return true; // planned exactly today
+  }
+  return false;
+}
+
 export function ageingBucket(edd: string | null | undefined, today = istToday()) {
   const date = parseIsoDate(edd);
   if (!date) return 'No EDD';
@@ -270,7 +282,7 @@ export function buildTrackerRows(
       pendingQty: rows.reduce((sum, row) => sum + number(row.pending_qty_actual), 0),
       pendingValue: rows.reduce((sum, row) => sum + number(row.pending_qty_actual) * number(row.item_price), 0),
       edd: first.expected_delivery_date, delayDays, delayBucket: ageingBucket(first.expected_delivery_date, today),
-      stage: deriveTnaStage(tna), highRisk, skuRows: rows, tna,
+      stage: deriveTnaStage(tna), highRisk, dueToday: isTnaDueToday(tna, today), skuRows: rows, tna,
       orderedQty, receivedQty, easycomStatus,
       internalStatus: computeInternalStatus({ delayDays, highRisk }),
       sequenceError: hasTnaSequenceError(tna),

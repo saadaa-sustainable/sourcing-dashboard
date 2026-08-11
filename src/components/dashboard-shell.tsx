@@ -35,7 +35,6 @@ import {
 import {
   aggregateProductRows,
   buildTrackerRows,
-  INTERNAL_STATUSES,
   buildVendorRollups,
   createLookups,
   isDelayedPo,
@@ -72,7 +71,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "One row = one open PO", text: "Each row is a purchase order grouped by PO number, product and delivery date. 'Variants' counts the distinct variants (e.g. colours) on that PO — it is not a piece count." },
     { title: "Pending, Delivered & EasyCom", text: "Pending qty/value are what is still to come; Delivered is received ÷ ordered. The EasyCom column is the delivery/closure state (Layer 1): Approved (nothing received), Partially Received, or Closure Pending (≥95% received — functionally done but not yet closed on EasyCom, shown amber). Completed / Approval-Pending POs stay out of this open view." },
     { title: "EDD, Delay & Days Overdue", text: "EDD is the promised delivery date. Delay = today − EDD (0 shows as On time). Days Overdue buckets that delay: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD." },
-    { title: "TNA / Risk status (Layer 2)", text: "One live status by precedence: Overdue (EDD is past — EDD-only) → High Risk (any critical-path TNA stage is past its planned date with no actual yet — purely TNA, not demand or inventory) → On Track (inverse of High Risk). The tabs filter to each.", tip: "High Risk is a snapshot — it clears the moment the overdue stage is marked done." },
+    { title: "Task-list tabs", text: "Filter lenses over this one table (a row can match several): High Risk (any critical-path TNA stage past its planned date, not done — pure TNA), On Time (inverse of High Risk), Overdue (EDD is past — EDD-only), PO Not Closed on EE (received ≥95% but not closed on EasyCom), and Due Today (a TNA stage is planned for today and not done — act now, distinct from already-overdue). The Internal status column still shows the Layer-2 precedence Overdue → High Risk → On Track.", tip: "High Risk is a live snapshot — it clears the moment the overdue stage is marked done." },
     { title: "TNA stage", text: "The earliest production stage not yet completed: PP Sample → GPT → Cutting → Inline / Midline QC → First Delivery → PO Closer. Shows '… Pending', 'Production' when every stage is done, or 'Not in TNA Tracker' when no timeline exists." },
     { title: "Per-stage TNA vs Actual", text: "Each stage shows its planned (TNA) date next to the actual date, plus a per-stage verdict: On Time, 'On Time · N days early', 'Delay N d', or Pending. There is no single lumped total — delay is read stage by stage.", tip: "Scroll right for PP, GPT, Cutting, Inline and PO Closer." },
     { title: "TNA sequence (data-entry check)", text: "Stages are strictly linear. If a later stage is marked done while an earlier one is still blank, it is flagged as a data-entry error with a lock icon, and the earliest still-pending stage is treated as the real status rather than skipping ahead." },
@@ -837,6 +836,17 @@ const stageDelayText = (planned?: string | null, actual?: string | null) => {
   return days ? `On Time ${days}d early` : "On Time";
 };
 
+// The sourcing task-list tabs - independent filter lenses over the one master table
+// (High Risk/On Time/Overdue = Layer 2, PO Not Closed on EE = Layer 1, Due Today = Layer 3).
+// A row can match several; each tab is a lens, not a partition.
+const TASK_TABS: { label: string; test: (r: TrackerRow) => boolean }[] = [
+  { label: "High Risk", test: (r) => r.highRisk },
+  { label: "On Time", test: (r) => !r.highRisk },
+  { label: "Overdue", test: (r) => r.delayDays > 0 },
+  { label: "PO Not Closed on EE", test: (r) => r.easycomStatus === "Closure Pending" },
+  { label: "Due Today", test: (r) => r.dueToday },
+];
+
 function TrackerTab({
   data,
   onView,
@@ -890,12 +900,11 @@ function TrackerTab({
     (row) => passesBase(row) && (!filters.bucket || row.delayBucket === filters.bucket),
   );
   const statusCounts: Record<string, number> = { All: preStatus.length };
-  for (const st of INTERNAL_STATUSES) {
-    statusCounts[st] = preStatus.filter((row) => row.internalStatus === st).length;
+  for (const tab of TASK_TABS) {
+    statusCounts[tab.label] = preStatus.filter(tab.test).length;
   }
-  const rows = filters.status
-    ? preStatus.filter((row) => row.internalStatus === filters.status)
-    : preStatus;
+  const activeTab = TASK_TABS.find((t) => t.label === filters.status);
+  const rows = activeTab ? preStatus.filter(activeTab.test) : preStatus;
   const missingTnaCount = all.filter((r) => r.tnaMissing).length;
   const paged = usePaged(rows);
   return (
@@ -972,13 +981,13 @@ function TrackerTab({
         >
           All ({fmt.format(statusCounts.All)})
         </button>
-        {INTERNAL_STATUSES.map((st) => (
+        {TASK_TABS.map((tab) => (
           <button
-            key={st}
-            className={filters.status === st ? "active" : ""}
-            onClick={() => set({ ...filters, status: st })}
+            key={tab.label}
+            className={filters.status === tab.label ? "active" : ""}
+            onClick={() => set({ ...filters, status: tab.label })}
           >
-            {st} ({fmt.format(statusCounts[st] ?? 0)})
+            {tab.label} ({fmt.format(statusCounts[tab.label] ?? 0)})
           </button>
         ))}
       </div>
@@ -1014,6 +1023,7 @@ function TrackerTab({
                 "Days Overdue",
                 "TNA stage",
                 "Internal status",
+                "Due today",
                 "TNA sequence",
                 "TNA data",
                 "PP TNA",
@@ -1049,6 +1059,7 @@ function TrackerTab({
                 row.delayBucket,
                 row.stage,
                 row.internalStatus,
+                row.dueToday ? "Due today" : "",
                 row.sequenceError ? "ERROR - out of order" : "OK",
                 row.tnaMissing ? "Missing" : "OK",
                 row.tna?.pp_sample_tna_date ?? "",
