@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { Save } from 'lucide-react';
-import { saveReceivableInput } from '@/lib/forms/actions';
+import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
 import type { ReceivablePlanRow } from '@/lib/forms/types';
 
@@ -23,6 +23,14 @@ export function ReceivablePlanClient({
 }) {
   const [search, setSearch] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [submitting, startSubmit] = useTransition();
+
+  function submitAll() {
+    startSubmit(async () => {
+      const res = await submitReceivablePlan();
+      setMessage(res.ok ? res.message ?? 'Submitted.' : res.error);
+    });
+  }
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -57,6 +65,16 @@ export function ReceivablePlanClient({
           {shown.length} rows
           {oosCount > 0 && <em className="wf-chip-warn">{oosCount} OOS</em>}
         </span>
+        {editable && (
+          <button
+            type="button"
+            className="wf-btn wf-btn-primary wf-btn-sm"
+            disabled={submitting}
+            onClick={submitAll}
+          >
+            {submitting ? 'Submitting…' : 'Submit week for approval'}
+          </button>
+        )}
       </div>
 
       <div className="table-panel wf-grid-panel">

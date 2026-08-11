@@ -344,6 +344,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   discontinue: 'sd_discontinue_request',
   po_approval: 'sd_po_approval',
   standard_cost: 'sd_standard_cost',
+  receivable_plan: 'sd_receivable_input',
 };
 
 // Entities that carry line items eligible for line-item rework.
@@ -363,13 +364,20 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   const notes = String(formData.get('notes') ?? '').trim();
   const table = TABLE[entityType];
 
-  if (!table || !entityId) return fail('Invalid approval request.');
   if (decision !== 'approve' && decision !== 'reject' && decision !== 'rework') {
     return fail('Invalid decision.');
   }
   if ((decision === 'reject' || decision === 'rework') && !notes) {
     return fail('A reason is required to reject or send for rework.');
   }
+
+  // Receivable plan is a batch of row_key-keyed rows, not one id record — decide
+  // the whole submitted batch in one go (keeps ApprovalBar reusable for it).
+  if (entityType === 'receivable_plan') {
+    return decideReceivablePlanBulk(user.role, user.email, decision, notes, label);
+  }
+
+  if (!table || !entityId) return fail('Invalid approval request.');
 
   const supabase = await supa();
   const { data: row } = await supabase
@@ -494,6 +502,62 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   revalidatePath('/buying-plan');
   revalidatePath('/po-approval');
   return done('Lines sent for rework.');
+}
+
+async function decideReceivablePlanBulk(
+  role: SdRole,
+  email: string,
+  decision: string,
+  notes: string,
+  label: string,
+): Promise<ActionResult> {
+  const from: SdStatus = 'submitted';
+  if (!canApprove(role, from)) return fail('This decision is above your approval level.');
+  const now = new Date().toISOString();
+  const to: SdStatus =
+    decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
+  const patch: Record<string, unknown> =
+    decision === 'approve'
+      ? { status: to, approved_by: email, approved_at: now }
+      : decision === 'rework'
+        ? {
+            status: to,
+            rework_notes: notes,
+            reworked_by: email,
+            reworked_at: now,
+            edited_before_approval: true,
+          }
+        : { status: to, rejection_notes: notes || null };
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_receivable_input')
+    .update(patch)
+    .eq('status', from);
+  if (error) return fail(error.message);
+  await writeLog('receivable_plan', 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
+  revalidatePath('/approvals');
+  revalidatePath('/receivable-plan');
+  return done(
+    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+  );
+}
+
+/** Bulk-submit the weekly receivable inputs (all drafts) for approval. */
+export async function submitReceivablePlan(): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canSubmit(user.role, 'draft')) return fail('You do not have permission to submit.');
+  const now = new Date().toISOString();
+  const supabase = await supa();
+  const { data, error } = await supabase
+    .from('sd_receivable_input')
+    .update({ status: 'submitted', submitted_by: user.email, submitted_at: now })
+    .eq('status', 'draft')
+    .select('row_key');
+  if (error) return fail(error.message);
+  revalidatePath('/receivable-plan');
+  revalidatePath('/approvals');
+  return done(`Submitted ${data?.length ?? 0} row(s) for approval.`);
 }
 
 /* ================================================================== */

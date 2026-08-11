@@ -23,6 +23,17 @@ export function ApprovalsClient({
   const mine = items.filter((item) => canApprove(role, item.status));
   const shown = filter === 'mine' ? mine : items;
 
+  // % of approvals that needed edits: approved records that were sent to rework at
+  // least once (within the recent log window).
+  const approvedKeys = new Set(
+    log.filter((l) => l.to_status === 'approved').map((l) => `${l.entity_type}:${l.entity_id}`),
+  );
+  const reworkedKeys = new Set(
+    log.filter((l) => l.to_status === 'rework').map((l) => `${l.entity_type}:${l.entity_id}`),
+  );
+  const editedApproved = [...approvedKeys].filter((k) => reworkedKeys.has(k)).length;
+  const editPct = approvedKeys.size ? Math.round((editedApproved / approvedKeys.size) * 100) : 0;
+
   return (
     <>
       <div className="metric-grid wf-metric-grid">
@@ -37,6 +48,10 @@ export function ApprovalsClient({
         <div className="metric-card tone-teal">
           <span className="metric-label">My level</span>
           <strong>{ROLE_LABEL[role]}</strong>
+        </div>
+        <div className="metric-card tone-red">
+          <span className="metric-label">Approvals that needed edits</span>
+          <strong>{editPct}%</strong>
         </div>
       </div>
 

@@ -857,6 +857,24 @@ export async function loadApprovalQueue(): Promise<{
     }
   }
 
+  const { count: recCount } = await supabase
+    .from('sd_receivable_input')
+    .select('row_key', { count: 'exact', head: true })
+    .eq('status', 'submitted');
+  if (recCount) {
+    items.push({
+      entityType: 'receivable_plan',
+      entityId: 'batch',
+      label: `Receivable plan — ${recCount} row(s)`,
+      sublabel: 'Weekly receiving inputs submitted for approval',
+      status: 'submitted',
+      quantity: recCount,
+      requiredRole: routeApproval('receivable_plan'),
+      submittedBy: null,
+      submittedAt: null,
+      href: '/receivable-plan',
+    });
+  }
   items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));
   return { items, log: (log ?? []) as ApprovalLogRow[] };
 }

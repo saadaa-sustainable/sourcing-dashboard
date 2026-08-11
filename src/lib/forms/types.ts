@@ -170,7 +170,8 @@ export type ApprovalEntity =
   | 'buying_plan'
   | 'discontinue'
   | 'po_approval'
-  | 'standard_cost';
+  | 'standard_cost'
+  | 'receivable_plan';
 
 /** Standard cost sheet row — final job/FOB/EFOB rates per product (sd_standard_cost). */
 export type StandardCost = {
