@@ -861,13 +861,13 @@ export async function loadApprovalQueue(): Promise<{
 }> {
   const supabase = await client();
 
+  // Cost approvals are a SEPARATE process on /standard-cost (negotiation flow) —
+  // deliberately NOT listed in this shared queue.
   const [
     { data: plans },
     { data: discontinues },
     { data: pos },
-    { data: costs },
     { data: log },
-    { data: materialCosts },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
@@ -875,55 +875,14 @@ export async function loadApprovalQueue(): Promise<{
       .select('*')
       .in('status', ['submitted', 'pending_l2']),
     supabase.from('sd_po_approval').select('*').in('status', ['submitted', 'pending_l2']),
-    supabase.from('sd_standard_cost').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
       .from('sd_approval_log')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(100),
-    supabase.from('sd_material_standard_cost').select('*').in('status', ['submitted', 'pending_l2']),
   ]);
 
   const items: ApprovalQueueItem[] = [];
-
-  for (const cost of (costs ?? []) as StandardCost[]) {
-    const rates = [
-      cost.job_cost != null ? `J ${cost.job_cost}` : null,
-      cost.fob_cost != null ? `F ${cost.fob_cost}` : null,
-      cost.efob_cost != null ? `E ${cost.efob_cost}` : null,
-    ].filter(Boolean).join(' · ');
-    items.push({
-      entityType: 'standard_cost',
-      entityId: String(cost.id),
-      label: `Standard cost — ${cost.product_code}`,
-      sublabel: rates || 'No rates entered',
-      status: cost.status,
-      quantity: 0,
-      requiredRole: routeApproval('standard_cost'),
-      submittedBy: cost.submitted_by,
-      submittedAt: cost.submitted_at,
-      href: '/standard-cost',
-    });
-  }
-
-  for (const cost of (materialCosts ?? []) as StandardCost[]) {
-    const rates = [
-      cost.job_cost != null ? `Job ${cost.job_cost}` : null,
-      cost.fob_cost != null ? `Purchase ${cost.fob_cost}` : null,
-    ].filter(Boolean).join(' · ');
-    items.push({
-      entityType: 'material_cost',
-      entityId: String(cost.id),
-      label: `Material cost — ${cost.product_code}`,
-      sublabel: rates || 'No rates entered',
-      status: cost.status,
-      quantity: 0,
-      requiredRole: routeApproval('material_cost'),
-      submittedBy: cost.submitted_by,
-      submittedAt: cost.submitted_at,
-      href: '/standard-cost?track=material',
-    });
-  }
 
   // Per-line value on the approvals cards uses the same approved standard costs
   // the buying-plan grid values with (per-PO-type rate × its quantity).

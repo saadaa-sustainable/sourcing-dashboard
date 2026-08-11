@@ -26,6 +26,14 @@ import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { currentUser } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
+import {
+  canPropose,
+  canRejectCost,
+  canRenegotiate,
+  canSetTarget,
+  canSignOff,
+  canSubmitRate,
+} from './cost';
 import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from './types';
 
 export type ActionResult =
@@ -1000,6 +1008,198 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
   revalidatePath('/standard-cost');
   revalidatePath('/approvals');
   return done('Submitted for approval.');
+}
+
+/* ------------------------------------------------------------------ */
+/* Cost negotiation — its own process (propose → target → actual →     */
+/* sign-off), on either the FG or the material cost sheet.             */
+/* ------------------------------------------------------------------ */
+
+type CostTrack = 'fg' | 'material';
+const COST_TABLE: Record<CostTrack, string> = {
+  fg: 'sd_standard_cost',
+  material: 'sd_material_standard_cost',
+};
+const costTrackOf = (fd: FormData): CostTrack =>
+  String(fd.get('track') ?? 'fg') === 'material' ? 'material' : 'fg';
+const costEntity = (t: CostTrack): ApprovalEntity =>
+  t === 'material' ? 'material_cost' : 'standard_cost';
+const costLabel = (t: CostTrack, code: string) =>
+  `${t === 'material' ? 'Material' : 'Standard'} cost — ${code}`;
+
+type CostRow = {
+  id: number;
+  product_code: string;
+  status: SdStatus;
+  frozen: boolean;
+  neg_stage: string | null;
+};
+
+async function loadCostRow(track: CostTrack, id: number) {
+  const supabase = await supa();
+  const table = COST_TABLE[track];
+  const { data } = await supabase
+    .from(table)
+    .select('id, product_code, status, frozen, neg_stage')
+    .eq('id', id)
+    .maybeSingle();
+  return { supabase, table, row: (data as CostRow | null) ?? null };
+}
+
+/** Team proposes a product/fabric for costing (optionally with an expected cost). */
+export async function proposeCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen and cannot be renegotiated.');
+  if (!canPropose(user.role, row.neg_stage)) return fail('You cannot propose this cost right now.');
+
+  const proposed = numOrNull(formData.get('proposed_cost'));
+  const { error } = await supabase
+    .from(table)
+    .update({
+      neg_stage: 'proposed',
+      proposed_cost: proposed,
+      status: 'draft',
+      rejection_notes: null,
+      negotiation_notes: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `Proposed${proposed != null ? ` at ${proposed}` : ''}`);
+  revalidatePath('/standard-cost');
+  return done('Proposed for costing.');
+}
+
+/** Mahesh reviews a proposal and states the target cost. */
+export async function setTargetCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (!canSetTarget(user.role, row.neg_stage)) return fail('This is not awaiting a target cost.');
+  const target = numOrNull(formData.get('target_cost'));
+  if (target == null) return fail('Enter a target cost.');
+
+  const { error } = await supabase
+    .from(table)
+    .update({ neg_stage: 'target_set', target_cost: target, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target cost ${target}`);
+  revalidatePath('/standard-cost');
+  return done('Target cost set.');
+}
+
+/** Team comes back from the vendor with the actual rate(s). */
+export async function submitActualRate(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen and cannot be edited.');
+  if (!canSubmitRate(user.role, row.neg_stage)) return fail('This is not awaiting an actual rate.');
+
+  const patch: Record<string, unknown> = {
+    neg_stage: 'rate_submitted',
+    job_cost: numOrNull(formData.get('job_cost')),
+    fob_cost: numOrNull(formData.get('fob_cost')),
+    updated_at: new Date().toISOString(),
+  };
+  if (track === 'fg') patch.efob_cost = numOrNull(formData.get('efob_cost'));
+  if (patch.job_cost == null && patch.fob_cost == null && patch.efob_cost == null) {
+    return fail('Enter at least one actual rate.');
+  }
+
+  const { error } = await supabase.from(table).update(patch).eq('id', id);
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, 'Actual rate submitted');
+  revalidatePath('/standard-cost');
+  return done('Actual rate submitted for sign-off.');
+}
+
+/** Mahesh signs off — the actual rate becomes the approved Standard Cost. */
+export async function signOffCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (!canSignOff(user.role, row.neg_stage)) return fail('This is not awaiting sign-off.');
+
+  const patch: Record<string, unknown> = {
+    neg_stage: 'signed_off',
+    status: 'approved',
+    approved_by: user.email,
+    approved_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  if (track === 'fg') patch.documented = true;
+  const { error } = await supabase.from(table).update(patch).eq('id', id).eq('neg_stage', 'rate_submitted');
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Signed off — standard cost');
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  return done('Signed off. This is now the standard cost.');
+}
+
+/** Mahesh sends the rate back for renegotiation. */
+export async function renegotiateCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  const note = String(formData.get('note') ?? '').trim();
+  if (!id) return fail('Invalid cost row.');
+  if (!note) return fail('Give a reason to renegotiate.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (!canRenegotiate(user.role, row.neg_stage)) return fail('This cannot be renegotiated right now.');
+
+  const { error } = await supabase
+    .from(table)
+    .update({ neg_stage: 'renegotiate', negotiation_notes: note, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Renegotiate: ${note}`);
+  revalidatePath('/standard-cost');
+  return done('Sent back to renegotiate.');
+}
+
+/** Mahesh rejects the cost proposal/rate. */
+export async function rejectCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  const note = String(formData.get('note') ?? '').trim();
+  if (!id) return fail('Invalid cost row.');
+  if (!note) return fail('Give a reason to reject.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (!canRejectCost(user.role, row.neg_stage)) return fail('This cannot be rejected right now.');
+
+  const { error } = await supabase
+    .from(table)
+    .update({ neg_stage: 'rejected', status: 'rejected', rejection_notes: note, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected: ${note}`);
+  revalidatePath('/standard-cost');
+  return done('Cost rejected.');
 }
 
 /* ================================================================== */

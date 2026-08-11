@@ -32,6 +32,7 @@ export default async function PoApprovalPage() {
       active="/po-approval"
       role={user.role}
       userEmail={user.email}
+      accent="blue"
     >
       <PoApprovalClient
         pos={pos}

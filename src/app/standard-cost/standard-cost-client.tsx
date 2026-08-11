@@ -8,22 +8,38 @@ import {
   Lock,
   Plus,
   Save,
-  Send,
   Trash2,
   Upload,
 } from 'lucide-react';
 import {
+  proposeCost,
+  rejectCost,
+  renegotiateCost,
   saveMaterialCost,
   saveStandardCost,
   saveStandardCostLines,
-  submitMaterialCost,
-  submitStandardCost,
+  setTargetCost,
+  signOffCost,
+  submitActualRate,
+  type ActionResult,
 } from '@/lib/forms/actions';
+import {
+  COST_STAGE_LABEL,
+  COST_STAGE_TONE,
+  canPropose,
+  canRejectCost,
+  canRenegotiate,
+  canSetTarget,
+  canSignOff,
+  canSubmitRate,
+  nextActor,
+} from '@/lib/forms/cost';
+import { canEdit } from '@/lib/forms/approval';
 import { csvObjects, downloadCsv } from '@/lib/csv';
-import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
-import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
-import { ApprovalBar } from '@/components/forms/approval-bar';
+import { Field, Notice } from '@/components/forms/form-layout';
 import type { SdRole, StandardCost, StandardCostLine } from '@/lib/forms/types';
+
+const disp = (v: number | null) => (v == null ? '—' : String(v));
 
 export function StandardCostClient({
   costs,
@@ -37,10 +53,9 @@ export function StandardCostClient({
   track?: 'fg' | 'material';
 }) {
   const isMat = track === 'material';
-  const saveAction = isMat ? saveMaterialCost : saveStandardCost;
-  const submitAction = isMat ? submitMaterialCost : submitStandardCost;
   const codeLabel = isMat ? 'Material code' : 'Product code';
-  const fobLabel = isMat ? 'Purchase cost' : 'FOB cost';
+  const jobLabel = isMat ? 'Job Work' : 'Job';
+  const fobLabel = isMat ? 'Purchase' : 'FOB';
 
   const editable = canEdit(role, 'draft');
   const [message, setMessage] = useState<string | null>(null);
@@ -48,10 +63,9 @@ export function StandardCostClient({
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ product_code: '', job_cost: '', fob_cost: '', efob_cost: '' });
+  const [newCode, setNewCode] = useState('');
 
-  const approved = costs.filter((c) => c.status === 'approved').length;
-  const undocumented = costs.filter((c) => !c.documented).length;
+  const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
 
   const linesByCode = useMemo(() => {
     const m = new Map<string, StandardCostLine[]>();
@@ -64,42 +78,33 @@ export function StandardCostClient({
     return q ? costs.filter((c) => c.product_code.toLowerCase().includes(q)) : costs;
   }, [costs, filter]);
 
-  function run(payload: FormData, action: typeof saveStandardCost) {
-    setError(null);
-    setMessage(null);
-    start(async () => {
-      const result = await action(payload);
-      if (result.ok) {
-        setMessage(result.message ?? 'Saved.');
-        window.location.reload();
-      } else {
-        setError(result.error);
-      }
-    });
-  }
-
-  function addCost() {
-    if (!draft.product_code.trim()) {
+  function addCode() {
+    if (!newCode.trim()) {
       setError(`Enter a ${codeLabel.toLowerCase()}.`);
       return;
     }
+    setError(null);
+    setMessage(null);
     const fd = new FormData();
-    fd.set('product_code', draft.product_code.trim());
-    fd.set('job_cost', draft.job_cost);
-    fd.set('fob_cost', draft.fob_cost);
-    if (!isMat) fd.set('efob_cost', draft.efob_cost);
-    run(fd, saveAction);
+    fd.set('product_code', newCode.trim());
+    start(async () => {
+      // upsert by code — seeds a row on the right track to then propose.
+      const result = await (isMat ? saveMaterialCost : saveStandardCost)(fd);
+      if (result.ok) window.location.reload();
+      else setError(result.error);
+    });
   }
+
+  const colCount = isMat ? 7 : 8;
 
   return (
     <>
       <Notice tone="info">
-        {approved} of {costs.length} {isMat ? 'materials' : 'products'} have an approved
-        standard cost. The Buying Plan multiplies each{' '}
-        {isMat ? 'Job Work / Purchase' : 'PO-type'} quantity by its own rate.
-        {isMat
-          ? ' Job Work is a service (e.g. dyeing); Purchase buys the material outright.'
-          : ` Click a product to document its actual cost. ${undocumented} product(s) are still undocumented.`}
+        Cost is <strong>negotiated</strong>, not just approved: team{' '}
+        <strong>proposes</strong> → Mahesh sets a <strong>target</strong> → team returns with the{' '}
+        <strong>actual vendor rate</strong> → Mahesh <strong>signs off</strong>, and that becomes the
+        Standard Cost the Buying Plan values from. {signedOff} of {costs.length}{' '}
+        {isMat ? 'materials' : 'products'} are signed off.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -108,46 +113,15 @@ export function StandardCostClient({
       {editable && (
         <div className="wf-form-panel">
           <div className="wf-form-grid">
-            <Field label={codeLabel} hint="Add a code not already listed">
+            <Field label={`Add a ${codeLabel.toLowerCase()}`} hint="seeds a row you can then propose">
               <input
-                value={draft.product_code}
+                value={newCode}
                 placeholder={isMat ? 'e.g. TRM07' : 'e.g. SDRPT'}
-                onChange={(e) => setDraft({ ...draft, product_code: e.target.value })}
+                onChange={(e) => setNewCode(e.target.value)}
               />
             </Field>
-            <Field label={isMat ? 'Job Work cost' : 'Job cost'}>
-              <input
-                type="number"
-                min={0}
-                value={draft.job_cost}
-                onChange={(e) => setDraft({ ...draft, job_cost: e.target.value })}
-              />
-            </Field>
-            <Field label={fobLabel}>
-              <input
-                type="number"
-                min={0}
-                value={draft.fob_cost}
-                onChange={(e) => setDraft({ ...draft, fob_cost: e.target.value })}
-              />
-            </Field>
-            {!isMat && (
-              <Field label="E-FOB cost">
-                <input
-                  type="number"
-                  min={0}
-                  value={draft.efob_cost}
-                  onChange={(e) => setDraft({ ...draft, efob_cost: e.target.value })}
-                />
-              </Field>
-            )}
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary"
-              onClick={addCost}
-              disabled={pending}
-            >
-              <Save size={15} /> Add / update
+            <button type="button" className="wf-btn wf-btn-primary" onClick={addCode} disabled={pending}>
+              <Plus size={15} /> Add to sheet
             </button>
           </div>
         </div>
@@ -156,7 +130,7 @@ export function StandardCostClient({
       <div className="wf-toolbar">
         <input
           className="wf-search"
-          placeholder="Filter product code…"
+          placeholder="Filter code…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -169,10 +143,12 @@ export function StandardCostClient({
             <thead>
               <tr>
                 <th>{codeLabel}</th>
-                <th className="num input-col">{isMat ? 'Job Work cost' : 'Job cost'}</th>
-                <th className="num input-col">{fobLabel}</th>
-                {!isMat && <th className="num input-col">E-FOB cost</th>}
-                <th>Status</th>
+                <th className="num">Proposed</th>
+                <th className="num">Target</th>
+                <th className="num input-col">{jobLabel} rate</th>
+                <th className="num input-col">{fobLabel} rate</th>
+                {!isMat && <th className="num input-col">E-FOB rate</th>}
+                <th>Stage</th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
@@ -182,21 +158,17 @@ export function StandardCostClient({
                   <CostRow
                     cost={cost}
                     role={role}
-                    pending={pending}
                     track={track}
                     expanded={expanded === cost.product_code}
                     onToggle={
                       isMat
                         ? undefined
-                        : () =>
-                            setExpanded(expanded === cost.product_code ? null : cost.product_code)
+                        : () => setExpanded(expanded === cost.product_code ? null : cost.product_code)
                     }
-                    onSave={(fd) => run(fd, saveAction)}
-                    onSubmit={(fd) => run(fd, submitAction)}
                   />
                   {!isMat && expanded === cost.product_code && (
                     <tr className="wf-cost-detail-row">
-                      <td colSpan={6}>
+                      <td colSpan={colCount}>
                         <CostDetail
                           cost={cost}
                           lines={linesByCode.get(cost.product_code) ?? []}
@@ -209,7 +181,7 @@ export function StandardCostClient({
               ))}
               {!shown.length && (
                 <tr>
-                  <td colSpan={isMat ? 5 : 6} className="wf-empty-cell">
+                  <td colSpan={colCount} className="wf-empty-cell">
                     No {isMat ? 'materials' : 'products'} match.
                   </td>
                 </tr>
@@ -225,49 +197,47 @@ export function StandardCostClient({
 function CostRow({
   cost,
   role,
-  pending,
   track,
   expanded,
   onToggle,
-  onSave,
-  onSubmit,
 }: {
   cost: StandardCost;
   role: SdRole;
-  pending: boolean;
   track: 'fg' | 'material';
   expanded?: boolean;
   onToggle?: () => void;
-  onSave: (fd: FormData) => void;
-  onSubmit: (fd: FormData) => void;
 }) {
   const isMat = track === 'material';
+  const stage = cost.neg_stage;
+  const stageKey = stage ?? '';
+
   const [job, setJob] = useState(cost.job_cost?.toString() ?? '');
   const [fob, setFob] = useState(cost.fob_cost?.toString() ?? '');
   const [efob, setEfob] = useState(cost.efob_cost?.toString() ?? '');
+  const [proposed, setProposed] = useState('');
+  const [target, setTarget] = useState('');
+  const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
 
-  const rowEditable = !cost.frozen && canEdit(role, cost.status);
-  const dirty =
-    job !== (cost.job_cost?.toString() ?? '') ||
-    fob !== (cost.fob_cost?.toString() ?? '') ||
-    (!isMat && efob !== (cost.efob_cost?.toString() ?? ''));
+  const rateEditable = canSubmitRate(role, stage) && !cost.frozen;
 
-  const save = () => {
+  function act(action: (fd: FormData) => Promise<ActionResult>, extra: Record<string, string>) {
+    setErr(null);
     const fd = new FormData();
-    fd.set('product_code', cost.product_code);
-    fd.set('job_cost', job);
-    fd.set('fob_cost', fob);
-    if (!isMat) fd.set('efob_cost', efob);
-    onSave(fd);
-  };
-  const submit = () => {
-    const fd = new FormData();
+    fd.set('track', track);
     fd.set('id', String(cost.id));
-    onSubmit(fd);
-  };
+    Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
+    start(async () => {
+      const res = await action(fd);
+      if (res.ok) window.location.reload();
+      else setErr(res.error);
+    });
+  }
 
-  const cell = (value: string, set: (v: string) => void) =>
-    rowEditable ? (
+  const rateCell = (value: string, set: (v: string) => void) =>
+    rateEditable ? (
       <input type="number" min={0} value={value} onChange={(e) => set(e.target.value)} />
     ) : (
       <span>{value === '' ? '—' : value}</span>
@@ -295,55 +265,158 @@ function CostRow({
             </small>
           )}
         </span>
-        {!isMat && !cost.documented && (
+        {!isMat && !cost.documented && stage == null && (
           <span className="wf-gap-tag">Undocumented — data gap</span>
         )}
       </td>
-      <td className="num input-col">{cell(job, setJob)}</td>
-      <td className="num input-col">{cell(fob, setFob)}</td>
-      {!isMat && <td className="num input-col">{cell(efob, setEfob)}</td>}
+      <td className="num">{disp(cost.proposed_cost)}</td>
+      <td className="num">{disp(cost.target_cost)}</td>
+      <td className="num input-col">{rateCell(job, setJob)}</td>
+      <td className="num input-col">{rateCell(fob, setFob)}</td>
+      {!isMat && <td className="num input-col">{rateCell(efob, setEfob)}</td>}
       <td>
-        <StatusBadge status={cost.status} />
-        {cost.status === 'rejected' && cost.rejection_notes && (
+        <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>
+          {COST_STAGE_LABEL[stageKey]}
+        </span>
+        <small className="wf-subtle">{nextActor(stage)}</small>
+        {stage === 'rejected' && cost.rejection_notes && (
           <small className="wf-subtle">{cost.rejection_notes}</small>
+        )}
+        {stage === 'renegotiate' && cost.negotiation_notes && (
+          <small className="wf-subtle">{cost.negotiation_notes}</small>
         )}
       </td>
       <td>
-        <div className="wf-issue-row">
-          {rowEditable && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm"
-              disabled={!dirty || pending}
-              onClick={save}
-            >
-              <Save size={13} /> Save
-            </button>
+        <div className="wf-cost-actions">
+          {err && <small className="wf-line-error">{err}</small>}
+
+          {canPropose(role, stage) && !cost.frozen && (
+            <div className="wf-issue-row">
+              <input
+                className="wf-mini-input"
+                type="number"
+                min={0}
+                placeholder="expected"
+                value={proposed}
+                onChange={(e) => setProposed(e.target.value)}
+              />
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                disabled={busy}
+                onClick={() => act(proposeCost, { proposed_cost: proposed })}
+              >
+                Propose
+              </button>
+            </div>
           )}
-          {cost.status === 'draft' && canSubmit(role, cost.status) && !cost.frozen && (
+
+          {canSetTarget(role, stage) && (
+            <div className="wf-issue-row">
+              <input
+                className="wf-mini-input"
+                type="number"
+                min={0}
+                placeholder="target"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+              />
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                disabled={busy}
+                onClick={() => act(setTargetCost, { target_cost: target })}
+              >
+                Set target
+              </button>
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                onClick={() => setNoteMode('reject')}
+              >
+                Reject
+              </button>
+            </div>
+          )}
+
+          {canSubmitRate(role, stage) && (
             <button
               type="button"
               className="wf-btn wf-btn-primary wf-btn-sm"
-              disabled={pending || dirty}
-              title={dirty ? 'Save your changes first' : undefined}
-              onClick={submit}
+              disabled={busy}
+              onClick={() =>
+                act(submitActualRate, {
+                  job_cost: job,
+                  fob_cost: fob,
+                  ...(isMat ? {} : { efob_cost: efob }),
+                })
+              }
             >
-              <Send size={13} /> Submit
+              <Save size={13} /> Submit rate
             </button>
           )}
-          {(cost.status === 'submitted' || cost.status === 'pending_l2') &&
-            (canApprove(role, cost.status) ? (
-              <ApprovalBar
-                entityType={isMat ? 'material_cost' : 'standard_cost'}
-                entityId={String(cost.id)}
-                entityLabel={`${isMat ? 'Material' : 'Standard'} cost — ${cost.product_code}`}
-                onDone={(res) => {
-                  if (res.ok) window.location.reload();
-                }}
+
+          {canSignOff(role, stage) && (
+            <div className="wf-issue-row">
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                disabled={busy}
+                onClick={() => act(signOffCost, {})}
+              >
+                Sign off
+              </button>
+              {canRenegotiate(role, stage) && (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => setNoteMode('renegotiate')}
+                >
+                  Renegotiate
+                </button>
+              )}
+              {canRejectCost(role, stage) && (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => setNoteMode('reject')}
+                >
+                  Reject
+                </button>
+              )}
+            </div>
+          )}
+
+          {noteMode && (
+            <div className="wf-issue-row">
+              <input
+                className="wf-mini-input"
+                placeholder={`${noteMode} reason`}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
               />
-            ) : (
-              <span className="wf-subtle">Awaiting approval</span>
-            ))}
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                disabled={busy || !note.trim()}
+                onClick={() =>
+                  act(noteMode === 'reject' ? rejectCost : renegotiateCost, { note })
+                }
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                onClick={() => {
+                  setNoteMode(null);
+                  setNote('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       </td>
     </tr>
@@ -371,8 +444,8 @@ function toLineDraft(l: StandardCostLine): LineDraft {
 }
 
 /**
- * The expandable "actual standard cost" panel — the first source of input for
- * approvals. Documents CM cost, Total PO Average cost, CAD/RFP links, and the
+ * The expandable "actual standard cost" panel — the detailed record the approver
+ * reviews. Documents CM cost, Total PO Average cost, CAD/RFP links, and the
  * colour/size cost breakdown (editable + CSV-importable).
  */
 function CostDetail({
@@ -430,7 +503,6 @@ function CostDetail({
     objects.forEach((r, i) => {
       const line = i + 2;
       const code = String(r.product_code ?? '').trim();
-      // Panel is per-product: only rows for this product are applied.
       if (code && code.toUpperCase() !== cost.product_code.toUpperCase()) {
         return skipped.push(`row ${line}: different product "${code}"`);
       }
@@ -451,15 +523,12 @@ function CostDetail({
       return;
     }
     setRows(imported);
-    setMsg(
-      `Loaded ${imported.length} line(s)${skipped.length ? `, skipped ${skipped.length}` : ''}. Review, then Save.`,
-    );
+    setMsg(`Loaded ${imported.length} line(s)${skipped.length ? `, skipped ${skipped.length}` : ''}. Review, then Save.`);
   }
 
   function saveDetail() {
     setErr(null);
     setMsg(null);
-    // Keep the operative job/fob/efob rates intact while adding the doc fields.
     const header = new FormData();
     header.set('product_code', cost.product_code);
     header.set('job_cost', cost.job_cost?.toString() ?? '');

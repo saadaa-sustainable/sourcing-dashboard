@@ -51,6 +51,7 @@ export default async function StandardCostPage({
       active="/standard-cost"
       role={user.role}
       userEmail={user.email}
+      accent="purple"
     >
       <CostTrackTabs track={track} />
       <StandardCostClient costs={costs} lines={lines} role={user.role} track={track} />

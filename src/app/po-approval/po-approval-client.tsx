@@ -618,7 +618,9 @@ function PoRow({
     <>
       <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
         <td className="mono">{po.po_ref_num ?? `#${po.id}`}</td>
-        <td>{catLabel(po.category)}</td>
+        <td>
+          <span className={`wf-cat-chip wf-cat-${po.category}`}>{catLabel(po.category)}</span>
+        </td>
         <td className="mono">{po.product_code ?? '—'}</td>
         <td>
           {po.vendor_name || po.vendor_code || '—'}

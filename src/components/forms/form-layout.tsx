@@ -12,6 +12,7 @@ export function FormLayout({
   role,
   userEmail = null,
   actions,
+  accent,
   children,
 }: {
   title: string;
@@ -20,13 +21,16 @@ export function FormLayout({
   role: SdRole;
   userEmail?: string | null;
   actions?: React.ReactNode;
+  // A per-screen accent so distinct processes (PO vs Standard Cost vs …) read as
+  // visually different pages, not the same form.
+  accent?: 'blue' | 'purple' | 'teal' | 'orange';
   children: React.ReactNode;
 }) {
   return (
     <div className="app-shell">
       <SideNav activeWorkflow={active} userEmail={userEmail} />
       <main>
-        <div className="wf-page">
+        <div className={`wf-page${accent ? ` wf-accent wf-accent-${accent}` : ''}`}>
           <header className="wf-head">
             <div>
               <h1>{title}</h1>

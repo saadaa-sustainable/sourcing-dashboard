@@ -239,6 +239,11 @@ export type StandardCost = {
   frozen: boolean;
   frozen_at: string | null;
   updated_at: string;
+  // Cost-negotiation lifecycle (its own process): propose → target → actual → sign-off.
+  neg_stage: string | null;
+  proposed_cost: number | null;
+  target_cost: number | null;
+  negotiation_notes: string | null;
 };
 
 /** One colour×size cost line under a product's standard cost (sd_standard_cost_line). */
