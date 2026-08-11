@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadMaterialStandardCosts,
+  loadStandardCostLines,
   loadStandardCosts,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -34,7 +35,10 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const costs = track === 'material' ? await loadMaterialStandardCosts() : await loadStandardCosts();
+  const [costs, lines] =
+    track === 'material'
+      ? [await loadMaterialStandardCosts(), []]
+      : await Promise.all([loadStandardCosts(), loadStandardCostLines()]);
 
   return (
     <FormLayout
@@ -49,7 +53,7 @@ export default async function StandardCostPage({
       userEmail={user.email}
     >
       <CostTrackTabs track={track} />
-      <StandardCostClient costs={costs} role={user.role} track={track} />
+      <StandardCostClient costs={costs} lines={lines} role={user.role} track={track} />
     </FormLayout>
   );
 }

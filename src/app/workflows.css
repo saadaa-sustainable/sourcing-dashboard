@@ -807,3 +807,46 @@
   font-weight: 700;
   background: rgba(0, 0, 0, 0.1);
 }
+
+/* ---- Standard Cost: undocumented gap flag + expandable cost detail ---- */
+.wf-cost-code { display: inline-flex; align-items: center; gap: 4px; }
+.wf-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6e695e;
+  background: rgba(0, 0, 0, 0.05);
+}
+.wf-expand-btn:hover { background: rgba(0, 0, 0, 0.1); color: #161513; }
+.wf-cost-row-open > td { background: #fbf7ef; }
+.wf-gap-tag {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #8a5a10;
+  background: rgba(181, 117, 20, 0.14);
+  border: 1px solid rgba(181, 117, 20, 0.3);
+}
+.wf-cost-detail-row > td { padding: 0; background: #fbf7ef; border-bottom: 2px solid #e7e2d2; }
+.wf-cost-detail { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.wf-cost-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+.wf-cost-detail-head h4 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: #6e695e; }
+.wf-cost-lines { min-width: 0 !important; background: #fff; border: 1px solid #ece7d9; border-radius: 10px; }
+.wf-cost-lines th, .wf-cost-lines td { padding: 6px 8px; }
+.wf-cost-detail-foot { display: flex; justify-content: flex-end; }

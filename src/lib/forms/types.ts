@@ -223,6 +223,13 @@ export type StandardCost = {
   job_cost: number | null;
   fob_cost: number | null;
   efob_cost: number | null;
+  // Documentation layer (FG): CM (stitching) cost, an entered Total PO Average
+  // Cost, CAD/RFP document links, and whether this product was ever costed.
+  cm_cost: number | null;
+  total_po_avg_cost: number | null;
+  cad_link: string | null;
+  rfp_link: string | null;
+  documented: boolean;
   status: SdStatus;
   submitted_by: string | null;
   submitted_at: string | null;
@@ -232,6 +239,17 @@ export type StandardCost = {
   frozen: boolean;
   frozen_at: string | null;
   updated_at: string;
+};
+
+/** One colour×size cost line under a product's standard cost (sd_standard_cost_line). */
+export type StandardCostLine = {
+  id: number;
+  product_code: string;
+  colour: string | null;
+  size: string | null;
+  fabric_cost: number | null;
+  cm_cost: number | null;
+  total_cost: number | null;
 };
 
 export type ApprovalLogRow = {

@@ -775,6 +775,12 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     job_cost: numOrNull(formData.get('job_cost')),
     fob_cost: numOrNull(formData.get('fob_cost')),
     efob_cost: numOrNull(formData.get('efob_cost')),
+    cm_cost: numOrNull(formData.get('cm_cost')),
+    total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
+    cad_link: textOrNull(formData.get('cad_link')),
+    rfp_link: textOrNull(formData.get('rfp_link')),
+    // Saving is the act of documenting — clears the "data gap" flag.
+    documented: true,
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await supabase
@@ -786,6 +792,63 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
 
   revalidatePath('/standard-cost');
   return { ok: true, message: `Saved ${product_code}.`, id: data.id as number };
+}
+
+/**
+ * Replace the colour/size cost detail lines for one product (the expandable
+ * "actual standard cost" the approver reviews). Marks the product documented.
+ */
+export async function saveStandardCostLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit standard costs.');
+  }
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+
+  let lines: { colour?: string; size?: string; fabric_cost?: unknown; cm_cost?: unknown; total_cost?: unknown }[] = [];
+  try {
+    lines = JSON.parse(String(formData.get('lines') ?? '[]'));
+  } catch {
+    lines = [];
+  }
+
+  const supabase = await supa();
+  const { data: parent } = await supabase
+    .from('sd_standard_cost')
+    .select('id, frozen')
+    .eq('product_code', product_code)
+    .maybeSingle();
+  if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
+
+  const clean = lines
+    .map((l) => ({
+      product_code,
+      colour: textOrNull(l.colour),
+      size: textOrNull(l.size),
+      fabric_cost: numOrNull(l.fabric_cost),
+      cm_cost: numOrNull(l.cm_cost),
+      total_cost: numOrNull(l.total_cost),
+    }))
+    .filter((l) => l.colour || l.size || l.fabric_cost != null || l.cm_cost != null || l.total_cost != null);
+
+  // Replace strategy: clear the product's lines, then insert the current set.
+  await supabase.from('sd_standard_cost_line').delete().eq('product_code', product_code);
+  if (clean.length) {
+    const { error } = await supabase.from('sd_standard_cost_line').insert(clean);
+    if (error) return fail(`Could not save lines: ${error.message}`);
+  }
+  // Ensure a parent row exists and is marked documented.
+  await supabase
+    .from('sd_standard_cost')
+    .upsert(
+      { product_code, documented: true, updated_at: new Date().toISOString() },
+      { onConflict: 'product_code' },
+    );
+
+  revalidatePath('/standard-cost');
+  return done(`Saved ${clean.length} cost line(s) for ${product_code}.`);
 }
 
 export async function submitStandardCost(formData: FormData): Promise<ActionResult> {

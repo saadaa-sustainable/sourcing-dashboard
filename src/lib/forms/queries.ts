@@ -28,6 +28,7 @@ import type {
   SdUser,
   VendorTerm,
   StandardCost,
+  StandardCostLine,
   VendorCapacityLog,
   VendorTypeMultiplier,
 } from './types';
@@ -210,6 +211,19 @@ export async function loadStandardCosts(): Promise<StandardCost[]> {
     .order('product_code')
     .limit(PAGE_SIZE);
   return (data ?? []) as StandardCost[];
+}
+
+/** Colour/size cost detail lines (all products), for the Standard Cost expand panels. */
+export async function loadStandardCostLines(): Promise<StandardCostLine[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_standard_cost_line')
+    .select('*')
+    .order('product_code')
+    .order('colour')
+    .order('size')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as StandardCostLine[];
 }
 
 /** Every material-cost row, for the Material tab of the Standard Cost page. */
