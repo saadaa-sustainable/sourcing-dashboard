@@ -994,11 +994,31 @@ export async function loadApprovalQueue(): Promise<{
   }
 
   if ((pos ?? []).length) {
-    const [inProcessByVendor, latestCapacity] = await Promise.all([
+    const poList = (pos ?? []) as PoApproval[];
+    const [inProcessByVendor, latestCapacity, stdCosts] = await Promise.all([
       loadInProcessByVendor(),
       loadLatestVendorCapacity(),
+      loadApprovedStandardCosts(),
     ]);
-    for (const po of (pos ?? []) as PoApproval[]) {
+    // Product-level inventory snapshot (DOQ / stock / days) for the PO products.
+    const poCodes = [...new Set(poList.map((p) => p.product_code).filter(Boolean))] as string[];
+    const invByProduct: Record<string, { stock: number; inProgress: number; daily: number; doq45: number }> = {};
+    if (poCodes.length) {
+      const { data: inv } = await supabase
+        .from('sd_inventory_by_product')
+        .select('product_code, current_stock, total_inprogress, daily_quantity, doq_45')
+        .in('product_code', poCodes);
+      for (const r of (inv ?? []) as Record<string, unknown>[]) {
+        invByProduct[String(r.product_code)] = {
+          stock: Number(r.current_stock) || 0,
+          inProgress: Number(r.total_inprogress) || 0,
+          daily: Number(r.daily_quantity) || 0,
+          doq45: Number(r.doq_45) || 0,
+        };
+      }
+    }
+
+    for (const po of poList) {
       const qty = Number(po.po_qty || 0);
       const vendor = (po.vendor_code ?? '').trim();
       const { data: poLines } = await supabase
@@ -1006,6 +1026,8 @@ export async function loadApprovalQueue(): Promise<{
         .select('id, product_variant, size, qty')
         .eq('po_id', po.id);
       const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
+      const stdCost = po.product_code ? stdCosts[po.product_code] ?? null : null;
+      const inv = po.product_code ? invByProduct[po.product_code] ?? null : null;
       items.push({
         entityType: 'po_approval',
         entityId: String(po.id),
@@ -1027,6 +1049,32 @@ export async function loadApprovalQueue(): Promise<{
           id: String(l.id),
           label: `${l.product_variant ?? '—'}${l.size ? ' / ' + l.size : ''} · ${Number(l.qty || 0).toLocaleString('en-IN')} pcs`,
         })),
+        poDetail: {
+          productCode: po.product_code,
+          poType: po.po_type,
+          poQty: qty,
+          writtenRate: po.rate,
+          stdCost,
+          inventory: inv
+            ? {
+                currentStock: inv.stock,
+                inProgress: inv.inProgress,
+                dailyQty: inv.daily,
+                doq45: inv.doq45,
+                daysOfStock: inv.daily > 0 ? Math.round(inv.stock / inv.daily) : null,
+              }
+            : null,
+          tna: {
+            poClosingDate: po.po_closing_date,
+            ppSampleDue: po.cs_pp_sample_due,
+            gptDue: po.cs_gpt_due,
+            cuttingStart: po.cs_cutting_start,
+            inlineQcDue: po.cs_inline_qc_due,
+            firstDelivery: po.critical_path_first_delivery,
+            requestedTotalDays: po.requested_total_days,
+            tnaConfirmed: po.tna_confirmed,
+          },
+        },
       });
     }
   }

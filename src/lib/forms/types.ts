@@ -507,4 +507,32 @@ export type ApprovalQueueItem = {
   vendorInProcessQty?: number | null;
   vendorCapacityPerMonth?: number | null;
   vendorCapacityUpdatedAt?: string | null;
+  // PO Approval only: the inline "4 things Mahesh verifies" detail.
+  poDetail?: PoApprovalDetail;
+};
+
+/** The 4-tab verification detail shown inline on a PO approval card. */
+export type PoApprovalDetail = {
+  productCode: string | null;
+  poType: PoType | null;
+  poQty: number;
+  writtenRate: number | null;
+  stdCost: { job: number; fob: number; efob: number } | null;
+  inventory: {
+    currentStock: number;
+    inProgress: number;
+    dailyQty: number;
+    doq45: number;
+    daysOfStock: number | null;
+  } | null;
+  tna: {
+    poClosingDate: string | null;
+    ppSampleDue: string | null;
+    gptDue: string | null;
+    cuttingStart: string | null;
+    inlineQcDue: string | null;
+    firstDelivery: string | null;
+    requestedTotalDays: number | null;
+    tnaConfirmed: boolean;
+  };
 };

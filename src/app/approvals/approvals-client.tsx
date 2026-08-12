@@ -144,6 +144,9 @@ export function ApprovalsClient({
                 </>
               )}
             </dl>
+            {item.entityType === 'po_approval' && item.poDetail && (
+              <PoApprovalDetail item={item} />
+            )}
             {item.entityType === 'buying_plan' &&
               canApprove(role, item.status) &&
               !!item.lines?.length && <BuyingPlanApprovalLines item={item} />}
@@ -338,6 +341,117 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
           <CheckCheck size={14} /> {isBusy ? 'Approving…' : `Approve selected (${selected.size})`}
         </button>
       </div>
+    </div>
+  );
+}
+
+const fmtNum = (v: number | null | undefined) =>
+  v == null ? '—' : v.toLocaleString('en-IN');
+const fmtDate = (v: string | null | undefined) =>
+  v ? new Date(v).toLocaleDateString('en-IN') : '—';
+
+/**
+ * The inline "4 things Mahesh verifies" panel on a PO approval card — expands
+ * the one-line entry into tabs (Inventory / Standard Cost / TNA / Vendor) so the
+ * whole review happens without leaving the queue.
+ */
+function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
+  const d = item.poDetail!;
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'inv' | 'cost' | 'tna' | 'vendor'>('inv');
+
+  const std = d.stdCost;
+  const stdForType = std
+    ? d.poType === 'job_work'
+      ? std.job
+      : d.poType === 'efob'
+        ? std.efob
+        : std.fob
+    : null;
+  const variance =
+    d.writtenRate != null && stdForType != null ? d.writtenRate - stdForType : null;
+  const inproc = item.vendorInProcessQty ?? null;
+  const cap = item.vendorCapacityPerMonth ?? null;
+  const headroom = cap != null && inproc != null ? cap - inproc : null;
+
+  return (
+    <div className="wf-po-detail">
+      <button
+        type="button"
+        className="wf-btn wf-btn-ghost wf-btn-sm"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? 'Hide detail' : 'Verify'} — DOQ · Cost · TNA · Vendor
+      </button>
+      {open && (
+        <div className="wf-po-detail-body">
+          <div className="segment wf-segment wf-po-tabs">
+            <button type="button" className={tab === 'inv' ? 'active' : ''} onClick={() => setTab('inv')}>
+              Inventory
+            </button>
+            <button type="button" className={tab === 'cost' ? 'active' : ''} onClick={() => setTab('cost')}>
+              Standard Cost
+            </button>
+            <button type="button" className={tab === 'tna' ? 'active' : ''} onClick={() => setTab('tna')}>
+              TNA
+            </button>
+            <button type="button" className={tab === 'vendor' ? 'active' : ''} onClick={() => setTab('vendor')}>
+              Vendor
+            </button>
+          </div>
+
+          {tab === 'inv' && (
+            d.inventory ? (
+              <dl className="wf-doc-meta">
+                <div><dt>DOQ (45d)</dt><dd>{d.inventory.doq45}</dd></div>
+                <div><dt>Current stock</dt><dd>{fmtNum(d.inventory.currentStock)}</dd></div>
+                <div><dt>In-process</dt><dd>{fmtNum(d.inventory.inProgress)}</dd></div>
+                <div><dt>Days of stock</dt><dd>{d.inventory.daysOfStock ?? '—'}</dd></div>
+              </dl>
+            ) : (
+              <p className="wf-subtle">No inventory snapshot for {d.productCode ?? 'this product'}.</p>
+            )
+          )}
+
+          {tab === 'cost' && (
+            <>
+              <dl className="wf-doc-meta">
+                <div><dt>Written rate</dt><dd>{fmtNum(d.writtenRate)}</dd></div>
+                <div><dt>Standard ({d.poType ?? '—'})</dt><dd>{stdForType != null ? fmtNum(stdForType) : '— (not approved)'}</dd></div>
+                <div><dt>Variance</dt><dd className={variance != null && variance > 0 ? 'wf-error-text' : undefined}>{variance != null ? fmtNum(variance) : '—'}</dd></div>
+              </dl>
+              {d.productCode && (
+                <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={`/standard-cost?open=${encodeURIComponent(d.productCode)}`}>
+                  Open Standard Cost →
+                </Link>
+              )}
+            </>
+          )}
+
+          {tab === 'tna' && (
+            <dl className="wf-doc-meta">
+              <div><dt>Requested total days</dt><dd>{d.tna.requestedTotalDays ?? '—'}</dd></div>
+              <div><dt>TNA</dt><dd>{d.tna.tnaConfirmed ? 'confirmed' : 'pending'}</dd></div>
+              <div><dt>PP sample due</dt><dd>{fmtDate(d.tna.ppSampleDue)}</dd></div>
+              <div><dt>GPT due</dt><dd>{fmtDate(d.tna.gptDue)}</dd></div>
+              <div><dt>Cutting start</dt><dd>{fmtDate(d.tna.cuttingStart)}</dd></div>
+              <div><dt>Inline QC due</dt><dd>{fmtDate(d.tna.inlineQcDue)}</dd></div>
+              <div><dt>First delivery</dt><dd>{fmtDate(d.tna.firstDelivery)}</dd></div>
+              <div><dt>PO closing</dt><dd>{fmtDate(d.tna.poClosingDate)}</dd></div>
+            </dl>
+          )}
+
+          {tab === 'vendor' && (
+            <dl className="wf-doc-meta">
+              <div><dt>In process (live)</dt><dd>{inproc == null ? 'No open POs' : fmtNum(inproc)}</dd></div>
+              <div><dt>Capacity / month</dt><dd>{cap == null ? 'Not logged' : fmtNum(cap)}</dd></div>
+              <div><dt>Headroom</dt><dd className={headroom != null && headroom < 0 ? 'wf-error-text' : undefined}>{headroom != null ? fmtNum(headroom) : '—'}</dd></div>
+              <div><dt>Updated</dt><dd>{fmtDate(item.vendorCapacityUpdatedAt)}</dd></div>
+            </dl>
+          )}
+        </div>
+      )}
     </div>
   );
 }

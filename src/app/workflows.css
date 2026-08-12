@@ -940,6 +940,18 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-doc-meta dt { color: #6e695e; font-size: 11px; }
 .wf-doc-meta dd { margin: 0; font-weight: 600; font-size: 12px; }
 
+/* ---- PO approval inline detail (4 verify tabs) ---- */
+.wf-po-detail { margin: 6px 0 2px; }
+.wf-po-detail-body {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: #fbf7ef;
+  border: 1px solid #ece7d9;
+  border-radius: 10px;
+}
+.wf-po-tabs { margin-bottom: 10px; }
+.wf-po-detail-body .wf-doc-meta { grid-template-columns: repeat(2, 1fr); margin: 0 0 8px; }
+
 /* ---- Cost negotiation row controls ---- */
 .wf-cost-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .wf-mini-input {
