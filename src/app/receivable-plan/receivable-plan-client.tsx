@@ -71,14 +71,23 @@ export function ReceivablePlanClient({
 
   const oosCount = rows.filter((r) => r.oos_flag).length;
 
+  // Most-recent weekly-input save across all rows — the "last updated" stamp.
+  const lastUpdated = useMemo(() => {
+    const stamps = rows.map((r) => r.input_updated_at).filter(Boolean) as string[];
+    return stamps.length ? stamps.sort().at(-1)!.slice(0, 10) : null;
+  }, [rows]);
+
   return (
     <>
       <Notice tone="info">
         Each row is one colour on an open PO, split by size — each size cell shows{' '}
         <strong>arriving</strong> (top) over <strong>in stock</strong> (below, muted). DOQ,
         stock and OOS come from the inventory-planning snapshot. Fill{' '}
-        <strong>delivery date</strong> and <strong>qty expected this week</strong> for the
-        receiving plan.
+        <strong>delivery date</strong> and <strong>qty expected this week</strong> — the only
+        two editable fields — for the receiving plan.
+        {lastUpdated && (
+          <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
+        )}
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -142,11 +151,11 @@ export function ReceivablePlanClient({
                 ))}
                 <th className="num">DOQ</th>
                 <th className="num">Stock</th>
+                <th className="num">Sizes in stock</th>
                 <th>OOS</th>
                 <th className="num">EDD</th>
                 <th className="num input-col">Deliver this wk</th>
                 <th className="num input-col">Qty this wk</th>
-                <th>Remarks</th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
@@ -161,7 +170,7 @@ export function ReceivablePlanClient({
               ))}
               {!shown.length && (
                 <tr>
-                  <td colSpan={22} className="wf-empty-cell">
+                  <td colSpan={editable ? 22 : 21} className="wf-empty-cell">
                     No open receivables match.
                   </td>
                 </tr>
@@ -185,20 +194,27 @@ function ReceivableRow({
 }) {
   const [deliver, setDeliver] = useState(row.delivery_date_this_week ?? '');
   const [qty, setQty] = useState(row.qty_expected_this_week?.toString() ?? '');
-  const [remarks, setRemarks] = useState(row.remarks ?? '');
   const [pending, start] = useTransition();
 
   const dirty =
     deliver !== (row.delivery_date_this_week ?? '') ||
-    qty !== (row.qty_expected_this_week?.toString() ?? '') ||
-    remarks !== (row.remarks ?? '');
+    qty !== (row.qty_expected_this_week?.toString() ?? '');
+
+  // % of the arriving qty covered by what's planned to land this week.
+  const arriving = row.arriving_qty || 0;
+  const qtyNum = Number(qty) || 0;
+  const pctComplete = arriving > 0 ? Math.round((qtyNum / arriving) * 100) : null;
+
+  // Sizes in stock now vs. total sizes on this arriving line (SKU-level, so the
+  // aggregate OOS count is broken down to "which sizes are actually covered").
+  const totalSizes = SIZE_KEYS.filter(([k]) => row[k]).length;
+  const inStockSizes = SIZE_KEYS.filter(([k]) => (row.stock_by_size?.[k] ?? 0) > 0).length;
 
   function save() {
     const fd = new FormData();
     fd.set('row_key', row.row_key);
     fd.set('delivery_date_this_week', deliver);
     fd.set('qty_expected_this_week', qty);
-    fd.set('remarks', remarks);
     start(async () => {
       const res = await saveReceivableInput(fd);
       if (res.ok) onSaved();
@@ -207,8 +223,8 @@ function ReceivableRow({
 
   return (
     <tr className={row.oos_flag ? 'wf-row-over' : ''}>
-      <td className="mono">
-        {row.po_number}
+      <td className="mono wf-po-primary">
+        <strong>{row.po_number}</strong>
         <small className="wf-subtle">{row.po_ref_num}</small>
       </td>
       <td>
@@ -229,6 +245,13 @@ function ReceivableRow({
       })}
       <td className="num">{row.doq_45 != null ? row.doq_45 : '—'}</td>
       <td className="num">{row.current_stock != null ? fmt.format(row.current_stock) : '—'}</td>
+      <td className="num">
+        {totalSizes ? (
+          <span className={inStockSizes < totalSizes ? 'wf-over-tag' : ''}>
+            {inStockSizes}/{totalSizes}
+          </span>
+        ) : '—'}
+      </td>
       <td>{row.oos_flag ? <span className="wf-over-tag">OOS</span> : ''}</td>
       <td className="num wf-subtle">{row.expected_delivery_date ?? '—'}</td>
       <td className="num input-col">
@@ -247,14 +270,12 @@ function ReceivableRow({
           disabled={!editable}
           onChange={(e) => setQty(e.target.value)}
         />
-      </td>
-      <td>
-        <input
-          value={remarks}
-          disabled={!editable}
-          placeholder="—"
-          onChange={(e) => setRemarks(e.target.value)}
-        />
+        <small className="wf-subtle wf-qty-meta">
+          {pctComplete != null && <span>{pctComplete}% of arriving</span>}
+          {row.input_updated_at && (
+            <span>updated {row.input_updated_at.slice(0, 10)}</span>
+          )}
+        </small>
       </td>
       {editable && (
         <td>

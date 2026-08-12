@@ -873,6 +873,11 @@
 .wf-size-cell { line-height: 1.2; }
 .wf-size-arr { display: block; }
 .wf-size-stk { display: block; color: #6e695e; opacity: 0.75; font-size: 10.5px; }
+/* Receivable Plan: PO number is the primary key column — highlight it. */
+.wf-po-primary { background: #fbf6e9; border-left: 3px solid var(--wf-accent-c, #b8933a); }
+.wf-po-primary strong { font-weight: 700; }
+/* Weekly-input meta stacked under the qty field (% of arriving, last updated). */
+.wf-qty-meta { display: flex; flex-direction: column; line-height: 1.25; font-size: 10.5px; }
 
 /* ---- Per-screen accent (distinct processes read as distinct pages) ---- */
 .wf-accent .wf-head {

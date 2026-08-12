@@ -365,6 +365,8 @@ export type ReceivablePlanRow = {
   delivery_date_this_week: string | null;
   qty_expected_this_week: number | null;
   remarks: string | null;
+  // When the weekly input for this row was last saved (drives the "last updated" stamp).
+  input_updated_at: string | null;
 };
 
 /** One arriving-stock line for the Inward Plan (grouped PO × product × variant). */

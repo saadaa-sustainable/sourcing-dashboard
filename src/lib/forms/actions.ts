@@ -1956,7 +1956,6 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
       product_variant: product_variant ?? null,
       delivery_date_this_week: dateOrNull(formData.get('delivery_date_this_week')),
       qty_expected_this_week: numOrNull(formData.get('qty_expected_this_week')),
-      remarks: textOrNull(formData.get('remarks')),
       updated_by: user.email,
       updated_at: new Date().toISOString(),
     },
