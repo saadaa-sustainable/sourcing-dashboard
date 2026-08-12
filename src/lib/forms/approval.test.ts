@@ -22,7 +22,7 @@ describe('approval workflow v2', () => {
     assert.equal(canRework('team', 'draft'), false);
   });
   it('labels the new/merged statuses', () => {
-    assert.equal(STATUS_LABEL.rework, 'Rework/Reassign');
+    assert.equal(STATUS_LABEL.rework, 'Rework-and-Reassign');
     assert.equal(STATUS_LABEL.submitted, 'Approval Pending');
     assert.equal(STATUS_LABEL.pending_l2, 'Approval Pending');
     assert.ok(STATUS_TONE.rework);

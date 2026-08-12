@@ -66,7 +66,9 @@ export function StatusBadge({ status, edited }: { status: SdStatus; edited?: boo
   // approved first time — this drives the "% of approvals that needed edits" metric.
   const label =
     status === 'approved' && edited !== undefined
-      ? `${STATUS_LABEL.approved} · ${edited ? 'edited' : 'first-time'}`
+      ? edited
+        ? 'Edited-and-Approved'
+        : 'First-Time Approved'
       : STATUS_LABEL[status];
   return <span className={`wf-status tone-${STATUS_TONE[status]}`}>{label}</span>;
 }

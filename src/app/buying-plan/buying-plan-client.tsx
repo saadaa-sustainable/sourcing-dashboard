@@ -381,7 +381,7 @@ export function BuyingPlanClient({
               })}
             </select>
           </Field>
-          <StatusBadge status={status} />
+          <StatusBadge status={status} edited={plan?.edited_before_approval} />
           <div className="segment wf-segment">
             <button
               type="button"

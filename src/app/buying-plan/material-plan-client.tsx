@@ -302,7 +302,7 @@ export function MaterialPlanClient({
               })}
             </select>
           </Field>
-          <StatusBadge status={status} />
+          <StatusBadge status={status} edited={plan?.edited_before_approval} />
           <div className="segment wf-segment">
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
@@ -413,13 +413,13 @@ export function MaterialPlanClient({
                   <tr>
                     <th>{TYPE_LABEL[type]} code</th>
                     {type === 'dyed' && <th>Colour</th>}
-                    <th className="num input-col">Job Work qty</th>
-                    <th className="num">Job rate</th>
-                    <th className="num input-col">Purchase qty</th>
-                    <th className="num">Purchase rate</th>
-                    <th>UOM</th>
-                    <th className="input-col">Remark</th>
-                    <th className="num">Value</th>
+                    <th className="num input-col wf-cell-input">Job Work qty</th>
+                    <th className="num wf-cell-calc">Job rate</th>
+                    <th className="num input-col wf-cell-input">Purchase qty</th>
+                    <th className="num wf-cell-calc">Purchase rate</th>
+                    <th className="input-col wf-cell-input">UOM</th>
+                    <th className="input-col wf-cell-input">Remark</th>
+                    <th className="num wf-cell-calc">Value</th>
                     {editable && <th aria-label="Remove" />}
                   </tr>
                 </thead>
@@ -427,16 +427,16 @@ export function MaterialPlanClient({
                   {shownRows.map(({ row, value, colour, cost, missingCost }) => (
                     <tr key={row.key}>
                       <td className="mono">{row.material_code}</td>
-                      {type === 'dyed' && <td>{colour || '—'}</td>}
-                      <td className="num input-col">
+                      {type === 'dyed' && <td className="wf-cell-calc">{colour || '—'}</td>}
+                      <td className="num input-col wf-cell-input">
                         <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
                       </td>
-                      <td className="num">{cost ? fmt.format(cost.job) : '—'}</td>
-                      <td className="num input-col">
+                      <td className="num wf-cell-calc">{cost ? fmt.format(cost.job) : '—'}</td>
+                      <td className="num input-col wf-cell-input">
                         <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
                       </td>
-                      <td className="num">{cost ? fmt.format(cost.fob) : '—'}</td>
-                      <td>
+                      <td className="num wf-cell-calc">{cost ? fmt.format(cost.fob) : '—'}</td>
+                      <td className="input-col wf-cell-input">
                         <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
                           {UOMS.map((u) => (
                             <option key={u} value={u}>
@@ -445,10 +445,10 @@ export function MaterialPlanClient({
                           ))}
                         </select>
                       </td>
-                      <td className="input-col">
+                      <td className="input-col wf-cell-input">
                         <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
                       </td>
-                      <td className="num strong">
+                      <td className="num strong wf-cell-calc">
                         {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
                       </td>
                       {editable && (

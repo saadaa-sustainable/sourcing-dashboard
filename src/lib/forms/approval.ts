@@ -86,7 +86,7 @@ export const STATUS_LABEL: Record<SdStatus, string> = {
   draft: 'Draft',
   submitted: 'Approval Pending',
   pending_l2: 'Approval Pending',
-  rework: 'Rework/Reassign',
+  rework: 'Rework-and-Reassign',
   approved: 'Approved',
   rejected: 'Rejected',
 };
