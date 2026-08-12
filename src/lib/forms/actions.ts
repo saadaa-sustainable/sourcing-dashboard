@@ -401,6 +401,9 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   if (error) return fail(`Could not save capacity: ${error.message}`);
 
   revalidatePath('/vendor-capacity');
+  // Capacity/month feeds the PO Approval vendor headroom tab (main page + queue).
+  revalidatePath('/po-approval');
+  revalidatePath('/approvals');
   return done(`Saved capacity for ${vendor_code}.`);
 }
 
@@ -1812,6 +1815,8 @@ export async function saveFabricCostBase(formData: FormData): Promise<ActionResu
   );
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/fabric-cost');
+  // The finished-fabric cost is auto-pulled into the Standard Cost CM matrix.
+  revalidatePath('/standard-cost');
   return done(`Saved ${fabric_code}.`);
 }
 
@@ -1911,6 +1916,8 @@ export async function addColour(formData: FormData): Promise<ActionResult> {
     );
   }
   revalidatePath('/material-master');
+  // Active colours populate the Buying Plan material Dyed-line colour picker.
+  revalidatePath('/buying-plan');
   return done(`Added ${colour}.`);
 }
 
@@ -1932,6 +1939,8 @@ export async function setColourActive(formData: FormData): Promise<ActionResult>
     .eq('colour', colour);
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/material-master');
+  // Toggling a colour active/inactive changes the Buying Plan colour picker options.
+  revalidatePath('/buying-plan');
   return done(`${colour} ${is_active ? 'activated' : 'deactivated'}.`);
 }
 
