@@ -51,10 +51,11 @@ function extractToken(req: Request, url: URL, body: any): string | null {
   return candidates.find((c) => c && String(c).length > 0) ?? null;
 }
 
-// Pull the items array out of whatever shape EasyCom sends.
+// Pull the items array out of whatever shape EasyCom sends. The real EasyCom
+// inventory webhook wraps them under `inventoryData`.
 function extractItems(body: any): any[] {
   if (Array.isArray(body)) return body;
-  for (const key of ["items", "inventory", "data", "products", "skus", "payload"]) {
+  for (const key of ["inventoryData", "inventory_data", "items", "inventory", "data", "products", "skus", "payload"]) {
     if (Array.isArray(body?.[key])) return body[key];
   }
   if (body && (body.sku || body.SKU || body.sku_code)) return [body]; // single item
@@ -65,22 +66,25 @@ function extractItems(body: any): any[] {
 function mapItem(it: any) {
   const sku = str(it.sku ?? it.SKU ?? it.sku_code ?? it.product_sku ?? it.skuCode);
   if (!sku) return null;
+  // EasyCom's `inventory` is the AVAILABLE (sellable) qty; `reserved_inventory`
+  // is held separately, so total on-hand = available + reserved.
+  const available = num(
+    it.available_quantity ?? it.availableQuantity ?? it.available ??
+      it.inventory ?? it.quantity ?? it.stock,
+  );
+  const reserved = num(
+    it.reserved_inventory ?? it.reserved_quantity ?? it.reservedQuantity ??
+      it.reserved ?? it.blocked_quantity,
+  );
+  const totalRaw = num(it.total_quantity ?? it.totalQuantity ?? it.total ?? it.total_stock);
   return {
     sku,
     warehouse:
-      str(it.warehouse ?? it.warehouse_name ?? it.location ?? it.wh ?? "") ?? "",
-    product_id: str(it.product_id ?? it.productId ?? it.cp_id ?? it.id),
-    available_quantity: num(
-      it.available_quantity ?? it.availableQuantity ?? it.available ??
-        it.quantity ?? it.stock ?? it.inventory,
-    ),
-    total_quantity: num(
-      it.total_quantity ?? it.totalQuantity ?? it.total ?? it.total_stock,
-    ),
-    reserved_quantity: num(
-      it.reserved_quantity ?? it.reservedQuantity ?? it.reserved ??
-        it.blocked_quantity,
-    ),
+      str(it.warehouse ?? it.warehouse_name ?? it.warehouse_id ?? it.location_key ?? it.location ?? it.wh ?? "") ?? "",
+    product_id: str(it.product_id ?? it.productId ?? it.company_product_id ?? it.cp_id ?? it.id),
+    available_quantity: available,
+    total_quantity: totalRaw != null ? totalRaw : available != null ? available + (reserved ?? 0) : null,
+    reserved_quantity: reserved,
     received_at: new Date().toISOString(),
     raw: it,
   };
