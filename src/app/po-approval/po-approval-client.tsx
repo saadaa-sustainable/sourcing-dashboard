@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
-import { CalendarCheck, FileCheck, Layers, Save, Send, X } from 'lucide-react';
+import { Fragment, useMemo, useState, useTransition } from 'react';
+import { CalendarCheck, CheckCircle, FileCheck, Layers, Save, Send, X } from 'lucide-react';
 import {
   confirmTna,
   issuePoApproval,
   savePoApproval,
   savePoLines,
+  saveTnaLeadtimes,
+  setPoClosure,
   submitPoApproval,
 } from '@/lib/forms/actions';
 import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
@@ -16,8 +18,10 @@ import type {
   PoApprovalLine,
   PoCategory,
   PoCycleTime,
+  PoSubmissionGroup,
   PoType,
   SdRole,
+  TnaLeadtimes,
 } from '@/lib/forms/types';
 
 const PO_TYPES: { value: PoType; label: string }[] = [
@@ -55,6 +59,14 @@ const BLANK = {
 const catLabel = (c: PoCategory) =>
   c === 'fg' ? 'FG' : c === 'mat' ? 'MAT' : 'NPD';
 
+// A stage date on the critical path = the TNA start date + its lead-time offset.
+function addDays(iso: string, n: number | null | undefined): string {
+  if (!iso || n == null) return '';
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 export function PoApprovalClient({
   pos,
   cycle,
@@ -63,6 +75,8 @@ export function PoApprovalClient({
   productCodes,
   vendorCodes,
   vendorNames = {},
+  submissions = [],
+  leadtimes,
   role,
 }: {
   pos: PoApproval[];
@@ -72,6 +86,8 @@ export function PoApprovalClient({
   productCodes: string[];
   vendorCodes: string[];
   vendorNames?: Record<string, string>;
+  submissions?: PoSubmissionGroup[];
+  leadtimes?: TnaLeadtimes;
   role: SdRole;
 }) {
   const editable = canEdit(role, 'draft');
@@ -94,6 +110,22 @@ export function PoApprovalClient({
     setForm((f) => ({ ...f, vendor_code: code, vendor_name: vendorNames[code.trim()] ?? f.vendor_name }));
   const setVendorName = (name: string) =>
     setForm((f) => ({ ...f, vendor_name: name, vendor_code: nameToCode[name.trim()] ?? f.vendor_code }));
+
+  // TNA critical path auto-generates from a start date + the standard lead-times.
+  const [tnaStart, setTnaStart] = useState('');
+  function autoGenerateTna() {
+    if (!tnaStart || !leadtimes) return;
+    setForm((f) => ({
+      ...f,
+      cs_pp_sample_due: addDays(tnaStart, leadtimes.pp_sample_days),
+      cs_gpt_due: addDays(tnaStart, leadtimes.gpt_days),
+      cs_cutting_start: addDays(tnaStart, leadtimes.cutting_days),
+      cs_inline_qc_due: addDays(tnaStart, leadtimes.inline_qc_days),
+      critical_path_first_delivery: addDays(tnaStart, leadtimes.first_delivery_days),
+      po_closing_date: addDays(tnaStart, leadtimes.po_closing_days),
+    }));
+    setMessage('Critical path generated from the lead-times — adjust any date if needed.');
+  }
 
   // Auto-suggest the PO ref in the observed standard format
   // FY<yy>-<yy+1>/<TYPE>/<PRODUCT>/<VENDOR>- (sequence appended manually for now).
@@ -302,6 +334,20 @@ export function PoApprovalClient({
                 />
               </Field>
             )}
+            <Field label="TNA start date" hint="auto-generates the critical path below">
+              <div className="wf-issue-row">
+                <input type="date" value={tnaStart} onChange={(e) => setTnaStart(e.target.value)} />
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={autoGenerateTna}
+                  disabled={!tnaStart || !leadtimes}
+                  title="Fill the 6 critical-path dates from the standard lead-times"
+                >
+                  <CalendarCheck size={13} /> Auto-generate
+                </button>
+              </div>
+            </Field>
             <Field label="Critical stage — PP sample due">
               <input
                 type="date"
@@ -407,6 +453,10 @@ export function PoApprovalClient({
           </table>
         </div>
       </div>
+
+      <PoSubmissionTable submissions={submissions} editable={editable} />
+
+      {editable && leadtimes && <TnaLeadtimesPanel leadtimes={leadtimes} />}
     </>
   );
 }
@@ -996,5 +1046,226 @@ function PoRow({
         </tr>
       )}
     </>
+  );
+}
+
+const nfmt = (v: number) => v.toLocaleString('en-IN');
+
+/**
+ * PO submission / closure — the open (issued) POs below the main table, SKU-wise
+ * expandable, with a simple row-wise Yes/No closure.
+ */
+function PoSubmissionTable({
+  submissions,
+  editable,
+}: {
+  submissions: PoSubmissionGroup[];
+  editable: boolean;
+}) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+
+  const shown = submissions.filter((s) =>
+    q
+      ? `${s.po_number} ${s.po_ref_num ?? ''} ${s.vendor_name ?? ''} ${s.product_codes.join(' ')}`
+          .toLowerCase()
+          .includes(q.trim().toLowerCase())
+      : true,
+  );
+
+  function decide(po_number: string, decision: 'yes' | 'no') {
+    const fd = new FormData();
+    fd.set('po_number', po_number);
+    fd.set('decision', decision);
+    start(async () => {
+      const res = await setPoClosure(fd);
+      if (res.ok) window.location.reload();
+    });
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-title">
+        <h3>PO submission &amp; closure</h3>
+        <span>{submissions.length} open PO(s) · row-wise close</span>
+      </div>
+      <div className="wf-toolbar">
+        <input
+          className="wf-search"
+          placeholder="Filter PO / vendor / product…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+      <div className="table-panel">
+        <div className="table-scroll">
+          <table className="wide-table">
+            <thead>
+              <tr>
+                <th />
+                <th>PO</th>
+                <th>Vendor</th>
+                <th>Products</th>
+                <th className="num">Ordered</th>
+                <th className="num">Pending</th>
+                <th>EDD</th>
+                <th>Closure</th>
+                {editable && <th aria-label="Decide" />}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((s) => (
+                <Fragment key={s.po_number}>
+                  <tr className={open === s.po_number ? 'wf-row-open' : ''}>
+                    <td>
+                      <button
+                        type="button"
+                        className="wf-expand-btn"
+                        aria-expanded={open === s.po_number}
+                        aria-label="SKU breakdown"
+                        onClick={() => setOpen(open === s.po_number ? null : s.po_number)}
+                      >
+                        {open === s.po_number ? '−' : '+'}
+                      </button>
+                    </td>
+                    <td className="mono">
+                      {s.po_number}
+                      <small className="wf-subtle">{s.po_ref_num}</small>
+                    </td>
+                    <td>
+                      {s.vendor_code && s.vendor_name
+                        ? `${s.vendor_code.toUpperCase()} - ${s.vendor_name}`
+                        : s.vendor_name || s.vendor_code || '—'}
+                    </td>
+                    <td className="mono">{s.product_codes.join(', ') || '—'}</td>
+                    <td className="num">{nfmt(s.original_qty)}</td>
+                    <td className="num strong">{nfmt(s.pending_qty)}</td>
+                    <td className="wf-subtle">{s.expected_delivery_date ?? '—'}</td>
+                    <td>
+                      <StatusBadge status={s.closureStatus} />
+                    </td>
+                    {editable && (
+                      <td>
+                        <div className="wf-issue-row">
+                          <button
+                            type="button"
+                            className="wf-btn wf-btn-ghost wf-btn-sm"
+                            disabled={busy || s.closureStatus === 'approved'}
+                            title="Close this PO"
+                            onClick={() => decide(s.po_number, 'yes')}
+                          >
+                            <CheckCircle size={14} /> Yes
+                          </button>
+                          <button
+                            type="button"
+                            className="wf-btn wf-btn-ghost wf-btn-sm"
+                            disabled={busy || s.closureStatus === 'rejected'}
+                            title="Flag this PO"
+                            onClick={() => decide(s.po_number, 'no')}
+                          >
+                            <X size={14} /> No
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                  {open === s.po_number && (
+                    <tr className="wf-po-sku-row">
+                      <td colSpan={editable ? 9 : 8}>
+                        <table className="wf-grid wf-cost-lines">
+                          <thead>
+                            <tr>
+                              <th>SKU</th>
+                              <th>Variant</th>
+                              <th>Size</th>
+                              <th className="num">Ordered</th>
+                              <th className="num">Pending</th>
+                              <th className="num">Price</th>
+                              <th>EDD</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {s.lines.map((l, i) => (
+                              <tr key={`${l.sku}-${i}`}>
+                                <td className="mono">{l.sku ?? '—'}</td>
+                                <td>{l.product_variant ?? '—'}</td>
+                                <td>{l.size ?? '—'}</td>
+                                <td className="num">{nfmt(l.original_qty)}</td>
+                                <td className="num">{nfmt(l.pending_qty)}</td>
+                                <td className="num">{l.item_price ?? '—'}</td>
+                                <td className="wf-subtle">{l.expected_delivery_date ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+              {!shown.length && (
+                <tr>
+                  <td colSpan={editable ? 9 : 8} className="wf-empty-cell">
+                    No open POs{submissions.length ? ' match your filter.' : ' (loads from the PO pipeline).'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Standard TNA lead-times — documented once, drives the critical-path auto-generate. */
+function TnaLeadtimesPanel({ leadtimes }: { leadtimes: TnaLeadtimes }) {
+  const [d, setD] = useState({
+    pp_sample_days: leadtimes.pp_sample_days?.toString() ?? '',
+    gpt_days: leadtimes.gpt_days?.toString() ?? '',
+    cutting_days: leadtimes.cutting_days?.toString() ?? '',
+    inline_qc_days: leadtimes.inline_qc_days?.toString() ?? '',
+    first_delivery_days: leadtimes.first_delivery_days?.toString() ?? '',
+    po_closing_days: leadtimes.po_closing_days?.toString() ?? '',
+  });
+  const [busy, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const set = (k: keyof typeof d, v: string) => setD((c) => ({ ...c, [k]: v }));
+
+  function save() {
+    const fd = new FormData();
+    Object.entries(d).forEach(([k, v]) => fd.set(k, v));
+    start(async () => {
+      const res = await saveTnaLeadtimes(fd);
+      setMsg(res.ok ? 'Saved.' : res.error);
+      if (res.ok) window.location.reload();
+    });
+  }
+
+  const FIELDS: [keyof typeof d, string][] = [
+    ['pp_sample_days', 'PP sample (+days)'],
+    ['gpt_days', 'GPT (+days)'],
+    ['cutting_days', 'Cutting (+days)'],
+    ['inline_qc_days', 'Inline QC (+days)'],
+    ['first_delivery_days', 'First delivery (+days)'],
+    ['po_closing_days', 'PO closing (+days)'],
+  ];
+
+  return (
+    <details className="wf-standards-panel">
+      <summary>TNA lead-times — documented once, auto-generates the critical path</summary>
+      {msg && <Notice tone="ok">{msg}</Notice>}
+      <div className="wf-form-grid">
+        {FIELDS.map(([k, label]) => (
+          <Field key={k} label={label}>
+            <input type="number" min={0} value={d[k]} onChange={(e) => set(k, e.target.value)} />
+          </Field>
+        ))}
+        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
+          <Save size={13} /> {busy ? 'Saving…' : 'Save lead-times'}
+        </button>
+      </div>
+    </details>
   );
 }

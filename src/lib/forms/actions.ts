@@ -750,6 +750,62 @@ export async function savePoLines(formData: FormData): Promise<ActionResult> {
   return done(`Saved ${clean.length} line(s) · PO qty ${poQty}.`);
 }
 
+/** Row-wise PO closure (Yes/No) on the submission/closure table. */
+export async function setPoClosure(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to close POs.');
+  const po_number = String(formData.get('po_number') ?? '').trim();
+  if (!po_number) return fail('Invalid PO.');
+  const decision = String(formData.get('decision') ?? '');
+  const status: SdStatus = decision === 'yes' ? 'approved' : decision === 'no' ? 'rejected' : 'draft';
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_po_closure').upsert(
+    {
+      po_number,
+      status,
+      decided_by: user.email,
+      decided_at: new Date().toISOString(),
+      note: textOrNull(formData.get('note')),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'po_number' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/po-approval');
+  return done(status === 'approved' ? 'PO marked closed.' : status === 'rejected' ? 'PO flagged.' : 'Saved.');
+}
+
+/** Standard TNA lead-times (singleton) — the offsets that auto-generate the critical path. */
+export async function saveTnaLeadtimes(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to edit TNA lead-times.');
+  const intOrNull = (v: FormDataEntryValue | null) => {
+    const n = Number(v);
+    return v == null || String(v).trim() === '' || !Number.isFinite(n) ? null : Math.round(n);
+  };
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_tna_leadtimes').upsert(
+    {
+      id: 1,
+      pp_sample_days: intOrNull(formData.get('pp_sample_days')),
+      gpt_days: intOrNull(formData.get('gpt_days')),
+      cutting_days: intOrNull(formData.get('cutting_days')),
+      inline_qc_days: intOrNull(formData.get('inline_qc_days')),
+      first_delivery_days: intOrNull(formData.get('first_delivery_days')),
+      po_closing_days: intOrNull(formData.get('po_closing_days')),
+      updated_by: user.email,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/po-approval');
+  return done('TNA lead-times saved.');
+}
+
 /* ================================================================== */
 /* Standard cost sheet                                                 */
 /* ================================================================== */

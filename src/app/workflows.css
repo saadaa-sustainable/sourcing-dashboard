@@ -951,6 +951,7 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .wf-po-tabs { margin-bottom: 10px; }
 .wf-po-detail-body .wf-doc-meta { grid-template-columns: repeat(2, 1fr); margin: 0 0 8px; }
+.wf-po-sku-row > td { padding: 0 8px 10px; background: #fbf7ef; }
 
 /* ---- Cost negotiation row controls ---- */
 .wf-cost-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }

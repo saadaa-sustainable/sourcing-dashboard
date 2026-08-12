@@ -1,6 +1,12 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadPoApprovals, NotConfiguredError } from '@/lib/forms/queries';
+import {
+  currentUser,
+  loadPoApprovals,
+  loadPoSubmissions,
+  loadTnaLeadtimes,
+  NotConfiguredError,
+} from '@/lib/forms/queries';
 import { PoApprovalClient } from './po-approval-client';
 
 export const dynamic = 'force-dynamic';
@@ -22,8 +28,11 @@ export default async function PoApprovalPage() {
 
   if (!user) redirect('/login');
 
-  const { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor } =
-    await loadPoApprovals();
+  const [
+    { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor },
+    submissions,
+    leadtimes,
+  ] = await Promise.all([loadPoApprovals(), loadPoSubmissions(), loadTnaLeadtimes()]);
 
   return (
     <FormLayout
@@ -42,6 +51,8 @@ export default async function PoApprovalPage() {
         productCodes={productCodes}
         vendorCodes={vendorCodes}
         vendorNames={vendorNames}
+        submissions={submissions}
+        leadtimes={leadtimes}
         role={user.role}
       />
     </FormLayout>

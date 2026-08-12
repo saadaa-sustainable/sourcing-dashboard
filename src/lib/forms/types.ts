@@ -511,6 +511,45 @@ export type ApprovalQueueItem = {
   poDetail?: PoApprovalDetail;
 };
 
+/** A SKU line under an open PO, for the submission/closure table. */
+export type PoSubmissionLine = {
+  sku: string | null;
+  product_variant: string | null;
+  size: string | null;
+  original_qty: number;
+  pending_qty: number;
+  item_price: number | null;
+  expected_delivery_date: string | null;
+};
+
+/** One open PO grouped for the submission/closure table (SKU-wise expandable). */
+export type PoSubmissionGroup = {
+  po_number: string;
+  po_ref_num: string | null;
+  vendor_code: string | null;
+  vendor_name: string | null;
+  po_date: string | null;
+  expected_delivery_date: string | null;
+  product_codes: string[];
+  original_qty: number;
+  pending_qty: number;
+  closureStatus: SdStatus;
+  lines: PoSubmissionLine[];
+};
+
+/** Standard TNA lead-times (singleton) used to auto-generate the critical path. */
+export type TnaLeadtimes = {
+  id: number;
+  pp_sample_days: number | null;
+  gpt_days: number | null;
+  cutting_days: number | null;
+  inline_qc_days: number | null;
+  first_delivery_days: number | null;
+  po_closing_days: number | null;
+  updated_by: string | null;
+  updated_at: string;
+};
+
 /** The 4-tab verification detail shown inline on a PO approval card. */
 export type PoApprovalDetail = {
   productCode: string | null;
