@@ -13,6 +13,8 @@ const SIZE_KEYS = [
   ['size_4xl', '4XL'], ['size_5xl', '5XL'],
 ] as const;
 const cell = (v: number | null) => (v ? fmt.format(v) : '');
+const statusTone = (s: string | null) =>
+  s === 'Overdue' ? 'danger' : s === 'High Risk' ? 'warn' : 'success';
 
 export function ReceivablePlanClient({
   rows,
@@ -29,6 +31,7 @@ export function ReceivablePlanClient({
   const [vendor, setVendor] = useState('');
   const [state, setState] = useState('');
   const [oosOnly, setOosOnly] = useState(false);
+  const [risk, setRisk] = useState('');
   const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
@@ -59,6 +62,7 @@ export function ReceivablePlanClient({
       ) return false;
       if (vendor && r.vendor_name !== vendor) return false;
       if (state && r.product_state !== state) return false;
+      if (risk && r.internal_status !== risk) return false;
       if (oosOnly && !r.oos_flag) return false;
       if (edd === 'has' && !r.expected_delivery_date) return false;
       if (edd === 'week') {
@@ -67,7 +71,7 @@ export function ReceivablePlanClient({
       }
       return true;
     });
-  }, [rows, search, vendor, state, oosOnly, edd, weekStart, weekEnd]);
+  }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd]);
 
   const oosCount = rows.filter((r) => r.oos_flag).length;
 
@@ -82,7 +86,10 @@ export function ReceivablePlanClient({
       <Notice tone="info">
         Each row is one colour on an open PO, split by size — each size cell shows{' '}
         <strong>arriving</strong> (top) over <strong>in stock</strong> (below, muted). DOQ,
-        stock and OOS come from the inventory-planning snapshot. Fill{' '}
+        stock and OOS come from the inventory-planning snapshot. <strong>Status</strong> is the
+        live TNA risk — <em>Overdue</em> (EDD passed), <em>High Risk</em> (a critical-path stage
+        past its planned date with no actual), or <em>On Track</em> — with the ERP status beneath.
+        Fill{' '}
         <strong>delivery date</strong> and <strong>qty expected this week</strong> — the only
         two editable fields — for the receiving plan.
         {lastUpdated && (
@@ -110,6 +117,12 @@ export function ReceivablePlanClient({
           {states.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
+        </select>
+        <select value={risk} onChange={(e) => setRisk(e.target.value)} aria-label="TNA risk status">
+          <option value="">All statuses</option>
+          <option value="Overdue">Overdue</option>
+          <option value="High Risk">High Risk</option>
+          <option value="On Track">On Track</option>
         </select>
         <select value={edd} onChange={(e) => setEdd(e.target.value as 'all' | 'has' | 'week')} aria-label="Delivery">
           <option value="all">Any delivery</option>
@@ -232,7 +245,14 @@ function ReceivableRow({
         <small className="wf-subtle">{row.product_state ?? row.product_code}</small>
       </td>
       <td>{row.vendor_name || row.vendor_code || '—'}</td>
-      <td className="wf-subtle">{row.po_status ?? '—'}</td>
+      <td>
+        {row.internal_status ? (
+          <span className={`badge ${statusTone(row.internal_status)}`}>
+            {row.internal_status}
+          </span>
+        ) : '—'}
+        {row.po_status && <small className="wf-subtle">{row.po_status}</small>}
+      </td>
       <td className="num strong">{fmt.format(row.arriving_qty)}</td>
       {SIZE_KEYS.map(([key]) => {
         const stock = row.stock_by_size?.[key];

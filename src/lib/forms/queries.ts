@@ -1,7 +1,14 @@
 import 'server-only';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
-import { buildVendorRollups } from '@/lib/business-logic';
-import { loadDashboardData } from '@/lib/data';
+import {
+  buildVendorRollups,
+  computeInternalStatus,
+  daysBetween,
+  isTnaHighRisk,
+  istToday,
+  parseIsoDate,
+} from '@/lib/business-logic';
+import { loadDashboardData, loadMergedTnaRecords } from '@/lib/data';
 import { monthStart } from './approval';
 import type {
   ApprovalQueueItem,
@@ -632,6 +639,14 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
     ((inputs ?? []) as Record<string, unknown>[]).map((i) => [String(i.row_key), i]),
   );
 
+  // Live TNA/risk status per PO — planned dates from tna_tracker + form actuals,
+  // keyed by PO ref (tna.po_no). Same source and rule as the Open PO Tracker.
+  const tnaRecords = await loadMergedTnaRecords();
+  const tnaByRef = new Map(
+    tnaRecords.map((t) => [String(t.po_no ?? '').trim().toLowerCase(), t]),
+  );
+  const today = istToday();
+
   // Current stock split by size, from the inventory snapshot. Its SKUs are
   // <product_variant><size> (e.g. SDVCTWH + XS), so size = the SKU tail after
   // the variant prefix. Fetch only the variants present in the plan.
@@ -642,8 +657,16 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
 
   return rows.map((r) => {
     const inp = inputByKey.get(String(r.row_key));
+    const tna = tnaByRef.get(String(r.po_ref_num ?? '').trim().toLowerCase()) ?? null;
+    const edd = parseIsoDate(r.expected_delivery_date as string | null);
+    const delayDays = edd ? Math.max(0, daysBetween(today, edd)) : 0;
+    const internal_status = computeInternalStatus({
+      delayDays,
+      highRisk: isTnaHighRisk(tna, today),
+    });
     return {
       ...(r as unknown as ReceivablePlanRow),
+      internal_status,
       stock_by_size: stockByVariant.get(String(r.product_variant ?? '')) ?? {},
       delivery_date_this_week: (inp?.delivery_date_this_week as string | null) ?? null,
       qty_expected_this_week: (inp?.qty_expected_this_week as number | null) ?? null,

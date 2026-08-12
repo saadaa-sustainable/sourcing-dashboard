@@ -5,6 +5,8 @@
  * the Apps Script sheet sync — see the warning at the top of forms/actions.ts.
  */
 
+import type { InternalStatus } from '@/lib/types';
+
 // Two working roles:
 //   admin — founders. Full access and can approve everything.
 //   team  — supply-chain staff. Fill/submit forms and approve routine items.
@@ -358,6 +360,9 @@ export type ReceivablePlanRow = {
   current_stock: number | null;
   sales_45d: number | null;
   oos_flag: boolean | null;
+  // Live TNA/risk status (Overdue / High Risk / On Track), computed from the
+  // merged tna_tracker + form actuals — same rule as the Open PO Tracker.
+  internal_status: InternalStatus | null;
   // Current in-stock qty split by size (keyed size_xs…size_5xl), from the
   // inventory snapshot — so the arriving-by-size row has a stock-by-size row.
   stock_by_size: Record<string, number>;

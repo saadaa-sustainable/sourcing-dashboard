@@ -320,3 +320,20 @@ export async function loadDashboardData(): Promise<DashboardData> {
     source: 'supabase', warnings, loadedAt: new Date().toISOString(),
   };
 }
+
+/**
+ * TNA records with their stage ACTUAL dates merged in (planned from tna_tracker,
+ * actuals from the Google Forms table) — the same truth the Open PO Tracker uses.
+ * Lean loader for callers (e.g. the Receivable Plan) that only need TNA/risk, not
+ * the full dashboard. Fixture mode returns planned-only records.
+ */
+export async function loadMergedTnaRecords(): Promise<TnaRecord[]> {
+  if (!hasSupabaseEnv()) return (await loadFixtures()).tnaRecords;
+  const supabase = await createClient();
+  const [tnaRecords, stageActuals] = await Promise.all([
+    fetchAllRows<TnaRecord>(supabase, 'tna_tracker', 'po_no'),
+    fetchStageActuals(supabase),
+  ]);
+  mergeStageActuals(tnaRecords, stageActuals);
+  return tnaRecords;
+}
