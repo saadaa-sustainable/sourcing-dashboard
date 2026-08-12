@@ -412,6 +412,8 @@ export type PoApproval = {
   trim_card_signed: boolean;
   buying_plan_no: string | null;
   category: PoCategory;
+  rate: number | null; // negotiated rate, filled with the cost sheet
+  requested_total_days: number | null; // day-count as requested at submission (locked)
   // approval workflow
   status: SdStatus;
   submitted_for_approval_at: string | null;

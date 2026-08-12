@@ -838,7 +838,7 @@ export async function loadDiscontinueRequests() {
 export async function loadPoApprovals() {
   const supabase = await client();
 
-  const [{ data: pos }, { data: cycle }, { data: variants }] = await Promise.all([
+  const [{ data: pos }, { data: cycle }, { data: variants }, { data: vendors }] = await Promise.all([
     supabase
       .from('sd_po_approval')
       .select('*')
@@ -846,6 +846,11 @@ export async function loadPoApprovals() {
       .limit(500),
     supabase.from('sd_po_cycle_time').select('*').limit(500),
     supabase.from('sd_active_variants').select('product_code').limit(PAGE_SIZE),
+    supabase
+      .from('vendor_master_data')
+      .select('vendor_code, vendor_name, is_active')
+      .eq('is_active', true)
+      .limit(PAGE_SIZE),
   ]);
 
   const poIds = ((pos ?? []) as PoApproval[]).map((p) => p.id);
@@ -867,7 +872,16 @@ export async function loadPoApprovals() {
     ),
   ].sort();
 
-  const vendorCodes = [...capacityByVendor.keys()].sort();
+  // Vendor code ↔ name from the vendor master (the source for auto-fill + the
+  // "CODE - Full Name" display). Fall back to any codes seen in open POs.
+  const vendorNames: Record<string, string> = {};
+  ((vendors ?? []) as { vendor_code: string | null; vendor_name: string | null }[]).forEach((v) => {
+    const code = (v.vendor_code ?? '').trim();
+    if (code) vendorNames[code] = (v.vendor_name ?? '').trim();
+  });
+  const vendorCodes = [
+    ...new Set([...Object.keys(vendorNames), ...capacityByVendor.keys()]),
+  ].sort();
 
   const cycleById = new Map<number, PoCycleTime>();
   ((cycle ?? []) as PoCycleTime[]).forEach((c) => cycleById.set(c.id, c));
@@ -878,6 +892,7 @@ export async function loadPoApprovals() {
     linesByPo,
     productCodes,
     vendorCodes,
+    vendorNames,
     capacityByVendor,
   };
 }

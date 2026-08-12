@@ -742,9 +742,12 @@ export async function savePoLines(formData: FormData): Promise<ActionResult> {
       .insert(clean.map((l) => ({ po_id: poId, ...l })));
     if (error) return fail(error.message);
   }
+  // PO qty is the sum of the size lines — never typed by hand.
+  const poQty = clean.reduce((sum, l) => sum + (Number(l.qty) || 0), 0);
+  await supabase.from('sd_po_approval').update({ po_qty: poQty }).eq('id', poId);
   revalidatePath('/po-approval');
   revalidatePath('/approvals');
-  return done(`Saved ${clean.length} line(s).`);
+  return done(`Saved ${clean.length} line(s) · PO qty ${poQty}.`);
 }
 
 /* ================================================================== */
@@ -1321,7 +1324,9 @@ function readPoFields(formData: FormData) {
     vendor_name: textOrNull(formData.get('vendor_name')),
     tna_sheet_url: textOrNull(formData.get('tna_sheet_url')),
     cost_sheet_url: textOrNull(formData.get('cost_sheet_url')),
-    po_qty: Number(formData.get('po_qty') ?? 0) || 0,
+    rate: numOrNull(formData.get('rate')),
+    // po_qty is NOT taken from the form — it is derived from the size lines
+    // (savePoLines keeps sd_po_approval.po_qty = sum of line qty).
     po_closing_date: dateOrNull(formData.get('po_closing_date')),
     cad_folder_url: textOrNull(formData.get('cad_folder_url')),
     cs_pp_sample_due: dateOrNull(formData.get('cs_pp_sample_due')),
@@ -1393,7 +1398,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, po_ref_num, category, product_code, po_qty')
+    .select('id, status, po_ref_num, category, product_code, po_qty, rate, critical_path_first_delivery')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -1401,14 +1406,26 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
     return fail('This PO cannot be submitted from its current state.');
   }
   const qty = Number(po.po_qty || 0);
-  if (qty <= 0) return fail('Enter a quantity before submitting.');
+  if (qty <= 0) return fail('Add the size lines — PO quantity is the sum of those.');
+  if (po.rate == null) return fail('Fill the rate (alongside the cost sheet) before submitting.');
+
+  const now = new Date();
+  // Total days as REQUESTED at submission: requested first-delivery minus today.
+  // Locked here so it doesn't drift with the eventual approval date.
+  let requestedTotalDays: number | null = null;
+  if (po.critical_path_first_delivery) {
+    const target = new Date(`${po.critical_path_first_delivery}T00:00:00Z`).getTime();
+    const start = new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z').getTime();
+    requestedTotalDays = Math.round((target - start) / 86_400_000);
+  }
 
   const next = statusOnSubmit('po_approval', qty, po.category as string);
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
     .update({
       status: next,
-      submitted_for_approval_at: new Date().toISOString(),
+      submitted_for_approval_at: now.toISOString(),
+      requested_total_days: requestedTotalDays,
       rejection_notes: null,
     })
     .eq('id', id)

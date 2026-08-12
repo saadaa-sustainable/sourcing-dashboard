@@ -22,7 +22,7 @@ export default async function PoApprovalPage() {
 
   if (!user) redirect('/login');
 
-  const { pos, cycleById, linesByPo, productCodes, vendorCodes, capacityByVendor } =
+  const { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor } =
     await loadPoApprovals();
 
   return (
@@ -41,6 +41,7 @@ export default async function PoApprovalPage() {
         capacity={Object.fromEntries(capacityByVendor)}
         productCodes={productCodes}
         vendorCodes={vendorCodes}
+        vendorNames={vendorNames}
         role={user.role}
       />
     </FormLayout>

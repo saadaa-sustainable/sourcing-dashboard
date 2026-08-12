@@ -40,6 +40,7 @@ const BLANK = {
   vendor_name: '',
   tna_sheet_url: '',
   cost_sheet_url: '',
+  rate: '',
   po_qty: '',
   po_closing_date: '',
   cad_folder_url: '',
@@ -61,6 +62,7 @@ export function PoApprovalClient({
   capacity,
   productCodes,
   vendorCodes,
+  vendorNames = {},
   role,
 }: {
   pos: PoApproval[];
@@ -69,6 +71,7 @@ export function PoApprovalClient({
   capacity: Record<string, number>;
   productCodes: string[];
   vendorCodes: string[];
+  vendorNames?: Record<string, string>;
   role: SdRole;
 }) {
   const editable = canEdit(role, 'draft');
@@ -79,6 +82,18 @@ export function PoApprovalClient({
 
   const set = (k: keyof typeof BLANK, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  // Vendor: code is primary, name auto-fills; and typing a name back-fills the
+  // code. Both are shown together. Name → code reverse lookup off the master.
+  const nameToCode = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const [code, name] of Object.entries(vendorNames)) if (name) m[name] = code;
+    return m;
+  }, [vendorNames]);
+  const setVendorCode = (code: string) =>
+    setForm((f) => ({ ...f, vendor_code: code, vendor_name: vendorNames[code.trim()] ?? f.vendor_name }));
+  const setVendorName = (name: string) =>
+    setForm((f) => ({ ...f, vendor_name: name, vendor_code: nameToCode[name.trim()] ?? f.vendor_code }));
 
   // Auto-suggest the PO ref in the observed standard format
   // FY<yy>-<yy+1>/<TYPE>/<PRODUCT>/<VENDOR>- (sequence appended manually for now).
@@ -213,27 +228,37 @@ export function PoApprovalClient({
               hint={
                 liveLoad != null
                   ? `Live load: ${liveLoad.toLocaleString('en-IN')} pcs in process`
-                  : 'Live capacity shown on approval'
+                  : 'Pick a code — name fills itself'
               }
             >
               <input
                 list="po-vendor-codes"
                 value={form.vendor_code}
-                placeholder="Select or type…"
-                onChange={(e) => set('vendor_code', e.target.value)}
+                placeholder="Select or type a code…"
+                onChange={(e) => setVendorCode(e.target.value)}
               />
               <datalist id="po-vendor-codes">
                 {vendorCodes.map((c) => (
-                  <option key={c} value={c} />
+                  <option key={c} value={c}>
+                    {vendorNames[c] ? `${c} — ${vendorNames[c]}` : c}
+                  </option>
                 ))}
               </datalist>
             </Field>
-            <Field label="Vendor name">
+            <Field label="Vendor name" hint="auto-fills from the code (or pick to back-fill the code)">
               <input
+                list="po-vendor-names"
                 value={form.vendor_name}
-                placeholder="Optional"
-                onChange={(e) => set('vendor_name', e.target.value)}
+                placeholder="Auto from code…"
+                onChange={(e) => setVendorName(e.target.value)}
               />
+              <datalist id="po-vendor-names">
+                {Object.values(vendorNames)
+                  .filter(Boolean)
+                  .map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+              </datalist>
             </Field>
             <Field label="TNA sheet link" hint="Google Drive">
               <input
@@ -249,13 +274,17 @@ export function PoApprovalClient({
                 onChange={(e) => set('cost_sheet_url', e.target.value)}
               />
             </Field>
-            <Field label="PO quantity" hint="Drives approval routing">
+            <Field label="Rate" hint="filled with the cost sheet — required to submit">
               <input
                 type="number"
                 min={0}
-                value={form.po_qty}
-                onChange={(e) => set('po_qty', e.target.value)}
+                value={form.rate}
+                placeholder="e.g. 265"
+                onChange={(e) => set('rate', e.target.value)}
               />
+            </Field>
+            <Field label="PO quantity" hint="= sum of size lines (add them on the row after saving)">
+              <input type="number" value={form.po_qty} readOnly disabled />
             </Field>
             <Field label="PO closing date" hint="As per TNA">
               <input
@@ -264,8 +293,8 @@ export function PoApprovalClient({
                 onChange={(e) => set('po_closing_date', e.target.value)}
               />
             </Field>
-            {form.po_type === 'efob' && (
-              <Field label="CAD file folder link" hint="EFOB POs only">
+            {form.po_type === 'FOB' && (
+              <Field label="CAD file folder link" hint="FOB POs only">
                 <input
                   value={form.cad_folder_url}
                   placeholder="https://…"
@@ -317,21 +346,17 @@ export function PoApprovalClient({
             </Field>
           </div>
           <div className="wf-footer-actions">
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              onClick={() => run(false)}
-              disabled={pending}
-            >
-              <Save size={15} /> {pending ? 'Working…' : 'Save draft'}
-            </button>
+            <p className="wf-footer-note">
+              Save the draft, then add the size lines on its row (PO qty totals itself) and submit from
+              there.
+            </p>
             <button
               type="button"
               className="wf-btn wf-btn-primary"
-              onClick={() => run(true)}
-              disabled={pending || !form.product_code || !Number(form.po_qty)}
+              onClick={() => run(false)}
+              disabled={pending || !form.product_code}
             >
-              <Send size={15} /> {pending ? 'Working…' : 'Save & submit'}
+              <Save size={15} /> {pending ? 'Working…' : 'Save draft'}
             </button>
           </div>
         </div>
@@ -623,7 +648,9 @@ function PoRow({
         </td>
         <td className="mono">{po.product_code ?? '—'}</td>
         <td>
-          {po.vendor_name || po.vendor_code || '—'}
+          {po.vendor_code && po.vendor_name
+            ? `${po.vendor_code.toUpperCase()} - ${po.vendor_name}`
+            : po.vendor_name || po.vendor_code || '—'}
           {po.vendor_code && (
             <small className="wf-subtle">
               {liveLoad == null
@@ -648,11 +675,15 @@ function PoRow({
           )}
         </td>
         <td className="wf-subtle">
-          {cycle?.total_cycle_days != null
-            ? `${cycle.total_cycle_days} total`
-            : cycle?.days_to_approve != null
-              ? `${cycle.days_to_approve} to approve`
-              : '—'}
+          {po.requested_total_days != null ? (
+            <span title="Requested at submission — locked">{po.requested_total_days}d requested</span>
+          ) : cycle?.total_cycle_days != null ? (
+            `${cycle.total_cycle_days} total`
+          ) : cycle?.days_to_approve != null ? (
+            `${cycle.days_to_approve} to approve`
+          ) : (
+            '—'
+          )}
           {cycle?.days_to_sign != null && (
             <small className="wf-subtle">{cycle.days_to_sign}d to sign</small>
           )}
@@ -810,41 +841,11 @@ function PoRow({
                     onChange={(e) => setI('first_actual_delivery_date', e.target.value)}
                   />
                 </Field>
-                <Field label="Signed PO document" hint="DiGiO — URL for now">
-                  <input
-                    value={iss.signed_po_document_url}
-                    placeholder="https://…"
-                    onChange={(e) => setI('signed_po_document_url', e.target.value)}
-                  />
-                </Field>
-                <Field label="Signed cost sheet" hint="DiGiO — URL for now">
-                  <input
-                    value={iss.signed_cost_sheet_url}
-                    placeholder="https://…"
-                    onChange={(e) => setI('signed_cost_sheet_url', e.target.value)}
-                  />
-                </Field>
-                <Field label="Signed TNA" hint="DiGiO — URL for now">
-                  <input
-                    value={iss.signed_tna_url}
-                    placeholder="https://…"
-                    onChange={(e) => setI('signed_tna_url', e.target.value)}
-                  />
-                </Field>
-                <Field label="Signed PO ref number" hint="DiGiO">
-                  <input
-                    value={iss.signed_po_ref_number}
-                    onChange={(e) => setI('signed_po_ref_number', e.target.value)}
-                  />
-                </Field>
-                <Field label="Date of PO sign" hint="DiGiO">
-                  <input
-                    type="date"
-                    value={iss.date_of_po_sign}
-                    onChange={(e) => setI('date_of_po_sign', e.target.value)}
-                  />
-                </Field>
               </div>
+              <Notice tone="info">
+                DiGiO e-signing (signed PO / cost sheet / TNA, sign date) is <strong>Phase 2</strong> —
+                not captured here yet.
+              </Notice>
               <label className="wf-check-field">
                 <input
                   type="checkbox"
