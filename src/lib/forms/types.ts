@@ -257,6 +257,23 @@ export type StandardCost = {
   proposed_cost: number | null;
   target_cost: number | null;
   negotiation_notes: string | null;
+  // Sequential sign-off (FG): fabric rate confirmed first, then CM/other second.
+  fabric_confirmed_at: string | null;
+  fabric_confirmed_by: string | null;
+  cm_confirmed_at: string | null;
+  cm_confirmed_by: string | null;
+};
+
+/** The document-once standard cost fields, same across all products (singleton). */
+export type CostStandards = {
+  id: number;
+  fabric_cost: number | null;
+  dyeing_cost: number | null;
+  shrinkage_pct: number | null;
+  margin_pct: number | null;
+  payment_terms: string | null;
+  updated_by: string | null;
+  updated_at: string;
 };
 
 /** One colour×size cost line under a product's standard cost (sd_standard_cost_line). */

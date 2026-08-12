@@ -71,3 +71,13 @@ export const canRenegotiate = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'rate_submitted';
 export const canRejectCost = (role: SdRole, stage: string | null) =>
   isAdmin(role) && (stage === 'proposed' || stage === 'rate_submitted');
+
+// Sequential sign-off (FG): confirm the fabric rate first, then the CM/other rate.
+export const canConfirmFabric = (role: SdRole, stage: string | null, fabricConfirmed: boolean) =>
+  isAdmin(role) && stage === 'rate_submitted' && !fabricConfirmed;
+export const canConfirmCm = (
+  role: SdRole,
+  stage: string | null,
+  fabricConfirmed: boolean,
+  cmConfirmed: boolean,
+) => isAdmin(role) && stage === 'rate_submitted' && fabricConfirmed && !cmConfirmed;

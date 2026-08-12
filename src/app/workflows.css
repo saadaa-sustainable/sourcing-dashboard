@@ -904,9 +904,26 @@
 th.wf-yarn-col { color: #2f6bbf; }
 .wf-row-dirty > td { background: rgba(240, 198, 30, 0.12); }
 
-/* ---- CM cost matrix: computed (yellow) cells + document view ---- */
+/* ---- CM cost matrix: black (input) / green (computed) cells + document view ---- */
 .wf-cost-matrix { max-width: 520px; }
-.wf-cell-calc { background: #fdf6d8; color: #6b5a12; font-weight: 600; }
+/* computed = green, input = dark/neutral — his "black & green" separation */
+.wf-cell-calc { background: #e7f6ea; color: #2f6b3a; font-weight: 600; }
+th.wf-cell-calc { background: #d7efdc; color: #2f6b3a; }
+.wf-cell-input { background: #f3f2ef; }
+th.wf-cell-input { background: #33302b; color: #fff; }
+.wf-legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wf-legend-input, .wf-legend-calc {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+}
+.wf-legend-input { background: #33302b; color: #fff; }
+.wf-legend-calc { background: #d7efdc; color: #2f6b3a; }
+.wf-standards-panel {
+  border: 1px solid #e7e2d2; border-radius: 12px; background: #fff; padding: 12px 16px; margin-bottom: 4px;
+}
+.wf-standards-panel > summary {
+  cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: #6e695e; text-transform: uppercase;
+}
+.wf-standards-panel[open] > summary { margin-bottom: 10px; }
 .wf-inline-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 560; }
 .wf-inline-field select { padding: 4px 8px; font-size: 12px; border-radius: 8px; border: 1px solid #e7e2d2; }
 .wf-cost-doc {

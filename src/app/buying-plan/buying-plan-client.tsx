@@ -496,18 +496,18 @@ export function BuyingPlanClient({
                 <th>Product code</th>
                 <th>Product status</th>
                 <th>Woven / Knitted</th>
-                <th className="num">Pending qty</th>
-                <th className="num input-col">Job work qty</th>
-                <th className="num input-col">FOB qty</th>
-                <th className="num input-col">E-FOB qty</th>
-                <th className="num">Total quantity</th>
-                <th className="num">
+                <th className="num wf-cell-calc">Pending qty</th>
+                <th className="num input-col wf-cell-input">Job work qty</th>
+                <th className="num input-col wf-cell-input">FOB qty</th>
+                <th className="num input-col wf-cell-input">E-FOB qty</th>
+                <th className="num wf-cell-calc">Total quantity</th>
+                <th className="num wf-cell-calc">
                   Standard cost<small className="wf-subtle">Job · FOB · E-FOB</small>
                 </th>
-                <th className="num">Value to be bought</th>
-                <th className="num">Actual issued quantity</th>
-                <th className="num">Actual issued value</th>
-                <th className="input-col">Remark</th>
+                <th className="num wf-cell-calc">Value to be bought</th>
+                <th className="num wf-cell-calc">Actual issued quantity</th>
+                <th className="num wf-cell-calc">Actual issued value</th>
+                <th className="input-col wf-cell-input">Remark</th>
                 {editable && <th aria-label="Remove" />}
               </tr>
             </thead>
@@ -517,13 +517,13 @@ export function BuyingPlanClient({
                   <td className="mono">{row.product_code}</td>
                   <td>{productMaster[row.product_code]?.status || '—'}</td>
                   <td>{productMaster[row.product_code]?.fabric_type || '—'}</td>
-                  <td className="num">
+                  <td className="num wf-cell-calc">
                     {pendingByCode[row.product_code]
                       ? fmt.format(pendingByCode[row.product_code])
                       : '—'}
                   </td>
                   {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
-                    <td key={field} className="num input-col">
+                    <td key={field} className="num input-col wf-cell-input">
                       <input
                         type="number"
                         min={0}
@@ -533,8 +533,8 @@ export function BuyingPlanClient({
                       />
                     </td>
                   ))}
-                  <td className="num strong">{fmt.format(totalQty)}</td>
-                  <td className="num">
+                  <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
+                  <td className="num wf-cell-calc">
                     {cost ? (
                       <div className="wf-cost-triple">
                         <span><b>Job</b> {fmt.format(cost.job)}</span>
@@ -545,18 +545,18 @@ export function BuyingPlanClient({
                       '—'
                     )}
                   </td>
-                  <td className="num">
+                  <td className="num wf-cell-calc">
                     {missingCost ? (
                       <span className="wf-over-tag">no approved cost</span>
                     ) : (
                       money.format(valueToBeBought)
                     )}
                   </td>
-                  <td className="num">
+                  <td className="num wf-cell-calc">
                     {fmt.format(actualQty)}
                     {overPlan && <span className="wf-over-tag">over plan</span>}
                   </td>
-                  <td className="num">{money.format(actualValue)}</td>
+                  <td className="num wf-cell-calc">{money.format(actualValue)}</td>
                   <td className="input-col">
                     <input
                       value={row.remark}

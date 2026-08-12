@@ -11,6 +11,7 @@ import type {
   BuyingPlanLineView,
   CashFlowMonth,
   Colour,
+  CostStandards,
   DiscontinueRequest,
   FabricCostBase,
   FabricMaster,
@@ -223,6 +224,24 @@ export async function loadStandardCosts(): Promise<StandardCost[]> {
     .order('product_code')
     .limit(PAGE_SIZE);
   return (data ?? []) as StandardCost[];
+}
+
+/** The document-once standard cost fields (singleton). */
+export async function loadCostStandards(): Promise<CostStandards> {
+  const supabase = await client();
+  const { data } = await supabase.from('sd_cost_standards').select('*').eq('id', 1).maybeSingle();
+  return (
+    (data as CostStandards | null) ?? {
+      id: 1,
+      fabric_cost: null,
+      dyeing_cost: null,
+      shrinkage_pct: null,
+      margin_pct: null,
+      payment_terms: null,
+      updated_by: null,
+      updated_at: '',
+    }
+  );
 }
 
 /** Colour/size cost detail lines (all products), for the Standard Cost expand panels. */

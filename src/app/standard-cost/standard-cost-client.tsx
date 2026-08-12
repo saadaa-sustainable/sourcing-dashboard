@@ -1,11 +1,14 @@
 'use client';
 
-import { Fragment, useMemo, useState, useTransition } from 'react';
-import { ChevronDown, ChevronRight, Lock, Plus, Save } from 'lucide-react';
+import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
+import { ChevronDown, ChevronRight, Download, Lock, Plus, Save, Upload } from 'lucide-react';
 import {
+  confirmCmRate,
+  confirmFabricRate,
   proposeCost,
   rejectCost,
   renegotiateCost,
+  saveCostStandards,
   saveMaterialCost,
   saveStandardCost,
   saveStandardCostLines,
@@ -17,6 +20,8 @@ import {
 import {
   COST_STAGE_LABEL,
   COST_STAGE_TONE,
+  canConfirmCm,
+  canConfirmFabric,
   canPropose,
   canRejectCost,
   canRenegotiate,
@@ -26,8 +31,9 @@ import {
   nextActor,
 } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
+import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice } from '@/components/forms/form-layout';
-import type { SdRole, StandardCost, StandardCostLine } from '@/lib/forms/types';
+import type { CostStandards, SdRole, StandardCost, StandardCostLine } from '@/lib/forms/types';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
 
@@ -36,6 +42,7 @@ export function StandardCostClient({
   lines = [],
   fabricRates = {},
   fabricCodes = [],
+  standards,
   initialOpen = null,
   role,
   track = 'fg',
@@ -44,6 +51,7 @@ export function StandardCostClient({
   lines?: StandardCostLine[];
   fabricRates?: Record<string, number>;
   fabricCodes?: string[];
+  standards?: CostStandards;
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -110,6 +118,8 @@ export function StandardCostClient({
 
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
+
+      {!isMat && standards && <StandardFieldsPanel standards={standards} editable={editable} />}
 
       {editable && (
         <div className="wf-form-panel">
@@ -194,6 +204,56 @@ export function StandardCostClient({
         </div>
       </div>
     </>
+  );
+}
+
+/** Document-once standard fields — the same across all products. */
+function StandardFieldsPanel({
+  standards,
+  editable,
+}: {
+  standards: CostStandards;
+  editable: boolean;
+}) {
+  const [fabric, setFabric] = useState(standards.fabric_cost?.toString() ?? '');
+  const [dyeing, setDyeing] = useState(standards.dyeing_cost?.toString() ?? '');
+  const [shrink, setShrink] = useState(standards.shrinkage_pct?.toString() ?? '');
+  const [margin, setMargin] = useState(standards.margin_pct?.toString() ?? '');
+  const [terms, setTerms] = useState(standards.payment_terms ?? '');
+  const [busy, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function save() {
+    const fd = new FormData();
+    fd.set('fabric_cost', fabric);
+    fd.set('dyeing_cost', dyeing);
+    fd.set('shrinkage_pct', shrink);
+    fd.set('margin_pct', margin);
+    fd.set('payment_terms', terms);
+    start(async () => {
+      const res = await saveCostStandards(fd);
+      setMsg(res.ok ? 'Saved.' : res.error);
+      if (res.ok) window.location.reload();
+    });
+  }
+
+  return (
+    <details className="wf-standards-panel" open={false}>
+      <summary>Standard fields — documented once, same across all products</summary>
+      {msg && <Notice tone="ok">{msg}</Notice>}
+      <div className="wf-form-grid">
+        <Field label="Fabric cost"><input type="number" min={0} value={fabric} disabled={!editable} onChange={(e) => setFabric(e.target.value)} /></Field>
+        <Field label="Dyeing cost"><input type="number" min={0} value={dyeing} disabled={!editable} onChange={(e) => setDyeing(e.target.value)} /></Field>
+        <Field label="Shrinkage %"><input type="number" min={0} value={shrink} disabled={!editable} onChange={(e) => setShrink(e.target.value)} /></Field>
+        <Field label="Margin %"><input type="number" min={0} value={margin} disabled={!editable} onChange={(e) => setMargin(e.target.value)} /></Field>
+        <Field label="Payment terms"><input value={terms} disabled={!editable} placeholder="e.g. 30 days" onChange={(e) => setTerms(e.target.value)} /></Field>
+        {editable && (
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
+            <Save size={13} /> {busy ? 'Saving…' : 'Save standard fields'}
+          </button>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -361,14 +421,22 @@ function CostRow({
 
           {canSignOff(role, stage) && (
             <div className="wf-issue-row">
-              <button
-                type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                disabled={busy}
-                onClick={() => act(signOffCost, {})}
-              >
-                Sign off
-              </button>
+              {isMat ? (
+                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(signOffCost, {})}>
+                  Sign off
+                </button>
+              ) : canConfirmFabric(role, stage, !!cost.fabric_confirmed_at) ? (
+                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmFabricRate, {})}>
+                  1 · Confirm fabric rate
+                </button>
+              ) : canConfirmCm(role, stage, !!cost.fabric_confirmed_at, !!cost.cm_confirmed_at) ? (
+                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmCmRate, {})}>
+                  2 · Confirm CM → sign off
+                </button>
+              ) : null}
+              {!isMat && cost.fabric_confirmed_at && !cost.cm_confirmed_at && (
+                <span className="wf-tag-approved">fabric ✓</span>
+              )}
               {canRenegotiate(role, stage) && (
                 <button
                   type="button"
@@ -464,6 +532,7 @@ function CostDetail({
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const fabricRate = fabricCode ? fabricRates[fabricCode] : undefined;
 
@@ -511,6 +580,41 @@ function CostDetail({
       .join('\n');
     void navigator.clipboard?.writeText(`${head}\n${body}`);
     setMsg('Matrix copied to clipboard.');
+  }
+
+  function downloadTemplate() {
+    downloadCsv(
+      `cost-cm-${cost.product_code}.csv`,
+      ['size', 'cm'],
+      SIZES.map((s) => [s, cmBySize[s] ?? '']),
+    );
+  }
+
+  async function onCsvFile(file: File) {
+    setErr(null);
+    setMsg(null);
+    let objects: Record<string, string>[];
+    try {
+      objects = csvObjects(await file.text());
+    } catch {
+      setErr('Could not read that file as CSV.');
+      return;
+    }
+    const sizeSet = new Set<string>(SIZES);
+    const patch: Record<string, string> = {};
+    let bad = 0;
+    for (const r of objects) {
+      const size = String(r.size ?? '').trim().toUpperCase();
+      const cm = String(r.cm ?? r.cm_cost ?? '').trim();
+      if (!sizeSet.has(size)) { bad += 1; continue; }
+      if (cm !== '') patch[size] = cm;
+    }
+    if (!Object.keys(patch).length) {
+      setErr('No matching sizes imported. Expected headers: size, cm.');
+      return;
+    }
+    setCmBySize((cur) => ({ ...cur, ...patch }));
+    setMsg(`Imported CM for ${Object.keys(patch).length} size(s)${bad ? `, skipped ${bad}` : ''}. Review, then Save.`);
   }
 
   function saveDetail() {
@@ -580,6 +684,27 @@ function CostDetail({
             <span className="wf-subtle">
               Fabric rate {fabricRate != null ? fabricRate : '— (set in Fabric Cost)'}
             </span>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onCsvFile(f);
+                e.target.value = '';
+              }}
+            />
+            {rw && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
+                <Download size={13} /> Template
+              </button>
+            )}
+            {rw && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
+                <Upload size={13} /> Import CSV
+              </button>
+            )}
             <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={copyMatrix}>Copy</button>
           </div>
         )}
@@ -640,9 +765,9 @@ function CostDetail({
             <thead>
               <tr>
                 <th>Size</th>
-                <th className="num">Fabric*</th>
-                <th className="num input-col">CM</th>
-                <th className="num">Total*</th>
+                <th className="num wf-cell-calc">Fabric*</th>
+                <th className="num input-col wf-cell-input">CM</th>
+                <th className="num wf-cell-calc">Total*</th>
               </tr>
             </thead>
             <tbody>
@@ -650,7 +775,7 @@ function CostDetail({
                 <tr key={r.size}>
                   <td className="strong">{r.size}</td>
                   <td className="num wf-cell-calc">{r.fabric ?? '—'}</td>
-                  <td className="num input-col">
+                  <td className="num input-col wf-cell-input">
                     <input
                       type="number"
                       min={0}
@@ -671,7 +796,12 @@ function CostDetail({
               </tr>
             </tfoot>
           </table>
-          <p className="wf-subtle">* computed — fabric pulled from the Fabric Cost sheet, total = fabric + CM. Paste a CM column straight from Excel.</p>
+          <p className="wf-subtle wf-legend">
+            <span className="wf-legend-input">input</span>
+            <span className="wf-legend-calc">computed</span>
+            — the <strong>computed</strong> (green) cells fill themselves: fabric is pulled from the
+            Fabric Cost sheet, total = fabric + CM. Paste a CM column straight from Excel.
+          </p>
 
           {editable && (
             <div className="wf-cost-detail-foot">

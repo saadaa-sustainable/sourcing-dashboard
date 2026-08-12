@@ -27,6 +27,8 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { currentUser } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
 import {
+  canConfirmCm,
+  canConfirmFabric,
   canPropose,
   canRejectCost,
   canRenegotiate,
@@ -1201,6 +1203,97 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected: ${note}`);
   revalidatePath('/standard-cost');
   return done('Cost rejected.');
+}
+
+/** The document-once standard fields (singleton) — same across all products. */
+export async function saveCostStandards(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to edit cost standards.');
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_cost_standards').upsert(
+    {
+      id: 1,
+      fabric_cost: numOrNull(formData.get('fabric_cost')),
+      dyeing_cost: numOrNull(formData.get('dyeing_cost')),
+      shrinkage_pct: numOrNull(formData.get('shrinkage_pct')),
+      margin_pct: numOrNull(formData.get('margin_pct')),
+      payment_terms: textOrNull(formData.get('payment_terms')),
+      updated_by: user.email,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/standard-cost');
+  return done('Standard fields saved.');
+}
+
+/** Sequential sign-off, step 1 (FG): Mahesh confirms the fabric rate first. */
+export async function confirmFabricRate(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const supabase = await supa();
+  const { data: row } = await supabase
+    .from('sd_standard_cost')
+    .select('id, product_code, status, neg_stage, fabric_confirmed_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!row) return fail('Cost not found.');
+  if (!canConfirmFabric(user.role, row.neg_stage as string | null, !!row.fabric_confirmed_at)) {
+    return fail('Fabric rate cannot be confirmed right now.');
+  }
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('sd_standard_cost')
+    .update({ fabric_confirmed_at: now, fabric_confirmed_by: user.email, updated_at: now })
+    .eq('id', id);
+  if (error) return fail(error.message);
+  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, row.status as SdStatus, user.email, 'Fabric rate confirmed');
+  revalidatePath('/standard-cost');
+  return done('Fabric rate confirmed. Now confirm CM / other.');
+}
+
+/** Sequential sign-off, step 2 (FG): confirm CM/other → signs off = standard cost. */
+export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const supabase = await supa();
+  const { data: row } = await supabase
+    .from('sd_standard_cost')
+    .select('id, product_code, status, neg_stage, fabric_confirmed_at, cm_confirmed_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!row) return fail('Cost not found.');
+  if (!canConfirmCm(user.role, row.neg_stage as string | null, !!row.fabric_confirmed_at, !!row.cm_confirmed_at)) {
+    return fail('Confirm the fabric rate first.');
+  }
+  const now = new Date().toISOString();
+  const { data: updated, error } = await supabase
+    .from('sd_standard_cost')
+    .update({
+      cm_confirmed_at: now,
+      cm_confirmed_by: user.email,
+      neg_stage: 'signed_off',
+      status: 'approved',
+      approved_by: user.email,
+      approved_at: now,
+      documented: true,
+      updated_at: now,
+    })
+    .eq('id', id)
+    .eq('neg_stage', 'rate_submitted')
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Already processed.');
+  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — signed off');
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  return done('Signed off. This is now the standard cost.');
 }
 
 /* ================================================================== */
