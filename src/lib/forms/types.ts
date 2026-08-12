@@ -138,6 +138,7 @@ export type BuyingPlanLine = {
   remark: string | null; // free note, e.g. carried from a CSV import
   material_type: string | null; // material track: raw | dyed | trim
   job_rate: number | null; // material track: Job-Work rate (purchase rate = standard_value)
+  colour: string | null; // material track: editable per-line colour (Dyed lines)
 };
 
 /** Everything derived. Never stored — same discipline as business-logic.ts. */

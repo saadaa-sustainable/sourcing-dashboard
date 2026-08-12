@@ -189,6 +189,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
           line.job_rate === '' || line.job_rate == null ? null : Number(line.job_rate),
         remark: line.remark ? String(line.remark) : null,
         material_type: line.material_type ? String(line.material_type) : null,
+        colour: line.colour ? String(line.colour) : null,
       };
     });
 

@@ -47,6 +47,7 @@ type Row = {
   key: string;
   material_code: string;
   material_type: MaterialType;
+  colour: string; // editable per-line colour (Dyed lines); defaults to the code's master colour
   job_qty: string; // Job Work (e.g. paying for dyeing) quantity
   purchase_qty: string; // Purchase / FOB (buying outright) quantity
   uom: string;
@@ -63,6 +64,7 @@ function toRow(l: BuyingPlanLine): Row {
     key: `line-${l.id}`,
     material_code: l.product_code,
     material_type: asType(l.material_type),
+    colour: l.colour ?? '',
     job_qty: l.job_work_qty?.toString() ?? '',
     purchase_qty: l.fob_qty?.toString() ?? '',
     uom: l.uom ?? 'metres',
@@ -82,6 +84,7 @@ export function MaterialPlanClient({
   plan,
   lines,
   materialCodes,
+  colours,
   materialCosts,
   role,
 }: {
@@ -101,6 +104,7 @@ export function MaterialPlanClient({
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<'view' | 'input'>('view');
   const [type, setType] = useState<MaterialType>('raw');
+  const [addBase, setAddBase] = useState(''); // base-fabric filter in the add-material cascade
   const [addCode, setAddCode] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -124,7 +128,8 @@ export function MaterialPlanClient({
       purchaseValue,
       value: jobValue + purchaseValue,
       missingCost: (jobQty > 0 || purchaseQty > 0) && !cost,
-      colour: codeMap.get(r.material_code)?.colour ?? null,
+      // Effective colour for display: the per-line pick, else the code's master colour.
+      colour: r.colour || codeMap.get(r.material_code)?.colour || null,
     };
   });
   const totals = view.reduce(
@@ -138,6 +143,14 @@ export function MaterialPlanClient({
   const available = materialCodes.filter(
     (c) => c.material_type === type && !usedCodes.has(c.material_code),
   );
+  // Add-material cascade: pick a base fabric first, then the code narrows to it.
+  const baseFabrics = useMemo(
+    () => [...new Set(available.map((c) => c.base_fabric_code).filter(Boolean))].sort() as string[],
+    [available],
+  );
+  const codeChoices = addBase
+    ? available.filter((c) => c.base_fabric_code === addBase)
+    : available;
   const shownRows = view.filter((v) => v.row.material_type === type);
 
   const set = (key: string, field: keyof Row, value: string) =>
@@ -152,6 +165,7 @@ export function MaterialPlanClient({
         key: `new-${code}-${Date.now()}`,
         material_code: code,
         material_type: (meta?.material_type as MaterialType) ?? type,
+        colour: meta?.colour ?? '',
         job_qty: '',
         purchase_qty: '',
         uom: 'metres',
@@ -159,6 +173,7 @@ export function MaterialPlanClient({
       },
     ]);
     setAddCode('');
+    setAddBase('');
   }
 
   function downloadTemplate() {
@@ -219,6 +234,7 @@ export function MaterialPlanClient({
           key: `csv-${code}-${seq++}`,
           material_code: code,
           material_type: (meta?.material_type as MaterialType) ?? 'raw',
+          colour: meta?.colour ?? '',
           job_qty: '',
           purchase_qty: '',
           uom: meta?.material_type === 'trim' ? 'pcs' : 'metres',
@@ -249,6 +265,7 @@ export function MaterialPlanClient({
       .map((r) => ({
         product_code: r.material_code.trim(),
         material_type: r.material_type,
+        colour: r.material_type === 'dyed' ? r.colour : '',
         job_work_qty: r.job_qty,
         fob_qty: r.purchase_qty,
         uom: r.uom,
@@ -355,11 +372,27 @@ export function MaterialPlanClient({
         </div>
         {editable && mode === 'input' && (
           <div className="wf-toolbar-right">
-            <select className="wf-add-select" value={addCode} onChange={(e) => addRow(e.target.value)} disabled={!available.length}>
+            {baseFabrics.length > 0 && (
+              <select
+                className="wf-add-select"
+                value={addBase}
+                onChange={(e) => setAddBase(e.target.value)}
+                disabled={!available.length}
+                aria-label="Base fabric"
+              >
+                <option value="">All base fabrics</option>
+                {baseFabrics.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            )}
+            <select className="wf-add-select" value={addCode} onChange={(e) => addRow(e.target.value)} disabled={!codeChoices.length}>
               <option value="">
-                {available.length ? `Add ${TYPE_LABEL[type].toLowerCase()} code (${available.length})` : 'All codes added'}
+                {codeChoices.length ? `Add ${TYPE_LABEL[type].toLowerCase()} code (${codeChoices.length})` : 'All codes added'}
               </option>
-              {available.map((c) => (
+              {codeChoices.map((c) => (
                 <option key={c.material_code} value={c.material_code}>
                   {c.material_code}
                   {c.colour ? ` · ${c.colour}` : ''}
@@ -412,7 +445,7 @@ export function MaterialPlanClient({
                 <thead>
                   <tr>
                     <th>{TYPE_LABEL[type]} code</th>
-                    {type === 'dyed' && <th>Colour</th>}
+                    {type === 'dyed' && <th className="input-col wf-cell-input">Colour</th>}
                     <th className="num input-col wf-cell-input">Job Work qty</th>
                     <th className="num wf-cell-calc">Job rate</th>
                     <th className="num input-col wf-cell-input">Purchase qty</th>
@@ -424,10 +457,29 @@ export function MaterialPlanClient({
                   </tr>
                 </thead>
                 <tbody>
-                  {shownRows.map(({ row, value, colour, cost, missingCost }) => (
+                  {shownRows.map(({ row, value, cost, missingCost }) => (
                     <tr key={row.key}>
                       <td className="mono">{row.material_code}</td>
-                      {type === 'dyed' && <td className="wf-cell-calc">{colour || '—'}</td>}
+                      {type === 'dyed' && (
+                        <td className="input-col wf-cell-input">
+                          <select
+                            value={row.colour}
+                            disabled={!editable}
+                            onChange={(e) => set(row.key, 'colour', e.target.value)}
+                          >
+                            <option value="">
+                              {codeMap.get(row.material_code)?.colour
+                                ? `${codeMap.get(row.material_code)?.colour} (default)`
+                                : '— pick colour —'}
+                            </option>
+                            {colours.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
                       <td className="num input-col wf-cell-input">
                         <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
                       </td>
