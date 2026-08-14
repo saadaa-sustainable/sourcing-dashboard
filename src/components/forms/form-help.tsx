@@ -80,6 +80,14 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Vendor payment terms', source: 'You set', detail: 'Days from invoice/receipt to payment, per vendor (default 45). Editing recomputes the whole forecast.' },
     { field: 'Past due', source: 'Automatic', formula: 'due date < today (invoiced, not settled)', detail: 'Invoiced obligations whose due date has already passed — assumed unpaid unless settled outside the system.' },
   ],
+  '/vendor-recommendation': [
+    { field: 'Source & scope', source: 'Completed PO history (EasyEcom)', detail: 'Every PO given to a vendor since 2025 (all statuses), from the EasyEcom PO pipeline. Internal / transfer vendors are excluded.' },
+    { field: 'Completion rate', source: 'Automatic', formula: 'POs completed ÷ POs given × 100', detail: 'How often the vendor actually finishes what it is given (completed = EasyEcom status Completed). Hover to see completed / given.' },
+    { field: 'On-time rate', source: 'Automatic', formula: 'on-time ÷ rated completed × 100 (on-time = GRN receipt date ≤ EDD)', detail: 'Of the completed POs that can be judged (have both an expected delivery date and a GRN receipt date), how many were received on/before the EDD. Hover to see the coverage.' },
+    { field: 'Delay rate', source: 'Automatic', formula: 'delayed ÷ rated completed × 100', detail: 'The inverse of on-time over the rated completed POs — received after the EDD.' },
+    { field: 'Rated / Confidence', source: 'Automatic', formula: 'rated = completed − unrated; confidence = rated ÷ completed', detail: 'Unrated = a completed PO with no EDD or no GRN receipt date, so it can’t be scored on time. Low confidence means the on-time / delay rates rest on few POs — treat with caution.' },
+    { field: 'Score', source: 'Automatic', formula: '0.6 × on-time(rated) + 0.4 × completion', detail: 'The ranking value out of 100 — weighted toward on-time reliability, then completion. Vendors with fewer than 5 POs are listed separately as thin data, not ranked.' },
+  ],
   '/fabric-cost': [
     { field: 'Fabric code', source: 'Fabric Master', detail: 'Rows seed from the active Fabric Master. The finished cost you set here is what the Standard Cost CM matrix pulls in.' },
     { field: 'Yarn / Conversion cost', source: 'You enter', detail: 'The yarn price and the yarn→grey conversion charge.' },

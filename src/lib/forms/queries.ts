@@ -35,6 +35,7 @@ import type {
   ProductMaster,
   ReceivablePlanRow,
   ReplenishmentRow,
+  VendorRecommendationRow,
   SdStatus,
   SdUser,
   VendorTerm,
@@ -173,6 +174,18 @@ export async function loadReplenishmentByProduct(): Promise<
     };
   });
   return map;
+}
+
+/** Per-vendor completed-PO performance (completion / on-time / delay) for the
+ *  Vendor Recommendation screen. From sd_vendor_recommendation (live source). */
+export async function loadVendorRecommendation(): Promise<VendorRecommendationRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from('sd_vendor_recommendation')
+    .select('*')
+    .limit(PAGE_SIZE);
+  if (error) throw new Error(`sd_vendor_recommendation: ${error.message}`);
+  return (data ?? []) as VendorRecommendationRow[];
 }
 
 /** Every product's master row + the NPD-promotion candidates, for the panel. */

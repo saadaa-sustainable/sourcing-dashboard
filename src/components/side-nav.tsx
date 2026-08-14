@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import {
+  Award,
   Ban,
   Boxes,
   CalendarClock,
@@ -46,6 +47,7 @@ const WORKFLOW_LINKS = [
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
+  { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },

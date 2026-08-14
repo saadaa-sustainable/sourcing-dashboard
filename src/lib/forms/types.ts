@@ -337,6 +337,22 @@ export type ReplenishmentRow = {
   rop_90: number;
 };
 
+/** One vendor's completed-PO performance, from sd_vendor_recommendation. */
+export type VendorRecommendationRow = {
+  vendor_key: string;
+  vendor_name: string | null;
+  vendor_code: string | null;
+  last_po_date: string | null;
+  pos_given: number;
+  pos_completed: number;
+  pos_on_time: number;
+  pos_delayed: number;
+  pos_completed_unrated: number;
+  completion_rate_pct: number | null;
+  on_time_rate_pct: number | null;
+  delay_rate_pct: number | null;
+};
+
 /** One size-pivoted receivable row (open PO colour + DOQ/stock/OOS enrichment). */
 export type ReceivablePlanRow = {
   row_key: string;
