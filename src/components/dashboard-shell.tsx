@@ -1314,11 +1314,16 @@ function VendorTable({
                   <td>{fmt.format(row.capacityPerMonth)}</td>
                   <td>{fmt.format(row.poCapacity)}</td>
                   <td>
-                    <span
-                      className={`badge ${row.utilizationPct > 100 ? "danger" : "info"}`}
-                    >
-                      {row.utilizationPct}%
-                    </span>
+                    {row.utilizationPct > 100 ? (
+                      <span
+                        className="badge danger"
+                        title={`Booked at ${row.utilizationPct}% of capacity`}
+                      >
+                        100% · Over utilised
+                      </span>
+                    ) : (
+                      <span className="badge info">{row.utilizationPct}%</span>
+                    )}
                   </td>
                 </tr>
               ))}
