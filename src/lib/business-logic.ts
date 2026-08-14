@@ -388,7 +388,9 @@ export function buildVendorRollups(
       totalMachines: number(resolved.master?.total_machines),
       totalActiveKarigar: number(resolved.master?.total_active_karigar),
       karigarLatest: number(resolved.master?.karigar_latest), capacityPerMonth: capacity, poCapacity,
-      utilizationPct: poCapacity ? Math.round(openQty / poCapacity * 100) : 0,
+      // Utilisation = open qty ÷ monthly capacity (the master's signed capacity/month),
+      // matching the Merchant rollup and the documented formula.
+      utilizationPct: capacity ? Math.round(openQty / capacity * 100) : 0,
     };
   }).sort((a, b) => b.openValue - a.openValue);
 }

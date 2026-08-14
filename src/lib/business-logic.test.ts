@@ -163,7 +163,7 @@ describe('sourcing business rules', () => {
     const [vendor]=buildVendorRollups([overdue,upcoming],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(vendor.openPoCount,1); assert.equal(vendor.delayedPoCount,1); assert.equal(vendor.openQty,10);
   });
-  it('derives vendor PO capacity + utilisation from live machines x karigar x type multiplier', () => {
+  it('derives PO capacity from machines x karigar x type multiplier; utilisation from monthly capacity', () => {
     assert.equal(vendorPoCapacity(20, 25, 'E-FOB'), 750);
     assert.equal(vendorPoCapacity(10, 10, 'FOB'), 250);
     assert.equal(vendorPoCapacity(5, 4, 'EFOB/FOB'), 40);
@@ -171,8 +171,14 @@ describe('sourcing business rules', () => {
     const cap = new Map([['v1', { machines: 20, karigar: 25 }]]);
     const line = { ...base, po_ref_num: 'PO-9', vendor_code: 'V1', pending_qty_actual: 300, expected_delivery_date: '2026-09-01' };
     const vt = { vendor_name: 'V1', vendor_code: 'V1', vendor_type: 'E-FOB', merchant_name: null, status: 'active' };
-    const [v] = buildVendorRollups([line], [vt], [], [], new Date('2026-07-15T00:00:00Z'), cap);
+    const vm = {
+      vendor_code: 'V1', vendor_name: 'V1', onboarding_date: null, merchant_name: null,
+      primary_type: 'E-FOB', total_machines: 20, total_active_karigar: 25, machines_for_saadaa: 20,
+      capacity_per_month: 1000, karigar_latest: 25, karigar_latest_as_of: null,
+    };
+    const [v] = buildVendorRollups([line], [vt], [vm], [], new Date('2026-07-15T00:00:00Z'), cap);
     assert.equal(v.poCapacity, 750);
-    assert.equal(v.utilizationPct, 40);
+    // Utilisation = open qty (300) ÷ monthly capacity (1000) = 30%.
+    assert.equal(v.utilizationPct, 30);
   });
 });
