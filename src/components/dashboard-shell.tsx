@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -847,6 +847,13 @@ const TASK_TABS: { label: string; test: (r: TrackerRow) => boolean }[] = [
   { label: "Due Today", test: (r) => r.dueToday },
 ];
 
+// Open PO Tracker column headers, in order — index drives the freeze-panes feature.
+const TRACKER_COLS = [
+  "PO number", "PO reference", "Vendor", "Product", "Product variant", "Pending qty",
+  "Pending value", "Delivered", "EasyCom", "EDD", "Delay", "Days Overdue",
+  "TNA stage", "Internal status", "TNA sequence", "",
+];
+
 function TrackerTab({
   data,
   onView,
@@ -881,6 +888,11 @@ function TrackerTab({
   });
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
   const [missingOnly, setMissingOnly] = useState(false);
+  // Freeze panes: double-click a header to freeze every column up to it (sticky);
+  // the rest scrolls. -1 = nothing frozen. Left offsets are measured from the headers.
+  const headRowRef = useRef<HTMLTableRowElement>(null);
+  const [freezeCol, setFreezeCol] = useState(0);
+  const [colLefts, setColLefts] = useState<number[]>([]);
   // Base filters (every filter except the two status axes applied just below).
   const passesBase = (row: TrackerRow) =>
     (!filters.vendor || row.vendorName === filters.vendor) &&
@@ -907,6 +919,39 @@ function TrackerTab({
   const rows = activeTab ? preStatus.filter(activeTab.test) : preStatus;
   const missingTnaCount = all.filter((r) => r.tnaMissing).length;
   const paged = usePaged(rows);
+
+  // Measure each header cell's left offset so frozen columns stack correctly,
+  // whatever their (content-driven) widths are. Re-measured on page/data/resize.
+  useEffect(() => {
+    const rowEl = headRowRef.current;
+    if (!rowEl) return;
+    const measure = () => {
+      let acc = 0;
+      const lefts = Array.from(rowEl.children).map((c) => {
+        const left = acc;
+        acc += (c as HTMLElement).getBoundingClientRect().width;
+        return left;
+      });
+      setColLefts((prev) =>
+        prev.length === lefts.length && prev.every((v, i) => Math.abs(v - lefts[i]) < 0.5)
+          ? prev
+          : lefts,
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [freezeCol, paged.page, rows.length]);
+
+  const frozen = (i: number) => freezeCol >= 0 && i <= freezeCol;
+  const colClass = (i: number, base?: string) =>
+    [base, frozen(i) ? "frz" : "", i === freezeCol ? "frz-edge" : ""]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  const colStyle = (i: number): CSSProperties | undefined =>
+    frozen(i) ? { left: colLefts[i] ?? 0 } : undefined;
+  const toggleFreeze = (i: number) => setFreezeCol((c) => (c === i ? -1 : i));
+
   return (
     <>
       <div className="filter-bar">
@@ -1083,59 +1128,54 @@ function TrackerTab({
         </div>
         {rows.length ? (
           <div className="table-scroll wide-table">
-            <table>
+            <table className="freeze-table">
               <thead>
-                <tr>
-                  <th className="frz frz-1">PO number</th>
-                  <th className="frz frz-2">PO reference</th>
-                  <th className="frz frz-3">Vendor</th>
-                  <th className="frz frz-4">Product</th>
-                  <th className="frz frz-5">Product variant</th>
-                  <th className="frz frz-6 frz-edge">Pending qty</th>
-                  <th>Pending value</th>
-                  <th>Delivered</th>
-                  <th>EasyCom</th>
-                  <th>EDD</th>
-                  <th>Delay</th>
-                  <th>Days Overdue</th>
-                  <th>TNA stage</th>
-                  <th>Internal status</th>
-                  <th>TNA sequence</th>
-                  <th></th>
+                <tr ref={headRowRef}>
+                  {TRACKER_COLS.map((label, i) => (
+                    <th
+                      key={i}
+                      className={colClass(i)}
+                      style={colStyle(i)}
+                      onDoubleClick={() => toggleFreeze(i)}
+                      title="Double-click to freeze the columns up to here (double-click again to unfreeze)"
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {paged.pageRows.map((row) => (
                   <Fragment key={row.key}>
                   <tr>
-                    <td className="frz frz-1 mono">{row.poNumber || "—"}</td>
-                    <td className="frz frz-2 mono">{row.poRef}</td>
-                    <td className="frz frz-3">
+                    <td className={colClass(0, "mono")} style={colStyle(0)}>{row.poNumber || "—"}</td>
+                    <td className={colClass(1, "mono")} style={colStyle(1)}>{row.poRef}</td>
+                    <td className={colClass(2)} style={colStyle(2)}>
                       {row.vendorName}
                       <small>{row.vendorCode}</small>
                     </td>
-                    <td className="frz frz-4">{row.productCode}</td>
-                    <td className="frz frz-5">{row.variantName || `${row.variantCount} variants`}</td>
-                    <td className="frz frz-6 frz-edge">{fmt.format(row.pendingQty)}</td>
-                    <td>{money.format(row.pendingValue)}</td>
-                    <td>
+                    <td className={colClass(3)} style={colStyle(3)}>{row.productCode}</td>
+                    <td className={colClass(4)} style={colStyle(4)}>{row.variantName || `${row.variantCount} variants`}</td>
+                    <td className={colClass(5)} style={colStyle(5)}>{fmt.format(row.pendingQty)}</td>
+                    <td className={colClass(6)} style={colStyle(6)}>{money.format(row.pendingValue)}</td>
+                    <td className={colClass(7)} style={colStyle(7)}>
                       {fmt.format(row.receivedQty)} / {fmt.format(row.orderedQty)}
                     </td>
-                    <td>
+                    <td className={colClass(8)} style={colStyle(8)}>
                       <span className={`badge ${row.easycomStatus === "Closure Pending" ? "warn" : row.easycomStatus === "Partially Received" ? "info" : "success"}`}>
                         {row.easycomStatus}
                       </span>
                     </td>
-                    <td>{row.edd ?? "No EDD"}</td>
-                    <td>
+                    <td className={colClass(9)} style={colStyle(9)}>{row.edd ?? "No EDD"}</td>
+                    <td className={colClass(10)} style={colStyle(10)}>
                       {row.delayDays ? (
                         <span className="badge danger">{row.delayDays}d</span>
                       ) : (
                         <span className="badge success">On time</span>
                       )}
                     </td>
-                    <td>{row.delayBucket}</td>
-                    <td>
+                    <td className={colClass(11)} style={colStyle(11)}>{row.delayBucket}</td>
+                    <td className={colClass(12)} style={colStyle(12)}>
                       <button
                         type="button"
                         className="tna-stage-button"
@@ -1164,12 +1204,12 @@ function TrackerTab({
                         />
                       </button>
                     </td>
-                    <td>
+                    <td className={colClass(13)} style={colStyle(13)}>
                       <span className={`badge ${internalStatusTone(row.internalStatus)}`}>
                         {row.internalStatus}
                       </span>
                     </td>
-                    <td>
+                    <td className={colClass(14)} style={colStyle(14)}>
                       {row.sequenceError ? (
                         <span className="badge danger" title="Later stage completed before an earlier one.">
                           <Lock size={11} /> Error
@@ -1178,7 +1218,7 @@ function TrackerTab({
                         <span className="badge success">OK</span>
                       )}
                     </td>
-                    <td>
+                    <td className={colClass(15)} style={colStyle(15)}>
                       <button
                         className="link-button"
                         onClick={() => onView(row)}

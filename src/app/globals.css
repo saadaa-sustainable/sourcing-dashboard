@@ -837,17 +837,17 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 }
 
 /* Frozen (pinned) left columns on the Open PO Tracker master table */
+/* Freeze panes: sticky columns keep an opaque background so scrolled content
+   hides behind them. Left offsets are set inline (measured from the headers);
+   which columns are frozen is user-chosen (double-click a header). */
 .wide-table th.frz, .wide-table td.frz { position: sticky; z-index: 3; background: #fff; }
 .wide-table th.frz { z-index: 6; background: #f7f8fb; }
 .wide-table tbody tr:nth-child(even) td.frz { background: #f9fafc; }
 .wide-table tbody tr:hover td.frz { background: #f4f2fe; }
-.wide-table .frz-1 { left: 0;     width: 110px; min-width: 110px; }
-.wide-table .frz-2 { left: 110px; width: 150px; min-width: 150px; }
-.wide-table .frz-3 { left: 260px; width: 150px; min-width: 150px; }
-.wide-table .frz-4 { left: 410px; width: 90px;  min-width: 90px; }
-.wide-table .frz-5 { left: 500px; width: 130px; min-width: 130px; }
-.wide-table .frz-6 { left: 630px; width: 90px;  min-width: 90px; }
 .wide-table .frz-edge { box-shadow: inset -1px 0 var(--line), 3px 0 6px rgba(16,18,39,.06); }
+/* Every header on a freeze-enabled table is a double-click freeze target. */
+.freeze-table thead th { cursor: pointer; user-select: none; }
+.freeze-table thead th:hover { background: #eef0f6; }
 .badge.warn { color: #9a6b00; background: #fff7e6; border-color: #ffe4a3; }
 .gap-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; margin-left: 10px; color: #9a6b00; background: #fff7e6; border: 1px solid #ffe4a3; border-radius: 20px; font-size: 9px; font-weight: 650; cursor: pointer; }
 .gap-chip.active { color: #fff; background: #d38a00; border-color: #d38a00; }
