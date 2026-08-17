@@ -2,6 +2,8 @@
 
 Production-oriented migration of the Sourcing Dashboard to Next.js 16, Supabase, and Vercel. It covers open PO tracking, vendor and merchant performance, TNA stage mapping, product rollups, and product/vendor matrices.
 
+**Docs:** [`USER-GUIDE.md`](USER-GUIDE.md) — plain-language guide for the team (every screen, metric and FAQ) · [`DOCUMENTATION.md`](DOCUMENTATION.md) — technical / data-pipeline reference.
+
 ## Local setup
 
 Requires Node 22.13+.
