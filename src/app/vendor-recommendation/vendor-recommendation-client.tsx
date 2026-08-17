@@ -237,15 +237,14 @@ function VendorRow({ v, rank }: { v: Scored; rank: number }) {
       <td className="num" title={`${v.pos_completed} completed of ${v.pos_given} given`}>
         {pct(v.completion_rate_pct)}
       </td>
-      <td className="num" title={onTimeTitle(v)}>
-        {pct(v.on_time_rate_pct)}
-        {v.coverage != null && v.coverage < 50 && <small className="wf-over-tag">low cover</small>}
-      </td>
+      <td className="num" title={onTimeTitle(v)}>{pct(v.on_time_rate_pct)}</td>
       <td className="num" title={`${v.pos_delayed} delayed of ${v.rated} rated`}>
         {pct(v.delay_rate_pct)}
       </td>
       <td className="num" title={v.coverage != null ? `${v.rated} of ${v.pos_completed} completed POs are rated` : 'No rated completions'}>
-        {confidence(v.coverage)}
+        <span className={v.coverage != null && v.coverage < 50 ? 'wf-error-text' : undefined}>
+          {confidence(v.coverage)}
+        </span>
         {v.coverage != null && <small className="wf-subtle">{v.coverage}%</small>}
       </td>
       <td className="num">{v.pos_completed} / {v.pos_given}</td>
