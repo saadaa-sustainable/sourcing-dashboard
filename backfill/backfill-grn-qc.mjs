@@ -24,11 +24,14 @@ try {
 } catch { /* real env */ }
 
 const TEST = process.argv.includes('--test');
-// Default is INCREMENTAL: only recent GRNs (trailing window), so the daily run is
-// cheap AND re-captures QC decisions that land days/weeks after a GRN is created
-// (upsert on grn_detail_id updates them). Use --full for a one-time/reset backfill.
+// Default is INCREMENTAL, filtered on the PARTITION column (_airbyte_emitted_at =
+// when Airbyte synced the row), NOT grn_created_at. This (a) prunes the BigQuery
+// scan — the tables are partitioned by DATE(_airbyte_emitted_at) — and (b) captures
+// any row that CHANGED recently: both new GRNs and QC decisions completed days/weeks
+// after receipt, because Airbyte re-emits an updated row with a fresh emitted_at.
+// So there's no "miss late QC" risk. Use --full for a one-time/reset backfill.
 const FULL = process.argv.includes('--full');
-const LOOKBACK_DAYS = Number(process.env.GRN_LOOKBACK_DAYS || 60);
+const LOOKBACK_DAYS = Number(process.env.GRN_LOOKBACK_DAYS || 30);
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) { console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE in backfill/.env'); process.exit(1); }
 
@@ -56,7 +59,7 @@ FROM \`saadaa-wh.MAPLEMONK.EE_grn_details\` h
 JOIN \`saadaa-wh.MAPLEMONK.EE_grn_details_grn_items\` i
   ON i._airbyte_EE_grn_details_hashid = h._airbyte_EE_grn_details_hashid
 WHERE i.grn_detail_id IS NOT NULL
-${FULL ? '' : `AND SUBSTR(h.grn_created_at, 1, 10) >= CAST(DATE_SUB(CURRENT_DATE(), INTERVAL ${LOOKBACK_DAYS} DAY) AS STRING)`}
+${FULL ? '' : `AND DATE(i._airbyte_emitted_at) >= DATE_SUB(CURRENT_DATE(), INTERVAL ${LOOKBACK_DAYS} DAY)`}
 QUALIFY ROW_NUMBER() OVER (PARTITION BY SAFE_CAST(i.grn_detail_id AS INT64) ORDER BY h.grn_created_at DESC) = 1
 ${TEST ? 'LIMIT 5' : ''}
 `;
