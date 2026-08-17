@@ -10,6 +10,10 @@ import type { VendorRecommendationRow } from '@/lib/forms/types';
 const WEIGHTS = { onTime: 0.6, completion: 0.4 };
 // A vendor needs at least this many POs given to be ranked; fewer = "thin data".
 const MIN_POS = 5;
+// QC-fail return penalty: points removed from the score per 1% QC-fail, applied
+// only when the vendor has enough attributed returned items to be reliable.
+const QC_PENALTY_PER_PCT = 3;
+const MIN_QC_RETURNS = 20;
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
 const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
@@ -18,6 +22,7 @@ type Scored = VendorRecommendationRow & {
   rated: number;
   onTimeRated: number | null;
   coverage: number | null; // rated / completed
+  qcPenalty: number; // points removed for QC-fail (0 if too few returns / no data)
   score: number | null;
 };
 
@@ -26,11 +31,17 @@ function scoreOf(r: VendorRecommendationRow): Scored {
   const onTimeRated = rated > 0 ? round1((r.pos_on_time / rated) * 100) : null;
   const coverage = r.pos_completed > 0 ? Math.round((rated / r.pos_completed) * 100) : null;
   const comp = r.completion_rate_pct;
-  const score =
+  const base =
     onTimeRated != null && comp != null
-      ? Math.round(WEIGHTS.onTime * onTimeRated + WEIGHTS.completion * comp)
+      ? WEIGHTS.onTime * onTimeRated + WEIGHTS.completion * comp
       : null;
-  return { ...r, rated, onTimeRated, coverage, score };
+  // Penalise QC-fail only with enough returned items to trust the rate.
+  const qcPenalty =
+    (r.qc_returned_items ?? 0) >= MIN_QC_RETURNS && r.qc_fail_rate_pct != null
+      ? round1(r.qc_fail_rate_pct * QC_PENALTY_PER_PCT)
+      : 0;
+  const score = base != null ? Math.max(0, Math.round(base - qcPenalty)) : null;
+  return { ...r, rated, onTimeRated, coverage, qcPenalty, score };
 }
 
 const scoreTone = (s: number | null) =>
@@ -38,17 +49,18 @@ const scoreTone = (s: number | null) =>
 const confidence = (c: number | null) =>
   c == null ? '—' : c >= 80 ? 'High' : c >= 50 ? 'Medium' : 'Low';
 
-type SortKey = 'score' | 'completion' | 'onTime' | 'delay' | 'pos' | 'recent';
+type SortKey = 'score' | 'completion' | 'onTime' | 'delay' | 'qcFail' | 'pos' | 'recent';
 const SORT_LABEL: Record<SortKey, string> = {
   score: 'Score', completion: 'Completion', onTime: 'On-time',
-  delay: 'Delay', pos: 'POs given', recent: 'Last PO',
+  delay: 'Delay', qcFail: 'QC-fail', pos: 'POs given', recent: 'Last PO',
 };
-// Value to sort on; higher = better/first, so Delay is negated (lower delay ranks up).
+// Value to sort on; higher = better/first, so Delay and QC-fail are negated (lower is better).
 const sortVal = (v: Scored, k: SortKey): number | string =>
   k === 'score' ? (v.score ?? -1)
   : k === 'completion' ? (v.completion_rate_pct ?? -1)
   : k === 'onTime' ? (v.on_time_rate_pct ?? -1)
   : k === 'delay' ? -(v.delay_rate_pct ?? 999)
+  : k === 'qcFail' ? -(v.qc_fail_rate_pct ?? -1)
   : k === 'pos' ? v.pos_given
   : (v.last_po_date ?? '');
 
@@ -60,6 +72,7 @@ const HEADERS: { label: string; key?: SortKey; cls?: string }[] = [
   { label: 'Completion', key: 'completion', cls: 'num' },
   { label: 'On-time', key: 'onTime', cls: 'num' },
   { label: 'Delay', key: 'delay', cls: 'num' },
+  { label: 'QC-fail', key: 'qcFail', cls: 'num' },
   { label: 'Confidence', cls: 'num' },
   { label: 'POs', key: 'pos', cls: 'num' },
   { label: 'Last PO', key: 'recent', cls: 'num' },
@@ -97,12 +110,14 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
   return (
     <>
       <Notice tone="info">
-        <strong>Score</strong> = {WEIGHTS.onTime} × on-time(rated) + {WEIGHTS.completion} × completion,
-        out of 100. <strong>On-time</strong> counts POs received (GRN date) on/before their expected
-        delivery date, over the <strong>rated</strong> completed POs (those with both an EDD and a GRN
-        date). Hover any rate to see its coverage — a low <strong>confidence</strong> means many
-        completed POs are unrated, so treat that vendor’s rates with caution. Vendors with fewer than{' '}
-        {MIN_POS} POs are listed separately as thin data.
+        <strong>Score</strong> = {WEIGHTS.onTime} × on-time(rated) + {WEIGHTS.completion} × completion −{' '}
+        {QC_PENALTY_PER_PCT} × QC-fail%, out of 100. <strong>On-time</strong> counts POs received (GRN
+        date) on/before their expected delivery date, over the <strong>rated</strong> completed POs.{' '}
+        <strong>QC-fail</strong> is the share of this vendor’s customer-returned items that came back as
+        a quality defect (damaged / repair), attributed by SKU — only penalised once a vendor has ≥{' '}
+        {MIN_QC_RETURNS} returned items. Hover any figure for its detail; low <strong>confidence</strong>{' '}
+        means many completed POs are unrated. Vendors with fewer than {MIN_POS} POs are listed separately
+        as thin data.
       </Notice>
 
       <div className="wf-toolbar wf-filter-bar">
@@ -162,7 +177,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
               ))}
               {!ranked.length && (
                 <tr>
-                  <td colSpan={9} className="wf-empty-cell">No vendors match.</td>
+                  <td colSpan={10} className="wf-empty-cell">No vendors match.</td>
                 </tr>
               )}
             </tbody>
@@ -227,7 +242,8 @@ function VendorRow({ v, rank }: { v: Scored; rank: number }) {
           className={`badge ${scoreTone(v.score)}`}
           title={
             v.score != null
-              ? `${WEIGHTS.onTime} × on-time(rated) ${v.onTimeRated}% + ${WEIGHTS.completion} × completion ${v.completion_rate_pct}%`
+              ? `${WEIGHTS.onTime} × on-time(rated) ${v.onTimeRated}% + ${WEIGHTS.completion} × completion ${v.completion_rate_pct}%` +
+                (v.qcPenalty > 0 ? ` − ${v.qcPenalty} QC-fail penalty` : '')
               : 'Not enough rated data to score'
           }
         >
@@ -240,6 +256,19 @@ function VendorRow({ v, rank }: { v: Scored; rank: number }) {
       <td className="num" title={onTimeTitle(v)}>{pct(v.on_time_rate_pct)}</td>
       <td className="num" title={`${v.pos_delayed} delayed of ${v.rated} rated`}>
         {pct(v.delay_rate_pct)}
+      </td>
+      <td
+        className="num"
+        title={
+          v.qc_returned_items
+            ? `${v.qc_fail_items} defective of ${v.qc_returned_items} returned item(s)` +
+              (v.qcPenalty > 0 ? ` · −${v.qcPenalty} to score` : ` · below ${MIN_QC_RETURNS}-return threshold, no penalty`)
+            : 'No returns attributed to this vendor'
+        }
+      >
+        {v.qc_fail_rate_pct != null ? (
+          <span className={v.qcPenalty > 0 ? 'wf-error-text' : undefined}>{v.qc_fail_rate_pct}%</span>
+        ) : '—'}
       </td>
       <td className="num" title={v.coverage != null ? `${v.rated} of ${v.pos_completed} completed POs are rated` : 'No rated completions'}>
         <span className={v.coverage != null && v.coverage < 50 ? 'wf-error-text' : undefined}>

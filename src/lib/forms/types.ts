@@ -351,6 +351,10 @@ export type VendorRecommendationRow = {
   completion_rate_pct: number | null;
   on_time_rate_pct: number | null;
   delay_rate_pct: number | null;
+  // QC-fail return factor (from sd_vendor_return_qc), null if no returns attributed.
+  qc_returned_items: number | null;
+  qc_fail_items: number | null;
+  qc_fail_rate_pct: number | null;
 };
 
 /** One size-pivoted receivable row (open PO colour + DOQ/stock/OOS enrichment). */
