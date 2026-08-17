@@ -848,6 +848,9 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 /* Every header on a freeze-enabled table is a double-click freeze target. */
 .freeze-table thead th { cursor: pointer; user-select: none; }
 .freeze-table thead th:hover { background: #eef0f6; }
+/* Vendor Recommendation: centre the numeric columns under their headers so the
+   value sits directly below its label (not right-aligned drifting to the next). */
+.vr-grid th.num, .vr-grid td.num { text-align: center; }
 .badge.warn { color: #9a6b00; background: #fff7e6; border-color: #ffe4a3; }
 .gap-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; margin-left: 10px; color: #9a6b00; background: #fff7e6; border: 1px solid #ffe4a3; border-radius: 20px; font-size: 9px; font-weight: 650; cursor: pointer; }
 .gap-chip.active { color: #fff; background: #d38a00; border-color: #d38a00; }

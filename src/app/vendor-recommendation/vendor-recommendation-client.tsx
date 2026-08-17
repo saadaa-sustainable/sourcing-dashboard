@@ -139,7 +139,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
-          <table className="wide-table wf-grid">
+          <table className="wide-table wf-grid vr-grid">
             <thead>
               <tr>
                 {HEADERS.map((h) => (
@@ -177,7 +177,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
             <span>Not ranked; too few POs to judge reliability.</span>
           </div>
           <div className="table-scroll">
-            <table className="wide-table wf-grid">
+            <table className="wide-table wf-grid vr-grid">
               <thead>
                 <tr>
                   <th>Vendor</th>
