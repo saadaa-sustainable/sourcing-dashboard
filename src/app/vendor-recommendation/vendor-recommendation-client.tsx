@@ -38,9 +38,38 @@ const scoreTone = (s: number | null) =>
 const confidence = (c: number | null) =>
   c == null ? '—' : c >= 80 ? 'High' : c >= 50 ? 'Medium' : 'Low';
 
+type SortKey = 'score' | 'completion' | 'onTime' | 'delay' | 'pos' | 'recent';
+const SORT_LABEL: Record<SortKey, string> = {
+  score: 'Score', completion: 'Completion', onTime: 'On-time',
+  delay: 'Delay', pos: 'POs given', recent: 'Last PO',
+};
+// Value to sort on; higher = better/first, so Delay is negated (lower delay ranks up).
+const sortVal = (v: Scored, k: SortKey): number | string =>
+  k === 'score' ? (v.score ?? -1)
+  : k === 'completion' ? (v.completion_rate_pct ?? -1)
+  : k === 'onTime' ? (v.on_time_rate_pct ?? -1)
+  : k === 'delay' ? -(v.delay_rate_pct ?? 999)
+  : k === 'pos' ? v.pos_given
+  : (v.last_po_date ?? '');
+
+// Column headers for the ranked table; `key` set = click-to-sort by that column.
+const HEADERS: { label: string; key?: SortKey; cls?: string }[] = [
+  { label: '#', cls: 'num' },
+  { label: 'Vendor' },
+  { label: 'Score', key: 'score', cls: 'num' },
+  { label: 'Completion', key: 'completion', cls: 'num' },
+  { label: 'On-time', key: 'onTime', cls: 'num' },
+  { label: 'Delay', key: 'delay', cls: 'num' },
+  { label: 'Confidence', cls: 'num' },
+  { label: 'POs', key: 'pos', cls: 'num' },
+  { label: 'Last PO', key: 'recent', cls: 'num' },
+];
+
 export function VendorRecommendationClient({ rows }: { rows: VendorRecommendationRow[] }) {
   const [q, setQ] = useState('');
   const [showThin, setShowThin] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('score');
+  const [minPos, setMinPos] = useState(MIN_POS);
 
   const scored = useMemo(() => rows.map(scoreOf), [rows]);
   const filtered = useMemo(() => {
@@ -50,16 +79,19 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
     );
   }, [scored, q]);
 
+  const cmp = (a: Scored, b: Scored) => {
+    const av = sortVal(a, sortKey), bv = sortVal(b, sortKey);
+    if (av < bv) return 1;
+    if (av > bv) return -1;
+    return b.pos_given - a.pos_given;
+  };
   const ranked = useMemo(
-    () =>
-      filtered
-        .filter((v) => v.pos_given >= MIN_POS)
-        .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.pos_given - a.pos_given),
-    [filtered],
+    () => filtered.filter((v) => v.pos_given >= minPos).sort(cmp),
+    [filtered, sortKey, minPos],
   );
   const thin = useMemo(
-    () => filtered.filter((v) => v.pos_given < MIN_POS).sort((a, b) => b.pos_given - a.pos_given),
-    [filtered],
+    () => filtered.filter((v) => v.pos_given < minPos).sort((a, b) => b.pos_given - a.pos_given),
+    [filtered, minPos],
   );
 
   return (
@@ -80,6 +112,24 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <label className="wf-inline-field">
+          Sort
+          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
+            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+              <option key={k} value={k}>{SORT_LABEL[k]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="wf-inline-field">
+          Min POs
+          <input
+            type="number"
+            min={1}
+            value={minPos}
+            onChange={(e) => setMinPos(Math.max(1, Number(e.target.value) || 1))}
+            style={{ width: 64 }}
+          />
+        </label>
         <span className="wf-chip">{ranked.length} ranked</span>
         <label className="wf-check">
           <input type="checkbox" checked={showThin} onChange={(e) => setShowThin(e.target.checked)} />
@@ -92,15 +142,18 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th className="num">#</th>
-                <th>Vendor</th>
-                <th className="num">Score</th>
-                <th className="num">Completion</th>
-                <th className="num">On-time</th>
-                <th className="num">Delay</th>
-                <th className="num">Confidence</th>
-                <th className="num">POs (done / given)</th>
-                <th className="num">Last PO</th>
+                {HEADERS.map((h) => (
+                  <th
+                    key={h.label}
+                    className={h.cls}
+                    style={h.key ? { cursor: 'pointer', userSelect: 'none' } : undefined}
+                    title={h.key ? `Sort by ${h.label}` : undefined}
+                    onClick={h.key ? () => setSortKey(h.key!) : undefined}
+                  >
+                    {h.label}
+                    {h.key === sortKey ? ' ▾' : ''}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -131,7 +184,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
                   <th className="num">Completion</th>
                   <th className="num">On-time</th>
                   <th className="num">Delay</th>
-                  <th className="num">POs (done / given)</th>
+                  <th className="num">POs</th>
                 </tr>
               </thead>
               <tbody>
