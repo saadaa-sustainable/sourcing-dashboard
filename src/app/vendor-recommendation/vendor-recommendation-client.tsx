@@ -14,6 +14,11 @@ const MIN_POS = 5;
 // only when the vendor has enough attributed returned items to be reliable.
 const QC_PENALTY_PER_PCT = 3;
 const MIN_QC_RETURNS = 20;
+// Inbound-QC rejection penalty. Reject rates run much higher (over the QC-checked
+// subset, which is selective), so the per-% penalty is smaller. Applied only with
+// enough QC-checked units.
+const REJECT_PENALTY_PER_PCT = 0.5;
+const MIN_QC_CHECKED = 50;
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
 const pct = (v: number | null) => (v == null ? '—' : `${v}%`);
@@ -23,6 +28,7 @@ type Scored = VendorRecommendationRow & {
   onTimeRated: number | null;
   coverage: number | null; // rated / completed
   qcPenalty: number; // points removed for QC-fail (0 if too few returns / no data)
+  rejectPenalty: number; // points removed for inbound-QC rejection
   score: number | null;
 };
 
@@ -40,8 +46,13 @@ function scoreOf(r: VendorRecommendationRow): Scored {
     (r.qc_returned_items ?? 0) >= MIN_QC_RETURNS && r.qc_fail_rate_pct != null
       ? round1(r.qc_fail_rate_pct * QC_PENALTY_PER_PCT)
       : 0;
-  const score = base != null ? Math.max(0, Math.round(base - qcPenalty)) : null;
-  return { ...r, rated, onTimeRated, coverage, qcPenalty, score };
+  // Penalise inbound-QC rejection only with enough QC-checked units.
+  const rejectPenalty =
+    (r.grn_qc_checked ?? 0) >= MIN_QC_CHECKED && r.grn_reject_rate_pct != null
+      ? round1(r.grn_reject_rate_pct * REJECT_PENALTY_PER_PCT)
+      : 0;
+  const score = base != null ? Math.max(0, Math.round(base - qcPenalty - rejectPenalty)) : null;
+  return { ...r, rated, onTimeRated, coverage, qcPenalty, rejectPenalty, score };
 }
 
 const scoreTone = (s: number | null) =>
@@ -49,10 +60,10 @@ const scoreTone = (s: number | null) =>
 const confidence = (c: number | null) =>
   c == null ? '—' : c >= 80 ? 'High' : c >= 50 ? 'Medium' : 'Low';
 
-type SortKey = 'score' | 'completion' | 'onTime' | 'delay' | 'qcFail' | 'pos' | 'recent';
+type SortKey = 'score' | 'completion' | 'onTime' | 'delay' | 'qcFail' | 'reject' | 'pos' | 'recent';
 const SORT_LABEL: Record<SortKey, string> = {
   score: 'Score', completion: 'Completion', onTime: 'On-time',
-  delay: 'Delay', qcFail: 'QC-fail', pos: 'POs given', recent: 'Last PO',
+  delay: 'Delay', qcFail: 'QC-fail', reject: 'Rejection', pos: 'POs given', recent: 'Last PO',
 };
 // Value to sort on; higher = better/first, so Delay and QC-fail are negated (lower is better).
 const sortVal = (v: Scored, k: SortKey): number | string =>
@@ -61,6 +72,7 @@ const sortVal = (v: Scored, k: SortKey): number | string =>
   : k === 'onTime' ? (v.on_time_rate_pct ?? -1)
   : k === 'delay' ? -(v.delay_rate_pct ?? 999)
   : k === 'qcFail' ? -(v.qc_fail_rate_pct ?? -1)
+  : k === 'reject' ? -(v.grn_reject_rate_pct ?? -1)
   : k === 'pos' ? v.pos_given
   : (v.last_po_date ?? '');
 
@@ -73,6 +85,7 @@ const HEADERS: { label: string; key?: SortKey; cls?: string }[] = [
   { label: 'On-time', key: 'onTime', cls: 'num' },
   { label: 'Delay', key: 'delay', cls: 'num' },
   { label: 'QC-fail', key: 'qcFail', cls: 'num' },
+  { label: 'Rejection', key: 'reject', cls: 'num' },
   { label: 'Confidence', cls: 'num' },
   { label: 'POs', key: 'pos', cls: 'num' },
   { label: 'Last PO', key: 'recent', cls: 'num' },
@@ -111,13 +124,14 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
     <>
       <Notice tone="info">
         <strong>Score</strong> = {WEIGHTS.onTime} × on-time(rated) + {WEIGHTS.completion} × completion −{' '}
-        {QC_PENALTY_PER_PCT} × QC-fail%, out of 100. <strong>On-time</strong> counts POs received (GRN
-        date) on/before their expected delivery date, over the <strong>rated</strong> completed POs.{' '}
-        <strong>QC-fail</strong> is the share of this vendor’s customer-returned items that came back as
-        a quality defect (damaged / repair), attributed by SKU — only penalised once a vendor has ≥{' '}
-        {MIN_QC_RETURNS} returned items. Hover any figure for its detail; low <strong>confidence</strong>{' '}
-        means many completed POs are unrated. Vendors with fewer than {MIN_POS} POs are listed separately
-        as thin data.
+        {QC_PENALTY_PER_PCT} × QC-fail% − {REJECT_PENALTY_PER_PCT} × Rejection%, out of 100.{' '}
+        <strong>On-time</strong> counts POs received (GRN date) on/before their EDD, over the{' '}
+        <strong>rated</strong> completed POs. <strong>QC-fail</strong> = share of customer-returned items
+        that came back defective (return quality). <strong>Rejection</strong> = share of goods that failed
+        inbound QC at receipt (qc_fail ÷ qc-checked) — the direct vendor-quality signal, but it reflects
+        the QC-checked subset (QC is selective), so treat high rates as a flag, not an absolute. Each
+        penalty applies only above its reliability threshold. Hover any figure for detail; vendors with
+        fewer than {MIN_POS} POs are listed separately as thin data.
       </Notice>
 
       <div className="wf-toolbar wf-filter-bar">
@@ -177,7 +191,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
               ))}
               {!ranked.length && (
                 <tr>
-                  <td colSpan={10} className="wf-empty-cell">No vendors match.</td>
+                  <td colSpan={11} className="wf-empty-cell">No vendors match.</td>
                 </tr>
               )}
             </tbody>
@@ -243,7 +257,8 @@ function VendorRow({ v, rank }: { v: Scored; rank: number }) {
           title={
             v.score != null
               ? `${WEIGHTS.onTime} × on-time(rated) ${v.onTimeRated}% + ${WEIGHTS.completion} × completion ${v.completion_rate_pct}%` +
-                (v.qcPenalty > 0 ? ` − ${v.qcPenalty} QC-fail penalty` : '')
+                (v.qcPenalty > 0 ? ` − ${v.qcPenalty} QC-fail penalty` : '') +
+                (v.rejectPenalty > 0 ? ` − ${v.rejectPenalty} rejection penalty` : '')
               : 'Not enough rated data to score'
           }
         >
@@ -268,6 +283,19 @@ function VendorRow({ v, rank }: { v: Scored; rank: number }) {
       >
         {v.qc_fail_rate_pct != null ? (
           <span className={v.qcPenalty > 0 ? 'wf-error-text' : undefined}>{v.qc_fail_rate_pct}%</span>
+        ) : '—'}
+      </td>
+      <td
+        className="num"
+        title={
+          v.grn_qc_checked
+            ? `inbound QC-checked ${v.grn_qc_checked} unit(s)` +
+              (v.rejectPenalty > 0 ? ` · −${v.rejectPenalty} to score` : ` · below ${MIN_QC_CHECKED}-checked threshold, no penalty`)
+            : 'No QC-checked GRNs for this vendor'
+        }
+      >
+        {v.grn_reject_rate_pct != null ? (
+          <span className={v.rejectPenalty > 0 ? 'wf-error-text' : undefined}>{v.grn_reject_rate_pct}%</span>
         ) : '—'}
       </td>
       <td className="num" title={v.coverage != null ? `${v.rated} of ${v.pos_completed} completed POs are rated` : 'No rated completions'}>

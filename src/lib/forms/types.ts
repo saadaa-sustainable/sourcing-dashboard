@@ -355,6 +355,9 @@ export type VendorRecommendationRow = {
   qc_returned_items: number | null;
   qc_fail_items: number | null;
   qc_fail_rate_pct: number | null;
+  // Inbound-QC rejection factor (from sd_vendor_grn_reject), null if no QC-checked GRNs.
+  grn_qc_checked: number | null;
+  grn_reject_rate_pct: number | null;
 };
 
 /** One size-pivoted receivable row (open PO colour + DOQ/stock/OOS enrichment). */
