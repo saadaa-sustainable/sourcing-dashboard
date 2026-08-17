@@ -24,6 +24,11 @@ try {
 } catch { /* real env */ }
 
 const TEST = process.argv.includes('--test');
+// Default is INCREMENTAL: only recent GRNs (trailing window), so the daily run is
+// cheap AND re-captures QC decisions that land days/weeks after a GRN is created
+// (upsert on grn_detail_id updates them). Use --full for a one-time/reset backfill.
+const FULL = process.argv.includes('--full');
+const LOOKBACK_DAYS = Number(process.env.GRN_LOOKBACK_DAYS || 60);
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) { console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE in backfill/.env'); process.exit(1); }
 
@@ -51,6 +56,7 @@ FROM \`saadaa-wh.MAPLEMONK.EE_grn_details\` h
 JOIN \`saadaa-wh.MAPLEMONK.EE_grn_details_grn_items\` i
   ON i._airbyte_EE_grn_details_hashid = h._airbyte_EE_grn_details_hashid
 WHERE i.grn_detail_id IS NOT NULL
+${FULL ? '' : `AND SUBSTR(h.grn_created_at, 1, 10) >= CAST(DATE_SUB(CURRENT_DATE(), INTERVAL ${LOOKBACK_DAYS} DAY) AS STRING)`}
 QUALIFY ROW_NUMBER() OVER (PARTITION BY SAFE_CAST(i.grn_detail_id AS INT64) ORDER BY h.grn_created_at DESC) = 1
 ${TEST ? 'LIMIT 5' : ''}
 `;
@@ -78,7 +84,7 @@ async function upsertBatch(rows) {
 }
 
 async function main() {
-  console.log(TEST ? 'TEST — 5 rows.' : 'Full GRN-QC backfill — querying BigQuery…');
+  console.log(TEST ? 'TEST — 5 rows.' : `GRN-QC ${FULL ? 'FULL' : `incremental (last ${LOOKBACK_DAYS}d)`} backfill — querying BigQuery…`);
   const [rows] = await bq.query({ query: QUERY, location: 'asia-south1' });
   const mapped = rows.map(mapRow).filter((r) => r.grn_detail_id != null);
   console.log(`Fetched ${mapped.length} GRN line-items from BigQuery.`);
