@@ -86,6 +86,17 @@ async function upsertBatch(rows) {
   if (!res.ok) throw new Error(`Supabase upsert ${res.status}: ${await res.text()}`);
 }
 
+// Recompute the Vendor Recommendation materialized view so this fresh QC data shows
+// immediately (pg_cron also refreshes it twice daily as a fallback).
+async function refreshVendorRecommendation() {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/refresh_vendor_recommendation`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_SERVICE_ROLE, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) throw new Error(`refresh_vendor_recommendation ${res.status}: ${await res.text()}`);
+}
+
 async function main() {
   console.log(TEST ? 'TEST — 5 rows.' : `GRN-QC ${FULL ? 'FULL' : `incremental (last ${LOOKBACK_DAYS}d)`} backfill — querying BigQuery…`);
   const [rows] = await bq.query({ query: QUERY, location: 'asia-south1' });
@@ -97,6 +108,7 @@ async function main() {
     await upsertBatch(mapped.slice(i, i + BATCH));
     process.stdout.write(`\rUpserted ${Math.min(i + BATCH, mapped.length)}/${mapped.length}`);
   }
+  if (!TEST) { await refreshVendorRecommendation(); console.log('\nRefreshed sd_vendor_recommendation.'); }
   console.log('\nDone.');
 }
 main().catch((e) => { console.error('\nbackfill-grn-qc failed:', e.message || e); process.exit(1); });
