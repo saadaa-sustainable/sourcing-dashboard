@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ClipboardList,
   Download,
+  ExternalLink,
   Eye,
   Plus,
   Save,
@@ -449,6 +450,17 @@ export function BuyingPlanClient({
             >
               <Plus size={15} /> Add all
             </button>
+            {/* A code has to exist in Product Master before it can be planned. Opens
+                in a new tab so the in-progress draft in the grid is not lost. */}
+            <a
+              className="wf-btn wf-btn-ghost"
+              href="/product-master"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Create a new product code, then pick it from the list"
+            >
+              <ExternalLink size={15} /> Add new product
+            </a>
           </div>
         )}
       </div>

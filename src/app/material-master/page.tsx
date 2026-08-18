@@ -6,11 +6,19 @@ import {
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { canEdit } from '@/lib/forms/approval';
+import type { MaterialType } from '@/lib/forms/types';
 import { MaterialMasterClient } from './material-master-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function MaterialMasterPage() {
+export default async function MaterialMasterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
+  const { type } = await searchParams;
+  const initialType: MaterialType =
+    type === 'dyed' || type === 'trim' ? type : 'raw';
   let user;
   try {
     user = await currentUser();
@@ -41,6 +49,7 @@ export default async function MaterialMasterPage() {
         materials={materials}
         colours={colours}
         fabricCodes={fabricCodes}
+        initialType={initialType}
         editable={canEdit(user.role, 'draft')}
       />
     </FormLayout>

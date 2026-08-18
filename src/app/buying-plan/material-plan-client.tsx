@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
-import { ClipboardList, Download, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
+import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
   addMonths,
@@ -348,6 +348,18 @@ export function MaterialPlanClient({
             <button type="button" className="wf-btn wf-btn-ghost" onClick={() => fileRef.current?.click()}>
               <Upload size={15} /> Import CSV
             </button>
+            {/* A code has to exist in Material Master before it can be planned. Deep-links
+                to the active type's add form (Raw / Dyed / Trim) and opens in a new tab so
+                the in-progress draft in the grid is not lost. */}
+            <a
+              className="wf-btn wf-btn-ghost"
+              href={`/material-master?type=${type}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Create a new ${TYPE_LABEL[type].toLowerCase()} code, then pick it from the list below`}
+            >
+              <ExternalLink size={15} /> Add new {TYPE_LABEL[type].toLowerCase()}
+            </a>
           </div>
         )}
       </div>

@@ -32,17 +32,20 @@ export function MaterialMasterClient({
   materials,
   colours,
   fabricCodes,
+  initialType = 'raw',
   editable,
 }: {
   materials: MaterialMaster[];
   colours: Colour[];
   fabricCodes: string[];
+  initialType?: MaterialType;
   editable: boolean;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [type, setType] = useState<MaterialType>('raw');
+  // Preselect the type the Buying Plan deep-linked to (?type=raw|dyed|trim).
+  const [type, setType] = useState<MaterialType>(initialType);
   const [filter, setFilter] = useState('');
 
   // Add-form draft
