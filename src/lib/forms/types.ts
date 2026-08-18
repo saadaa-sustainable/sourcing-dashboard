@@ -27,6 +27,8 @@ export type SdUser = {
   full_name: string | null;
   role: SdRole;
   is_active: boolean;
+  /** When this user last used the dashboard (throttled to ~5-min granularity). */
+  last_seen_at?: string | null;
 };
 
 /** Product-level master attributes the Buying Plan reads (sd_product_master). */

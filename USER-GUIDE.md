@@ -192,7 +192,8 @@ The unified queue of everything awaiting your decision, with the per-PO **4-tab 
 
 - **Product / Fabric / Material Master** — the code lists the Buying Plan and costing read from.
   Adding/removing a code or marking it Discontinued flows straight through.
-- **Users** — set roles (Admin / Team / Viewer) and active status.
+- **Users** — set roles (Admin / Team / Viewer) and active status, and see **Last active**
+  (when each person last used the dashboard; "Never" = they haven't opened it yet).
 
 ---
 

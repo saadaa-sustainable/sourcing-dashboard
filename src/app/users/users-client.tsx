@@ -144,6 +144,7 @@ export function UsersClient({
                 <th>Name</th>
                 <th>Role</th>
                 <th>Active</th>
+                <th>Last active</th>
                 <th aria-label="Save" />
               </tr>
             </thead>
@@ -166,7 +167,7 @@ export function UsersClient({
               ))}
               {!users.length && (
                 <tr>
-                  <td colSpan={5} className="wf-empty-cell">
+                  <td colSpan={6} className="wf-empty-cell">
                     No users yet. Add the first one above.
                   </td>
                 </tr>
@@ -193,6 +194,7 @@ function UserRow({
   const [role, setRole] = useState<SdRole>(user.role);
   const [active, setActive] = useState(user.is_active);
   const dirty = role !== user.role || active !== user.is_active;
+  const lastSeen = formatLastSeen(user.last_seen_at);
 
   return (
     <tr>
@@ -218,6 +220,11 @@ function UserRow({
         />
       </td>
       <td>
+        <span className="wf-subtle" title={lastSeen.title}>
+          {lastSeen.label}
+        </span>
+      </td>
+      <td>
         <button
           type="button"
           className="wf-btn wf-btn-ghost"
@@ -229,4 +236,21 @@ function UserRow({
       </td>
     </tr>
   );
+}
+
+/** Friendly "last active" label (relative), with the full local time in the tooltip. */
+function formatLastSeen(iso?: string | null): { label: string; title: string } {
+  if (!iso) return { label: 'Never', title: 'Has not opened the dashboard yet' };
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return { label: '—', title: '' };
+  const min = Math.floor((Date.now() - then.getTime()) / 60000);
+  let label: string;
+  if (min < 5) label = 'Just now';
+  else if (min < 60) label = `${min}m ago`;
+  else if (min < 60 * 24) label = `${Math.floor(min / 60)}h ago`;
+  else {
+    const days = Math.floor(min / (60 * 24));
+    label = days < 30 ? `${days}d ago` : then.toLocaleDateString();
+  }
+  return { label, title: then.toLocaleString() };
 }

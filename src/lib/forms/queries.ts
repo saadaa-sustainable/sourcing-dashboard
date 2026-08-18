@@ -88,6 +88,15 @@ export async function currentUser(): Promise<SdUser | null> {
     .eq('email', email)
     .maybeSingle();
 
+  // Best-effort: stamp last-seen so the User Panel can show when each person last used
+  // the dashboard. The RPC is throttled server-side (~5-min granularity) and scoped to
+  // the caller's own row; never let it block or break auth.
+  try {
+    await supabase.rpc('sd_touch_last_seen');
+  } catch {
+    /* ignore — presence tracking must never fail a page load */
+  }
+
   // Someone signed in with a valid @saadaa.in account but was never added to
   // sd_user. Treat as viewer rather than crashing — an admin adds them later.
   return (
@@ -384,7 +393,7 @@ export async function loadUsers(): Promise<SdUser[]> {
   const supabase = await client();
   const { data } = await supabase
     .from('sd_user')
-    .select('email, full_name, role, is_active')
+    .select('email, full_name, role, is_active, last_seen_at')
     .order('is_active', { ascending: false })
     .order('email');
   return (data ?? []) as SdUser[];
