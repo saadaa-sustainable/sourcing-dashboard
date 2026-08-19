@@ -1,9 +1,11 @@
 // =====================================================================
 // Sync the EasyEcom Item/Product Master from BigQuery into Supabase.
-//   saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master  ->  sd_ee_product_master
+//   saadaa-wh.MAPLEMONK.Easyecom_new_product_master (+ _custom_fields)
+//        ->  sd_ee_product_master
 //
 // Runs as YOU via Application Default Credentials (same as sync-extra.mjs);
 // the query bills to saadaa-wh. Full refresh via mark-and-sweep on sku.
+// Query + column set live in product-master-query.mjs (shared with sync-daily.mjs).
 //
 // Usage:
 //   node sync-product-master.mjs --test   # small pull, prints a sample, still writes
@@ -12,6 +14,7 @@
 
 import { readFileSync } from 'node:fs';
 import { BigQuery } from '@google-cloud/bigquery';
+import { PM_QUERY, PM_COLS } from './product-master-query.mjs';
 
 try {
   const env = readFileSync(new URL('./.env', import.meta.url), 'utf8');
@@ -39,15 +42,7 @@ console.log(`Target: ${SUPABASE_URL}`);
 const bq = new BigQuery({ projectId: BQ_BILLING_PROJECT, location: 'asia-south1' });
 const flat = (v) => (v && typeof v === 'object' && 'value' in v ? v.value : v);
 
-// All source columns are STRING; _airbyte_* metadata is dropped.
-const COLS = new Set([
-  'sku', 'mrp', 'c_id', 'cost', 'size', 'brand', 'cp_id', 'width', 'active', 'colour',
-  'height', 'length', 'weight', 'brand_id', 'hsn_code', 'model_no', 'tax_rate', 'inventory',
-  'created_at', 'product_id', 'updated_at', 'category_id', 'description', 'expiry_type',
-  'company_name', 'cp_inventory', 'product_name', 'product_type', 'category_name',
-  'accounting_sku', 'accounting_unit', 'product_image_url', 'product_shelf_life',
-  'cp_sub_products_count',
-]);
+const COLS = PM_COLS;
 
 function pick(r) {
   const out = {};
@@ -77,8 +72,7 @@ async function main() {
   console.log('[product_master] querying BigQuery…');
   const [rows] = await bq.query({
     location: 'asia-south1',
-    query: `SELECT * FROM \`saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master\`
-            ${TEST ? 'LIMIT 20' : ''}`,
+    query: PM_QUERY + (TEST ? '\nLIMIT 20' : ''),
   });
 
   const mapped = [];

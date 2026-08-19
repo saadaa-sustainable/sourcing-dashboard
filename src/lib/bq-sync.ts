@@ -18,14 +18,58 @@ const flat = (v: unknown): unknown =>
     ? (v as { value: unknown }).value
     : v;
 
-const PRODUCT_MASTER_COLS = new Set([
-  'sku', 'mrp', 'c_id', 'cost', 'size', 'brand', 'cp_id', 'width', 'active', 'colour',
-  'height', 'length', 'weight', 'brand_id', 'hsn_code', 'model_no', 'tax_rate', 'inventory',
-  'created_at', 'product_id', 'updated_at', 'category_id', 'description', 'expiry_type',
-  'company_name', 'cp_inventory', 'product_name', 'product_type', 'category_name',
-  'accounting_sku', 'accounting_unit', 'product_image_url', 'product_shelf_life',
-  'cp_sub_products_count',
-]);
+// Product master = Easyecom_new_product_master (per-sku base) LEFT JOIN its
+// custom fields (long form) pivoted onto cp_id. EasyEcom custom-field display
+// name -> Supabase snake_case column.
+const PM_CUSTOM_FIELDS: Record<string, string> = {
+  CategoryType: 'category_type',
+  Color_Family: 'color_family',
+  DEMOGRAPHIC_PRICE_RAGE: 'demographic_price_rage',
+  Dyed_Fabric_SKU: 'dyed_fabric_sku',
+  FABRIC_COMPOSITION: 'fabric_composition',
+  FABRIC_GSM: 'fabric_gsm',
+  FABRIC_NAME: 'fabric_name',
+  'Fabric Consumption (Average)': 'fabric_consumption_average',
+  FitType: 'fit_type',
+  GST: 'gst',
+  Garment_Length_Type: 'garment_length_type',
+  Gender: 'gender',
+  'Item Category': 'item_category',
+  Neck_Collar_Type: 'neck_collar_type',
+  Product_Launch_Date: 'product_launch_date',
+  Product_State: 'product_state',
+  Product_Type: 'product_type',
+  Product_Variant: 'product_variant',
+  'Qty (in Meters)': 'qty_in_meters',
+  RM_Fabric_SKU: 'rm_fabric_sku',
+  Related_Ongoing_Product: 'related_ongoing_product',
+  Replenishment_Type: 'replenishment_type',
+  SUB_CATEGORY: 'sub_category',
+  Season: 'season',
+  Sleeve_Type: 'sleeve_type',
+  WEAVE_TYPE: 'weave_type',
+  Washcare_SKU: 'washcare_sku',
+};
+const PM_BASE_COLS = [
+  'mrp', 'sku', 'cost', 'size', 'width', 'active', 'colour', 'height', 'length', 'weight',
+  'hsn_code', 'model_no', 'tax_rate', 'created_at', 'description', 'product_name', 'category_name',
+  'tax_rule_name', 'product_image_url',
+];
+const PRODUCT_MASTER_COLS = new Set([...PM_BASE_COLS, ...Object.values(PM_CUSTOM_FIELDS)]);
+const PRODUCT_MASTER_QUERY = `
+WITH cf AS (
+  SELECT cp_id,
+    ${Object.entries(PM_CUSTOM_FIELDS)
+      .map(([fn, col]) => `MAX(IF(field_name = ${JSON.stringify(fn)}, value, NULL)) AS ${col}`)
+      .join(',\n    ')}
+  FROM \`saadaa-wh.MAPLEMONK.Easyecom_new_product_master_custom_fields\`
+  GROUP BY cp_id
+)
+SELECT
+  ${PM_BASE_COLS.map((c) => `m.${c}`).join(', ')},
+  ${Object.values(PM_CUSTOM_FIELDS).map((c) => `cf.${c}`).join(', ')}
+FROM \`saadaa-wh.MAPLEMONK.Easyecom_new_product_master\` m
+LEFT JOIN cf ON m.cp_id = cf.cp_id`;
 const INVENTORY_COLS = new Set([
   'date_day', 'sku', 'warehouse', 'rm_code', 'dyed_fabric_sku', 'product_name', 'product_variant',
   'color', 'size', 'category', 'sub_category', 'fabric_consumption_average', 'categorytype', 'cost',
@@ -168,7 +212,7 @@ const SPECS: Record<AppendTarget, AppendSpec> = {
     conflict: 'sku',
     allowed: PRODUCT_MASTER_COLS,
     keyOf: (r) => (r.sku as string) || null,
-    query: 'SELECT * FROM `saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master`',
+    query: PRODUCT_MASTER_QUERY,
   },
   doq: {
     table: 'sd_inventory_planning',

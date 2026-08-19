@@ -3,8 +3,8 @@
 // Meant for the 6 AM cron. Pulls only what changed since the last run and
 // merges it in; historical rows are left untouched.
 //
-//   1. Product master  saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master
-//                       -> sd_ee_product_master        (upsert on sku)
+//   1. Product master  saadaa-wh.MAPLEMONK.Easyecom_new_product_master (+ _custom_fields)
+//                       -> sd_ee_product_master        (upsert on sku; see product-master-query.mjs)
 //   1b. GCP prod master saadaa-wh.MAPLEMONK.saadaa_consolidated_product_master
 //                       -> sd_gcp_product_master        (SKU-level, shown on Product Master tab)
 //   2. DOQ / planning   saadaa-wh.MAPLEMONK.saadaa_inventory_planning
@@ -30,6 +30,7 @@
 
 import { readFileSync } from 'node:fs';
 import { BigQuery } from '@google-cloud/bigquery';
+import { PM_QUERY, PM_COLS } from './product-master-query.mjs';
 
 try {
   const env = readFileSync(new URL('./.env', import.meta.url), 'utf8');
@@ -55,14 +56,6 @@ console.log(`Target: ${SUPABASE_URL}  (${new Date().toISOString()})`);
 const bq = new BigQuery({ projectId: BQ_BILLING_PROJECT, location: 'asia-south1' });
 const flat = (v) => (v && typeof v === 'object' && 'value' in v ? v.value : v);
 
-const PRODUCT_MASTER_COLS = new Set([
-  'sku', 'mrp', 'c_id', 'cost', 'size', 'brand', 'cp_id', 'width', 'active', 'colour',
-  'height', 'length', 'weight', 'brand_id', 'hsn_code', 'model_no', 'tax_rate', 'inventory',
-  'created_at', 'product_id', 'updated_at', 'category_id', 'description', 'expiry_type',
-  'company_name', 'cp_inventory', 'product_name', 'product_type', 'category_name',
-  'accounting_sku', 'accounting_unit', 'product_image_url', 'product_shelf_life',
-  'cp_sub_products_count',
-]);
 const INVENTORY_COLS = new Set([
   'date_day','sku','warehouse','rm_code','dyed_fabric_sku','product_name','product_variant',
   'color','size','category','sub_category','fabric_consumption_average','categorytype','cost',
@@ -281,10 +274,9 @@ async function main() {
       label: 'product_master',
       table: 'sd_ee_product_master',
       conflict: 'sku',
-      allowed: PRODUCT_MASTER_COLS,
+      allowed: PM_COLS,
       keyOf: (r) => r.sku || null,
-      query: `SELECT * FROM \`saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master\`
-              ${TEST ? 'LIMIT 20' : ''}`,
+      query: PM_QUERY + (TEST ? '\nLIMIT 20' : ''),
     });
   }
 
