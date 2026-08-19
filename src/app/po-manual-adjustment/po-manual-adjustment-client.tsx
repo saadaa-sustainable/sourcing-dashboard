@@ -159,10 +159,18 @@ export function PoManualAdjustmentClient({
   return (
     <div className="wf-stack">
       <div className="wf-notice wf-notice-info">
-        Make adjustments in the ingestion portal; the sync loads them into the dashboard. Use Refresh
-        to reload the newest synced rows — each table {REFRESH_LIMIT_PER_HOUR} times per hour.{' '}
-        <a href={portalUrl} target="_blank" rel="noopener noreferrer">
-          <ExternalLink size={13} /> Open adjustment portal
+        <div>
+          Make adjustments in the ingestion portal; the sync loads them into the dashboard. Use Refresh
+          to reload the newest synced rows — each table {REFRESH_LIMIT_PER_HOUR} times per hour.
+        </div>
+        <a
+          className="wf-btn wf-btn-primary"
+          href={portalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ marginTop: 10 }}
+        >
+          <ExternalLink size={16} /> Open adjustment portal
         </a>
       </div>
       <Panel

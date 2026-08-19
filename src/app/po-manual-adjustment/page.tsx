@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { ExternalLink } from 'lucide-react';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import { currentUser, NotConfiguredError } from '@/lib/forms/queries';
 import { loadCached, refreshState } from '@/lib/adjustments';
@@ -43,6 +44,11 @@ export default async function PoManualAdjustmentPage() {
       role={user.role}
       userEmail={user.email}
       accent="orange"
+      actions={
+        <a className="wf-btn wf-btn-primary" href={PORTAL_URL} target="_blank" rel="noopener noreferrer">
+          <ExternalLink size={16} /> Open adjustment portal
+        </a>
+      }
     >
       <PoManualAdjustmentClient
         portalUrl={PORTAL_URL}
