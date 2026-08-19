@@ -40,8 +40,11 @@ export function istToday(now = new Date()): Date {
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
 }
 
-export function vendorBucket(label: string | null | undefined): 'Woven' | 'Knit' {
-  return key(label).includes('woven') ? 'Woven' : 'Knit';
+export function vendorBucket(label: string | null | undefined): 'Woven' | 'Knit' | 'Other' {
+  const k = key(label);
+  if (k.includes('woven')) return 'Woven';
+  if (k.includes('knit')) return 'Knit';
+  return 'Other';
 }
 
 export function isOpenPo(row: PendingPo) {

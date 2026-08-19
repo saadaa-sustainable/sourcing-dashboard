@@ -65,7 +65,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "High-risk POs", text: "A live early-warning flag: an open PO where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet. It is a snapshot, not a permanent label — the moment that stage is marked done, even late, the PO stops being High Risk.", tip: "Independent of the final delivery date; click the card to see which POs and stages." },
     { title: "PO ageing", text: "Open POs grouped by how overdue they are: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD when no delivery date is set." },
     { title: "Vendor & product charts", text: "Open vs delayed POs per vendor with a delay-% line, plus the top product codes and product·variant pairs by pending quantity and by delay %." },
-    { title: "All / Woven / Knitted", text: "Filter every card and chart to a vendor type. A vendor whose type contains the word 'woven' counts as Woven; everything else, including blank, counts as Knitted." },
+    { title: "All / Woven / Knitted / Other", text: "Filter every card and chart to a vendor type. A vendor whose type contains 'woven' counts as Woven; one containing 'knit' counts as Knitted; anything else — including blank — is grouped separately as Other." },
   ],
   "open-po": [
     { title: "One row = one open PO", text: "Each row is a purchase order grouped by PO number, product and delivery date. 'Variants' counts the distinct variants (e.g. colours) on that PO — it is not a piece count." },
@@ -81,7 +81,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Capacity & open quantity", text: "Total monthly capacity is the sum of every vendor's signed monthly capacity; Total Open PO Quantity is the sum of their pending pieces." },
     { title: "Open / Delayed / Delay %", text: "Per vendor: distinct open PO references, how many are past EDD, and delayed ÷ open × 100." },
     { title: "Utilisation", text: "How full a vendor is: open quantity ÷ monthly capacity × 100. Above 100% means booked beyond capacity; shows 0 when the master has no capacity for that vendor.", tip: "Vendors are matched by vendor code first, then by name." },
-    { title: "Woven & Knitted charts", text: "Open vs delayed quantity for each vendor, split into Woven and Knitted groups." },
+    { title: "Woven, Knitted & Other charts", text: "Open vs delayed quantity for each vendor, split into Woven, Knitted and Other (neither woven nor knitted) groups." },
   ],
   merchants: [
     { title: "Grouped by merchant", text: "Every vendor's figures roll up to the merchant who owns the relationship. The merchant is read from the vendor master first, then the vendor-type sheet." },
@@ -540,6 +540,12 @@ function DashboardTab({
         >
           Knitted
         </button>
+        <button
+          className={bucket === "Other" ? "active" : ""}
+          onClick={() => setBucket("Other")}
+        >
+          Other
+        </button>
       </div>
       <div className="metric-grid dashboard-metrics">
         <Card
@@ -978,7 +984,7 @@ function TrackerTab({
         <FilterSelect
           label="Vendor Type"
           value={filters.vendorType}
-          options={["Woven", "Knit"]}
+          options={["Woven", "Knit", "Other"]}
           onChange={(v) => set({ ...filters, vendorType: v })}
         />
         <FilterSelect
@@ -1529,7 +1535,7 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
   );
   return (
     <div className="split-columns">
-      {(["Woven", "Knit"] as const).map((bucket) => {
+      {(["Woven", "Knit", "Other"] as const).map((bucket) => {
         const rows = all.filter((r) => r.vendorBucket === bucket);
         const trackerRows = allTracker.filter((r) => r.vendorBucket === bucket);
         const openVsDelayed = trackerRows.reduce<
@@ -1553,7 +1559,11 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
                 <span>{rows.length} with open POs</span>
                 <DownloadButton
                   filename={
-                    bucket === "Knit" ? "knitted-vendors" : "woven-vendors"
+                    bucket === "Knit"
+                      ? "knitted-vendors"
+                      : bucket === "Other"
+                        ? "other-vendors"
+                        : "woven-vendors"
                   }
                   headers={vendorCsvHeaders}
                   rows={vendorCsvRows(rows)}
@@ -1581,7 +1591,13 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
                     <Bar
                       dataKey="openQty"
                       name="Open quantity"
-                      fill={bucket === "Woven" ? "#8b5cf6" : "#14b8a6"}
+                      fill={
+                        bucket === "Woven"
+                          ? "#8b5cf6"
+                          : bucket === "Knit"
+                            ? "#14b8a6"
+                            : "#64748b"
+                      }
                     >
                       <LabelList dataKey="openQty" position="right" />
                     </Bar>

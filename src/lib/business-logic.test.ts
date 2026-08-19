@@ -8,7 +8,7 @@ const base: PendingPo = { po_number:'1',po_created_date:null,po_date:null,item_p
 const tna: TnaRecord = { po_no:'PO-1',po_issued_date:null,po_qty:10,pp_sample_tna_date:null,pp_sample_actual_date:'2026-01-01',pp_sample_delay_days:0,gpt_tna_date:null,gpt_actual_date:null,gpt_delay_days:0,cutting_tna_date:null,cutting_actual_date_first:null,cutting_delay_days:0,in_line_tna_date:null,in_line_actual_date:null,in_line_qc_delay_days:0 };
 
 describe('sourcing business rules', () => {
-  it('buckets only labels containing woven as Woven', () => { assert.equal(vendorBucket('Premium Woven Unit'),'Woven'); assert.equal(vendorBucket('Knitted'),'Knit'); assert.equal(vendorBucket(null),'Knit'); });
+  it('buckets woven and knit by keyword, everything else as Other', () => { assert.equal(vendorBucket('Premium Woven Unit'),'Woven'); assert.equal(vendorBucket('Knitted'),'Knit'); assert.equal(vendorBucket('Circular Knit'),'Knit'); assert.equal(vendorBucket('Trims Supplier'),'Other'); assert.equal(vendorBucket(''),'Other'); assert.equal(vendorBucket(null),'Other'); });
   it('derives the first missing TNA actual stage', () => { assert.equal(deriveTnaStage(tna),'GPT Pending'); assert.equal(deriveTnaStage(null),'Not in TNA Tracker'); });
   it('does not report an unresolved #N/A milestone as complete', () => {
     // Mirrors FY25-26/EFOB/SDLNS/STR-02: PP sample never taken, later stages filled in.

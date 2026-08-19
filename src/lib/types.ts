@@ -128,7 +128,7 @@ export type TrackerRow = {
   vendorName: string;
   vendorCode: string;
   merchant: string;
-  vendorBucket: 'Woven' | 'Knit';
+  vendorBucket: 'Woven' | 'Knit' | 'Other';
   poType: string;
   variantCount: number;
   variantName: string;
@@ -180,7 +180,7 @@ export type VendorRollup = {
   vendorCode: string;
   vendorName: string;
   merchant: string;
-  vendorBucket: 'Woven' | 'Knit';
+  vendorBucket: 'Woven' | 'Knit' | 'Other';
   openPoCount: number;
   delayedPoCount: number;
   delayPct: number;
