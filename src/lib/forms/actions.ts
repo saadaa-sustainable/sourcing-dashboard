@@ -2062,7 +2062,7 @@ export async function createUserLogin(formData: FormData): Promise<ActionResult>
   const isActive = formData.get('is_active') === 'true';
   const password = String(formData.get('password') ?? '');
 
-  if (!/^[^@s]+@saadaa.in$/.test(email)) return fail('Enter a valid @saadaa.in email address.');
+  if (!/^[^@\s]+@saadaa\.in$/.test(email)) return fail('Enter a valid @saadaa.in email address.');
   if (!ASSIGNABLE_ROLES.includes(role)) return fail('Invalid role.');
   if (password.length < 8) return fail('Password must be at least 8 characters.');
   if (!hasSupabaseAdminEnv()) {
