@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
-  loadGcpProductMaster,
+  loadEeProductMaster,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { ProductMasterClient } from './product-master-client';
@@ -26,12 +26,12 @@ export default async function ProductMasterPage() {
 
   if (!user) redirect('/login');
 
-  const products = await loadGcpProductMaster();
+  const products = await loadEeProductMaster();
 
   return (
     <FormLayout
       title="Product Master"
-      subtitle="SKU-level product master from GCP (saadaa_consolidated_product_master) — status, category, fabric, RM, launch date and pricing. Read-only, refreshed daily."
+      subtitle="SKU-level product master from EasyEcom (Easyecom_new_product_master + custom fields) — status, category, fabric, attributes and pricing. Read-only, refreshed daily."
       active="/product-master"
       role={user.role}
       userEmail={user.email}

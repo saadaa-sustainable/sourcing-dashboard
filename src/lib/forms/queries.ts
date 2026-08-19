@@ -24,7 +24,7 @@ import type {
   FabricMaster,
   MaterialCode,
   MaterialMaster,
-  GcpProductMaster,
+  EeProductMaster,
   InwardPlanGroup,
   NpdPromotionCandidate,
   OosCalculationRow,
@@ -216,18 +216,18 @@ export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
   return rows;
 }
 
-/** The GCP product master — one row per SKU, read-only. Paged (exceeds 1000). */
-export async function loadGcpProductMaster(): Promise<GcpProductMaster[]> {
+/** The EasyEcom product master — one row per SKU, read-only. Paged (exceeds 1000). */
+export async function loadEeProductMaster(): Promise<EeProductMaster[]> {
   const supabase = await client();
-  const rows: GcpProductMaster[] = [];
+  const rows: EeProductMaster[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
-      .from('sd_gcp_product_master')
+      .from('sd_ee_product_master')
       .select('*')
       .order('sku')
       .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_gcp_product_master: ${error.message}`);
-    rows.push(...((data ?? []) as GcpProductMaster[]));
+    if (error) throw new Error(`sd_ee_product_master: ${error.message}`);
+    rows.push(...((data ?? []) as EeProductMaster[]));
     if (!data || data.length < PAGE_SIZE) break;
   }
   return rows;
@@ -479,10 +479,10 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     ),
   ].sort();
 
-  // Product status + woven/knitted are derived from the GCP product master (rolled
+  // Product status + woven/knitted are derived from the EasyEcom product master (rolled
   // up to product code, normalised), read-only. The Buying Plan never lets these be typed.
   const { data: master } = await supabase
-    .from('sd_gcp_product_code_status')
+    .from('sd_ee_product_code_status')
     .select('product_code, product_status, fabric_type')
     .limit(PAGE_SIZE);
   const productMaster: Record<string, { status: string | null; fabric_type: string | null }> = {};

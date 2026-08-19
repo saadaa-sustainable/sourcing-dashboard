@@ -31,32 +31,58 @@ export type SdUser = {
   last_seen_at?: string | null;
 };
 
-/** One SKU row of the GCP product master (sd_gcp_product_master), shown read-only. */
-export type GcpProductMaster = {
+/**
+ * One SKU row of the EasyEcom product master (sd_ee_product_master), shown
+ * read-only. Sourced from Easyecom_new_product_master + its custom fields; all
+ * values are text.
+ */
+export type EeProductMaster = {
   sku: string;
-  product_code: string | null;
-  product_name: string | null;
-  product_variant: string | null;
+  mrp: string | null;
+  cost: string | null;
   size: string | null;
-  color: string | null;
-  category: string | null;
+  width: string | null;
+  active: string | null;
+  colour: string | null;
+  height: string | null;
+  length: string | null;
+  weight: string | null;
+  hsn_code: string | null;
+  model_no: string | null;
+  tax_rate: string | null;
+  created_at: string | null;
+  description: string | null;
+  product_name: string | null;
+  category_name: string | null;
+  tax_rule_name: string | null;
+  product_image_url: string | null;
+  category_type: string | null;
+  color_family: string | null;
+  demographic_price_rage: string | null;
+  dyed_fabric_sku: string | null;
+  fabric_composition: string | null;
+  fabric_gsm: string | null;
+  fabric_name: string | null;
+  fabric_consumption_average: string | null;
+  fit_type: string | null;
+  gst: string | null;
+  garment_length_type: string | null;
   gender: string | null;
   item_category: string | null;
-  sub_category: string | null;
+  neck_collar_type: string | null;
+  product_launch_date: string | null;
   product_state: string | null;
-  weave_type: string | null;
-  rm_code: string | null;
-  dyed_fabric_sku: string | null;
-  launch_date: string | null;
-  mrp: number | null;
-  cost: number | null;
-  fabric_name: string | null;
-  fabric_gsm: string | null;
-  fit_type: string | null;
-  age_group: string | null;
-  season: string | null;
-  replenishment_type: string | null;
   product_type: string | null;
+  product_variant: string | null;
+  qty_in_meters: string | null;
+  rm_fabric_sku: string | null;
+  related_ongoing_product: string | null;
+  replenishment_type: string | null;
+  sub_category: string | null;
+  season: string | null;
+  sleeve_type: string | null;
+  weave_type: string | null;
+  washcare_sku: string | null;
 };
 
 /** One SKU row of the OOS Calculation sheet (sd_oos_calculation) — mirrors the DOQ sheet. */

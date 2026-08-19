@@ -162,10 +162,9 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Where this is used', source: 'Buying Plan', formula: 'Buying Plan value = job×job_cost + fob×fob_cost + efob×efob_cost', detail: 'The Buying Plan values each PO-type quantity at its approved rate.' },
   ],
   '/product-master': [
-    { field: 'What this is', source: 'Product master (GCP)', detail: 'The full SKU-level product master from GCP (saadaa_consolidated_product_master), read-only, refreshed daily. One row per SKU.' },
-    { field: 'Attributes (Status, Weave, Category, Gender, RM, Dyed Fabric, Fabric, Fit, Season, Launch Date, MRP, Cost…)', source: 'Product master (GCP)', detail: 'Product attributes as held in GCP. Values are shown exactly as they arrive; “—” means the field is blank in the source.' },
-    { field: 'Search & filters', source: 'Workflow', detail: 'Search by SKU, product code, name, variant or colour; filter by Status or Weave.' },
-    { field: 'Feeds the Buying Plan', source: 'Automatic', formula: 'per product code: most common (mode) normalised Status / Weave across its SKUs', detail: 'Status and Woven/Knitted are rolled up from these GCP SKUs to product-code level (normalised, e.g. all “to be discontinued” spellings → Discontinued) and shown read-only on the Buying Plan.' },
+    { field: 'What this is', source: 'Product master (EasyEcom)', detail: 'The full SKU-level product master from EasyEcom (Easyecom_new_product_master joined to its custom fields), read-only, refreshed daily. One row per SKU.' },
+    { field: 'Attributes (Status, Weave, Category, Gender, RM, Dyed Fabric, Fabric, Fit, Sleeve, Neck/Collar, Season, Launch Date, MRP, Cost…)', source: 'Product master (EasyEcom)', detail: 'Product attributes as held in EasyEcom. Values are shown exactly as they arrive; “—” means the field is blank in the source.' },
+    { field: 'Search & filters', source: 'Workflow', detail: 'Search by SKU, name, variant or colour; filter by Status or Weave.' },
   ],
   '/fabric-master': [
     { field: 'Fabric code', source: 'You enter (manual)', detail: 'Entered by hand — never generated from the composition, since fabrics with the same nominal composition can differ by weave/GSM and need distinct codes.' },

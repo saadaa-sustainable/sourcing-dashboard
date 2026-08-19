@@ -2,49 +2,50 @@
 
 import { useMemo, useState } from 'react';
 import { Notice } from '@/components/forms/form-layout';
-import type { GcpProductMaster } from '@/lib/forms/types';
+import type { EeProductMaster } from '@/lib/forms/types';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const PAGE = 50;
 const norm = (v: string | null) => (v ?? '').trim().toLowerCase();
 
-type Col = { key: keyof GcpProductMaster; label: string; kind: 'text' | 'mono' | 'num' };
+type Col = { key: keyof EeProductMaster; label: string; kind: 'text' | 'mono' | 'num' };
 
 const COLS: Col[] = [
   { key: 'sku', label: 'SKU', kind: 'mono' },
-  { key: 'product_code', label: 'Product Code', kind: 'mono' },
   { key: 'product_variant', label: 'Variant', kind: 'mono' },
   { key: 'product_name', label: 'Product Name', kind: 'text' },
-  { key: 'color', label: 'Colour', kind: 'text' },
+  { key: 'colour', label: 'Colour', kind: 'text' },
   { key: 'size', label: 'Size', kind: 'text' },
   { key: 'product_state', label: 'Status', kind: 'text' },
   { key: 'weave_type', label: 'Weave', kind: 'text' },
-  { key: 'category', label: 'Category', kind: 'text' },
+  { key: 'category_name', label: 'Category', kind: 'text' },
   { key: 'gender', label: 'Gender', kind: 'text' },
   { key: 'item_category', label: 'Item Category', kind: 'text' },
   { key: 'sub_category', label: 'Sub-category', kind: 'text' },
-  { key: 'rm_code', label: 'RM Code', kind: 'mono' },
+  { key: 'rm_fabric_sku', label: 'RM Fabric SKU', kind: 'mono' },
   { key: 'dyed_fabric_sku', label: 'Dyed Fabric SKU', kind: 'mono' },
   { key: 'fabric_name', label: 'Fabric', kind: 'text' },
+  { key: 'fabric_composition', label: 'Composition', kind: 'text' },
   { key: 'fabric_gsm', label: 'GSM', kind: 'text' },
   { key: 'fit_type', label: 'Fit', kind: 'text' },
-  { key: 'age_group', label: 'Age Group', kind: 'text' },
+  { key: 'sleeve_type', label: 'Sleeve', kind: 'text' },
+  { key: 'neck_collar_type', label: 'Neck/Collar', kind: 'text' },
   { key: 'season', label: 'Season', kind: 'text' },
   { key: 'replenishment_type', label: 'Replen. Type', kind: 'text' },
   { key: 'product_type', label: 'Product Type', kind: 'text' },
-  { key: 'launch_date', label: 'Launch Date', kind: 'text' },
+  { key: 'product_launch_date', label: 'Launch Date', kind: 'text' },
   { key: 'mrp', label: 'MRP', kind: 'num' },
   { key: 'cost', label: 'Cost', kind: 'num' },
 ];
 
-function cell(row: GcpProductMaster, col: Col) {
+function cell(row: EeProductMaster, col: Col) {
   const v = row[col.key];
   if (v === null || v === undefined || v === '') return <span className="wf-subtle">—</span>;
   if (col.kind === 'num') return fmt.format(Number(v));
   return String(v);
 }
 
-export function ProductMasterClient({ products }: { products: GcpProductMaster[] }) {
+export function ProductMasterClient({ products }: { products: EeProductMaster[] }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [weave, setWeave] = useState('');
@@ -64,7 +65,7 @@ export function ProductMasterClient({ products }: { products: GcpProductMaster[]
       (!status || p.product_state === status) &&
       (!weave || p.weave_type === weave) &&
       (!search ||
-        [p.sku, p.product_code, p.product_name, p.product_variant, p.color].some((v) =>
+        [p.sku, p.product_name, p.product_variant, p.colour].some((v) =>
           norm(v).includes(norm(search)),
         )),
   );
@@ -76,8 +77,8 @@ export function ProductMasterClient({ products }: { products: GcpProductMaster[]
   return (
     <>
       <Notice tone="info">
-        SKU-level product master pulled from GCP and refreshed daily. Read-only — status
-        and Woven/Knitted here feed the Buying Plan (rolled up to product code).
+        SKU-level product master from EasyEcom (Easyecom_new_product_master + custom fields),
+        refreshed daily. Read-only.
       </Notice>
 
       <div className="wf-toolbar">
@@ -110,7 +111,7 @@ export function ProductMasterClient({ products }: { products: GcpProductMaster[]
 
       {!products.length && (
         <Notice tone="info">
-          No rows yet. (Loads once the GCP product-master sync has run.)
+          No rows yet. (Loads once the product-master sync has run.)
         </Notice>
       )}
 
