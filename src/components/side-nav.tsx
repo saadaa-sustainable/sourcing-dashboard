@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import {
   Award,
   Ban,
@@ -44,7 +44,19 @@ export const tabs = [
 
 export type TabId = (typeof tabs)[number][0];
 
-const WORKFLOW_LINKS = [
+// PO Manual Adjustment is an external Google Apps Script data-ingestion portal,
+// so its nav item opens in a new tab (external: true) rather than routing in-app.
+const PO_ADJUSTMENT_PORTAL =
+  'https://script.google.com/a/macros/saadaa.in/s/AKfycbyfPaRfi-Qh2MzjHaov2vT570Y4Inu7yUDFlXAE2gZ5w4wc-JEMhvzomnijngQQqBqB/exec';
+
+type NavLink = {
+  href: string;
+  label: string;
+  Icon: ComponentType<{ size?: number }>;
+  external?: boolean;
+};
+
+const WORKFLOW_LINKS: NavLink[] = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
@@ -53,13 +65,13 @@ const WORKFLOW_LINKS = [
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
-  { href: '/po-manual-adjustment', label: 'PO Manual Adjustment', Icon: FilePen },
+  { href: PO_ADJUSTMENT_PORTAL, label: 'PO Manual Adjustment', Icon: FilePen, external: true },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
-] as const;
+];
 
 /**
  * The shared left sidebar. Two modes:
@@ -124,11 +136,13 @@ export function SideNav({
               ),
             )}
           <div className="wf-nav-divider">Workflows</div>
-          {WORKFLOW_LINKS.map(({ href, label, Icon }) => (
+          {WORKFLOW_LINKS.map(({ href, label, Icon, external }) => (
             <a
               key={href}
               href={href}
-              className={activeWorkflow === href ? 'active' : ''}
+              target={external ? '_blank' : undefined}
+              rel={external ? 'noopener noreferrer' : undefined}
+              className={!external && activeWorkflow === href ? 'active' : ''}
               onClick={close}
             >
               <Icon size={18} />
