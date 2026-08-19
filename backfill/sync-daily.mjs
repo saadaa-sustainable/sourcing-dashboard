@@ -11,6 +11,8 @@
 //                       -> sd_po_grn_mapping            (last 45 days, upsert on po_detail_id|grn_id)
 //   4. Vendor master    saadaa-wh.MAPLEMONK.Easyecom_Saadaa_vendors
 //                       -> vendor_master_data           (code->name only, updates existing rows)
+//   5. OOS calculation  saadaa-wh.MAPLEMONK.saadaa_inventory_planning
+//                       -> sd_oos_calculation           (1 row/SKU, 45d metrics + DOH, upsert on sku)
 //
 // Runs as YOU via Application Default Credentials; the query bills to saadaa-wh.
 // Unlike sync-extra.mjs / sync-product-master.mjs (full refresh + mark-and-sweep),
@@ -19,9 +21,9 @@
 // model (type/merchant/machines/karigar), so we only update names of existing vendors.
 //
 // Usage:
-//   node sync-daily.mjs                # product master + DOQ + GRN (45d) + vendor master
+//   node sync-daily.mjs                # product master + DOQ + GRN (45d) + vendor master + OOS
 //   node sync-daily.mjs --test         # small pull per source, prints samples, still writes
-//   node sync-daily.mjs vendor-master  # just one:  product-master | doq | grn | vendor-master
+//   node sync-daily.mjs oos            # just one:  product-master | doq | grn | vendor-master | oos
 // =====================================================================
 
 import { readFileSync } from 'node:fs';
@@ -38,7 +40,7 @@ try {
 }
 
 const TEST = process.argv.includes('--test');
-const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn', 'vendor-master'].includes(a));
+const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn', 'vendor-master', 'oos'].includes(a));
 const GRN_WINDOW_DAYS = 45;
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
@@ -78,6 +80,50 @@ const GRN_COLS = new Set([
   'grn_invoice_number','last_grn_date','po_type','po_original_quantity','po_pending_quantity',
   'total_grn_value','grn_receive_quantity',
 ]);
+
+// OOS Calculation output columns (already the final sd_oos_calculation shape — the
+// query aggregates + derives them, so appendSync just passes them through on sku).
+const OOS_COLS = new Set([
+  'sku','product_status','category_with_gender','rm_code','dyed_fabric_sku','product_variant',
+  'product_name','color','size','weave_type','total_oos_days','total_qty_sold','doq_45',
+  'current_stock','inprocess_stock','doh','doh_with_inprocess',
+]);
+
+// One row per garment SKU from the latest inventory-planning snapshot (warehouses
+// combined, raw-fabric metre SKUs excluded), 45-day metrics + derived DOH. Mirrors
+// backfill/backfill-oos.mjs; the pending columns (sales/class/etc.) are left untouched.
+const OOS_QUERY = `
+WITH latest AS (
+  SELECT * FROM \`saadaa-wh.MAPLEMONK.saadaa_inventory_planning\`
+  WHERE date_day = (SELECT MAX(date_day) FROM \`saadaa-wh.MAPLEMONK.saadaa_inventory_planning\`)
+    AND UPPER(COALESCE(Size, '')) <> 'IN METERS'
+),
+agg AS (
+  SELECT
+    sku,
+    ANY_VALUE(product_state) AS product_status,
+    TRIM(CONCAT(COALESCE(ANY_VALUE(Category),''),' ',COALESCE(ANY_VALUE(Gender),''))) AS category_with_gender,
+    ANY_VALUE(RM_code) AS rm_code,
+    ANY_VALUE(Dyed_Fabric_SKU) AS dyed_fabric_sku,
+    ANY_VALUE(Product_Variant) AS product_variant,
+    ANY_VALUE(product_name) AS product_name,
+    ANY_VALUE(Color) AS color,
+    ANY_VALUE(Size) AS size,
+    ANY_VALUE(WEAVE_TYPE) AS weave_type,
+    MAX(oos_days_45) AS total_oos_days,
+    MAX(total_sales_in_last_45_inventory_days) AS total_qty_sold,
+    MAX(doq_45) AS doq_45,
+    SUM(current_stock) AS current_stock,
+    SUM(total_inprogress) AS inprocess_stock
+  FROM latest GROUP BY sku
+)
+SELECT sku, product_status, category_with_gender, rm_code, dyed_fabric_sku, product_variant,
+  product_name, color, size, weave_type, total_oos_days, total_qty_sold, doq_45,
+  current_stock, inprocess_stock,
+  ROUND(SAFE_DIVIDE(current_stock, NULLIF(doq_45, 0)), 1) AS doh,
+  ROUND(SAFE_DIVIDE(current_stock + inprocess_stock, NULLIF(doq_45, 0)), 1) AS doh_with_inprocess
+FROM agg
+WHERE sku IS NOT NULL AND sku <> ''`;
 
 function pick(r, allowed) {
   const out = {};
@@ -208,6 +254,18 @@ async function main() {
       query: `SELECT * FROM \`saadaa-wh.MAPLEMONK.saadaa_po_grn_mapping\`
               WHERE grn_created_date >= DATE_SUB(CURRENT_DATE('Asia/Kolkata'), INTERVAL ${GRN_WINDOW_DAYS} DAY)
               ${TEST ? 'LIMIT 20' : ''}`,
+    });
+  }
+
+  if (!ONLY || ONLY === 'oos') {
+    // OOS Calculation — runs after DOQ so it reflects the same snapshot day.
+    await appendSync({
+      label: 'oos_calculation',
+      table: 'sd_oos_calculation',
+      conflict: 'sku',
+      allowed: OOS_COLS,
+      keyOf: (r) => r.sku || null,
+      query: OOS_QUERY + (TEST ? '\nLIMIT 20' : ''),
     });
   }
 
