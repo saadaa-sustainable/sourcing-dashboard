@@ -968,3 +968,14 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   border-radius: 6px;
   border: 1px solid #e7e2d2;
 }
+
+/* PO Manual Adjustment tab: panel header row + spinning refresh icon. */
+.adj-panel-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.adj-panel-head h3 { margin: 0; font-size: 14px; }
+.adj-panel-head .table-meta-note {
+  color: #9a9384;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.spin { animation: spin 0.8s linear infinite; }

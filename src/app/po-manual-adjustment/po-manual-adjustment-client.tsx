@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { refreshAdjustmentAction } from '@/lib/adjustments-actions';
 import { REFRESH_LIMIT_PER_HOUR, type AdjustmentSource } from '@/lib/adjustments-types';
 
@@ -52,6 +52,7 @@ function Panel({
   title,
   source,
   cols,
+  wide,
   initialRows,
   initialRemaining,
   initialRetry,
@@ -59,6 +60,7 @@ function Panel({
   title: string;
   source: AdjustmentSource;
   cols: Col[];
+  wide?: boolean;
   initialRows: Row[];
   initialRemaining: number;
   initialRetry: number;
@@ -91,15 +93,16 @@ function Panel({
   return (
     <section className="table-panel wf-grid-panel">
       <div className="table-meta">
-        <div>
+        <div className="adj-panel-head">
           <h3>{title}</h3>
+          <span className="wf-chip">{rows.length} rows</span>
           <span className="table-meta-note">
-            Latest {rows.length} by ingestion · {remaining}/{REFRESH_LIMIT_PER_HOUR} refreshes left this hour
+            latest by ingestion · {remaining}/{REFRESH_LIMIT_PER_HOUR} refreshes left this hour
             {remaining <= 0 && retry > 0 ? ` · retry in ~${retry} min` : ''}
           </span>
         </div>
         <div className="table-meta-actions">
-          <button type="button" className="help-button" onClick={onRefresh} disabled={disabled}>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={onRefresh} disabled={disabled}>
             <RefreshCw size={15} className={pending ? 'spin' : undefined} />
             {pending ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -107,8 +110,8 @@ function Panel({
       </div>
       {error && <div className="wf-notice wf-notice-error">{error}</div>}
       {note && <div className="wf-notice wf-notice-ok">{note}</div>}
-      <div className="table-scroll">
-        <table className="wide-table wf-grid">
+      <div className={wide ? 'table-scroll wide-table' : 'table-scroll'}>
+        <table className="wf-grid">
           <thead>
             <tr>
               {cols.map((c) => (
@@ -159,19 +162,12 @@ export function PoManualAdjustmentClient({
   return (
     <div className="wf-stack">
       <div className="wf-notice wf-notice-info">
-        <div>
-          Make adjustments in the ingestion portal; the sync loads them into the dashboard. Use Refresh
-          to reload the newest synced rows — each table {REFRESH_LIMIT_PER_HOUR} times per hour.
-        </div>
-        <a
-          className="wf-btn wf-btn-primary"
-          href={portalUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ marginTop: 10 }}
-        >
-          <ExternalLink size={16} /> Open adjustment portal
-        </a>
+        Adjustments are entered in the{' '}
+        <a href={portalUrl} target="_blank" rel="noopener noreferrer">
+          ingestion portal
+        </a>{' '}
+        (also the button top-right); the sync loads them here. Hit <strong>Refresh</strong> on a table
+        to pull the newest synced rows — up to {REFRESH_LIMIT_PER_HOUR}× per hour each.
       </div>
       <Panel
         title="Manual Adjustment (PO)"
@@ -185,6 +181,7 @@ export function PoManualAdjustmentClient({
         title="Cutting Register"
         source="cutting"
         cols={CUTTING_COLS}
+        wide
         initialRows={cuttingRows}
         initialRemaining={cuttingState.remaining}
         initialRetry={cuttingState.retryAfterMinutes}
