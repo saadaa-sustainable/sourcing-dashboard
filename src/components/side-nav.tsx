@@ -44,11 +44,6 @@ export const tabs = [
 
 export type TabId = (typeof tabs)[number][0];
 
-// PO Manual Adjustment is an external Google Apps Script data-ingestion portal,
-// so its nav item opens in a new tab (external: true) rather than routing in-app.
-const PO_ADJUSTMENT_PORTAL =
-  'https://script.google.com/a/macros/saadaa.in/s/AKfycbyfPaRfi-Qh2MzjHaov2vT570Y4Inu7yUDFlXAE2gZ5w4wc-JEMhvzomnijngQQqBqB/exec';
-
 type NavLink = {
   href: string;
   label: string;
@@ -65,7 +60,7 @@ const WORKFLOW_LINKS: NavLink[] = [
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
-  { href: PO_ADJUSTMENT_PORTAL, label: 'PO Manual Adjustment', Icon: FilePen, external: true },
+  { href: '/po-manual-adjustment', label: 'PO Manual Adjustment', Icon: FilePen },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },

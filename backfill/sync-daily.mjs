@@ -40,7 +40,7 @@ try {
 }
 
 const TEST = process.argv.includes('--test');
-const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn', 'vendor-master', 'oos'].includes(a));
+const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn', 'vendor-master', 'oos', 'adjustments'].includes(a));
 const GRN_WINDOW_DAYS = 45;
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
@@ -188,6 +188,35 @@ async function syncVendorMaster() {
   console.log(`[vendor_master] done (updated ${updates.length} names, capacity fields untouched).`);
 }
 
+// PO Manual Adjustment feeds — small snapshot tables (no natural key), so each run
+// REPLACES all rows (delete + insert). Backs the PO Manual Adjustment tab; the tab's
+// Refresh button does the same replace live, rate-limited per user.
+async function syncAdjustments() {
+  console.log('\n[adjustments] querying BigQuery…');
+  const [manual] = await bq.query({
+    location: 'asia-south1',
+    query: `SELECT po_no, sku_code, manual_adjust_qty, po_type,
+                   CAST(ingestion_date AS STRING) AS ingestion_date, ingestion_by
+            FROM \`saadaa-wh.MAPLEMONK.po_qty_manual_adjustment\` ORDER BY ingestion_date DESC`,
+  });
+  const [cutting] = await bq.query({
+    location: 'asia-south1',
+    query: `SELECT CAST(date_of_cutting AS STRING) AS date_of_cutting, vendor_code, po_number,
+                   fabric_sku_code, item_code, cutting_qty, avg_fabric_consumption_approved,
+                   width_of_fabric, cutting_approval_sheet, remarks_of_cutting, fabric_consumed,
+                   type_of_po, CAST(date_of_ingestion AS STRING) AS date_of_ingestion, ingestion_by
+            FROM \`saadaa-wh.MAPLEMONK.po_qty_cutting_register\` ORDER BY date_of_ingestion DESC`,
+  });
+  const mrows = manual.map((r) => pick(r, new Set(['po_no', 'sku_code', 'manual_adjust_qty', 'po_type', 'ingestion_date', 'ingestion_by'])));
+  const crows = cutting.map((r) => pick(r, new Set(['date_of_cutting', 'vendor_code', 'po_number', 'fabric_sku_code', 'item_code', 'cutting_qty', 'avg_fabric_consumption_approved', 'width_of_fabric', 'cutting_approval_sheet', 'remarks_of_cutting', 'fabric_consumed', 'type_of_po', 'date_of_ingestion', 'ingestion_by'])));
+
+  await supa('DELETE', 'sd_po_qty_manual_adjustment?synced_at=gte.1970-01-01T00:00:00Z');
+  for (let i = 0; i < mrows.length; i += 500) await supa('POST', 'sd_po_qty_manual_adjustment', mrows.slice(i, i + 500));
+  await supa('DELETE', 'sd_po_qty_cutting_register?synced_at=gte.1970-01-01T00:00:00Z');
+  for (let i = 0; i < crows.length; i += 500) await supa('POST', 'sd_po_qty_cutting_register', crows.slice(i, i + 500));
+  console.log(`[adjustments] replaced: manual ${mrows.length} rows, cutting ${crows.length} rows.`);
+}
+
 // Append-only: upsert on the conflict target, NO mark-and-sweep delete.
 async function appendSync({ label, table, conflict, query, allowed, keyOf }) {
   const runStart = new Date().toISOString();
@@ -271,6 +300,10 @@ async function main() {
 
   if (!ONLY || ONLY === 'vendor-master') {
     await syncVendorMaster();
+  }
+
+  if (!ONLY || ONLY === 'adjustments') {
+    await syncAdjustments();
   }
 
   console.log('\nDaily sync complete.');

@@ -8,8 +8,9 @@
 //   GRN              saadaa_po_grn_mapping           -> sd_po_grn_mapping       (last 45 days, on po_detail_id|grn_id)
 
 import { BigQuery } from '@google-cloud/bigquery';
+import { syncAllAdjustments } from '@/lib/adjustments';
 
-export type SyncTarget = 'product-master' | 'doq' | 'grn' | 'vendor-master';
+export type SyncTarget = 'product-master' | 'doq' | 'grn' | 'vendor-master' | 'adjustments';
 export const GRN_WINDOW_DAYS = 45;
 
 const flat = (v: unknown): unknown =>
@@ -159,7 +160,9 @@ async function appendSync(bq: BigQuery, spec: AppendSpec): Promise<number> {
   return mapped.length;
 }
 
-const SPECS: Record<Exclude<SyncTarget, 'vendor-master'>, AppendSpec> = {
+type AppendTarget = Exclude<SyncTarget, 'vendor-master' | 'adjustments'>;
+
+const SPECS: Record<AppendTarget, AppendSpec> = {
   'product-master': {
     table: 'sd_ee_product_master',
     conflict: 'sku',
@@ -190,10 +193,19 @@ const SPECS: Record<Exclude<SyncTarget, 'vendor-master'>, AppendSpec> = {
 // Run one or all sync targets. Returns per-target rows written.
 export async function runDailySync(only?: SyncTarget): Promise<Record<string, number>> {
   const bq = makeBq();
-  const targets: SyncTarget[] = only ? [only] : ['product-master', 'doq', 'grn', 'vendor-master'];
+  const targets: SyncTarget[] = only
+    ? [only]
+    : ['product-master', 'doq', 'grn', 'vendor-master', 'adjustments'];
   const summary: Record<string, number> = {};
   for (const t of targets) {
-    summary[t] = t === 'vendor-master' ? await syncVendorMaster(bq) : await appendSync(bq, SPECS[t]);
+    if (t === 'vendor-master') {
+      summary[t] = await syncVendorMaster(bq);
+    } else if (t === 'adjustments') {
+      const a = await syncAllAdjustments();
+      summary[t] = a.po + a.cutting;
+    } else {
+      summary[t] = await appendSync(bq, SPECS[t]);
+    }
   }
   return summary;
 }
