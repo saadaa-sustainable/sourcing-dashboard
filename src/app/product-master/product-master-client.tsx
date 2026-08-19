@@ -1,308 +1,155 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
-import { Plus, Save, TrendingUp } from 'lucide-react';
-import { promoteToNpd, saveProductMaster } from '@/lib/forms/actions';
-import { Field, Notice } from '@/components/forms/form-layout';
-import type { NpdPromotionCandidate, ProductMaster } from '@/lib/forms/types';
+import { useMemo, useState } from 'react';
+import { Notice } from '@/components/forms/form-layout';
+import type { GcpProductMaster } from '@/lib/forms/types';
 
-const STATUSES = [
-  'Active', 'Inactive', 'TBD', 'NPD', 'NPD-Not-Launched', 'Ongoing', 'Discontinued',
+const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+const PAGE = 50;
+const norm = (v: string | null) => (v ?? '').trim().toLowerCase();
+
+type Col = { key: keyof GcpProductMaster; label: string; kind: 'text' | 'mono' | 'num' };
+
+const COLS: Col[] = [
+  { key: 'sku', label: 'SKU', kind: 'mono' },
+  { key: 'product_code', label: 'Product Code', kind: 'mono' },
+  { key: 'product_variant', label: 'Variant', kind: 'mono' },
+  { key: 'product_name', label: 'Product Name', kind: 'text' },
+  { key: 'color', label: 'Colour', kind: 'text' },
+  { key: 'size', label: 'Size', kind: 'text' },
+  { key: 'product_state', label: 'Status', kind: 'text' },
+  { key: 'weave_type', label: 'Weave', kind: 'text' },
+  { key: 'category', label: 'Category', kind: 'text' },
+  { key: 'gender', label: 'Gender', kind: 'text' },
+  { key: 'item_category', label: 'Item Category', kind: 'text' },
+  { key: 'sub_category', label: 'Sub-category', kind: 'text' },
+  { key: 'rm_code', label: 'RM Code', kind: 'mono' },
+  { key: 'dyed_fabric_sku', label: 'Dyed Fabric SKU', kind: 'mono' },
+  { key: 'fabric_name', label: 'Fabric', kind: 'text' },
+  { key: 'fabric_gsm', label: 'GSM', kind: 'text' },
+  { key: 'fit_type', label: 'Fit', kind: 'text' },
+  { key: 'age_group', label: 'Age Group', kind: 'text' },
+  { key: 'season', label: 'Season', kind: 'text' },
+  { key: 'replenishment_type', label: 'Replen. Type', kind: 'text' },
+  { key: 'product_type', label: 'Product Type', kind: 'text' },
+  { key: 'launch_date', label: 'Launch Date', kind: 'text' },
+  { key: 'mrp', label: 'MRP', kind: 'num' },
+  { key: 'cost', label: 'Cost', kind: 'num' },
 ];
-const FABRICS = ['Woven', 'Knitted'];
 
-export function ProductMasterClient({
-  products,
-  npdCandidates,
-  editable,
-}: {
-  products: ProductMaster[];
-  npdCandidates: NpdPromotionCandidate[];
-  editable: boolean;
-}) {
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const [filter, setFilter] = useState('');
-  const [draft, setDraft] = useState({ product_code: '', product_status: '', fabric_type: '' });
+function cell(row: GcpProductMaster, col: Col) {
+  const v = row[col.key];
+  if (v === null || v === undefined || v === '') return <span className="wf-subtle">—</span>;
+  if (col.kind === 'num') return fmt.format(Number(v));
+  return String(v);
+}
 
-  const filled = products.filter((p) => p.product_status || p.fabric_type).length;
+export function ProductMasterClient({ products }: { products: GcpProductMaster[] }) {
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [weave, setWeave] = useState('');
+  const [page, setPage] = useState(0);
 
-  const shown = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    return q
-      ? products.filter((p) => p.product_code.toLowerCase().includes(q))
-      : products;
-  }, [products, filter]);
+  const statuses = useMemo(
+    () => [...new Set(products.map((p) => p.product_state).filter(Boolean))].sort() as string[],
+    [products],
+  );
+  const weaves = useMemo(
+    () => [...new Set(products.map((p) => p.weave_type).filter(Boolean))].sort() as string[],
+    [products],
+  );
 
-  function submit(payload: FormData) {
-    setError(null);
-    setMessage(null);
-    start(async () => {
-      const result = await saveProductMaster(payload);
-      if (result.ok) {
-        setMessage(result.message ?? 'Saved.');
-        window.location.reload();
-      } else {
-        setError(result.error);
-      }
-    });
-  }
+  const filtered = products.filter(
+    (p) =>
+      (!status || p.product_state === status) &&
+      (!weave || p.weave_type === weave) &&
+      (!search ||
+        [p.sku, p.product_code, p.product_name, p.product_variant, p.color].some((v) =>
+          norm(v).includes(norm(search)),
+        )),
+  );
 
-  function addProduct() {
-    if (!draft.product_code.trim()) {
-      setError('Enter a product code.');
-      return;
-    }
-    const fd = new FormData();
-    fd.set('product_code', draft.product_code.trim());
-    fd.set('product_status', draft.product_status);
-    fd.set('fabric_type', draft.fabric_type);
-    fd.set('is_active', 'true');
-    submit(fd);
-  }
-
-  function promote(productCode: string) {
-    setError(null);
-    setMessage(null);
-    const fd = new FormData();
-    fd.set('product_code', productCode);
-    start(async () => {
-      const result = await promoteToNpd(fd);
-      if (result.ok) {
-        setMessage(result.message ?? 'Promoted.');
-        window.location.reload();
-      } else setError(result.error);
-    });
-  }
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const p = Math.min(page, pageCount - 1);
+  const pageRows = filtered.slice(p * PAGE, p * PAGE + PAGE);
 
   return (
     <>
       <Notice tone="info">
-        {filled} of {products.length} products have status/fabric set. These values
-        are read-only in the Buying Plan — maintained here.
+        SKU-level product master pulled from GCP and refreshed daily. Read-only — status
+        and Woven/Knitted here feed the Buying Plan (rolled up to product code).
       </Notice>
 
-      {message && <Notice tone="ok">{message}</Notice>}
-      {error && <Notice tone="error">{error}</Notice>}
-
-      {npdCandidates.length > 0 && (
-        <div className="panel wf-form-panel">
-          <div className="panel-title">
-            <h3>
-              <TrendingUp size={16} /> Suggested NPD promotions
-            </h3>
-            <span className="wf-report-count">{npdCandidates.length}</span>
-          </div>
-          <Notice tone="warn">
-            These products are still <strong>NPD – Not Launched</strong> but a colour
-            has sold more than 50 pcs (last 45 days). The rule says promote them to
-            NPD. Review and apply.
-          </Notice>
-          <div className="table-scroll">
-            <table className="wf-grid">
-              <thead>
-                <tr>
-                  <th>Product code</th>
-                  <th>Name</th>
-                  <th className="num">Colours &gt;50</th>
-                  <th className="num">Top colour sales (45d)</th>
-                  {editable && <th aria-label="Promote" />}
-                </tr>
-              </thead>
-              <tbody>
-                {npdCandidates.map((c) => (
-                  <tr key={c.product_code}>
-                    <td className="mono">{c.product_code}</td>
-                    <td>{c.product_name ?? '—'}</td>
-                    <td className="num">{c.qualifying_colours}</td>
-                    <td className="num strong">
-                      {Number(c.top_colour_sales_45d).toLocaleString('en-IN')}
-                    </td>
-                    {editable && (
-                      <td>
-                        <button
-                          type="button"
-                          className="wf-btn wf-btn-primary wf-btn-sm"
-                          onClick={() => promote(c.product_code)}
-                          disabled={pending}
-                        >
-                          <TrendingUp size={13} /> Promote to NPD
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {editable && (
-        <div className="wf-form-panel">
-          <div className="wf-form-grid">
-            <Field label="Product code" hint="Add a code not already listed">
-              <input
-                value={draft.product_code}
-                placeholder="e.g. SDRPT"
-                onChange={(e) => setDraft({ ...draft, product_code: e.target.value })}
-              />
-            </Field>
-            <Field label="Status">
-              <select
-                value={draft.product_status}
-                onChange={(e) => setDraft({ ...draft, product_status: e.target.value })}
-              >
-                <option value="">—</option>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Woven / Knitted">
-              <select
-                value={draft.fabric_type}
-                onChange={(e) => setDraft({ ...draft, fabric_type: e.target.value })}
-              >
-                <option value="">—</option>
-                {FABRICS.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </Field>
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary"
-              onClick={addProduct}
-              disabled={pending}
-            >
-              <Plus size={15} /> Add / update
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="wf-toolbar">
-        <input
-          className="wf-search"
-          placeholder="Filter product code…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <span className="wf-subtle">{shown.length} shown</span>
+        <div className="wf-toolbar-left">
+          <label className="field">
+            <span>Search</span>
+            <input
+              placeholder="SKU, code, name, variant or colour"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            />
+          </label>
+          <label className="field">
+            <span>Status</span>
+            <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}>
+              <option value="">All</option>
+              {statuses.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Weave</span>
+            <select value={weave} onChange={(e) => { setWeave(e.target.value); setPage(0); }}>
+              <option value="">All</option>
+              {weaves.map((w) => <option key={w}>{w}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="wf-chip">{fmt.format(filtered.length)} SKUs</div>
       </div>
+
+      {!products.length && (
+        <Notice tone="info">
+          No rows yet. (Loads once the GCP product-master sync has run.)
+        </Notice>
+      )}
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Product code</th>
-                <th>Status</th>
-                <th>Woven / Knitted</th>
-                <th>Active</th>
-                {editable && <th aria-label="Save" />}
+                {COLS.map((c) => (
+                  <th key={c.key} className={c.kind === 'num' ? 'num' : undefined}>{c.label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {shown.map((product) => (
-                <ProductRow
-                  key={product.product_code}
-                  product={product}
-                  editable={editable}
-                  pending={pending}
-                  onSave={(status, fabric, isActive) => {
-                    const fd = new FormData();
-                    fd.set('product_code', product.product_code);
-                    fd.set('product_status', status);
-                    fd.set('fabric_type', fabric);
-                    fd.set('is_active', String(isActive));
-                    submit(fd);
-                  }}
-                />
+              {pageRows.map((row) => (
+                <tr key={row.sku}>
+                  {COLS.map((c) => (
+                    <td key={c.key} className={c.kind === 'num' ? 'num' : c.kind === 'mono' ? 'mono' : undefined}>
+                      {cell(row, c)}
+                    </td>
+                  ))}
+                </tr>
               ))}
-              {!shown.length && (
+              {!filtered.length && products.length > 0 && (
                 <tr>
-                  <td colSpan={editable ? 5 : 4} className="wf-empty-cell">
-                    No products match.
-                  </td>
+                  <td colSpan={COLS.length} className="wf-empty-cell">No SKUs match your filters.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {pageCount > 1 && (
+          <div className="pager">
+            <button type="button" disabled={p <= 0} onClick={() => setPage(p - 1)}>Prev</button>
+            <span>Page {p + 1} of {pageCount} · {fmt.format(filtered.length)} SKUs</span>
+            <button type="button" disabled={p >= pageCount - 1} onClick={() => setPage(p + 1)}>Next</button>
+          </div>
+        )}
       </div>
     </>
-  );
-}
-
-function ProductRow({
-  product,
-  editable,
-  pending,
-  onSave,
-}: {
-  product: ProductMaster;
-  editable: boolean;
-  pending: boolean;
-  onSave: (status: string, fabric: string, isActive: boolean) => void;
-}) {
-  const [status, setStatus] = useState(product.product_status ?? '');
-  const [fabric, setFabric] = useState(product.fabric_type ?? '');
-  const [active, setActive] = useState(product.is_active);
-  const dirty =
-    status !== (product.product_status ?? '') ||
-    fabric !== (product.fabric_type ?? '') ||
-    active !== product.is_active;
-
-  if (!editable) {
-    return (
-      <tr>
-        <td className="mono">{product.product_code}</td>
-        <td>{product.product_status || '—'}</td>
-        <td>{product.fabric_type || '—'}</td>
-        <td>{product.is_active ? 'Yes' : 'No'}</td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr>
-      <td className="mono">{product.product_code}</td>
-      <td>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">—</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </td>
-      <td>
-        <select value={fabric} onChange={(e) => setFabric(e.target.value)}>
-          <option value="">—</option>
-          {FABRICS.map((f) => (
-            <option key={f} value={f}>{f}</option>
-          ))}
-        </select>
-      </td>
-      <td>
-        <input
-          type="checkbox"
-          checked={active}
-          onChange={(e) => setActive(e.target.checked)}
-        />
-      </td>
-      <td>
-        <button
-          type="button"
-          className="wf-btn wf-btn-ghost"
-          disabled={!dirty || pending}
-          onClick={() => onSave(status, fabric, active)}
-        >
-          <Save size={14} /> Save
-        </button>
-      </td>
-    </tr>
   );
 }

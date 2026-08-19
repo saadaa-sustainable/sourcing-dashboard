@@ -5,6 +5,8 @@
 //
 //   1. Product master  saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master
 //                       -> sd_ee_product_master        (upsert on sku)
+//   1b. GCP prod master saadaa-wh.MAPLEMONK.saadaa_consolidated_product_master
+//                       -> sd_gcp_product_master        (SKU-level, shown on Product Master tab)
 //   2. DOQ / planning   saadaa-wh.MAPLEMONK.saadaa_inventory_planning
 //                       -> sd_inventory_planning        (latest snapshot, upsert on sku|warehouse)
 //   3. GRN              saadaa-wh.MAPLEMONK.saadaa_po_grn_mapping

@@ -162,12 +162,10 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Where this is used', source: 'Buying Plan', formula: 'Buying Plan value = job×job_cost + fob×fob_cost + efob×efob_cost', detail: 'The Buying Plan values each PO-type quantity at its approved rate.' },
   ],
   '/product-master': [
-    { field: 'Product code', source: 'Active products', detail: 'Seeded from the active product list. Add a code here if a new product is not yet listed.' },
-    { field: 'Status', source: 'You set', detail: 'Active / Inactive / TBD / NPD / NPD-Not-Launched / Ongoing / Discontinued. This is what the Buying Plan shows (read-only there).' },
-    { field: 'Woven / Knitted', source: 'You set', detail: 'The fabric type for the product. The Buying Plan reads this — it is no longer derived from the vendor.' },
-    { field: 'Active', source: 'You set', detail: 'Turn off to mark a product inactive without deleting its master row.' },
-    { field: 'Where this is used', source: 'Buying Plan', detail: 'The Buying Plan pulls Status and Woven/Knitted from here, read-only, so they are never typed on the plan itself.' },
-    { field: 'Suggested NPD promotions', source: 'Automatic (inventory sales)', formula: 'NPD-Not-Launched product with any colour sold > 50 pcs (45 days)', detail: 'The FG-master auto-rule flags products that should move from NPD-Not-Launched to NPD. Review and apply with one click.' },
+    { field: 'What this is', source: 'Product master (GCP)', detail: 'The full SKU-level product master from GCP (saadaa_consolidated_product_master), read-only, refreshed daily. One row per SKU.' },
+    { field: 'Attributes (Status, Weave, Category, Gender, RM, Dyed Fabric, Fabric, Fit, Season, Launch Date, MRP, Cost…)', source: 'Product master (GCP)', detail: 'Product attributes as held in GCP. Values are shown exactly as they arrive; “—” means the field is blank in the source.' },
+    { field: 'Search & filters', source: 'Workflow', detail: 'Search by SKU, product code, name, variant or colour; filter by Status or Weave.' },
+    { field: 'Feeds the Buying Plan', source: 'Automatic', formula: 'per product code: most common (mode) normalised Status / Weave across its SKUs', detail: 'Status and Woven/Knitted are rolled up from these GCP SKUs to product-code level (normalised, e.g. all “to be discontinued” spellings → Discontinued) and shown read-only on the Buying Plan.' },
   ],
   '/fabric-master': [
     { field: 'Fabric code', source: 'You enter (manual)', detail: 'Entered by hand — never generated from the composition, since fabrics with the same nominal composition can differ by weave/GSM and need distinct codes.' },
