@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   // ?only=grn|doq|product-master runs a single target; default runs all three.
   const onlyParam = request.nextUrl.searchParams.get('only');
-  const only = (['product-master', 'doq', 'grn'] as const).find((t) => t === onlyParam);
+  const only = (['product-master', 'doq', 'grn', 'vendor-master'] as const).find((t) => t === onlyParam);
 
   const startedAt = new Date().toISOString();
   try {

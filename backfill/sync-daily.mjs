@@ -9,15 +9,19 @@
 //                       -> sd_inventory_planning        (latest snapshot, upsert on sku|warehouse)
 //   3. GRN              saadaa-wh.MAPLEMONK.saadaa_po_grn_mapping
 //                       -> sd_po_grn_mapping            (last 45 days, upsert on po_detail_id|grn_id)
+//   4. Vendor master    saadaa-wh.MAPLEMONK.Easyecom_Saadaa_vendors
+//                       -> vendor_master_data           (code->name only, updates existing rows)
 //
 // Runs as YOU via Application Default Credentials; the query bills to saadaa-wh.
 // Unlike sync-extra.mjs / sync-product-master.mjs (full refresh + mark-and-sweep),
-// this NEVER sweeps — it only appends new rows and updates changed ones.
+// this NEVER sweeps — it only appends new rows and updates changed ones. Vendor
+// master is HYBRID: GCP owns vendor_name; the Google Sheet still feeds the capacity
+// model (type/merchant/machines/karigar), so we only update names of existing vendors.
 //
 // Usage:
-//   node sync-daily.mjs           # product master + DOQ + GRN (45d)
-//   node sync-daily.mjs --test    # small pull per source, prints samples, still writes
-//   node sync-daily.mjs grn       # just one:  product-master | doq | grn
+//   node sync-daily.mjs                # product master + DOQ + GRN (45d) + vendor master
+//   node sync-daily.mjs --test         # small pull per source, prints samples, still writes
+//   node sync-daily.mjs vendor-master  # just one:  product-master | doq | grn | vendor-master
 // =====================================================================
 
 import { readFileSync } from 'node:fs';
@@ -34,7 +38,7 @@ try {
 }
 
 const TEST = process.argv.includes('--test');
-const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn'].includes(a));
+const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn', 'vendor-master'].includes(a));
 const GRN_WINDOW_DAYS = 45;
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
@@ -96,6 +100,46 @@ async function supa(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`Supabase ${method} ${path} → ${res.status}: ${await res.text()}`);
+}
+
+async function supaGet(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { apikey: SUPABASE_SERVICE_ROLE, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE}` },
+  });
+  if (!res.ok) throw new Error(`Supabase GET ${path} → ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+// Vendor master (code -> name) from GCP. Hybrid: GCP owns vendor_name; the Google
+// Sheet still feeds the capacity model (type/merchant/machines/karigar). We only
+// UPDATE names of vendors already in vendor_master_data — never insert new rows —
+// so the 5-min sheet sweep (which deactivates rows lacking its sync_token) is left
+// alone. The partial {vendor_code, vendor_name} upsert touches only vendor_name.
+async function syncVendorMaster() {
+  console.log('\n[vendor_master] querying BigQuery…');
+  const [rows] = await bq.query({
+    location: 'asia-south1',
+    query: `SELECT DISTINCT vendor_code, vendor_name
+            FROM \`saadaa-wh.MAPLEMONK.Easyecom_Saadaa_vendors\`
+            WHERE vendor_code IS NOT NULL AND TRIM(vendor_name) != ''`,
+  });
+  const gcp = new Map();
+  for (const r of rows) gcp.set(flat(r.vendor_code), String(flat(r.vendor_name)).trim());
+
+  const existing = await supaGet('vendor_master_data?select=vendor_code');
+  const codes = new Set(existing.map((r) => r.vendor_code));
+  const updates = [...gcp.entries()]
+    .filter(([code]) => codes.has(code))
+    .map(([vendor_code, vendor_name]) => ({ vendor_code, vendor_name }));
+
+  console.log(`[vendor_master] ${updates.length} existing vendors matched in GCP (of ${codes.size}); updating names.`);
+  if (TEST) console.log(JSON.stringify(updates.slice(0, 3), null, 2));
+
+  const BATCH = 500;
+  for (let i = 0; i < updates.length; i += BATCH) {
+    await supa('POST', 'vendor_master_data?on_conflict=vendor_code', updates.slice(i, i + BATCH));
+  }
+  console.log(`[vendor_master] done (updated ${updates.length} names, capacity fields untouched).`);
 }
 
 // Append-only: upsert on the conflict target, NO mark-and-sweep delete.
@@ -165,6 +209,10 @@ async function main() {
               WHERE grn_created_date >= DATE_SUB(CURRENT_DATE('Asia/Kolkata'), INTERVAL ${GRN_WINDOW_DAYS} DAY)
               ${TEST ? 'LIMIT 20' : ''}`,
     });
+  }
+
+  if (!ONLY || ONLY === 'vendor-master') {
+    await syncVendorMaster();
   }
 
   console.log('\nDaily sync complete.');

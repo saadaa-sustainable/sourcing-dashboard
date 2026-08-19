@@ -9,7 +9,7 @@
 
 import { BigQuery } from '@google-cloud/bigquery';
 
-export type SyncTarget = 'product-master' | 'doq' | 'grn';
+export type SyncTarget = 'product-master' | 'doq' | 'grn' | 'vendor-master';
 export const GRN_WINDOW_DAYS = 45;
 
 const flat = (v: unknown): unknown =>
@@ -89,6 +89,44 @@ async function supa(method: string, path: string, body?: unknown): Promise<void>
   if (!res.ok) throw new Error(`Supabase ${method} ${path} -> ${res.status}: ${await res.text()}`);
 }
 
+async function supaGet<T = Row>(path: string): Promise<T[]> {
+  const { url, key } = supaConfig();
+  const res = await fetch(`${url}/rest/v1/${path}`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  if (!res.ok) throw new Error(`Supabase GET ${path} -> ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<T[]>;
+}
+
+// Vendor master (code -> name) from GCP. Hybrid: GCP owns vendor_name; the Google
+// Sheet still feeds the capacity model (type/merchant/machines/karigar). We only
+// UPDATE names of vendors already in vendor_master_data — never insert — so the
+// 5-min sheet sweep (deactivates rows lacking its sync_token) is left untouched.
+async function syncVendorMaster(bq: BigQuery): Promise<number> {
+  const [rows] = await bq.query({
+    location: 'asia-south1',
+    query:
+      'SELECT DISTINCT vendor_code, vendor_name FROM `saadaa-wh.MAPLEMONK.Easyecom_Saadaa_vendors` ' +
+      "WHERE vendor_code IS NOT NULL AND TRIM(vendor_name) != ''",
+  });
+  const gcp = new Map<string, string>();
+  for (const r of rows as Row[]) {
+    gcp.set(String(flat(r.vendor_code)), String(flat(r.vendor_name)).trim());
+  }
+
+  const existing = await supaGet<{ vendor_code: string }>('vendor_master_data?select=vendor_code');
+  const codes = new Set(existing.map((r) => r.vendor_code));
+  const updates = [...gcp.entries()]
+    .filter(([code]) => codes.has(code))
+    .map(([vendor_code, vendor_name]) => ({ vendor_code, vendor_name }));
+
+  const BATCH = 500;
+  for (let i = 0; i < updates.length; i += BATCH) {
+    await supa('POST', 'vendor_master_data?on_conflict=vendor_code', updates.slice(i, i + BATCH));
+  }
+  return updates.length;
+}
+
 interface AppendSpec {
   table: string;
   conflict: string;
@@ -121,7 +159,7 @@ async function appendSync(bq: BigQuery, spec: AppendSpec): Promise<number> {
   return mapped.length;
 }
 
-const SPECS: Record<SyncTarget, AppendSpec> = {
+const SPECS: Record<Exclude<SyncTarget, 'vendor-master'>, AppendSpec> = {
   'product-master': {
     table: 'sd_ee_product_master',
     conflict: 'sku',
@@ -152,10 +190,10 @@ const SPECS: Record<SyncTarget, AppendSpec> = {
 // Run one or all sync targets. Returns per-target rows written.
 export async function runDailySync(only?: SyncTarget): Promise<Record<string, number>> {
   const bq = makeBq();
-  const targets: SyncTarget[] = only ? [only] : ['product-master', 'doq', 'grn'];
+  const targets: SyncTarget[] = only ? [only] : ['product-master', 'doq', 'grn', 'vendor-master'];
   const summary: Record<string, number> = {};
   for (const t of targets) {
-    summary[t] = await appendSync(bq, SPECS[t]);
+    summary[t] = t === 'vendor-master' ? await syncVendorMaster(bq) : await appendSync(bq, SPECS[t]);
   }
   return summary;
 }

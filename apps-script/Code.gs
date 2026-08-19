@@ -174,8 +174,11 @@ const SbSync_ = (function () {
     if (!vendorCode) return null;
     const karigarIndex = context.headers.findIndex((header) => header.indexOf('no_of_karigar_') === 0);
     const karigarKey = karigarIndex >= 0 ? context.headers[karigarIndex] : '';
+    // vendor_name is now owned by GCP (Easyecom_Saadaa_vendors -> vendor_master_data,
+    // via the daily sync). The sheet deliberately no longer writes it, so this 5-min
+    // sync won't overwrite the GCP name. The Sheet still owns the capacity model below.
     return {
-      vendor_code: vendorCode, vendor_name: text(row.vendor_name), onboarding_date: date(row.onboarding_date),
+      vendor_code: vendorCode, onboarding_date: date(row.onboarding_date),
       contact_person_name: text(row.contact_person_name), contact_no: text(row.contact_no),
       address: text(row.address), primary_type: text(row.primary_type),
       fob_complete_possible: text(row.fob_complete_possible), merchant_name: text(row.merchant_name),
