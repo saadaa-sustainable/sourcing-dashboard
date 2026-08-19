@@ -12,7 +12,6 @@ import { Field, Notice } from '@/components/forms/form-layout';
 import type { Colour, MaterialMaster, MaterialType } from '@/lib/forms/types';
 
 const TYPES: { key: MaterialType; label: string }[] = [
-  { key: 'raw', label: 'Raw material' },
   { key: 'dyed', label: 'Dyed / finished' },
   { key: 'trim', label: 'Trims' },
 ];
@@ -113,10 +112,10 @@ export function MaterialMasterClient({
   return (
     <>
       <Notice tone="info">
-        The single code list the Buying Plan material track picks from. Pick a{' '}
-        <strong>type</strong> — Raw materials carry their specs in Fabric Master; a{' '}
+        Dyed and Trim materials the Buying Plan material track picks from. A{' '}
         <strong>Dyed</strong> code is a grey fabric + a colour; <strong>Trims</strong> are a
-        simple code + name.
+        simple code + name. <strong>Raw fabrics live in Fabric Master</strong> (their single
+        source of truth) and flow into the material track automatically.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}

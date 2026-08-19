@@ -348,12 +348,12 @@ export function MaterialPlanClient({
             <button type="button" className="wf-btn wf-btn-ghost" onClick={() => fileRef.current?.click()}>
               <Upload size={15} /> Import CSV
             </button>
-            {/* A code has to exist in Material Master before it can be planned. Deep-links
-                to the active type's add form (Raw / Dyed / Trim) and opens in a new tab so
-                the in-progress draft in the grid is not lost. */}
+            {/* A code has to exist before it can be planned. Deep-links to the add form for
+                the active type — Raw goes to Fabric Master (its single source of truth),
+                Dyed / Trim to Material Master — in a new tab so the draft grid isn't lost. */}
             <a
               className="wf-btn wf-btn-ghost"
-              href={`/material-master?type=${type}`}
+              href={type === 'raw' ? '/fabric-master' : `/material-master?type=${type}`}
               target="_blank"
               rel="noopener noreferrer"
               title={`Create a new ${TYPE_LABEL[type].toLowerCase()} code, then pick it from the list below`}

@@ -17,8 +17,8 @@ export default async function MaterialMasterPage({
   searchParams: Promise<{ type?: string }>;
 }) {
   const { type } = await searchParams;
-  const initialType: MaterialType =
-    type === 'dyed' || type === 'trim' ? type : 'raw';
+  // Raw fabrics moved to Fabric Master; this tab manages Dyed + Trim only.
+  const initialType: MaterialType = type === 'trim' ? 'trim' : 'dyed';
   let user;
   try {
     user = await currentUser();
