@@ -24,6 +24,7 @@ import type {
   FabricMaster,
   MaterialCode,
   MaterialMaster,
+  GcpProductMaster,
   InwardPlanGroup,
   NpdPromotionCandidate,
   OosCalculationRow,
@@ -210,6 +211,23 @@ export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`sd_oos_calculation: ${error.message}`);
     rows.push(...((data ?? []) as OosCalculationRow[]));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/** The GCP product master — one row per SKU, read-only. Paged (exceeds 1000). */
+export async function loadGcpProductMaster(): Promise<GcpProductMaster[]> {
+  const supabase = await client();
+  const rows: GcpProductMaster[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_gcp_product_master')
+      .select('*')
+      .order('sku')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_gcp_product_master: ${error.message}`);
+    rows.push(...((data ?? []) as GcpProductMaster[]));
     if (!data || data.length < PAGE_SIZE) break;
   }
   return rows;
@@ -461,10 +479,10 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
     ),
   ].sort();
 
-  // Product status + woven/knitted come from the master, read-only. Nulls until
-  // the master is populated — the Buying Plan never lets these be typed.
+  // Product status + woven/knitted are derived from the GCP product master (rolled
+  // up to product code, normalised), read-only. The Buying Plan never lets these be typed.
   const { data: master } = await supabase
-    .from('sd_product_master')
+    .from('sd_gcp_product_code_status')
     .select('product_code, product_status, fabric_type')
     .limit(PAGE_SIZE);
   const productMaster: Record<string, { status: string | null; fabric_type: string | null }> = {};

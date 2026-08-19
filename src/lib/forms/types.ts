@@ -31,6 +31,34 @@ export type SdUser = {
   last_seen_at?: string | null;
 };
 
+/** One SKU row of the GCP product master (sd_gcp_product_master), shown read-only. */
+export type GcpProductMaster = {
+  sku: string;
+  product_code: string | null;
+  product_name: string | null;
+  product_variant: string | null;
+  size: string | null;
+  color: string | null;
+  category: string | null;
+  gender: string | null;
+  item_category: string | null;
+  sub_category: string | null;
+  product_state: string | null;
+  weave_type: string | null;
+  rm_code: string | null;
+  dyed_fabric_sku: string | null;
+  launch_date: string | null;
+  mrp: number | null;
+  cost: number | null;
+  fabric_name: string | null;
+  fabric_gsm: string | null;
+  fit_type: string | null;
+  age_group: string | null;
+  season: string | null;
+  replenishment_type: string | null;
+  product_type: string | null;
+};
+
 /** One SKU row of the OOS Calculation sheet (sd_oos_calculation) — mirrors the DOQ sheet. */
 export type OosCalculationRow = {
   sku: string;

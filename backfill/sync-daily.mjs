@@ -40,7 +40,7 @@ try {
 }
 
 const TEST = process.argv.includes('--test');
-const ONLY = process.argv.find((a) => ['product-master', 'doq', 'grn', 'vendor-master', 'oos', 'adjustments'].includes(a));
+const ONLY = process.argv.find((a) => ['product-master', 'gcp-product-master', 'doq', 'grn', 'vendor-master', 'oos', 'adjustments'].includes(a));
 const GRN_WINDOW_DAYS = 45;
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT = 'saadaa-wh' } = process.env;
@@ -124,6 +124,32 @@ SELECT sku, product_status, category_with_gender, rm_code, dyed_fabric_sku, prod
   ROUND(SAFE_DIVIDE(current_stock + inprocess_stock, NULLIF(doq_45, 0)), 1) AS doh_with_inprocess
 FROM agg
 WHERE sku IS NOT NULL AND sku <> ''`;
+
+// GCP product master (saadaa_consolidated_product_master) -> sd_gcp_product_master.
+// product_code = the part of the SKU before the first hyphen (e.g. SDCP-BLCG_2XL -> SDCP);
+// raw-fabric/RM SKUs (which use '/') are excluded. Column names are already the table shape.
+const GCP_PM_COLS = new Set([
+  'sku','product_code','product_name','product_variant','size','color','category','gender',
+  'item_category','sub_category','product_state','weave_type','rm_code','dyed_fabric_sku',
+  'launch_date','mrp','cost','fabric_name','fabric_gsm','fit_type','age_group','season',
+  'replenishment_type','product_type',
+]);
+const GCP_PM_QUERY = `
+SELECT
+  SKU AS sku,
+  SPLIT(SKU, '-')[SAFE_OFFSET(0)]        AS product_code,
+  product_name,
+  Product_Variant                        AS product_variant,
+  SIZE                                   AS size,
+  COLOR                                  AS color,
+  category, gender, item_category, sub_category, product_state, weave_type,
+  rm_fabric_sku                          AS rm_code,
+  dyed_fabric_sku,
+  CAST(product_launch_date AS STRING)    AS launch_date,
+  mrp, cost, fabric_name, fabric_gsm, fit_type, age_group, season,
+  replenishment_type, product_type
+FROM \`saadaa-wh.MAPLEMONK.saadaa_consolidated_product_master\`
+WHERE SKU IS NOT NULL AND SKU NOT LIKE '%/%'`;
 
 function pick(r, allowed) {
   const out = {};
@@ -257,6 +283,17 @@ async function main() {
       keyOf: (r) => r.sku || null,
       query: `SELECT * FROM \`saadaa-wh.MAPLEMONK.EasyEcom_SAADAA_product_master\`
               ${TEST ? 'LIMIT 20' : ''}`,
+    });
+  }
+
+  if (!ONLY || ONLY === 'gcp-product-master') {
+    await appendSync({
+      label: 'gcp_product_master',
+      table: 'sd_gcp_product_master',
+      conflict: 'sku',
+      allowed: GCP_PM_COLS,
+      keyOf: (r) => r.sku || null,
+      query: GCP_PM_QUERY + (TEST ? '\nLIMIT 20' : ''),
     });
   }
 

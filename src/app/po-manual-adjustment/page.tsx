@@ -38,7 +38,7 @@ export default async function PoManualAdjustmentPage() {
   return (
     <FormLayout
       title="PO Manual Adjustment"
-      subtitle="Latest PO manual adjustments and cutting-register entries from BigQuery. Refresh (2×/hour per table) to confirm a new adjustment has landed."
+      subtitle="Latest PO manual adjustments and cutting-register entries. Refresh (2×/hour per table) reloads the newest synced data to confirm an adjustment has landed."
       active="/po-manual-adjustment"
       role={user.role}
       userEmail={user.email}

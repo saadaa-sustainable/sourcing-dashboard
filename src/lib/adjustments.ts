@@ -145,7 +145,14 @@ export async function refreshState(userEmail: string, source: AdjustmentSource):
   return { remaining, retryAfterMinutes };
 }
 
-/** Live BigQuery re-pull for one source, gated by the per-user/hour limit. */
+/**
+ * Refresh = reload the latest cached rows, gated by the per-user/hour limit.
+ *
+ * Backfill method: BigQuery is pulled ONLY by the backfill loader (syncAllAdjustments,
+ * run by sync-daily.mjs / the cron), which fills the Supabase snapshot tables. The web
+ * runtime never queries BigQuery here, so Refresh works in prod without GCP creds — it
+ * just re-reads whatever the last sync landed.
+ */
 export async function refreshSource(userEmail: string, source: AdjustmentSource): Promise<RefreshResult> {
   const state = await refreshState(userEmail, source);
   if (state.remaining <= 0) {
@@ -160,22 +167,18 @@ export async function refreshSource(userEmail: string, source: AdjustmentSource)
     };
   }
 
-  const bq = makeBq();
-  const rows =
-    source === 'po'
-      ? ((await queryManual(bq)) as unknown as Record<string, unknown>[])
-      : ((await queryCutting(bq)) as unknown as Record<string, unknown>[]);
-  await replaceSnapshot(source, rows);
+  const rows = await loadCached(source);
 
-  // Record the click only after a successful pull, so a failed BigQuery call
-  // doesn't burn one of the user's two hourly refreshes.
-  const admin = createAdminClient();
-  await admin.from('sd_adjustment_refresh_log').insert({ user_email: userEmail, source });
+  // Record the click (best-effort) so the per-hour cap is enforced across reloads.
+  if (hasSupabaseAdminEnv()) {
+    const admin = createAdminClient();
+    await admin.from('sd_adjustment_refresh_log').insert({ user_email: userEmail, source });
+  }
 
   return {
     ok: true,
     source,
-    rows: rows.slice(0, LATEST_N),
+    rows,
     remaining: state.remaining - 1,
     retryAfterMinutes: 0,
   };

@@ -81,7 +81,7 @@ function Panel({
       setRetry(res.retryAfterMinutes);
       if (res.ok) {
         setRows(res.rows);
-        setNote(`Updated just now · ${res.rows.length} latest rows · ${res.remaining} refresh${res.remaining === 1 ? '' : 'es'} left this hour`);
+        setNote(`Reloaded · ${res.rows.length} rows · ${res.remaining} refresh${res.remaining === 1 ? '' : 'es'} left this hour`);
       } else {
         setError(res.error ?? 'Refresh failed.');
       }
@@ -132,7 +132,7 @@ function Panel({
             ) : (
               <tr>
                 <td colSpan={cols.length} className="wf-empty">
-                  No rows yet — hit Refresh to pull the latest from BigQuery.
+                  No rows yet — the sync hasn’t loaded this feed.
                 </td>
               </tr>
             )}
@@ -159,8 +159,8 @@ export function PoManualAdjustmentClient({
   return (
     <div className="wf-stack">
       <div className="wf-notice wf-notice-info">
-        Make adjustments in the ingestion portal, then use Refresh below to check that they landed in
-        BigQuery. Each table can be refreshed {REFRESH_LIMIT_PER_HOUR} times per hour.{' '}
+        Make adjustments in the ingestion portal; the sync loads them into the dashboard. Use Refresh
+        to reload the newest synced rows — each table {REFRESH_LIMIT_PER_HOUR} times per hour.{' '}
         <a href={portalUrl} target="_blank" rel="noopener noreferrer">
           <ExternalLink size={13} /> Open adjustment portal
         </a>

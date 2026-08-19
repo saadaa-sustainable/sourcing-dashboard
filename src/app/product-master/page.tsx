@@ -2,10 +2,9 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
-  loadProductMaster,
+  loadGcpProductMaster,
   NotConfiguredError,
 } from '@/lib/forms/queries';
-import { canEdit } from '@/lib/forms/approval';
 import { ProductMasterClient } from './product-master-client';
 
 export const dynamic = 'force-dynamic';
@@ -27,21 +26,17 @@ export default async function ProductMasterPage() {
 
   if (!user) redirect('/login');
 
-  const { products, npdCandidates } = await loadProductMaster();
+  const products = await loadGcpProductMaster();
 
   return (
     <FormLayout
       title="Product Master"
-      subtitle="Product status and Woven/Knitted — the source of truth the Buying Plan reads."
+      subtitle="SKU-level product master from GCP (saadaa_consolidated_product_master) — status, category, fabric, RM, launch date and pricing. Read-only, refreshed daily."
       active="/product-master"
       role={user.role}
       userEmail={user.email}
     >
-      <ProductMasterClient
-        products={products}
-        npdCandidates={npdCandidates}
-        editable={canEdit(user.role, 'draft')}
-      />
+      <ProductMasterClient products={products} />
     </FormLayout>
   );
 }
