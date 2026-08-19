@@ -16,6 +16,7 @@ import {
   Menu,
   PackageCheck,
   PackageSearch,
+  PackageX,
   Repeat,
   ShoppingCart,
   Tags,
@@ -45,6 +46,7 @@ export type TabId = (typeof tabs)[number][0];
 const WORKFLOW_LINKS = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
+  { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },

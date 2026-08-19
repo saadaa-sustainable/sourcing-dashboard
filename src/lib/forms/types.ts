@@ -31,6 +31,39 @@ export type SdUser = {
   last_seen_at?: string | null;
 };
 
+/** One SKU row of the OOS Calculation sheet (sd_oos_calculation) — mirrors the DOQ sheet. */
+export type OosCalculationRow = {
+  sku: string;
+  product_status: string | null;
+  category_with_gender: string | null;
+  rm_code: string | null;
+  dyed_fabric_sku: string | null;
+  product_variant: string | null;
+  product_code: string | null;
+  product_name: string | null;
+  color: string | null;
+  size: string | null;
+  new_size: string | null;
+  total_inventory_days: number | null;
+  total_oos_days: number | null;
+  total_available_days: number | null;
+  total_qty_sold: number | null;
+  doq_45: number | null;
+  launch_date: string | null;
+  product_class: string | null;
+  current_stock: number | null;
+  doh: number | null;
+  sales_value: number | null;
+  sales_leakage: number | null;
+  inprocess_stock: number | null;
+  doh_with_inprocess: number | null;
+  cancelled: number | null;
+  returned: number | null;
+  com_status: string | null;
+  weave_type: string | null;
+  unique_key: string | null;
+};
+
 /** Product-level master attributes the Buying Plan reads (sd_product_master). */
 export type ProductMaster = {
   product_code: string;

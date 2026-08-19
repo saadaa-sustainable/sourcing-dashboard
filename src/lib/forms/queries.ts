@@ -26,6 +26,7 @@ import type {
   MaterialMaster,
   InwardPlanGroup,
   NpdPromotionCandidate,
+  OosCalculationRow,
   PoApproval,
   PoApprovalLine,
   PoCycleTime,
@@ -195,6 +196,23 @@ export async function loadVendorRecommendation(): Promise<VendorRecommendationRo
     .limit(PAGE_SIZE);
   if (error) throw new Error(`sd_vendor_recommendation: ${error.message}`);
   return (data ?? []) as VendorRecommendationRow[];
+}
+
+/** The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000). */
+export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
+  const supabase = await client();
+  const rows: OosCalculationRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_oos_calculation')
+      .select('*')
+      .order('sku')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_oos_calculation: ${error.message}`);
+    rows.push(...((data ?? []) as OosCalculationRow[]));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return rows;
 }
 
 /** Every product's master row + the NPD-promotion candidates, for the panel. */

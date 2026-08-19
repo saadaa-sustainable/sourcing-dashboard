@@ -103,6 +103,17 @@ const HELP: Record<string, HelpItem[]> = {
     { field: '30 / 60 / 90-day reorder', source: 'Automatic', formula: 'max(0, daily demand × N − current stock − in-process)', detail: 'How much to reorder to cover N days. 30 is the immediate gap; 60/90 add forward coverage for long-lead vendors. Scales up with the window.' },
     { field: 'Feeds the Buying Plan', source: 'Automatic', detail: 'The 30-day reorder (summed per product) becomes the Buying Plan’s computed Pending Quantity — no longer typed by hand.' },
   ],
+  '/oos-calculation': [
+    { field: 'What this is', source: 'Inventory planning (GCP)', detail: 'A per-SKU out-of-stock / DOQ view over a 45-day window, mirroring the DOQ sheet. One row per garment SKU, from saadaa_inventory_planning (latest snapshot, warehouses combined).' },
+    { field: 'Attributes (Status, Category+Gender, RM, Dyed Fabric, Variant, Name, Colour, Size, Weave)', source: 'Inventory planning (GCP)', detail: 'Product-master attributes carried on the inventory-planning row.' },
+    { field: 'Total OOS Days', source: 'Inventory planning (GCP)', formula: 'oos_days_45', detail: 'Days out of stock in the 45-day window.' },
+    { field: 'Total Qty Sold', source: 'Inventory planning (GCP)', formula: 'total_sales_in_last_45_inventory_days', detail: 'Units sold across the SKU’s in-stock days in the window.' },
+    { field: '45 Days DOQ', source: 'Inventory planning (GCP)', formula: 'doq_45', detail: 'Daily order quantity (sales velocity) from the source.' },
+    { field: 'Current Stock / Inprocess Stock', source: 'Inventory planning (GCP)', formula: 'Σ across warehouses', detail: 'On-hand stock and pieces already on order.' },
+    { field: 'DOH', source: 'Automatic', formula: 'current stock ÷ 45-day DOQ', detail: 'Days-on-hand at the current sales rate.' },
+    { field: 'DOH (+ Inprocess)', source: 'Automatic', formula: '(current stock + inprocess) ÷ 45-day DOQ', detail: 'Days of coverage including pieces on order.' },
+    { field: 'Pending columns', source: 'Not yet wired', detail: 'Total Inventory Days, Total Available Days, Product Code, New Size, Launch Date, Product Class, Sales Value, Sales Leakage, Cancelled, Returned, COM Status and Unique are shown as “—” until their source/formula is finalised (raw-sales feed + the available-days and ABC-class rules).' },
+  ],
   '/receivable-plan': [
     { field: 'PO / Product / colour', source: 'Real PO data (GCP)', detail: 'Each row is one colour on an open (Approved) PO, split out by size. The PO number is the highlighted key column.' },
     { field: 'Arriving + size split (XS…5XL)', source: 'Real PO data (GCP)', formula: 'Σ pending qty per size', detail: 'Pieces still to arrive on this PO line, pivoted by size (top = arriving, muted = in stock).' },
