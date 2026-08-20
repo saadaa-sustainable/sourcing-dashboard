@@ -153,27 +153,39 @@ export function BuyingPlanClient({
     const efobQty = num(row.efob_qty);
     const totalQty = jobQty + fobQty + efobQty;
     const cost = standardCosts[row.product_code];
-    // Per-PO-type: each quantity multiplies by its own approved standard cost.
-    const valueToBeBought = cost
-      ? jobQty * cost.job + fobQty * cost.fob + efobQty * cost.efob
-      : 0;
+    // An ingested plan carries the sheet's own value / status / pending on the line —
+    // show those verbatim. Only fall back to the live computation (approved standard
+    // cost, replenishment, product master) when the line has no stored value.
+    const storedValue = row.standard_value ? Number(row.standard_value) : 0;
+    const valueToBeBought =
+      storedValue > 0
+        ? storedValue
+        : cost
+        ? jobQty * cost.job + fobQty * cost.fob + efobQty * cost.efob
+        : 0;
+    const storedPending =
+      row.pending_quantity !== '' && row.pending_quantity != null
+        ? Number(row.pending_quantity)
+        : null;
+    const pending = storedPending ?? pendingByCode[row.product_code] ?? null;
     const actual = actuals[row.product_code] ?? { qty: 0, value: 0 };
     const remaining = Math.max(0, totalQty - actual.qty);
     return {
       row,
       totalQty,
       cost,
-      // A planned quantity with no approved cost can't be valued — flag it.
-      missingCost: totalQty > 0 && !cost,
+      // Flag only when there is neither a stored value nor an approved cost to value it.
+      missingCost: totalQty > 0 && storedValue <= 0 && !cost,
       valueToBeBought,
+      pending,
       actualQty: actual.qty,
       actualValue: actual.value,
       remaining,
       pctComplete:
         totalQty > 0 ? Math.min(100, Math.round((actual.qty / totalQty) * 100)) : 0,
       isOverdue: remaining > 0 && now != null && now > overdueThreshold,
-      fabricType: productMaster[row.product_code]?.fabric_type || 'Unspecified',
-      productStatus: productMaster[row.product_code]?.status || '—',
+      fabricType: row.fabric_type || productMaster[row.product_code]?.fabric_type || 'Unspecified',
+      productStatus: row.product_status || productMaster[row.product_code]?.status || '—',
       // Red, but never blocking. Mahesh: show it, don't refuse it.
       overPlan: totalQty > 0 && actual.qty > totalQty,
     };
@@ -524,15 +536,13 @@ export function BuyingPlanClient({
               </tr>
             </thead>
             <tbody>
-              {view.map(({ row, totalQty, cost, missingCost, valueToBeBought, actualQty, actualValue, overPlan }) => (
+              {view.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, actualQty, actualValue, overPlan }) => (
                 <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
                   <td className="mono">{row.product_code}</td>
-                  <td>{productMaster[row.product_code]?.status || '—'}</td>
-                  <td>{productMaster[row.product_code]?.fabric_type || '—'}</td>
+                  <td>{productStatus}</td>
+                  <td>{fabricType}</td>
                   <td className="num wf-cell-calc">
-                    {pendingByCode[row.product_code]
-                      ? fmt.format(pendingByCode[row.product_code])
-                      : '—'}
+                    {pending != null ? fmt.format(pending) : '—'}
                   </td>
                   {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
                     <td key={field} className="num input-col wf-cell-input">
