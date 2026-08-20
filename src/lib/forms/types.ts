@@ -227,6 +227,7 @@ export type BuyingPlanLine = {
   remark: string | null; // free note, e.g. carried from a CSV import
   material_type: string | null; // material track: raw | dyed | trim
   job_rate: number | null; // material track: Job-Work rate (purchase rate = standard_value)
+  fob_efob_rate: number | null; // FG: per-unit FOB/EFOB buying rate (as shown on the sheet)
   colour: string | null; // material track: editable per-line colour (Dyed lines)
 };
 

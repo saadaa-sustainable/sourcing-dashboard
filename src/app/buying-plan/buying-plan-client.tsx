@@ -17,6 +17,7 @@ import {
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { PlanPivot } from '@/components/forms/plan-pivot';
+import { FilterTable, type Column } from '@/components/filter-table';
 import {
   addMonths,
   canApprove,
@@ -44,6 +45,8 @@ type Draft = {
   fob_qty: string;
   efob_qty: string;
   standard_value: string;
+  fob_efob_rate: string; // FG per-unit FOB/EFOB rate (sheet value)
+  job_rate: string; // FG per-unit JOB rate (sheet value)
   line_status: string; // read-only snapshot; drives the Pending/Approved pivot split
   remark: string; // optional note, shared import contract with the material track
 };
@@ -67,6 +70,8 @@ function toDraft(line: BuyingPlanLine): Draft {
     fob_qty: line.fob_qty?.toString() ?? '0',
     efob_qty: line.efob_qty?.toString() ?? '0',
     standard_value: line.standard_value?.toString() ?? '',
+    fob_efob_rate: line.fob_efob_rate?.toString() ?? '',
+    job_rate: line.job_rate?.toString() ?? '',
     line_status: line.line_status ?? '',
     remark: line.remark ?? '',
   };
@@ -85,6 +90,8 @@ function blankDraft(code: string, key: string): Draft {
     fob_qty: '0',
     efob_qty: '0',
     standard_value: '',
+    fob_efob_rate: '',
+    job_rate: '',
     line_status: '',
     remark: '',
   };
@@ -192,6 +199,30 @@ export function BuyingPlanClient({
   });
 
   type ViewItem = (typeof view)[number];
+
+  // The full sheet, line-for-line — every column the buying-plan sheet has, verbatim,
+  // with per-column filters + sort (via FilterTable). Rates come from the stored line.
+  const rate = (s: string) => (s === '' || s == null ? null : Number(s));
+  const sheetCols: Column<ViewItem>[] = [
+    { key: 'code', label: 'Product code', kind: 'mono', accessor: (v) => v.row.product_code },
+    { key: 'category', label: 'Category', kind: 'text', accessor: (v) => v.fabricType },
+    { key: 'fob_efob_rate', label: 'Buy value (FOB/E-FOB)', kind: 'num',
+      accessor: (v) => rate(v.row.fob_efob_rate),
+      render: (v) => (rate(v.row.fob_efob_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.fob_efob_rate))) },
+    { key: 'job_rate', label: 'Buy value (Job)', kind: 'num',
+      accessor: (v) => rate(v.row.job_rate),
+      render: (v) => (rate(v.row.job_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.job_rate))) },
+    { key: 'status', label: 'Product status', kind: 'text', accessor: (v) => v.productStatus },
+    { key: 'pending', label: 'Pending qty', kind: 'num', accessor: (v) => v.pending },
+    { key: 'job', label: 'Job', kind: 'num', accessor: (v) => Number(v.row.job_work_qty) },
+    { key: 'efob', label: 'E-FOB', kind: 'num', accessor: (v) => Number(v.row.efob_qty) },
+    { key: 'fob', label: 'FOB', kind: 'num', accessor: (v) => Number(v.row.fob_qty) },
+    { key: 'total_qty', label: 'Total qty', kind: 'num', accessor: (v) => v.totalQty },
+    { key: 'total_value', label: 'Total value', kind: 'num', accessor: (v) => v.valueToBeBought,
+      render: (v) => (v.valueToBeBought ? money.format(v.valueToBeBought) : <span className="wf-subtle">—</span>) },
+    { key: 'actual', label: 'Actual qty', kind: 'num', accessor: (v) => v.actualQty },
+    { key: 'approval', label: 'Approval', kind: 'text', accessor: (v) => v.row.line_status || '—' },
+  ];
 
   // View module works over products that actually have a planned quantity.
   const planned = view.filter((v) => v.totalQty > 0);
@@ -506,6 +537,19 @@ export function BuyingPlanClient({
           collapsed={collapsed}
           setCollapsed={setCollapsed}
           plannedCount={planned.length}
+        />
+        <div className="wf-section-head" style={{ marginTop: 18 }}>
+          <h3>Plan detail — every line, as on the sheet</h3>
+          <span className="wf-subtle">{view.length} products · filter or sort any column</span>
+        </div>
+        <FilterTable
+          rows={view}
+          columns={sheetCols}
+          rowKey={(v) => v.row.key}
+          unit="lines"
+          pageSize={100}
+          searchPlaceholder="Product code or status"
+          emptyText="No lines in this plan."
         />
         </>
       )}
