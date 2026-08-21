@@ -110,7 +110,8 @@ export function StandardCostClient({
     <>
       <Notice tone="info">
         Cost is <strong>negotiated</strong>, not just approved: team{' '}
-        <strong>proposes</strong> → Mahesh sets a <strong>target</strong> → team returns with the{' '}
+        <strong>proposes</strong> (fill the {jobLabel} / {fobLabel}{isMat ? '' : ' / E-FOB'} rate that
+        applies) → Mahesh sets a <strong>target</strong> → team returns with the{' '}
         <strong>actual vendor rate</strong> → Mahesh <strong>signs off</strong>, and that becomes the
         Standard Cost the Buying Plan values from. {signedOff} of {costs.length}{' '}
         {isMat ? 'materials' : 'products'} are signed off.
@@ -271,6 +272,8 @@ function CostRow({
   onToggle?: () => void;
 }) {
   const isMat = track === 'material';
+  const jobLabel = isMat ? 'Job Work' : 'Job';
+  const fobLabel = isMat ? 'Purchase' : 'FOB';
   const stage = cost.neg_stage;
   const stageKey = stage ?? '';
 
@@ -284,7 +287,9 @@ function CostRow({
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
-  const rateEditable = canSubmitRate(role, stage) && !cost.frozen;
+  // Rates are fillable both when the team proposes (so a proposal can name its PO
+  // type) and when it later submits the actual vendor rate.
+  const rateEditable = (canPropose(role, stage) || canSubmitRate(role, stage)) && !cost.frozen;
 
   function act(action: (fd: FormData) => Promise<ActionResult>, extra: Record<string, string>) {
     setErr(null);
@@ -354,12 +359,15 @@ function CostRow({
           {err && <small className="wf-line-error">{err}</small>}
 
           {canPropose(role, stage) && !cost.frozen && (
-            <div className="wf-issue-row">
+            <div className="wf-issue-row wf-issue-row-wrap">
+              <span className="wf-subtle wf-propose-hint">
+                Fill the {jobLabel} / {fobLabel}{isMat ? '' : ' / E-FOB'} rate(s) that apply →
+              </span>
               <input
                 className="wf-mini-input"
                 type="number"
                 min={0}
-                placeholder="expected"
+                placeholder="expected (optional)"
                 value={proposed}
                 onChange={(e) => setProposed(e.target.value)}
               />
@@ -367,7 +375,14 @@ function CostRow({
                 type="button"
                 className="wf-btn wf-btn-primary wf-btn-sm"
                 disabled={busy}
-                onClick={() => act(proposeCost, { proposed_cost: proposed })}
+                onClick={() =>
+                  act(proposeCost, {
+                    proposed_cost: proposed,
+                    job_cost: job,
+                    fob_cost: fob,
+                    ...(isMat ? {} : { efob_cost: efob }),
+                  })
+                }
               >
                 Propose
               </button>

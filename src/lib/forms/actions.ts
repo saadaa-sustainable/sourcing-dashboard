@@ -1124,20 +1124,42 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   if (row.frozen) return fail('This cost is frozen and cannot be renegotiated.');
   if (!canPropose(user.role, row.neg_stage)) return fail('You cannot propose this cost right now.');
 
+  // The team may propose the rate under any PO type (Job / FOB / E-FOB), so the
+  // admin can see which rate belongs to which type — plus an optional overall
+  // "expected" figure. At least one value is required.
   const proposed = numOrNull(formData.get('proposed_cost'));
-  const { error } = await supabase
-    .from(table)
-    .update({
-      neg_stage: 'proposed',
-      proposed_cost: proposed,
-      status: 'draft',
-      rejection_notes: null,
-      negotiation_notes: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
+  const job = numOrNull(formData.get('job_cost'));
+  const fob = numOrNull(formData.get('fob_cost'));
+  const efob = track === 'fg' ? numOrNull(formData.get('efob_cost')) : null;
+  if (proposed == null && job == null && fob == null && efob == null) {
+    return fail('Enter at least one proposed rate (Job / FOB / E-FOB) or an expected cost.');
+  }
+
+  const patch: Record<string, unknown> = {
+    neg_stage: 'proposed',
+    proposed_cost: proposed,
+    job_cost: job,
+    fob_cost: fob,
+    status: 'draft',
+    rejection_notes: null,
+    negotiation_notes: null,
+    updated_at: new Date().toISOString(),
+  };
+  if (track === 'fg') patch.efob_cost = efob;
+
+  const { error } = await supabase.from(table).update(patch).eq('id', id);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `Proposed${proposed != null ? ` at ${proposed}` : ''}`);
+  const rateSummary = [
+    job != null ? `Job ${job}` : null,
+    fob != null ? `${track === 'material' ? 'Purchase' : 'FOB'} ${fob}` : null,
+    efob != null ? `E-FOB ${efob}` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const detail = [rateSummary, proposed != null ? `expected ${proposed}` : null]
+    .filter(Boolean)
+    .join(' · ');
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `Proposed${detail ? ` (${detail})` : ''}`);
   revalidatePath('/standard-cost');
   return done('Proposed for costing.');
 }
