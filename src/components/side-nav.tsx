@@ -60,7 +60,7 @@ const WORKFLOW_LINKS: NavLink[] = [
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
-  { href: '/po-manual-adjustment', label: 'PO Manual Adjustment', Icon: FilePen },
+  { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },

@@ -17,7 +17,7 @@ export default async function PoManualAdjustmentPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="PO Manual Adjustment" active="/po-manual-adjustment" role="viewer">
+        <FormLayout title="Manual Data Ingestion" active="/po-manual-adjustment" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -38,15 +38,15 @@ export default async function PoManualAdjustmentPage() {
 
   return (
     <FormLayout
-      title="PO Manual Adjustment"
-      subtitle="Latest PO manual adjustments and cutting-register entries. Refresh (2×/hour per table) reloads the newest synced data to confirm an adjustment has landed."
+      title="Manual Data Ingestion"
+      subtitle="All PO manual adjustments and cutting-register entries ingested via the portal. Refresh (2×/hour per table) reloads the newest synced data to confirm an entry has landed."
       active="/po-manual-adjustment"
       role={user.role}
       userEmail={user.email}
       accent="orange"
       actions={
         <a className="wf-btn wf-btn-primary" href={PORTAL_URL} target="_blank" rel="noopener noreferrer">
-          <ExternalLink size={16} /> Open adjustment portal
+          <ExternalLink size={16} /> Open ingestion portal
         </a>
       }
     >

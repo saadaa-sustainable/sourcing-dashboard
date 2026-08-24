@@ -12,7 +12,6 @@ import { BigQuery } from '@google-cloud/bigquery';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import {
-  LATEST_N,
   REFRESH_LIMIT_PER_HOUR,
   REFRESH_WINDOW_MS,
   type AdjustmentSource,
@@ -24,7 +23,7 @@ import {
 
 // Re-export so existing server-side importers can keep importing from '@/lib/adjustments'.
 export type { AdjustmentSource, RefreshState, RefreshResult } from '@/lib/adjustments-types';
-export { LATEST_N, REFRESH_LIMIT_PER_HOUR, REFRESH_WINDOW_MS } from '@/lib/adjustments-types';
+export { REFRESH_LIMIT_PER_HOUR, REFRESH_WINDOW_MS } from '@/lib/adjustments-types';
 
 const TABLES = {
   po: { bq: 'po_qty_manual_adjustment', supa: 'sd_po_qty_manual_adjustment', order: 'ingestion_date' },
@@ -110,17 +109,23 @@ async function replaceSnapshot(source: AdjustmentSource, rows: Record<string, un
   }
 }
 
-/** Latest N cached rows for a source, read from Supabase (RLS select). */
+/** All cached rows for a source, read from Supabase (RLS select), newest first. */
 export async function loadCached(source: AdjustmentSource) {
   if (!hasSupabaseEnv()) return [];
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from(TABLES[source].supa)
-    .select('*')
-    .order(TABLES[source].order, { ascending: false, nullsFirst: false })
-    .limit(LATEST_N);
-  if (error) throw new Error(`${TABLES[source].supa}: ${error.message}`);
-  return data ?? [];
+  const PAGE = 1000;
+  const all: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from(TABLES[source].supa)
+      .select('*')
+      .order(TABLES[source].order, { ascending: false, nullsFirst: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`${TABLES[source].supa}: ${error.message}`);
+    all.push(...(data ?? []));
+    if (!data || data.length < PAGE) break;
+  }
+  return all;
 }
 
 /** How many refreshes this user has left this hour for a source, per the audit log. */

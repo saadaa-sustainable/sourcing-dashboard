@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useMemo, useState, useTransition } from 'react';
+import { ExternalLink, RefreshCw } from 'lucide-react';
 import { refreshAdjustmentAction } from '@/lib/adjustments-actions';
 import { REFRESH_LIMIT_PER_HOUR, type AdjustmentSource } from '@/lib/adjustments-types';
+import { FilterTable, type Column } from '@/components/filter-table';
 
 type Row = Record<string, unknown>;
 type Col = { key: string; label: string; num?: boolean; kind?: 'datetime' | 'date' | 'link' };
@@ -49,18 +50,14 @@ function fmt(value: unknown, kind?: Col['kind']): React.ReactNode {
 }
 
 function Panel({
-  title,
   source,
   cols,
-  wide,
   initialRows,
   initialRemaining,
   initialRetry,
 }: {
-  title: string;
   source: AdjustmentSource;
   cols: Col[];
-  wide?: boolean;
   initialRows: Row[];
   initialRemaining: number;
   initialRetry: number;
@@ -90,59 +87,43 @@ function Panel({
     });
   }
 
+  const columns = useMemo<Column<Row>[]>(
+    () =>
+      cols.map((c) => ({
+        key: c.key,
+        label: c.label,
+        kind: c.num ? 'num' : 'text',
+        render: c.kind ? (r: Row) => fmt(r[c.key], c.kind) : undefined,
+        filter: c.kind === 'link' ? 'none' : undefined,
+      })),
+    [cols],
+  );
+
   return (
-    <section className="table-panel wf-grid-panel">
-      <div className="table-meta">
-        <div className="adj-panel-head">
-          <h3>{title}</h3>
-          <span className="wf-chip">{rows.length} rows</span>
-          <span className="table-meta-note">
-            latest by ingestion · {remaining}/{REFRESH_LIMIT_PER_HOUR} refreshes left this hour
-            {remaining <= 0 && retry > 0 ? ` · retry in ~${retry} min` : ''}
-          </span>
-        </div>
-        <div className="table-meta-actions">
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={onRefresh} disabled={disabled}>
-            <RefreshCw size={15} className={pending ? 'spin' : undefined} />
-            {pending ? 'Refreshing…' : 'Refresh'}
-          </button>
-        </div>
-      </div>
+    <div className="wf-stack">
       {error && <div className="wf-notice wf-notice-error">{error}</div>}
       {note && <div className="wf-notice wf-notice-ok">{note}</div>}
-      <div className={wide ? 'table-scroll wide-table' : 'table-scroll'}>
-        <table className="wf-grid">
-          <thead>
-            <tr>
-              {cols.map((c) => (
-                <th key={c.key} className={c.num ? 'num' : undefined}>
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length ? (
-              rows.map((r, i) => (
-                <tr key={i}>
-                  {cols.map((c) => (
-                    <td key={c.key} className={c.num ? 'num' : undefined}>
-                      {fmt(r[c.key], c.kind)}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={cols.length} className="wf-empty">
-                  No rows yet — the sync hasn’t loaded this feed.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+      <FilterTable
+        rows={rows}
+        columns={columns}
+        rowKey={(_, i) => `${source}-${i}`}
+        unit="entries"
+        searchPlaceholder="Search entries…"
+        emptyText="No rows yet — the sync hasn’t loaded this feed."
+        toolbarExtra={
+          <>
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={onRefresh} disabled={disabled}>
+              <RefreshCw size={15} className={pending ? 'spin' : undefined} />
+              {pending ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <span className="wf-subtle" style={{ fontSize: 11 }}>
+              {remaining}/{REFRESH_LIMIT_PER_HOUR} refreshes left this hour
+              {remaining <= 0 && retry > 0 ? ` · retry in ~${retry} min` : ''}
+            </span>
+          </>
+        }
+      />
+    </div>
   );
 }
 
@@ -159,33 +140,45 @@ export function PoManualAdjustmentClient({
   manualState: { remaining: number; retryAfterMinutes: number };
   cuttingState: { remaining: number; retryAfterMinutes: number };
 }) {
+  const [tab, setTab] = useState<AdjustmentSource>('po');
+
   return (
     <div className="wf-stack">
       <div className="wf-notice wf-notice-info">
-        Adjustments are entered in the{' '}
+        <strong>Ingest the data from here:</strong>{' '}
         <a href={portalUrl} target="_blank" rel="noopener noreferrer">
-          ingestion portal
-        </a>{' '}
-        (also the button top-right); the sync loads them here. Hit <strong>Refresh</strong> on a table
-        to pull the newest synced rows — up to {REFRESH_LIMIT_PER_HOUR}× per hour each.
+          Ingestion portal <ExternalLink size={12} style={{ verticalAlign: '-1px' }} />
+        </a>
+        {' '}— entries made there are synced into these tables. Hit <strong>Refresh</strong> to pull
+        the newest synced rows — up to {REFRESH_LIMIT_PER_HOUR}× per hour per table.
       </div>
-      <Panel
-        title="Manual Adjustment (PO)"
-        source="po"
-        cols={MANUAL_COLS}
-        initialRows={manualRows}
-        initialRemaining={manualState.remaining}
-        initialRetry={manualState.retryAfterMinutes}
-      />
-      <Panel
-        title="Cutting Register"
-        source="cutting"
-        cols={CUTTING_COLS}
-        wide
-        initialRows={cuttingRows}
-        initialRemaining={cuttingState.remaining}
-        initialRetry={cuttingState.retryAfterMinutes}
-      />
+      <div className="segment">
+        <button className={tab === 'po' ? 'active' : ''} onClick={() => setTab('po')}>
+          PO Manual Adjustment
+        </button>
+        <button className={tab === 'cutting' ? 'active' : ''} onClick={() => setTab('cutting')}>
+          Cutting Register Adjustment
+        </button>
+      </div>
+      {/* Both panels stay mounted so tab switches keep filters and refreshed rows. */}
+      <div hidden={tab !== 'po'}>
+        <Panel
+          source="po"
+          cols={MANUAL_COLS}
+          initialRows={manualRows}
+          initialRemaining={manualState.remaining}
+          initialRetry={manualState.retryAfterMinutes}
+        />
+      </div>
+      <div hidden={tab !== 'cutting'}>
+        <Panel
+          source="cutting"
+          cols={CUTTING_COLS}
+          initialRows={cuttingRows}
+          initialRemaining={cuttingState.remaining}
+          initialRetry={cuttingState.retryAfterMinutes}
+        />
+      </div>
     </div>
   );
 }

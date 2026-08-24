@@ -6,7 +6,6 @@ export type AdjustmentSource = 'po' | 'cutting';
 
 export const REFRESH_LIMIT_PER_HOUR = 2;
 export const REFRESH_WINDOW_MS = 60 * 60 * 1000;
-export const LATEST_N = 10;
 
 export interface ManualAdjustmentRow {
   po_no: string | null;
