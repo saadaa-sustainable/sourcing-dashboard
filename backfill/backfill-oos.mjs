@@ -11,7 +11,7 @@
 //
 // Columns still PENDING a source/formula (left null here, filled in later passes):
 //   total_inventory_days, total_available_days, launch_date,
-//   product_class, sales_value, sales_leakage, cancelled, returned, com_status, unique_key
+//   product_class, sales_value, sales_leakage, cancelled, returned, com_status
 //
 // Env in backfill/.env: SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT.
 // Usage:  node backfill-oos.mjs --test   |   node backfill-oos.mjs

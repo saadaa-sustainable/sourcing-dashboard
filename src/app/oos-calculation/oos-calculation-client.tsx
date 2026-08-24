@@ -32,7 +32,6 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'returned', label: 'Returned', kind: 'num' },
   { key: 'com_status', label: 'COM Status', kind: 'text' },
   { key: 'weave_type', label: 'Weave Type', kind: 'text' },
-  { key: 'unique_key', label: 'Unique', kind: 'text' },
 ];
 
 export function OosCalculationClient({ rows }: { rows: OosCalculationRow[] }) {

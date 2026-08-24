@@ -114,7 +114,6 @@ export type OosCalculationRow = {
   returned: number | null;
   com_status: string | null;
   weave_type: string | null;
-  unique_key: string | null;
 };
 
 /** Product-level master attributes the Buying Plan reads (sd_product_master). */
