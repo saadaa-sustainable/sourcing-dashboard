@@ -100,7 +100,8 @@ agg AS (
     CASE WHEN NULLIF(TRIM(ANY_VALUE(CategoryType)), '') IS NOT NULL THEN
       TRIM(CONCAT(
         CASE WHEN UPPER(TRIM(COALESCE(ANY_VALUE(Gender), ''))) IN ('WOMEN','FEMALE','F') THEN 'F'
-             WHEN UPPER(TRIM(COALESCE(ANY_VALUE(Gender), ''))) IN ('MEN','MALE','M') THEN 'M'
+             WHEN UPPER(TRIM(COALESCE(ANY_VALUE(Gender), ''))) IN ('MEN','MENS','MALE','M') THEN 'M'
+             WHEN UPPER(TRIM(COALESCE(ANY_VALUE(Gender), ''))) IN ('UNISEX','U') THEN 'U'
              ELSE '' END,
         ' ', UPPER(TRIM(ANY_VALUE(CategoryType)))))
     END AS category_with_gender,
