@@ -42,6 +42,9 @@ WITH latest AS (
   SELECT * FROM \`saadaa-wh.MAPLEMONK.saadaa_inventory_planning\`
   WHERE date_day = (SELECT MAX(date_day) FROM \`saadaa-wh.MAPLEMONK.saadaa_inventory_planning\`)
     AND UPPER(COALESCE(Size, '')) <> 'IN METERS'   -- drop raw fabric/RM (metre) SKUs; keep garment SKUs
+    -- some fabric rows carry a NULL Size, so also drop dyed-fabric/RM codes by
+    -- their yarn/width/colour shape (e.g. 20CF/63/LY, 40LEA/63/CR)
+    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$')
 ),
 agg AS (
   SELECT

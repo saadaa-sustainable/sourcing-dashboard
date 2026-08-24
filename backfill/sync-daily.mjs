@@ -90,6 +90,7 @@ WITH latest AS (
   SELECT * FROM \`saadaa-wh.MAPLEMONK.saadaa_inventory_planning\`
   WHERE date_day = (SELECT MAX(date_day) FROM \`saadaa-wh.MAPLEMONK.saadaa_inventory_planning\`)
     AND UPPER(COALESCE(Size, '')) <> 'IN METERS'
+    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$')  -- dyed-fabric/RM codes with NULL Size
 ),
 agg AS (
   SELECT
