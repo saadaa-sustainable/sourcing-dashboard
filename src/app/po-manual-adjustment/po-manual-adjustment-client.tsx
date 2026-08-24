@@ -7,11 +7,18 @@ import { REFRESH_LIMIT_PER_HOUR, type AdjustmentSource } from '@/lib/adjustments
 import { FilterTable, type Column } from '@/components/filter-table';
 
 type Row = Record<string, unknown>;
-type Col = { key: string; label: string; num?: boolean; kind?: 'datetime' | 'date' | 'link' };
+type Col = {
+  key: string;
+  label: string;
+  num?: boolean;
+  kind?: 'datetime' | 'date' | 'link';
+  /** Force a dropdown filter (dates filter by day, not timestamp). */
+  select?: boolean;
+};
 
 const MANUAL_COLS: Col[] = [
-  { key: 'ingestion_date', label: 'Ingested at', kind: 'datetime' },
-  { key: 'po_no', label: 'PO No' },
+  { key: 'ingestion_date', label: 'Ingested at', kind: 'datetime', select: true },
+  { key: 'po_no', label: 'PO No', select: true },
   { key: 'sku_code', label: 'SKU' },
   { key: 'manual_adjust_qty', label: 'Adjust qty', num: true },
   { key: 'po_type', label: 'PO type' },
@@ -19,10 +26,10 @@ const MANUAL_COLS: Col[] = [
 ];
 
 const CUTTING_COLS: Col[] = [
-  { key: 'date_of_ingestion', label: 'Ingested', kind: 'date' },
+  { key: 'date_of_ingestion', label: 'Ingested', kind: 'date', select: true },
   { key: 'date_of_cutting', label: 'Cut date', kind: 'date' },
   { key: 'vendor_code', label: 'Vendor' },
-  { key: 'po_number', label: 'PO number' },
+  { key: 'po_number', label: 'PO number', select: true },
   { key: 'item_code', label: 'Item' },
   { key: 'fabric_sku_code', label: 'Fabric SKU' },
   { key: 'cutting_qty', label: 'Cut qty', num: true },
@@ -93,8 +100,13 @@ function Panel({
         key: c.key,
         label: c.label,
         kind: c.num ? 'num' : 'text',
+        // Dates/datetimes filter and search at day granularity.
+        accessor:
+          c.kind === 'datetime' || c.kind === 'date'
+            ? (r: Row) => (r[c.key] == null ? '' : String(r[c.key]).slice(0, 10))
+            : undefined,
         render: c.kind ? (r: Row) => fmt(r[c.key], c.kind) : undefined,
-        filter: c.kind === 'link' ? 'none' : undefined,
+        filter: c.kind === 'link' ? 'none' : c.select ? 'select' : undefined,
       })),
     [cols],
   );
