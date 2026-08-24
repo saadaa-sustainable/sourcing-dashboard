@@ -16,7 +16,7 @@ export default async function OosCalculationPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="DOQ Calculation" active="/oos-calculation" role="viewer">
+        <FormLayout title="OOS Calculation" active="/oos-calculation" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -30,7 +30,7 @@ export default async function OosCalculationPage() {
 
   return (
     <FormLayout
-      title="DOQ Calculation"
+      title="OOS Calculation"
       subtitle="Per-SKU DOQ / out-of-stock view over a 45-day window — DOQ (velocity), inventory days, OOS days, days-on-hand, from saadaa_inventory_planning."
       active="/oos-calculation"
       role={user.role}
