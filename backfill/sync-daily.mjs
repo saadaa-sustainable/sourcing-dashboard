@@ -77,7 +77,7 @@ const GRN_COLS = new Set([
 // OOS Calculation output columns (already the final sd_oos_calculation shape — the
 // query aggregates + derives them, so appendSync just passes them through on sku).
 const OOS_COLS = new Set([
-  'sku','product_status','category_with_gender','rm_code','dyed_fabric_sku','product_variant',
+  'sku','product_status','product_code','category_with_gender','rm_code','dyed_fabric_sku','product_variant',
   'product_name','color','size','weave_type','total_oos_days','total_qty_sold','doq_45',
   'current_stock','inprocess_stock','doh','doh_with_inprocess',
 ]);
@@ -96,7 +96,14 @@ agg AS (
   SELECT
     sku,
     ANY_VALUE(product_state) AS product_status,
-    TRIM(CONCAT(COALESCE(ANY_VALUE(Category),''),' ',COALESCE(ANY_VALUE(Gender),''))) AS category_with_gender,
+    NULLIF(TRIM(ANY_VALUE(Category)), '') AS product_code,
+    CASE WHEN NULLIF(TRIM(ANY_VALUE(CategoryType)), '') IS NOT NULL THEN
+      TRIM(CONCAT(
+        CASE WHEN UPPER(TRIM(COALESCE(ANY_VALUE(Gender), ''))) IN ('WOMEN','FEMALE','F') THEN 'F'
+             WHEN UPPER(TRIM(COALESCE(ANY_VALUE(Gender), ''))) IN ('MEN','MALE','M') THEN 'M'
+             ELSE '' END,
+        ' ', UPPER(TRIM(ANY_VALUE(CategoryType)))))
+    END AS category_with_gender,
     ANY_VALUE(RM_code) AS rm_code,
     ANY_VALUE(Dyed_Fabric_SKU) AS dyed_fabric_sku,
     ANY_VALUE(Product_Variant) AS product_variant,
@@ -111,7 +118,7 @@ agg AS (
     SUM(total_inprogress) AS inprocess_stock
   FROM latest GROUP BY sku
 )
-SELECT sku, product_status, category_with_gender, rm_code, dyed_fabric_sku, product_variant,
+SELECT sku, product_status, product_code, category_with_gender, rm_code, dyed_fabric_sku, product_variant,
   product_name, color, size, weave_type, total_oos_days, total_qty_sold, doq_45,
   current_stock, inprocess_stock,
   ROUND(SAFE_DIVIDE(current_stock, NULLIF(doq_45, 0)), 1) AS doh,
