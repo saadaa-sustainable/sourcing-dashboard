@@ -53,6 +53,9 @@ const ACTION_COLOR: Record<RecommendedAction, string> = {
 const uniq = (values: (string | null)[]) =>
   [...new Set(values.map((v) => (v ?? '').trim()).filter(Boolean))].sort();
 
+// Dropdown option meaning “value is blank”.
+const BLANK = '—';
+
 export function DiscontinuedInventoryView({
   rows,
   salesByVariant,
@@ -78,8 +81,8 @@ export function DiscontinuedInventoryView({
     const q = search.trim().toLowerCase();
     return rollups.filter(
       (r) =>
-        (!category || r.category === category) &&
-        (!color || r.color === color) &&
+        (!category || (category === BLANK ? !r.category : r.category === category)) &&
+        (!color || (color === BLANK ? !r.color : r.color === color)) &&
         (!bucket || r.bucket === bucket) &&
         (!action || r.action === action) &&
         (!q ||
@@ -258,12 +261,14 @@ export function DiscontinuedInventoryView({
         />
         <select className="wf-search" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">All categories</option>
+          <option value={BLANK}>—</option>
           {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
         <select className="wf-search" value={color} onChange={(e) => setColor(e.target.value)}>
           <option value="">All colours</option>
+          <option value={BLANK}>—</option>
           {colors.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}

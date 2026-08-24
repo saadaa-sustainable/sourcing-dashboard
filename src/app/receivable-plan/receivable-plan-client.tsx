@@ -13,6 +13,8 @@ const SIZE_KEYS = [
   ['size_4xl', '4XL'], ['size_5xl', '5XL'],
 ] as const;
 const cell = (v: number | null) => (v ? fmt.format(v) : '');
+// Dropdown option meaning “value is blank”.
+const BLANK = '—';
 const statusTone = (s: string | null) =>
   s === 'Overdue' ? 'danger' : s === 'High Risk' ? 'warn' : 'success';
 
@@ -60,8 +62,8 @@ export function ReceivablePlanClient({
           .toLowerCase()
           .includes(q)
       ) return false;
-      if (vendor && r.vendor_name !== vendor) return false;
-      if (state && r.product_state !== state) return false;
+      if (vendor && (vendor === BLANK ? Boolean(r.vendor_name) : r.vendor_name !== vendor)) return false;
+      if (state && (state === BLANK ? Boolean(r.product_state) : r.product_state !== state)) return false;
       if (risk && r.internal_status !== risk) return false;
       if (oosOnly && !r.oos_flag) return false;
       if (edd === 'has' && !r.expected_delivery_date) return false;
@@ -108,12 +110,14 @@ export function ReceivablePlanClient({
         />
         <select value={vendor} onChange={(e) => setVendor(e.target.value)} aria-label="Vendor">
           <option value="">All vendors</option>
+          <option value={BLANK}>—</option>
           {vendors.map((v) => (
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
         <select value={state} onChange={(e) => setState(e.target.value)} aria-label="Product state">
           <option value="">All states</option>
+          <option value={BLANK}>—</option>
           {states.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
