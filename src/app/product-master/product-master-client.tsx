@@ -30,6 +30,47 @@ const COLS: Column<EeProductMaster>[] = [
   { key: 'product_launch_date', label: 'Launch Date', kind: 'text' },
   { key: 'mrp', label: 'MRP', kind: 'num' },
   { key: 'cost', label: 'Cost', kind: 'num' },
+  { key: 'category_type', label: 'Category Type', kind: 'text' },
+  { key: 'color_family', label: 'Colour Family', kind: 'text' },
+  { key: 'garment_length_type', label: 'Garment Length', kind: 'text' },
+  { key: 'demographic_price_rage', label: 'Price Range', kind: 'text' },
+  { key: 'fabric_consumption_average', label: 'Fabric Cons. Avg', kind: 'num' },
+  // NOTE: the EasyEcom QTY_IN_METERS custom field actually holds gender + wear
+  // type values (F TOP WEAR …), so it renders as text, not a number.
+  { key: 'qty_in_meters', label: 'Qty in Meters', kind: 'text' },
+  { key: 'related_ongoing_product', label: 'Related Ongoing', kind: 'mono' },
+  { key: 'washcare_sku', label: 'Washcare SKU', kind: 'mono' },
+  { key: 'active', label: 'Active', kind: 'text' },
+  { key: 'width', label: 'Width', kind: 'num' },
+  { key: 'height', label: 'Height', kind: 'num' },
+  { key: 'length', label: 'Length', kind: 'num' },
+  { key: 'weight', label: 'Weight', kind: 'num' },
+  { key: 'hsn_code', label: 'HSN', kind: 'mono' },
+  { key: 'model_no', label: 'Model No', kind: 'mono' },
+  { key: 'gst', label: 'GST', kind: 'text' },
+  { key: 'tax_rate', label: 'Tax Rate', kind: 'text' },
+  { key: 'tax_rule_name', label: 'Tax Rule', kind: 'text' },
+  {
+    key: 'product_image_url',
+    label: 'Image',
+    filter: 'none',
+    sortable: false,
+    render: (r) =>
+      r.product_image_url ? (
+        <a href={r.product_image_url} target="_blank" rel="noopener noreferrer">
+          open
+        </a>
+      ) : (
+        <span className="wf-subtle">—</span>
+      ),
+  },
+  { key: 'description', label: 'Description', kind: 'text' },
+  {
+    key: 'created_at',
+    label: 'Created',
+    kind: 'text',
+    accessor: (r) => (r.created_at ? String(r.created_at).slice(0, 10) : ''),
+  },
 ];
 
 export function ProductMasterClient({ products }: { products: EeProductMaster[] }) {
