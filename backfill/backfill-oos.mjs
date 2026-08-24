@@ -10,7 +10,7 @@
 // rows are collapsed: stock/in-process SUMmed, sku-level metrics MAXed.
 //
 // Columns still PENDING a source/formula (left null here, filled in later passes):
-//   product_code, new_size, total_inventory_days, total_available_days, launch_date,
+//   total_inventory_days, total_available_days, launch_date,
 //   product_class, sales_value, sales_leakage, cancelled, returned, com_status, unique_key
 //
 // Env in backfill/.env: SUPABASE_URL, SUPABASE_SERVICE_ROLE, BQ_BILLING_PROJECT.

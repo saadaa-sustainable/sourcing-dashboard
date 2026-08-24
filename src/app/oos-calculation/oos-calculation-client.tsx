@@ -15,7 +15,6 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'product_name', label: 'Product Name', kind: 'text' },
   { key: 'color', label: 'Colour', kind: 'text' },
   { key: 'size', label: 'Size', kind: 'text' },
-  { key: 'new_size', label: 'New Size', kind: 'text' },
   { key: 'total_inventory_days', label: 'Total Inventory Days', kind: 'num' },
   { key: 'total_oos_days', label: 'Total OOS Days', kind: 'num' },
   { key: 'total_available_days', label: 'Total Available Days', kind: 'num' },

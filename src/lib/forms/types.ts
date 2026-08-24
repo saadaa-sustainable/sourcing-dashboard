@@ -97,7 +97,6 @@ export type OosCalculationRow = {
   product_name: string | null;
   color: string | null;
   size: string | null;
-  new_size: string | null;
   total_inventory_days: number | null;
   total_oos_days: number | null;
   total_available_days: number | null;
