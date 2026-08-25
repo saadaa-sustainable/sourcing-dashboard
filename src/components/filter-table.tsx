@@ -384,7 +384,19 @@ export function FilterTable<T>({
               ))}
               {!sorted.length && (
                 <tr>
-                  <td colSpan={columns.length} className="wf-empty-cell">{emptyText}</td>
+                  <td colSpan={columns.length} className="wf-empty-cell">
+                    {emptyText}
+                    {anyFilter && (
+                      <button
+                        type="button"
+                        className="wf-btn wf-btn-ghost"
+                        style={{ marginLeft: 8 }}
+                        onClick={() => { setSearch(''); setColFilters({}); setSort(null); setPage(0); }}
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </td>
                 </tr>
               )}
             </tbody>

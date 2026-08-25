@@ -31,6 +31,14 @@ export type SdUser = {
   last_seen_at?: string | null;
 };
 
+/** One data source's freshness, for the Sync Health tab (sd_sync_status view). */
+export type SyncStatusRow = {
+  source: string;
+  pipeline: string;
+  rows: number;
+  last_refreshed: string | null;
+};
+
 /**
  * One SKU row of the EasyEcom product master (sd_ee_product_master), shown
  * read-only. Sourced from Easyecom_new_product_master + its custom fields; all

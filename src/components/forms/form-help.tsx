@@ -103,6 +103,11 @@ const HELP: Record<string, HelpItem[]> = {
     { field: '30 / 60 / 90-day reorder', source: 'Automatic', formula: 'max(0, daily demand × N − current stock − in-process)', detail: 'How much to reorder to cover N days. 30 is the immediate gap; 60/90 add forward coverage for long-lead vendors. Scales up with the window.' },
     { field: 'Feeds the Buying Plan', source: 'Automatic', detail: 'The 30-day reorder (summed per product) becomes the Buying Plan’s computed Pending Quantity — no longer typed by hand.' },
   ],
+  '/sync-status': [
+    { field: 'What this is', source: 'Automatic', detail: 'A health check on every data feed — is the dashboard showing fresh data? One row per source with its pipeline, row count and last refresh time.' },
+    { field: 'Status', source: 'Automatic', formula: 'Sheets stale if >1h · BigQuery/EasyEcom stale if >30h', detail: '“Fresh” = refreshed within its expected window; “Stale” (red) = its scheduled sync likely failed (e.g. the 6 AM cron 401’d); “Unknown” = the source carries no sync timestamp.' },
+    { field: 'Pipelines', source: 'Automatic', detail: 'Google Sheet (~5 min Apps Script sync) · BigQuery (daily 6 AM backfill) · EasyEcom API. Last refreshed is the newest sync timestamp on that source.' },
+  ],
   '/oos-calculation': [
     { field: 'What this is', source: 'Inventory planning (GCP)', detail: 'A per-SKU out-of-stock / DOQ view over a 45-day window, mirroring the DOQ sheet. One row per garment SKU, from saadaa_inventory_planning (latest snapshot, warehouses combined).' },
     { field: 'Attributes (Status, Category+Gender, RM, Dyed Fabric, Variant, Name, Colour, Size, Weave)', source: 'Inventory planning (GCP)', detail: 'Product-master attributes carried on the inventory-planning row.' },

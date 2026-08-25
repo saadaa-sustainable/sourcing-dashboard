@@ -40,6 +40,7 @@ import type {
   VendorRecommendationRow,
   SdStatus,
   SdUser,
+  SyncStatusRow,
   VendorTerm,
   StandardCost,
   StandardCostLine,
@@ -433,6 +434,18 @@ export async function loadUsers(): Promise<SdUser[]> {
     .order('is_active', { ascending: false })
     .order('email');
   return (data ?? []) as SdUser[];
+}
+
+/** Per-source data freshness for the Sync Health tab (sd_sync_status view). */
+export async function loadSyncStatus(): Promise<SyncStatusRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from('sd_sync_status')
+    .select('*')
+    .order('pipeline')
+    .order('source');
+  if (error) throw new Error(`sd_sync_status: ${error.message}`);
+  return (data ?? []) as SyncStatusRow[];
 }
 
 /* ------------------------------------------------------------------ */

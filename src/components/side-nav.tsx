@@ -2,6 +2,7 @@
 
 import { useState, type ComponentType } from 'react';
 import {
+  Activity,
   Award,
   Ban,
   Boxes,
@@ -184,6 +185,14 @@ export function SideNav({
           >
             <UserCog size={18} />
             <span>User Panel</span>
+          </a>
+          <a
+            href="/sync-status"
+            className={activeWorkflow === '/sync-status' ? 'active' : ''}
+            onClick={close}
+          >
+            <Activity size={18} />
+            <span>Sync Health</span>
           </a>
         </nav>
         <div className="sidebar-foot">
