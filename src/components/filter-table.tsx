@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { InfoDot } from '@/components/info-dot';
 
 // A reusable read-only data table with: a global search box, a per-column filter row
 // (multi-select checkbox dropdown for low-cardinality columns, text/number-operator
@@ -17,6 +18,8 @@ export type Column<T> = {
   /** Force a filter style; default auto (select if ≤20 distinct, else text). */
   filter?: 'auto' | 'select' | 'text' | 'none';
   sortable?: boolean;
+  /** Optional ⓘ help shown next to the header label. */
+  info?: string;
 };
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
@@ -344,6 +347,7 @@ export function FilterTable<T>({
                     >
                       {col.label}
                       {active ? (sort!.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                      {col.info && <InfoDot text={col.info} label={`About ${col.label}`} />}
                     </th>
                   );
                 })}

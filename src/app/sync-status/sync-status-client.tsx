@@ -1,6 +1,7 @@
 'use client';
 
 import { Notice } from '@/components/forms/form-layout';
+import { InfoDot } from '@/components/info-dot';
 import type { SyncStatusRow } from '@/lib/forms/types';
 
 const fmt = new Intl.NumberFormat('en-IN');
@@ -61,7 +62,10 @@ export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
                 <th>Pipeline</th>
                 <th className="num">Rows</th>
                 <th>Last refreshed</th>
-                <th>Status</th>
+                <th>
+                  Status
+                  <InfoDot text="Fresh = refreshed within its expected window. Google Sheets stale after 1h; BigQuery / EasyEcom after 30h. Unknown = the source carries no sync timestamp." />
+                </th>
               </tr>
             </thead>
             <tbody>
