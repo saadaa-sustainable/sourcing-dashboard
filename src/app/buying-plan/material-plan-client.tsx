@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
@@ -559,7 +560,7 @@ export function MaterialPlanClient({
                   entityId={String(plan.id)}
                   entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
                   onDone={(result) => {
-                    if (result.ok) window.location.reload();
+                    if (result.ok) reloadWithToast();
                   }}
                 />
               )}

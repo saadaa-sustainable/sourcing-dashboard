@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { Plus, Save } from 'lucide-react';
 import {
   addColour,
@@ -75,7 +76,7 @@ export function MaterialMasterClient({
       const result = await action();
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        window.location.reload();
+        reloadWithToast();
       } else {
         setError(result.error ?? 'Something went wrong.');
       }

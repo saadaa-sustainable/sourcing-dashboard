@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import {
   ChevronDown,
   ChevronRight,
@@ -708,7 +709,7 @@ export function BuyingPlanClient({
               entityId={String(plan.id)}
               entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
               onDone={(result) => {
-                if (result.ok) window.location.reload();
+                if (result.ok) reloadWithToast();
               }}
             />
           )}

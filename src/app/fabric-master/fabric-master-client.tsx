@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { Plus, Save } from 'lucide-react';
 import { addFabric, updateFabric } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
@@ -78,7 +79,7 @@ export function FabricMasterClient({
       const result = await addFabric(fd);
       if (result.ok) {
         setMessage(result.message ?? 'Added.');
-        window.location.reload();
+        reloadWithToast();
       } else {
         setError(result.error);
       }
@@ -92,7 +93,7 @@ export function FabricMasterClient({
       const result = await updateFabric(fd);
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        window.location.reload();
+        reloadWithToast();
       } else {
         setError(result.error);
       }

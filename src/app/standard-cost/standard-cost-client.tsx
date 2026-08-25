@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { ChevronDown, ChevronRight, Download, Lock, Plus, Save, Upload } from 'lucide-react';
 import {
   confirmCmRate,
@@ -234,7 +235,7 @@ function StandardFieldsPanel({
     start(async () => {
       const res = await saveCostStandards(fd);
       setMsg(res.ok ? 'Saved.' : res.error);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
     });
   }
 
@@ -299,7 +300,7 @@ function CostRow({
     Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
     start(async () => {
       const res = await action(fd);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
       else setErr(res.error);
     });
   }
@@ -668,7 +669,7 @@ function CostDetail({
       if (!h.ok) return setErr(h.error);
       const d = await saveStandardCostLines(detail);
       if (!d.ok) return setErr(d.error);
-      window.location.reload();
+      reloadWithToast();
     });
   }
 

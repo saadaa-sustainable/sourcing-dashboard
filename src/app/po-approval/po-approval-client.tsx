@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, FileCheck, Layers, Save, Send, X } from 'lucide-react';
 import {
   confirmTna,
@@ -166,7 +167,7 @@ export function PoApprovalClient({
         setMessage(saved.message ?? 'Saved.');
       }
       setForm({ ...BLANK });
-      window.location.reload();
+      reloadWithToast();
     });
   }
 
@@ -648,7 +649,7 @@ function PoRow({
     );
     start(async () => {
       const res = await savePoLines(p);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
       else setError(res.error);
     });
   }
@@ -660,7 +661,7 @@ function PoRow({
     Object.entries(tna).forEach(([k, v]) => p.set(k, v));
     start(async () => {
       const res = await confirmTna(p);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
       else setError(res.error);
     });
   }
@@ -671,7 +672,7 @@ function PoRow({
     p.set('id', String(po.id));
     start(async () => {
       const res = await submitPoApproval(p);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
       else setError(res.error);
     });
   }
@@ -684,7 +685,7 @@ function PoRow({
     p.set('set_benchmark', benchmark ? 'true' : 'false');
     start(async () => {
       const res = await issuePoApproval(p);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
       else setError(res.error);
     });
   }
@@ -1080,7 +1081,7 @@ function PoSubmissionTable({
     fd.set('decision', decision);
     start(async () => {
       const res = await setPoClosure(fd);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
     });
   }
 
@@ -1239,7 +1240,7 @@ function TnaLeadtimesPanel({ leadtimes }: { leadtimes: TnaLeadtimes }) {
     start(async () => {
       const res = await saveTnaLeadtimes(fd);
       setMsg(res.ok ? 'Saved.' : res.error);
-      if (res.ok) window.location.reload();
+      if (res.ok) reloadWithToast();
     });
   }
 

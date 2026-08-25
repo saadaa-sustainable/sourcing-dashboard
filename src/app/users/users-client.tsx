@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { Save, UserPlus } from 'lucide-react';
 import { createUserLogin, saveUser } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
@@ -39,7 +40,7 @@ export function UsersClient({
       const result = await action(payload);
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        if (reloadOnOk) window.location.reload();
+        if (reloadOnOk) reloadWithToast();
       } else {
         setError(result.error);
       }

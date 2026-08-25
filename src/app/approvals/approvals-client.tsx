@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, ShieldCheck } from 'lucide-react';
 import { canApprove, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
@@ -161,7 +162,7 @@ export function ApprovalsClient({
                   entityLabel={item.label}
                   lines={item.lines}
                   onDone={(result) => {
-                    if (result.ok) window.location.reload();
+                    if (result.ok) reloadWithToast();
                   }}
                 />
               )}
@@ -171,7 +172,7 @@ export function ApprovalsClient({
                   entityId={item.entityId}
                   entityLabel={item.label}
                   onDone={(result) => {
-                    if (result.ok) window.location.reload();
+                    if (result.ok) reloadWithToast();
                   }}
                 />
               )}
@@ -268,7 +269,7 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
     payload.set('line_ids', JSON.stringify([...selected]));
     start(async () => {
       const result = await approveBuyingPlanLines(payload);
-      if (result.ok) window.location.reload();
+      if (result.ok) reloadWithToast();
       else setError(result.error);
     });
   }

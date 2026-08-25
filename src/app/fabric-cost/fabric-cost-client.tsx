@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { Calculator, Download, Save, Upload } from 'lucide-react';
 import { saveFabricCostBase } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
@@ -139,7 +140,7 @@ export function FabricCostClient({
           return;
         }
       }
-      window.location.reload();
+      reloadWithToast();
     });
   }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { reloadWithToast } from '@/lib/toast';
 import { Ban } from 'lucide-react';
 import { createDiscontinueRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
@@ -219,7 +220,7 @@ export function DiscontinueClient({
                           request.product_variant ? ` / ${request.product_variant}` : ''
                         }${request.size ? ` / ${request.size}` : ''}`}
                         onDone={(result) => {
-                          if (result.ok) window.location.reload();
+                          if (result.ok) reloadWithToast();
                         }}
                       />
                     ) : (
