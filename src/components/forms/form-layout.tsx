@@ -1,6 +1,7 @@
 import { LogOut } from 'lucide-react';
 import { SideNav } from '@/components/side-nav';
 import { FormHelp } from '@/components/forms/form-help';
+import { ApprovalsBell } from '@/components/forms/approvals-bell';
 import { signOut } from '@/lib/auth-actions';
 import { ROLE_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/forms/approval';
 import type { SdRole, SdStatus } from '@/lib/forms/types';
@@ -38,6 +39,7 @@ export function FormLayout({
             </div>
             <div className="wf-head-actions">
               <FormHelp route={active} title={title} />
+              {role !== 'viewer' && <ApprovalsBell />}
               <span className="wf-role">{ROLE_LABEL[role]}</span>
               {actions}
               {userEmail && (

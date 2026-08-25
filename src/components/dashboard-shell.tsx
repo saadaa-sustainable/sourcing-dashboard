@@ -54,6 +54,7 @@ import type {
 import { TnaBreakdown } from "./tna-breakdown";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { signOut } from "@/lib/auth-actions";
+import { ApprovalsBell } from "@/components/forms/approvals-bell";
 
 
 type HelpItem = { title: string; text: string; tip?: string };
@@ -2427,6 +2428,7 @@ export function DashboardShell({
             <button className="help-button" onClick={() => setInfo(true)}>
               <CircleHelp size={17} /> What do these mean?
             </button>
+            <ApprovalsBell />
             {userEmail && (
               <div className="account">
                 <span className="account-email" title={userEmail}>

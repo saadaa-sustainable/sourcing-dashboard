@@ -436,6 +436,19 @@ export async function loadUsers(): Promise<SdUser[]> {
   return (data ?? []) as SdUser[];
 }
 
+/** Cheap count of items in the shared approval queue, for the notification bell. */
+export async function countPendingApprovals(): Promise<number> {
+  const supabase = await client();
+  const pending = (t: string) =>
+    supabase.from(t).select('*', { count: 'exact', head: true }).in('status', ['submitted', 'pending_l2']);
+  const [a, b, c] = await Promise.all([
+    pending('sd_buying_plan'),
+    pending('sd_discontinue_request'),
+    pending('sd_po_approval'),
+  ]);
+  return (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0);
+}
+
 /** Per-source data freshness for the Sync Health tab (sd_sync_status view). */
 export async function loadSyncStatus(): Promise<SyncStatusRow[]> {
   const supabase = await client();
