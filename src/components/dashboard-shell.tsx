@@ -53,6 +53,7 @@ import type {
 } from "@/lib/types";
 import { TnaBreakdown } from "./tna-breakdown";
 import { SideNav, tabs, type TabId } from "./side-nav";
+import type { SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
 import { ApprovalsBell } from "@/components/forms/approvals-bell";
 
@@ -2395,9 +2396,11 @@ function MatrixTab({ data }: { data: DashboardData }) {
 export function DashboardShell({
   data,
   userEmail,
+  role = 'viewer',
 }: {
   data: DashboardData;
   userEmail: string | null;
+  role?: SdRole;
 }) {
   const [tab, setTab] = useState<TabId>("dashboard");
   const [info, setInfo] = useState(false);
@@ -2417,7 +2420,7 @@ export function DashboardShell({
   const helpItems: HelpItem[] = simpleGlossary[tab] ?? [];
   return (
     <div className="app-shell">
-      <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} />
+      <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} role={role} />
       <main>
         <header>
           <div>
@@ -2428,7 +2431,7 @@ export function DashboardShell({
             <button className="help-button" onClick={() => setInfo(true)}>
               <CircleHelp size={17} /> What do these mean?
             </button>
-            <ApprovalsBell />
+            {role === 'admin' && <ApprovalsBell />}
             {userEmail && (
               <div className="account">
                 <span className="account-email" title={userEmail}>

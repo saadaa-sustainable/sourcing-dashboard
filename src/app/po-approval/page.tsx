@@ -27,6 +27,7 @@ export default async function PoApprovalPage() {
   }
 
   if (!user) redirect('/login');
+  if (user.role !== 'admin') redirect('/');
 
   const [
     { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor },

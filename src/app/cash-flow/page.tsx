@@ -22,6 +22,7 @@ export default async function CashFlowPage() {
   }
 
   if (!user) redirect('/login');
+  if (user.role !== 'admin') redirect('/');
 
   const { months, vendorTerms } = await loadCashFlow();
 

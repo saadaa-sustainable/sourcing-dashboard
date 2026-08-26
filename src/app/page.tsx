@@ -1,19 +1,23 @@
 import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard-shell';
 import { loadDashboardData } from '@/lib/data';
-import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
+import { hasSupabaseEnv } from '@/lib/supabase/server';
+import { currentUser } from '@/lib/forms/queries';
+import type { SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   let userEmail: string | null = null;
+  // Local fixture mode (no Supabase env) has no auth — show the full nav.
+  let role: SdRole = 'admin';
   if (hasSupabaseEnv()) {
-    const supabase = await createClient();
-    const { data, error } = await supabase.auth.getClaims();
-    if (error || !data?.claims) redirect('/login');
-    userEmail = typeof data.claims.email === 'string' ? data.claims.email : null;
-    if (!userEmail?.toLowerCase().endsWith('@saadaa.in')) redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
+    const user = await currentUser();
+    if (!user) redirect('/login');
+    userEmail = user.email;
+    if (!userEmail.endsWith('@saadaa.in')) redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
+    role = user.role;
   }
   const dashboardData = await loadDashboardData();
-  return <DashboardShell data={dashboardData} userEmail={userEmail} />;
+  return <DashboardShell data={dashboardData} userEmail={userEmail} role={role} />;
 }

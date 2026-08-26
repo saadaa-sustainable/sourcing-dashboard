@@ -26,6 +26,7 @@ export default async function ApprovalsPage() {
   }
 
   if (!user) redirect('/login');
+  if (user.role !== 'admin') redirect('/');
 
   const [{ items, log }, stats] = await Promise.all([
     loadApprovalQueue(),

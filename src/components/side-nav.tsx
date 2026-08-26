@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ComponentType } from 'react';
+import type { SdRole } from '@/lib/forms/types';
 import {
   Activity,
   Award,
@@ -50,23 +51,24 @@ type NavLink = {
   label: string;
   Icon: ComponentType<{ size?: number }>;
   external?: boolean;
+  adminOnly?: boolean;
 };
 
 const WORKFLOW_LINKS: NavLink[] = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
-  { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
+  { href: '/replenishment', label: 'Replenishment', Icon: Repeat, adminOnly: true },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
-  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
+  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck, adminOnly: true },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
-  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
+  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet, adminOnly: true },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
-  { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
+  { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck, adminOnly: true },
 ];
 
 /**
@@ -80,11 +82,13 @@ export function SideNav({
   onTab,
   activeWorkflow,
   userEmail,
+  role = 'viewer',
 }: {
   activeTab?: TabId;
   onTab?: (id: TabId) => void;
   activeWorkflow?: string;
   userEmail: string | null;
+  role?: SdRole;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const close = () => setNavOpen(false);
@@ -132,7 +136,8 @@ export function SideNav({
               ),
             )}
           <div className="wf-nav-divider">Workflows</div>
-          {WORKFLOW_LINKS.map(({ href, label, Icon, external }) => (
+          {WORKFLOW_LINKS.filter(({ adminOnly }) => !adminOnly || role === 'admin').map(
+            ({ href, label, Icon, external }) => (
             <a
               key={href}
               href={href}

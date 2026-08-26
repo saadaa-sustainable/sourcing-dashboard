@@ -25,6 +25,7 @@ export default async function ReplenishmentPage() {
   }
 
   if (!user) redirect('/login');
+  if (user.role !== 'admin') redirect('/');
 
   const rows = await loadReplenishment();
 

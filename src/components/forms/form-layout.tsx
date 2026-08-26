@@ -29,7 +29,7 @@ export function FormLayout({
 }) {
   return (
     <div className="app-shell">
-      <SideNav activeWorkflow={active} userEmail={userEmail} />
+      <SideNav activeWorkflow={active} userEmail={userEmail} role={role} />
       <main>
         <div className={`wf-page${accent ? ` wf-accent wf-accent-${accent}` : ''}`}>
           <header className="wf-head">
@@ -39,7 +39,7 @@ export function FormLayout({
             </div>
             <div className="wf-head-actions">
               <FormHelp route={active} title={title} />
-              {role !== 'viewer' && <ApprovalsBell />}
+              {role === 'admin' && <ApprovalsBell />}
               <span className="wf-role">{ROLE_LABEL[role]}</span>
               {actions}
               {userEmail && (
