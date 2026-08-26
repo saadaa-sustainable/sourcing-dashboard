@@ -40,6 +40,7 @@ function MultiSelectFilter({
   onChange: (next: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -71,6 +72,11 @@ function MultiSelectFilter({
   const toggle = (opt: string) =>
     onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt]);
 
+  // With many options a plain checkbox list is unusable — add a search box.
+  const searchable = options.length > 15;
+  const q = query.trim().toLowerCase();
+  const shown = q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
+
   const label =
     value.length === 0 ? 'All' : value.length === 1 ? (value[0] === BLANK ? '—' : value[0]) : `${value.length} selected`;
 
@@ -96,6 +102,7 @@ function MultiSelectFilter({
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setPos({ top: r.bottom + 2, left: r.left, width: Math.max(r.width, 160) });
+          setQuery('');
           setOpen((o) => !o);
         }}
       >
@@ -122,6 +129,23 @@ function MultiSelectFilter({
             fontSize: 12,
           }}
         >
+          {searchable && (
+            <input
+              autoFocus
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '3px 6px',
+                marginBottom: 2,
+                fontSize: 12,
+                fontWeight: 400,
+                border: '1px solid var(--line, #e8e9f0)',
+                borderRadius: 6,
+              }}
+            />
+          )}
           <button
             type="button"
             style={{
@@ -139,7 +163,7 @@ function MultiSelectFilter({
           >
             All (clear)
           </button>
-          {[BLANK, ...options].map((o) => (
+          {(q ? shown : [BLANK, ...shown]).map((o) => (
             <label
               key={o}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', cursor: 'pointer' }}

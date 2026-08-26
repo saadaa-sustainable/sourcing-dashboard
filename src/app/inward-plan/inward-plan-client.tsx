@@ -8,12 +8,13 @@ const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
 const COLS: Column<InwardPlanGroup>[] = [
   { key: 'po_number', label: 'PO', kind: 'mono' },
-  { key: 'product_code', label: 'Product', kind: 'text' },
-  { key: 'product_variant', label: 'Variant', kind: 'mono' },
+  { key: 'product_code', label: 'Product', kind: 'text', filter: 'select' },
+  { key: 'product_variant', label: 'Variant', kind: 'mono', filter: 'select' },
   {
     key: 'vendor_name',
     label: 'Vendor',
     kind: 'text',
+    filter: 'select',
     accessor: (g) => `${g.vendor_name ?? ''} ${g.vendor_code ?? ''}`,
     render: (g) => (
       <>
@@ -24,7 +25,7 @@ const COLS: Column<InwardPlanGroup>[] = [
   },
   { key: 'ordered_qty', label: 'Ordered', kind: 'num' },
   { key: 'arriving_qty', label: 'Arriving', kind: 'num', render: (g) => <strong>{fmt.format(g.arriving_qty)}</strong> },
-  { key: 'expected_delivery_date', label: 'Expected', kind: 'text' },
+  { key: 'expected_delivery_date', label: 'Expected', kind: 'text', filter: 'select' },
 ];
 
 export function InwardPlanClient({ groups }: { groups: InwardPlanGroup[] }) {
