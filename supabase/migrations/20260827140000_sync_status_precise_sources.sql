@@ -81,7 +81,7 @@ sheet_map(table_name, fetched_from) as (values
          'MAPLEMONK.po_qty_cutting_register → sd_po_qty_cutting_register'
   from public.sd_po_qty_cutting_register
   union all
-  select 'PO master (raw)', 'BigQuery - manual backfill', count(*), null::timestamptz,
+  select 'PO master (raw)', 'BigQuery - 6 AM & 6 PM', count(*), max(ingested_at),
          'MAPLEMONK.EE_purchase_orders (+ po_items) → sd_po_master_raw'
   from public.sd_po_master_raw
   union all
