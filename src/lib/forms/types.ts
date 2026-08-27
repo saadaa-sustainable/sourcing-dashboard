@@ -37,6 +37,8 @@ export type SyncStatusRow = {
   pipeline: string;
   rows: number;
   last_refreshed: string | null;
+  /** Precise origin: BigQuery table, Google Sheet tab, or API endpoint → Supabase table. */
+  fetched_from: string | null;
 };
 
 /**

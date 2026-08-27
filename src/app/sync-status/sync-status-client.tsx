@@ -10,6 +10,7 @@ const fmt = new Intl.NumberFormat('en-IN');
 const STALE_AFTER_HOURS: Record<string, number> = {
   'Google Sheet - ~5 min': 1,
   'BigQuery - daily 6 AM': 30,
+  'BigQuery - 6 AM & 6 PM': 15,
   'EasyEcom API': 30,
 };
 
@@ -59,12 +60,16 @@ export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
             <thead>
               <tr>
                 <th>Source</th>
+                <th>
+                  Fetched from
+                  <InfoDot text="The exact object this source pulls: BigQuery table (MAPLEMONK dataset), Google Sheet tab, or API endpoint — and the Supabase table it lands in." />
+                </th>
                 <th>Pipeline</th>
                 <th className="num">Rows</th>
                 <th>Last refreshed</th>
                 <th>
                   Status
-                  <InfoDot text="Fresh = refreshed within its expected window. Google Sheets stale after 1h; BigQuery / EasyEcom after 30h. Unknown = the source carries no sync timestamp." />
+                  <InfoDot text="Fresh = refreshed within its expected window. Google Sheets stale after 1h; twice-daily BigQuery (GRN) after 15h; daily BigQuery / EasyEcom after 30h. Unknown = the source carries no sync timestamp." />
                 </th>
               </tr>
             </thead>
@@ -76,6 +81,7 @@ export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
                 return (
                   <tr key={r.source}>
                     <td>{r.source}</td>
+                    <td className="wf-subtle">{r.fetched_from ?? '—'}</td>
                     <td className="wf-subtle">{r.pipeline}</td>
                     <td className="num">{fmt.format(r.rows)}</td>
                     <td title={t.title}>{t.label}</td>
@@ -98,7 +104,7 @@ export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
               })}
               {!rows.length && (
                 <tr>
-                  <td colSpan={5} className="wf-empty-cell">
+                  <td colSpan={6} className="wf-empty-cell">
                     No sources reported.
                   </td>
                 </tr>
