@@ -39,8 +39,18 @@ export default async function VendorCapacityPage() {
     vendorTypes.map((row) => [key(row.vendor_code), row.vendor_type ?? '']),
   );
 
+  // Business "active" status lives in vendor_type_master (the same signal the
+  // dashboard's "Active vendors" KPI uses) — GCP only supplies vendor names, so
+  // it carries no active flag of its own. Match by code first, then name.
+  const statusByCode = new Map(vendorTypes.map((row) => [key(row.vendor_code), row.status]));
+  const statusByName = new Map(vendorTypes.map((row) => [key(row.vendor_name), row.status]));
+  const isActive = (master: (typeof vendorMasters)[number]) => {
+    const status = statusByCode.get(key(master.vendor_code)) ?? statusByName.get(key(master.vendor_name));
+    return key(status) === 'active';
+  };
+
   const vendors = vendorMasters
-    .filter((master) => key(master.vendor_code))
+    .filter((master) => key(master.vendor_code) && isActive(master))
     .map((master) => {
       const code = key(master.vendor_code);
       return {
@@ -60,7 +70,7 @@ export default async function VendorCapacityPage() {
   return (
     <FormLayout
       title="Vendor Capacity"
-      subtitle="Per-vendor capacity — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only."
+      subtitle="Per-vendor capacity for active vendors — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only."
       active="/vendor-capacity"
       role={user.role}
       userEmail={user.email}
