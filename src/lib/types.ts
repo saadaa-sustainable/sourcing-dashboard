@@ -44,6 +44,9 @@ export type VendorMaster = {
   capacity_per_month: number;     // signed monthly capacity at onboarding
   karigar_latest: number;
   karigar_latest_as_of: string | null;
+  // Raw vendor status from EasyEcom (via GCP sync). Decoded with eeVendorActive.
+  // Null until the first GCP vendor sync populates it.
+  ee_status: string | null;
 };
 
 export type TnaRecord = {

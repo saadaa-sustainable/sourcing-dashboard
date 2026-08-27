@@ -23,7 +23,7 @@
  *   ~6 AM  bqSyncMorningB : PO master (all) -> sd_po_master_raw (Open PO Tracker / in-process feed)
  *                           GRN 45d        -> sd_po_grn_mapping
  *                           GRN-QC 30d     -> sd_ee_grn (+ refresh_vendor_recommendation)
- *                           vendor names   -> vendor_master_data (names only)
+ *                           vendor names + EasyEcom status -> vendor_master_data
  *                           adjustments    -> sd_po_qty_manual_adjustment / _cutting_register
  *   ~6 PM  bqSyncEvening  : PO master -> sd_po_master_raw, GRN 45d -> sd_po_grn_mapping
  * Every target logs to public.sync_log (same table the sheet sync uses).
@@ -46,6 +46,13 @@ function installBqSyncTriggers() { return BqSync_.install(); }
 // Manual: full-column inventory refresh (~6 GB scan) — use after schema changes
 // or to fill descriptive columns without waiting for Sunday.
 function bqSyncFullInventoryRefresh() { return BqSync_.doqOos(true); }
+// Manual: run only the vendor sync now (names + EasyEcom status) — use right
+// after applying the ee_status migration so the column fills without waiting for
+// the 6 AM trigger.
+function bqSyncVendors() { return BqSync_.vendorsOnce(); }
+// Manual: print the Easyecom_Saadaa_vendors columns + a few sample rows, so you
+// can confirm which column carries the active/inactive status and how it's coded.
+function bqVendorSchema() { return BqSync_.vendorSchema(); }
 
 const BqSync_ = (function () {
   const PROJECT = 'saadaa-wh';
@@ -466,21 +473,68 @@ const BqSync_ = (function () {
     return { synced: rows.length };
   }
 
-  // HYBRID vendor master: GCP owns vendor_name only; the sheet still owns the
-  // capacity model. Updates names of EXISTING vendors, never inserts new rows.
+  // Candidate column names for EasyEcom's vendor active/inactive status, in
+  // priority order — the first one present in Easyecom_Saadaa_vendors is read
+  // into vendor_master_data.ee_status. If none match, the sync falls back to
+  // names-only (its original behaviour) and logs it, so it can never break.
+  // Run bqVendorSchema() to see the real columns and adjust this list if needed.
+  const VENDOR_STATUS_CANDIDATES = ['status', 'vendor_status', 'active', 'is_active', 'account_status'];
+
+  function vendorStatusColumn() {
+    const cols = runQuery(`
+      SELECT column_name FROM ${DATASET}INFORMATION_SCHEMA.COLUMNS\`
+      WHERE table_name = 'Easyecom_Saadaa_vendors'`).map((r) => String(r.column_name).toLowerCase());
+    const present = new Set(cols);
+    return VENDOR_STATUS_CANDIDATES.find((c) => present.has(c)) || null;
+  }
+
+  // HYBRID vendor master: GCP owns vendor_name (and now ee_status); the sheet
+  // still owns the capacity model. Updates EXISTING vendors only, never inserts.
   function vendors() {
+    const statusCol = vendorStatusColumn();
+    const select = statusCol
+      ? `vendor_code, vendor_name, CAST(${statusCol} AS STRING) AS ee_status`
+      : 'vendor_code, vendor_name';
     const gcp = runQuery(`
-      SELECT DISTINCT vendor_code, vendor_name FROM ${DATASET}Easyecom_Saadaa_vendors\`
+      SELECT DISTINCT ${select} FROM ${DATASET}Easyecom_Saadaa_vendors\`
       WHERE vendor_code IS NOT NULL AND TRIM(vendor_name) != ''`);
     const existing = JSON.parse(
       supa('get', 'vendor_master_data?select=vendor_code').getContentText(),
     );
     const codes = new Set(existing.map((r) => r.vendor_code));
-    const updates = gcp
-      .filter((r) => codes.has(r.vendor_code))
-      .map((r) => ({ vendor_code: r.vendor_code, vendor_name: String(r.vendor_name).trim() }));
+    // Collapse to one row per vendor_code (DISTINCT + a status column can yield
+    // duplicates, and a batch upsert can't touch the same conflict key twice).
+    // Prefer a row that actually carries a status value.
+    const byCode = new Map();
+    for (const r of gcp) {
+      if (!codes.has(r.vendor_code)) continue;
+      const prev = byCode.get(r.vendor_code);
+      if (!prev || (prev.ee_status == null && r.ee_status != null)) byCode.set(r.vendor_code, r);
+    }
+    const updates = [...byCode.values()].map((r) => {
+      const row = { vendor_code: r.vendor_code, vendor_name: String(r.vendor_name).trim() };
+      if (statusCol) row.ee_status = r.ee_status == null ? null : String(r.ee_status).trim();
+      return row;
+    });
     upsert('vendor_master_data', 'vendor_code', updates);
+    console.log(`[vendor_master_data] status column: ${statusCol || 'none found — synced names only'}`);
     return { synced: updates.length };
+  }
+
+  function vendorsOnce() { return runTarget('vendor_master_data', vendors); }
+
+  // Diagnostics: dump the source vendor table's schema + a few rows so the exact
+  // status column and its encoding (1/0, active/inactive, …) can be confirmed.
+  function vendorSchema() {
+    const cols = runQuery(`
+      SELECT column_name, data_type FROM ${DATASET}INFORMATION_SCHEMA.COLUMNS\`
+      WHERE table_name = 'Easyecom_Saadaa_vendors' ORDER BY ordinal_position`);
+    console.log('Easyecom_Saadaa_vendors columns:\n' +
+      cols.map((c) => `  ${c.column_name} (${c.data_type})`).join('\n'));
+    console.log(`Detected status column: ${vendorStatusColumn() || 'none'}`);
+    const sample = runQuery(`SELECT * FROM ${DATASET}Easyecom_Saadaa_vendors\` LIMIT 5`);
+    console.log('Sample rows:\n' + JSON.stringify(sample, null, 2));
+    return { columns: cols.length, detected: vendorStatusColumn() };
   }
 
   // Small snapshot tables with no natural key: replace all rows (delete + insert),
@@ -546,5 +600,5 @@ const BqSync_ = (function () {
     console.log('BqSync triggers installed: morningA + morningB (~6 AM), evening (~6 PM), script timezone.');
   }
 
-  return { morningA, morningB, evening, install, doqOos };
+  return { morningA, morningB, evening, install, doqOos, vendorsOnce, vendorSchema };
 })();

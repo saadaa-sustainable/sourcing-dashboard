@@ -31,6 +31,7 @@ const COLS: Column<VendorMasterRow>[] = [
       );
     },
   },
+  { key: 'ee_status', label: 'EasyEcom Status', kind: 'text', accessor: (r) => r.ee_status ?? '' },
   { key: 'primary_type', label: 'Type', kind: 'text' },
   { key: 'merchant_name', label: 'Merchant', kind: 'text' },
   { key: 'capacity_per_month', label: 'Capacity / Month', kind: 'num' },

@@ -143,6 +143,8 @@ export type VendorMasterRow = {
   contact_person_name: string | null;
   contact_no: string | null;
   address: string | null;
+  // Raw vendor status from EasyEcom (via GCP sync); decoded with eeVendorActive.
+  ee_status: string | null;
   synced_at: string | null;
 };
 

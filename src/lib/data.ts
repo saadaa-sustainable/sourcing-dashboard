@@ -151,6 +151,7 @@ async function loadFixtures(): Promise<DashboardData> {
     capacity_per_month: n(row.capacity_month_for_saadaa),
     karigar_latest: karigarKey ? n(row[karigarKey]) : 0,
     karigar_latest_as_of: karigarIndex >= 0 ? masterTable.literalHeaders[karigarIndex] : null,
+    ee_status: s(row.ee_status) ?? null,
   }));
 
   const tnaMap = new Map<string, TnaRecord>();

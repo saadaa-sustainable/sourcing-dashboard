@@ -174,7 +174,7 @@ describe('sourcing business rules', () => {
     const vm = {
       vendor_code: 'V1', vendor_name: 'V1', onboarding_date: null, merchant_name: null,
       primary_type: 'E-FOB', total_machines: 20, total_active_karigar: 25, machines_for_saadaa: 20,
-      capacity_per_month: 1000, karigar_latest: 25, karigar_latest_as_of: null,
+      capacity_per_month: 1000, karigar_latest: 25, karigar_latest_as_of: null, ee_status: null,
     };
     const [v] = buildVendorRollups([line], [vt], [vm], [], new Date('2026-07-15T00:00:00Z'), cap);
     assert.equal(v.poCapacity, 750);

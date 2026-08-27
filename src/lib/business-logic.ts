@@ -344,6 +344,20 @@ export const VENDOR_TYPE_MULTIPLIER: Record<string, { label: string; multiplier:
   efob_fob: { label: 'E-FOB/FOB', multiplier: 2.0, stockDays: 60 },
 };
 
+// EasyEcom's raw vendor status (vendor_master_data.ee_status, pulled through GCP)
+// decoded to a tri-state: true = active, false = inactive, null = unknown / not
+// yet synced (caller should fall back to the Vendor_Type_Master status). Handles
+// the common encodings (1/0, true/false, active/inactive, enabled/disabled, yes/no).
+const EE_ACTIVE = new Set(['1', 'true', 'active', 'enabled', 'yes', 'y']);
+const EE_INACTIVE = new Set(['0', 'false', 'inactive', 'disabled', 'no', 'n']);
+export function eeVendorActive(status: string | null | undefined): boolean | null {
+  const s = key(status);
+  if (!s) return null;
+  if (EE_ACTIVE.has(s)) return true;
+  if (EE_INACTIVE.has(s)) return false;
+  return null;
+}
+
 export function normaliseVendorType(raw: string | null | undefined): string {
   const v = key(raw);
   if (v.includes('job')) return 'job_work';

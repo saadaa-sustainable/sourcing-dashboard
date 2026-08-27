@@ -6,6 +6,7 @@ import {
   loadVendorCapacity,
   NotConfiguredError,
 } from '@/lib/forms/queries';
+import { eeVendorActive } from '@/lib/business-logic';
 import { VendorCapacityClient } from './vendor-capacity-client';
 
 export const dynamic = 'force-dynamic';
@@ -39,12 +40,16 @@ export default async function VendorCapacityPage() {
     vendorTypes.map((row) => [key(row.vendor_code), row.vendor_type ?? '']),
   );
 
-  // Business "active" status lives in vendor_type_master (the same signal the
-  // dashboard's "Active vendors" KPI uses) — GCP only supplies vendor names, so
-  // it carries no active flag of its own. Match by code first, then name.
+  // "Active" comes from EasyEcom's vendor status (vendor_master_data.ee_status,
+  // pulled through GCP) — the authoritative source. Until the first GCP vendor
+  // sync populates it (ee_status null), fall back to the Vendor_Type_Master
+  // status, matched by code first then name (the dashboard's "Active vendors"
+  // signal), so the page is never empty during the transition.
   const statusByCode = new Map(vendorTypes.map((row) => [key(row.vendor_code), row.status]));
   const statusByName = new Map(vendorTypes.map((row) => [key(row.vendor_name), row.status]));
   const isActive = (master: (typeof vendorMasters)[number]) => {
+    const ee = eeVendorActive(master.ee_status);
+    if (ee !== null) return ee;
     const status = statusByCode.get(key(master.vendor_code)) ?? statusByName.get(key(master.vendor_name));
     return key(status) === 'active';
   };
