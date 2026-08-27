@@ -54,17 +54,25 @@ type NavLink = {
   adminOnly?: boolean;
 };
 
-const WORKFLOW_LINKS: NavLink[] = [
-  { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
+// Read-only analytical views. They're separate routes (not the SPA tabs above),
+// but they're just information to look at — so they belong in the Workspace
+// section with the dashboards, not among the operational Workflows below.
+const WORKSPACE_LINKS: NavLink[] = [
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat, adminOnly: true },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
+  { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
+  { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
+];
+
+// Operational pages: each one you DO something on — build a plan, submit a form,
+// approve, ingest data, set terms (all back a server action that writes).
+const WORKFLOW_LINKS: NavLink[] = [
+  { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
-  { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck, adminOnly: true },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
-  { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet, adminOnly: true },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
@@ -135,6 +143,19 @@ export function SideNav({
                 </a>
               ),
             )}
+          {WORKSPACE_LINKS.filter(({ adminOnly }) => !adminOnly || role === 'admin').map(
+            ({ href, label, Icon }) => (
+              <a
+                key={href}
+                href={href}
+                className={activeWorkflow === href ? 'active' : ''}
+                onClick={close}
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </a>
+            ),
+          )}
           <div className="wf-nav-divider">Workflows</div>
           {WORKFLOW_LINKS.filter(({ adminOnly }) => !adminOnly || role === 'admin').map(
             ({ href, label, Icon, external }) => (
