@@ -9,6 +9,7 @@ import {
   Boxes,
   CalendarClock,
   ClipboardCheck,
+  Database,
   Factory,
   FileCheck,
   FilePen,
@@ -179,6 +180,30 @@ export function SideNav({
           >
             <Tags size={18} />
             <span>Product Master</span>
+          </a>
+          <a
+            href="/grn-detail"
+            className={activeWorkflow === '/grn-detail' ? 'active' : ''}
+            onClick={close}
+          >
+            <PackageCheck size={18} />
+            <span>GRN Detail</span>
+          </a>
+          <a
+            href="/doq"
+            className={activeWorkflow === '/doq' ? 'active' : ''}
+            onClick={close}
+          >
+            <Database size={18} />
+            <span>DOQ Dataset</span>
+          </a>
+          <a
+            href="/vendor-master"
+            className={activeWorkflow === '/vendor-master' ? 'active' : ''}
+            onClick={close}
+          >
+            <Factory size={18} />
+            <span>Vendor Master</span>
           </a>
           <a
             href="/fabric-master"

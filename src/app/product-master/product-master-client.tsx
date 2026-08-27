@@ -40,7 +40,31 @@ const COLS: Column<EeProductMaster>[] = [
   { key: 'qty_in_meters', label: 'Qty in Meters', kind: 'text' },
   { key: 'related_ongoing_product', label: 'Related Ongoing', kind: 'mono' },
   { key: 'washcare_sku', label: 'Washcare SKU', kind: 'mono' },
-  { key: 'active', label: 'Active', kind: 'text' },
+  {
+    key: 'active',
+    label: 'Active',
+    // Stored as "1"/"0" in EasyEcom — surface it as Active/Inactive so it reads
+    // as a status, and drive the filter dropdown off the same labels.
+    accessor: (r) => (r.active == null || r.active === '' ? '' : r.active === '1' ? 'Active' : 'Inactive'),
+    render: (r) => {
+      if (r.active == null || r.active === '') return <span className="wf-subtle">—</span>;
+      const on = r.active === '1';
+      return (
+        <span
+          style={{
+            background: on ? '#e6f4ea' : '#fce8e6',
+            color: on ? '#137333' : '#c5221f',
+            padding: '2px 8px',
+            borderRadius: 10,
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {on ? 'Active' : 'Inactive'}
+        </span>
+      );
+    },
+  },
   { key: 'width', label: 'Width', kind: 'num' },
   { key: 'height', label: 'Height', kind: 'num' },
   { key: 'length', label: 'Length', kind: 'num' },

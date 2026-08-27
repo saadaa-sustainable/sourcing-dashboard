@@ -95,6 +95,130 @@ export type EeProductMaster = {
   washcare_sku: string | null;
 };
 
+/**
+ * One inbound-QC GRN line (sd_ee_grn), read-only. From EasyEcom GRN details;
+ * qc_* / damaged / discard / lost / return_to_source are disposition quantities.
+ */
+export type GrnDetail = {
+  grn_detail_id: number;
+  grn_id: number | null;
+  grn_created_at: string | null;
+  grn_invoice_date: string | null;
+  po_id: number | null;
+  po_number: string | null;
+  po_ref_num: string | null;
+  purchase_order_detail_id: number | null;
+  product_id: number | null;
+  sku: string | null;
+  vendor_name: string | null;
+  vendor_c_id: number | null;
+  original_quantity: number | null;
+  received_quantity: number | null;
+  qc_pass: number | null;
+  qc_fail: number | null;
+  qc_pending: number | null;
+  damaged: number | null;
+  discard: number | null;
+  lost: number | null;
+  return_to_source: number | null;
+  synced_at: string | null;
+};
+
+/** One vendor's master record (vendor_master_data): identity, capacity model, contacts. */
+export type VendorMasterRow = {
+  vendor_code: string;
+  vendor_name: string | null;
+  is_active: boolean | null;
+  primary_type: string | null;
+  merchant_name: string | null;
+  capacity_per_month: number | null;
+  total_machines: number | null;
+  machines_for_saadaa: number | null;
+  total_active_karigar: number | null;
+  karigar_latest: number | null;
+  karigar_latest_as_of: string | null;
+  onboarding_date: string | null;
+  fob_complete_possible: string | null;
+  vendor_preference: string | null;
+  contact_person_name: string | null;
+  contact_no: string | null;
+  address: string | null;
+  synced_at: string | null;
+};
+
+/**
+ * One SKU×warehouse row of the daily DOQ snapshot (sd_inventory_planning), read-only.
+ * The full BigQuery planning dataset: stock, in-process, sales windows and the
+ * doq_* / oos_days_* figures the replenishment and OOS logic derive from.
+ */
+export type DoqInventoryRow = {
+  row_key: string;
+  sku: string | null;
+  warehouse: string | null;
+  size: string | null;
+  date_day: string | null;
+  product_state: string | null;
+  product_name: string | null;
+  product_variant: string | null;
+  category: string | null;
+  categorytype: string | null;
+  sub_category: string | null;
+  item_category: string | null;
+  color: string | null;
+  gender: string | null;
+  age_group: string | null;
+  season: string | null;
+  weave_type: string | null;
+  fabric_name: string | null;
+  fabric_composition: string | null;
+  fabric_gsm: number | null;
+  fabric_consumption_average: number | null;
+  garment_length_type: string | null;
+  neck_collar_type: string | null;
+  sleeve_type: string | null;
+  replenishment_type: string | null;
+  demographic_price_range: string | null;
+  related_ongoing_product: string | null;
+  washcare_sku: string | null;
+  rm_code: string | null;
+  dyed_fabric_sku: string | null;
+  qty_in_metres: string | null;
+  gst: number | null;
+  cost: number | null;
+  shopify_sp: number | null;
+  current_stock: number | null;
+  total_inprogress: number | null;
+  has_inventory_today: number | null;
+  daily_quantity: number | null;
+  lead_time: number | null;
+  buffer_days: number | null;
+  t7_quantity: number | null;
+  t45_quantity: number | null;
+  t730_quantity: number | null;
+  t73015_quantity: number | null;
+  total_sales_in_last_45_inventory_days: number | null;
+  doq_7: number | null;
+  doq_15: number | null;
+  doq_30: number | null;
+  doq_45: number | null;
+  doq_90: number | null;
+  doq_365: number | null;
+  doq_7_30: number | null;
+  doq_30_45: number | null;
+  monthly_doq: number | null;
+  yearly_doq: number | null;
+  v_doq: number | null;
+  weighted_doq_45: number | null;
+  weightage_doq: number | null;
+  oos_days_7: number | null;
+  oos_days_15: number | null;
+  oos_days_30: number | null;
+  oos_days_45: number | null;
+  oos_days_90: number | null;
+  oos_days_365: number | null;
+  synced_at: string | null;
+};
+
 /** One SKU row of the OOS Calculation sheet (sd_oos_calculation) — mirrors the DOQ sheet. */
 export type OosCalculationRow = {
   sku: string;

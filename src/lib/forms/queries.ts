@@ -20,11 +20,14 @@ import type {
   Colour,
   CostStandards,
   DiscontinueRequest,
+  DoqInventoryRow,
   FabricCostBase,
   FabricMaster,
+  GrnDetail,
   MaterialCode,
   MaterialMaster,
   EeProductMaster,
+  VendorMasterRow,
   InwardPlanGroup,
   NpdPromotionCandidate,
   OosCalculationRow,
@@ -232,6 +235,53 @@ export async function loadEeProductMaster(): Promise<EeProductMaster[]> {
     if (!data || data.length < PAGE_SIZE) break;
   }
   return rows;
+}
+
+// The GRN detail table has 170k+ rows — far too many to ship to the browser at
+// once. The viewer page shows the most recent slice; bump if a wider window is
+// needed (it stays a client-side table, so keep it in the low thousands).
+const GRN_DETAIL_LIMIT = 5000;
+
+/** Inbound-QC GRN detail (sd_ee_grn) — most recent lines, capped (see GRN_DETAIL_LIMIT). */
+export async function loadGrnDetail(): Promise<GrnDetail[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from('sd_ee_grn')
+    .select('*')
+    .order('grn_created_at', { ascending: false, nullsFirst: false })
+    .limit(GRN_DETAIL_LIMIT);
+  if (error) throw new Error(`sd_ee_grn: ${error.message}`);
+  return (data ?? []) as GrnDetail[];
+}
+
+export const grnDetailLimit = GRN_DETAIL_LIMIT;
+
+/** Daily DOQ snapshot (sd_inventory_planning) — one row per SKU×warehouse. Paged (exceeds 1000). */
+export async function loadDoqDataset(): Promise<DoqInventoryRow[]> {
+  const supabase = await client();
+  const rows: DoqInventoryRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_inventory_planning')
+      .select('*')
+      .order('sku')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_inventory_planning: ${error.message}`);
+    rows.push(...((data ?? []) as DoqInventoryRow[]));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/** Vendor master (vendor_master_data) — identity + capacity model + contacts, read-only. */
+export async function loadVendorMaster(): Promise<VendorMasterRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from('vendor_master_data')
+    .select('*')
+    .order('vendor_name');
+  if (error) throw new Error(`vendor_master_data: ${error.message}`);
+  return (data ?? []) as VendorMasterRow[];
 }
 
 /** Every product's master row + the NPD-promotion candidates, for the panel. */
