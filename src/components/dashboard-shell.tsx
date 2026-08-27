@@ -1298,53 +1298,134 @@ function TrackerTab({
   );
 }
 
+const utilizationBands = ["Over utilised (>100%)", "80–100%", "Under 80%"];
+const delayBands = ["With delayed POs", "No delayed POs"];
+
 function VendorTable({
   rows: allRows,
   filename,
   exportTitle = "Vendor performance",
   searchPlaceholder = "Filter by vendor name or code",
+  withFilters = false,
 }: {
   rows: VendorRollup[];
   filename?: string;
   exportTitle?: string;
   searchPlaceholder?: string;
+  withFilters?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [merchant, setMerchant] = useState("");
+  const [bucket, setBucket] = useState("");
+  const [utilBand, setUtilBand] = useState("");
+  const [delayBand, setDelayBand] = useState("");
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return allRows;
-    return allRows.filter(
-      (r) =>
-        (r.vendorName ?? "").toLowerCase().includes(q) ||
-        (r.vendorCode ?? "").toLowerCase().includes(q),
-    );
-  }, [allRows, query]);
+    return allRows.filter((r) => {
+      if (
+        q &&
+        !(r.vendorName ?? "").toLowerCase().includes(q) &&
+        !(r.vendorCode ?? "").toLowerCase().includes(q)
+      )
+        return false;
+      if (merchant && r.merchant !== merchant) return false;
+      if (bucket && r.vendorBucket !== bucket) return false;
+      if (utilBand === utilizationBands[0] && r.utilizationPct <= 100)
+        return false;
+      if (
+        utilBand === utilizationBands[1] &&
+        (r.utilizationPct < 80 || r.utilizationPct > 100)
+      )
+        return false;
+      if (utilBand === utilizationBands[2] && r.utilizationPct >= 80)
+        return false;
+      if (delayBand === delayBands[0] && r.delayedPoCount === 0) return false;
+      if (delayBand === delayBands[1] && r.delayedPoCount > 0) return false;
+      return true;
+    });
+  }, [allRows, query, merchant, bucket, utilBand, delayBand]);
+  const filtered = rows.length !== allRows.length;
+  const filterSummary = [
+    query.trim() && `"${query.trim()}"`,
+    merchant,
+    bucket,
+    utilBand,
+    delayBand,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const paged = usePaged(rows);
   return (
     <>
       {filename && (
-        <div className="table-meta">
-          <label className="search-field table-meta-search">
-            <Search size={14} />
-            <input
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {query && (
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Clear filter"
-                onClick={() => setQuery("")}
-              >
-                <X size={13} />
-              </button>
+        <div className={`table-meta${withFilters ? " has-filters" : ""}`}>
+          <div className="table-meta-filters">
+            <label className="search-field table-meta-search">
+              <Search size={14} />
+              <input
+                placeholder={searchPlaceholder}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Clear filter"
+                  onClick={() => setQuery("")}
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </label>
+            {withFilters && (
+              <>
+                <select
+                  className="meta-select"
+                  value={merchant}
+                  onChange={(e) => setMerchant(e.target.value)}
+                >
+                  <option value="">All merchants</option>
+                  {unique(allRows.map((r) => r.merchant)).map((m) => (
+                    <option key={m}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  className="meta-select"
+                  value={bucket}
+                  onChange={(e) => setBucket(e.target.value)}
+                >
+                  <option value="">All types</option>
+                  {unique(allRows.map((r) => r.vendorBucket)).map((b) => (
+                    <option key={b}>{b}</option>
+                  ))}
+                </select>
+                <select
+                  className="meta-select"
+                  value={utilBand}
+                  onChange={(e) => setUtilBand(e.target.value)}
+                >
+                  <option value="">All utilization</option>
+                  {utilizationBands.map((b) => (
+                    <option key={b}>{b}</option>
+                  ))}
+                </select>
+                <select
+                  className="meta-select"
+                  value={delayBand}
+                  onChange={(e) => setDelayBand(e.target.value)}
+                >
+                  <option value="">All delays</option>
+                  {delayBands.map((b) => (
+                    <option key={b}>{b}</option>
+                  ))}
+                </select>
+              </>
             )}
-          </label>
+          </div>
           <div className="table-meta-actions">
             <span>
-              {query
+              {filtered
                 ? `${fmt.format(rows.length)} of ${fmt.format(allRows.length)} rows`
                 : `${fmt.format(rows.length)} rows`}
             </span>
@@ -1356,7 +1437,9 @@ function VendorTable({
             <PdfButton
               filename={filename}
               title={
-                query ? `${exportTitle} - filter: "${query.trim()}"` : exportTitle
+                filterSummary
+                  ? `${exportTitle} - filter: ${filterSummary}`
+                  : exportTitle
               }
               headers={vendorCsvHeaders}
               rows={vendorCsvRows(rows)}
@@ -1594,6 +1677,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           filename="vendor-performance"
           exportTitle="Vendor performance"
           searchPlaceholder="Filter by vendor name or code"
+          withFilters
         />
       </section>
     </>
