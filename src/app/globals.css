@@ -434,6 +434,9 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 .link-button:hover { background: #e5e1ff; }
 
 .table-meta-actions { display: flex; align-items: center; gap: 10px; }
+.table-meta-search { height: 31px; min-width: 230px; margin-right: 12px; font-size: 10px; border-radius: 8px; }
+.table-meta-search .icon-button { padding: 2px; display: inline-flex; color: #969daf; background: transparent; border: 0; cursor: pointer; }
+.table-meta-search .icon-button:hover { color: var(--ink); }
 .download-button { padding: 6px 10px; display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--purple-dark); font-size: 10px; font-weight: 640; background: var(--purple-soft); border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: background .17s ease, border-color .17s ease, transform .17s ease; }
 .download-button:hover { background: #e5e1ff; border-color: rgba(109,93,252,.28); transform: translateY(-1px); }
 .download-button:disabled { color: var(--muted); background: rgba(148,163,184,.12); cursor: not-allowed; transform: none; }

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleHelp,
   Download,
+  FileDown,
   Info,
   LayoutDashboard,
   Lock,
@@ -44,7 +45,7 @@ import {
   resolveVendor,
   stageDelay,
 } from "@/lib/business-logic";
-import { downloadCsv, type CsvValue } from "@/lib/download";
+import { downloadCsv, downloadPdf, type CsvValue } from "@/lib/download";
 import type {
   DashboardData,
   PendingPo,
@@ -269,6 +270,42 @@ function DownloadButton({
       }
     >
       <Download size={13} /> CSV
+    </button>
+  );
+}
+
+function PdfButton({
+  filename,
+  title,
+  headers,
+  rows,
+}: {
+  filename: string;
+  title: string;
+  headers: string[];
+  rows: CsvValue[][];
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className="download-button"
+      disabled={!rows.length || busy}
+      title={
+        rows.length
+          ? `Download ${rows.length} rows as PDF`
+          : "No data to download"
+      }
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await downloadPdf(filename, title, headers, rows);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <FileDown size={13} /> {busy ? "PDF…" : "PDF"}
     </button>
   );
 }
@@ -1262,23 +1299,69 @@ function TrackerTab({
 }
 
 function VendorTable({
-  rows,
+  rows: allRows,
   filename,
+  exportTitle = "Vendor performance",
+  searchPlaceholder = "Filter by vendor name or code",
 }: {
   rows: VendorRollup[];
   filename?: string;
+  exportTitle?: string;
+  searchPlaceholder?: string;
 }) {
+  const [query, setQuery] = useState("");
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allRows;
+    return allRows.filter(
+      (r) =>
+        (r.vendorName ?? "").toLowerCase().includes(q) ||
+        (r.vendorCode ?? "").toLowerCase().includes(q),
+    );
+  }, [allRows, query]);
   const paged = usePaged(rows);
   return (
     <>
       {filename && (
         <div className="table-meta">
-          <span>{fmt.format(rows.length)} rows</span>
-          <DownloadButton
-            filename={filename}
-            headers={vendorCsvHeaders}
-            rows={vendorCsvRows(rows)}
-          />
+          <label className="search-field table-meta-search">
+            <Search size={14} />
+            <input
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {query && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Clear filter"
+                onClick={() => setQuery("")}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </label>
+          <div className="table-meta-actions">
+            <span>
+              {query
+                ? `${fmt.format(rows.length)} of ${fmt.format(allRows.length)} rows`
+                : `${fmt.format(rows.length)} rows`}
+            </span>
+            <DownloadButton
+              filename={filename}
+              headers={vendorCsvHeaders}
+              rows={vendorCsvRows(rows)}
+            />
+            <PdfButton
+              filename={filename}
+              title={
+                query ? `${exportTitle} - filter: "${query.trim()}"` : exportTitle
+              }
+              headers={vendorCsvHeaders}
+              rows={vendorCsvRows(rows)}
+            />
+          </div>
         </div>
       )}
       {rows.length ? (
@@ -1506,7 +1589,12 @@ function VendorTab({ data }: { data: DashboardData }) {
         <div className="panel-title">
           <h3>Vendor performance</h3>
         </div>
-        <VendorTable rows={rows} filename="vendor-performance" />
+        <VendorTable
+          rows={rows}
+          filename="vendor-performance"
+          exportTitle="Vendor performance"
+          searchPlaceholder="Filter by vendor name or code"
+        />
       </section>
     </>
   );
@@ -1748,7 +1836,12 @@ function MerchantTab({ data }: { data: DashboardData }) {
         <div className="panel-title">
           <h3>Merchant performance</h3>
         </div>
-        <VendorTable rows={rows} filename="merchant-performance" />
+        <VendorTable
+          rows={rows}
+          filename="merchant-performance"
+          exportTitle="Merchant performance"
+          searchPlaceholder="Filter by merchant name"
+        />
       </section>
     </>
   );
