@@ -81,3 +81,26 @@ export const canConfirmCm = (
   fabricConfirmed: boolean,
   cmConfirmed: boolean,
 ) => isAdmin(role) && stage === 'rate_submitted' && fabricConfirmed && !cmConfirmed;
+
+/**
+ * CMTP cost breakdown — the core mandatory heads ("the core architecture").
+ * Mandatory heads always render (blank = not yet costed); the team can add extra
+ * line items under any head, and add custom heads ad hoc. `suggest` seeds the
+ * real operation lines that roll up under a head (from the live CMTP cost sheet):
+ * Labour → Karigar + Thekedar Comission (the "Absolute labour Cost"), etc. The
+ * sum of every line is the FINAL CMTP.
+ */
+export const CMTP_HEADS: { key: string; label: string; suggest?: string[] }[] = [
+  { key: 'Labour', label: 'Labour', suggest: ['Karigar', 'Thekedar Comission'] },
+  { key: 'Cutting', label: 'Cutting', suggest: ['Cutting'] },
+  {
+    key: 'Finishing',
+    label: 'Finishing',
+    suggest: ['Fabric QC', 'Iron', 'Thread Cutting', 'Final QC', 'Folding'],
+  },
+  { key: 'Packaging', label: 'Packaging', suggest: ['Packing - poly bag'] },
+  { key: 'Product Trims', label: 'Product Trims', suggest: ['Thread', 'Fusing', 'Button', 'Kaaj'] },
+  { key: 'Brand Trims', label: 'Brand Trims', suggest: ['Brand Trims'] },
+];
+
+export const CMTP_MANDATORY = CMTP_HEADS.map((h) => h.key);

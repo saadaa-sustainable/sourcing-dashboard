@@ -19,6 +19,7 @@ const money = new Intl.NumberFormat('en-IN', {
 });
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
+
 export function ApprovalsClient({
   items,
   log,
@@ -371,6 +372,11 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
     : null;
   const variance =
     d.writtenRate != null && stdForType != null ? d.writtenRate - stdForType : null;
+  const cmDelta = d.poCm != null && d.stdCm != null ? d.poCm - d.stdCm : null;
+  const fabricDelta =
+    d.poFinishedFabric != null && d.stdFinishedFabric != null
+      ? d.poFinishedFabric - d.stdFinishedFabric
+      : null;
   const inproc = item.vendorInProcessQty ?? null;
   const cap = item.vendorCapacityPerMonth ?? null;
   const headroom = cap != null && inproc != null ? cap - inproc : null;
@@ -417,10 +423,48 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
 
           {tab === 'cost' && (
             <>
+              {/* CMTP vs standard — shown for review (the hard-block is deferred). */}
+              <div className="wf-cost-param">
+                <span className="wf-cost-param-head">CMTP</span>
+                <dl className="wf-doc-meta">
+                  <div><dt>PO CMTP</dt><dd>{fmtNum(d.poCm)}</dd></div>
+                  <div><dt>Standard CMTP</dt><dd>{d.stdCm != null ? fmtNum(d.stdCm) : '— (not set)'}</dd></div>
+                  <div>
+                    <dt>Deviation</dt>
+                    <dd className={cmDelta != null && cmDelta > 0 ? 'wf-error-text' : undefined}>
+                      {cmDelta != null ? fmtNum(cmDelta) : '—'}
+                      {cmDelta != null && cmDelta > 0 && ' · above standard'}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              {/* Commodity / fabric — informational only. */}
+              <div className="wf-cost-param">
+                <span className="wf-cost-param-head">Commodity / fabric — informational</span>
+                <dl className="wf-doc-meta">
+                  <div><dt>Grey (PO)</dt><dd>{fmtNum(d.poGrey)}</dd></div>
+                  <div><dt>Finished fabric (PO)</dt><dd>{fmtNum(d.poFinishedFabric)}</dd></div>
+                  <div>
+                    <dt>vs standard fabric</dt>
+                    <dd className={fabricDelta != null && fabricDelta !== 0 ? 'wf-subtle' : undefined}>
+                      {d.stdFinishedFabric != null ? fmtNum(d.stdFinishedFabric) : '—'}
+                      {fabricDelta != null && fabricDelta !== 0 && ` (${fabricDelta > 0 ? '+' : ''}${fmtNum(fabricDelta)})`}
+                    </dd>
+                  </div>
+                  <div><dt>Margin %</dt><dd>{fmtNum(d.marginPct)}</dd></div>
+                </dl>
+                <p className="wf-subtle wf-cost-param-note">
+                  Commodity moves (grey / fabric) are expected market noise — shown for awareness.
+                  CMTP vs standard is shown for review.
+                </p>
+              </div>
+
+              {/* Blended rate vs standard total — reference. */}
               <dl className="wf-doc-meta">
                 <div><dt>Written rate</dt><dd>{fmtNum(d.writtenRate)}</dd></div>
-                <div><dt>Standard ({d.poType ?? '—'})</dt><dd>{stdForType != null ? fmtNum(stdForType) : '— (not approved)'}</dd></div>
-                <div><dt>Variance</dt><dd className={variance != null && variance > 0 ? 'wf-error-text' : undefined}>{variance != null ? fmtNum(variance) : '—'}</dd></div>
+                <div><dt>Standard total ({d.poType ?? '—'})</dt><dd>{stdForType != null ? fmtNum(stdForType) : '— (not approved)'}</dd></div>
+                <div><dt>Variance</dt><dd className={variance != null && variance > 0 ? 'wf-subtle' : undefined}>{variance != null ? fmtNum(variance) : '—'}</dd></div>
               </dl>
               {d.productCode && (
                 <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={`/standard-cost?open=${encodeURIComponent(d.productCode)}`}>

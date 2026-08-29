@@ -2,13 +2,14 @@
 
 import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { ChevronDown, ChevronRight, Download, Lock, Plus, Save, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Lock, Plus, Save, Trash2, Upload } from 'lucide-react';
 import {
   confirmCmRate,
   confirmFabricRate,
   proposeCost,
   rejectCost,
   renegotiateCost,
+  saveCmtpComponents,
   saveCostStandards,
   saveMaterialCost,
   saveStandardCost,
@@ -19,6 +20,8 @@ import {
   type ActionResult,
 } from '@/lib/forms/actions';
 import {
+  CMTP_HEADS,
+  CMTP_MANDATORY,
   COST_STAGE_LABEL,
   COST_STAGE_TONE,
   canConfirmCm,
@@ -34,13 +37,20 @@ import {
 import { canEdit } from '@/lib/forms/approval';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice } from '@/components/forms/form-layout';
-import type { CostStandards, SdRole, StandardCost, StandardCostLine } from '@/lib/forms/types';
+import type {
+  CmtpComponent,
+  CostStandards,
+  SdRole,
+  StandardCost,
+  StandardCostLine,
+} from '@/lib/forms/types';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
 
 export function StandardCostClient({
   costs,
   lines = [],
+  cmtp = [],
   fabricRates = {},
   fabricCodes = [],
   standards,
@@ -50,6 +60,7 @@ export function StandardCostClient({
 }: {
   costs: StandardCost[];
   lines?: StandardCostLine[];
+  cmtp?: CmtpComponent[];
   fabricRates?: Record<string, number>;
   fabricCodes?: string[];
   standards?: CostStandards;
@@ -78,6 +89,12 @@ export function StandardCostClient({
     for (const l of lines) m.set(l.product_code, [...(m.get(l.product_code) ?? []), l]);
     return m;
   }, [lines]);
+
+  const cmtpByCode = useMemo(() => {
+    const m = new Map<string, CmtpComponent[]>();
+    for (const c of cmtp) m.set(c.product_code, [...(m.get(c.product_code) ?? []), c]);
+    return m;
+  }, [cmtp]);
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -185,6 +202,7 @@ export function StandardCostClient({
                         <CostDetail
                           cost={cost}
                           lines={linesByCode.get(cost.product_code) ?? []}
+                          cmtp={cmtpByCode.get(cost.product_code) ?? []}
                           fabricRates={fabricRates}
                           fabricCodes={fabricCodes}
                           editable={!cost.frozen && canEdit(role, cost.status)}
@@ -447,7 +465,7 @@ function CostRow({
                 </button>
               ) : canConfirmCm(role, stage, !!cost.fabric_confirmed_at, !!cost.cm_confirmed_at) ? (
                 <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmCmRate, {})}>
-                  2 · Confirm CM → sign off
+                  2 · Confirm CMTP → sign off
                 </button>
               ) : null}
               {!isMat && cost.fabric_confirmed_at && !cost.cm_confirmed_at && (
@@ -523,17 +541,19 @@ const numv = (s: string) => Number(s) || 0;
 function CostDetail({
   cost,
   lines,
+  cmtp,
   fabricRates,
   fabricCodes,
   editable,
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
+  cmtp: CmtpComponent[];
   fabricRates: Record<string, number>;
   fabricCodes: string[];
   editable: boolean;
 }) {
-  const [view, setView] = useState<'matrix' | 'document' | 'more'>('matrix');
+  const [view, setView] = useState<'cmtp' | 'matrix' | 'document' | 'more'>('cmtp');
   const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? '');
   const [cmBySize, setCmBySize] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
@@ -589,7 +609,7 @@ function CostDetail({
   }
 
   function copyMatrix() {
-    const head = 'Size\tFabric\tCM\tTotal';
+    const head = 'Size\tFabric\tCMTP\tTotal';
     const body = matrix
       .filter((r) => r.has)
       .map((r) => `${r.size}\t${r.fabric ?? ''}\t${r.cm}\t${r.total ?? ''}`)
@@ -630,7 +650,7 @@ function CostDetail({
       return;
     }
     setCmBySize((cur) => ({ ...cur, ...patch }));
-    setMsg(`Imported CM for ${Object.keys(patch).length} size(s)${bad ? `, skipped ${bad}` : ''}. Review, then Save.`);
+    setMsg(`Imported CMTP for ${Object.keys(patch).length} size(s)${bad ? `, skipped ${bad}` : ''}. Review, then Save.`);
   }
 
   function saveDetail() {
@@ -641,7 +661,7 @@ function CostDetail({
     header.set('job_cost', cost.job_cost?.toString() ?? '');
     header.set('fob_cost', cost.fob_cost?.toString() ?? '');
     header.set('efob_cost', cost.efob_cost?.toString() ?? '');
-    header.set('cm_cost', sizeAvg != null ? String(sizeAvg) : ''); // header CM = size-wise average
+    // Note: cm_cost is owned by the CMTP breakdown, not the matrix — not sent here.
     header.set('total_po_avg_cost', total);
     header.set('cad_link', cad);
     header.set('rfp_link', rfp);
@@ -682,6 +702,7 @@ function CostDetail({
 
       <div className="wf-cost-detail-head">
         <div className="segment wf-segment">
+          <button type="button" className={view === 'cmtp' ? 'active' : ''} onClick={() => setView('cmtp')}>CMTP</button>
           <button type="button" className={view === 'matrix' ? 'active' : ''} onClick={() => setView('matrix')}>Matrix</button>
           <button type="button" className={view === 'document' ? 'active' : ''} onClick={() => setView('document')}>Document</button>
           <button type="button" className={view === 'more' ? 'active' : ''} onClick={() => setView('more')}>View more</button>
@@ -726,7 +747,9 @@ function CostDetail({
         )}
       </div>
 
-      {view === 'document' ? (
+      {view === 'cmtp' ? (
+        <CmtpBreakdown cost={cost} cmtp={cmtp} editable={editable} />
+      ) : view === 'document' ? (
         <div className="wf-cost-doc">
           <h3>Cost sheet — {cost.product_code}</h3>
           <dl className="wf-doc-meta">
@@ -736,7 +759,7 @@ function CostDetail({
             <div><dt>Total PO avg</dt><dd>{total || '—'}</dd></div>
           </dl>
           <table className="wf-grid wf-cost-lines">
-            <thead><tr><th>Size</th><th className="num">Fabric</th><th className="num">CM</th><th className="num">Total</th></tr></thead>
+            <thead><tr><th>Size</th><th className="num">Fabric</th><th className="num">CMTP</th><th className="num">Total</th></tr></thead>
             <tbody>
               {filled.map((r) => (
                 <tr key={r.size}><td>{r.size}</td><td className="num">{r.fabric ?? '—'}</td><td className="num">{r.cm}</td><td className="num">{r.total ?? '—'}</td></tr>
@@ -782,7 +805,7 @@ function CostDetail({
               <tr>
                 <th>Size</th>
                 <th className="num wf-cell-calc">Fabric*</th>
-                <th className="num input-col wf-cell-input">CM</th>
+                <th className="num input-col wf-cell-input">CMTP</th>
                 <th className="num wf-cell-calc">Total*</th>
               </tr>
             </thead>
@@ -816,7 +839,7 @@ function CostDetail({
             <span className="wf-legend-input">input</span>
             <span className="wf-legend-calc">computed</span>
             — the <strong>computed</strong> (green) cells fill themselves: fabric is pulled from the
-            Fabric Cost sheet, total = fabric + CM. Paste a CM column straight from Excel.
+            Fabric Cost sheet, total = fabric + CMTP. Paste a CMTP column straight from Excel.
           </p>
 
           {editable && (
@@ -827,6 +850,187 @@ function CostDetail({
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+type CmtpRow = { uid: number; category: string; label: string; amount: string };
+
+// Monotonic client-only key source for CMTP rows (stable across add/remove).
+let cmtpUidSeq = 0;
+const nextCmtpUid = () => (cmtpUidSeq += 1);
+
+/**
+ * CMTP cost breakdown — the CM cost built from category heads (§1 of the spec).
+ * The 6 core heads always render; the team adds line items (sub-tabs) under any
+ * head, and can add custom heads ad hoc. The sum of all amounts is the CM cost,
+ * saved onto the product's standard-cost row.
+ */
+function CmtpBreakdown({
+  cost,
+  cmtp,
+  editable,
+}: {
+  cost: StandardCost;
+  cmtp: CmtpComponent[];
+  editable: boolean;
+}) {
+  const [rows, setRows] = useState<CmtpRow[]>(() =>
+    cmtp.length
+      ? cmtp.map((c) => ({
+          uid: nextCmtpUid(),
+          category: c.category,
+          label: c.label ?? '',
+          amount: c.amount != null ? String(c.amount) : '',
+        }))
+      : // No breakdown yet — seed the mandatory heads with one blank line each.
+        CMTP_HEADS.map((h) => ({ uid: nextCmtpUid(), category: h.key, label: '', amount: '' })),
+  );
+  const [newHead, setNewHead] = useState('');
+  const [busy, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+
+  // Head order: the 6 mandatory heads first, then any custom heads present.
+  const categories = useMemo(() => {
+    const order = [...CMTP_MANDATORY];
+    for (const r of rows) if (!order.includes(r.category)) order.push(r.category);
+    return order;
+  }, [rows]);
+
+  const total = rows.reduce((s, r) => s + (numv(r.amount) || 0), 0);
+
+  const addRow = (category: string, label = '') =>
+    setRows((cur) => [...cur, { uid: nextCmtpUid(), category, label, amount: '' }]);
+  const removeRow = (u: number) => setRows((cur) => cur.filter((r) => r.uid !== u));
+  const patchRow = (u: number, key: 'label' | 'amount', value: string) =>
+    setRows((cur) => cur.map((r) => (r.uid === u ? { ...r, [key]: value } : r)));
+
+  function addHead() {
+    const c = newHead.trim();
+    if (c && !rows.some((r) => r.category === c)) addRow(c);
+    setNewHead('');
+  }
+
+  function save() {
+    setErr(null);
+    const fd = new FormData();
+    fd.set('product_code', cost.product_code);
+    fd.set(
+      'components',
+      JSON.stringify(rows.map((r) => ({ category: r.category, label: r.label, amount: r.amount }))),
+    );
+    start(async () => {
+      const res = await saveCmtpComponents(fd);
+      if (res.ok) reloadWithToast();
+      else setErr(res.error);
+    });
+  }
+
+  return (
+    <div className="wf-cmtp">
+      {err && <Notice tone="error">{err}</Notice>}
+      <p className="wf-subtle">
+        CMTP cost is built from these heads — the total below is the product&rsquo;s FINAL CMTP. The
+        core heads are mandatory; add lines under a head, or a whole head, as the product needs
+        (e.g. buttoning under Product Trims for shirts).
+      </p>
+
+      {categories.map((cat) => {
+        const head = CMTP_HEADS.find((h) => h.key === cat);
+        const catRows = rows.filter((r) => r.category === cat);
+        const sub = catRows.reduce((s, r) => s + (numv(r.amount) || 0), 0);
+        const mandatory = CMTP_MANDATORY.includes(cat);
+        return (
+          <div key={cat} className="wf-cmtp-head">
+            <div className="wf-cmtp-head-row">
+              <span className="wf-cmtp-head-name">
+                {head?.label ?? cat}
+                {mandatory && <small className="wf-subtle"> · required</small>}
+              </span>
+              <span className="wf-cmtp-sub wf-cell-calc">{sub || '—'}</span>
+            </div>
+            {catRows.map((r) => (
+              <div key={r.uid} className="wf-cmtp-line">
+                <input
+                  className="wf-cmtp-label"
+                  placeholder="sub-item (optional)"
+                  value={r.label}
+                  disabled={!editable}
+                  onChange={(e) => patchRow(r.uid, 'label', e.target.value)}
+                />
+                <input
+                  className="wf-cmtp-amt"
+                  type="number"
+                  min={0}
+                  placeholder="amount"
+                  value={r.amount}
+                  disabled={!editable}
+                  onChange={(e) => patchRow(r.uid, 'amount', e.target.value)}
+                />
+                {editable && (
+                  <button
+                    type="button"
+                    className="wf-icon-btn"
+                    aria-label="Remove line"
+                    onClick={() => removeRow(r.uid)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {editable && (
+              <div className="wf-cmtp-add">
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => addRow(cat)}>
+                  <Plus size={12} /> Add line
+                </button>
+                {head?.suggest?.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="wf-chip-btn"
+                    disabled={catRows.some((r) => r.label === s)}
+                    onClick={() => addRow(cat, s)}
+                  >
+                    + {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {editable && (
+        <div className="wf-cmtp-newhead">
+          <input
+            placeholder="Add a head (e.g. Embroidery)"
+            value={newHead}
+            onChange={(e) => setNewHead(e.target.value)}
+          />
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm"
+            disabled={!newHead.trim()}
+            onClick={addHead}
+          >
+            <Plus size={12} /> Add head
+          </button>
+        </div>
+      )}
+
+      <div className="wf-cmtp-total">
+        <span>FINAL CMTP cost</span>
+        <strong className="wf-cell-calc">{total || '—'}</strong>
+      </div>
+
+      {editable && (
+        <div className="wf-cost-detail-foot">
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
+            <Save size={13} /> {busy ? 'Saving…' : 'Save CMTP breakdown'}
+          </button>
+        </div>
       )}
     </div>
   );

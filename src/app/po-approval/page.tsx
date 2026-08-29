@@ -4,6 +4,7 @@ import {
   currentUser,
   loadPoApprovals,
   loadPoSubmissions,
+  loadStandardCmByCode,
   loadTnaLeadtimes,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -33,7 +34,13 @@ export default async function PoApprovalPage() {
     { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor },
     submissions,
     leadtimes,
-  ] = await Promise.all([loadPoApprovals(), loadPoSubmissions(), loadTnaLeadtimes()]);
+    stdCm,
+  ] = await Promise.all([
+    loadPoApprovals(),
+    loadPoSubmissions(),
+    loadTnaLeadtimes(),
+    loadStandardCmByCode(),
+  ]);
 
   return (
     <FormLayout
@@ -54,6 +61,7 @@ export default async function PoApprovalPage() {
         vendorNames={vendorNames}
         submissions={submissions}
         leadtimes={leadtimes}
+        stdCm={stdCm}
         role={user.role}
       />
     </FormLayout>

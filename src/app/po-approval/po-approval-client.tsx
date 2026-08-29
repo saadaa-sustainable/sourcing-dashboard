@@ -46,6 +46,11 @@ const BLANK = {
   tna_sheet_url: '',
   cost_sheet_url: '',
   rate: '',
+  // Per-PO cost pivot (spec §5): commodity params (informational) + CM (gated).
+  grey_cost: '',
+  finished_fabric_cost: '',
+  cm_cost: '',
+  margin_pct: '',
   po_qty: '',
   po_closing_date: '',
   cad_folder_url: '',
@@ -78,6 +83,7 @@ export function PoApprovalClient({
   vendorNames = {},
   submissions = [],
   leadtimes,
+  stdCm = {},
   role,
 }: {
   pos: PoApproval[];
@@ -89,6 +95,7 @@ export function PoApprovalClient({
   vendorNames?: Record<string, string>;
   submissions?: PoSubmissionGroup[];
   leadtimes?: TnaLeadtimes;
+  stdCm?: Record<string, number>;
   role: SdRole;
 }) {
   const editable = canEdit(role, 'draft');
@@ -175,6 +182,8 @@ export function PoApprovalClient({
     ? capacity[form.vendor_code.toLowerCase()]
     : undefined;
   const activeCat = CATEGORIES.find((c) => c.value === form.category);
+  // Standard CM for the typed product — pre-fills / hints the PO's CM (spec §5).
+  const stdCmForProduct = form.product_code ? stdCm[form.product_code.trim()] : undefined;
 
   return (
     <>
@@ -314,6 +323,61 @@ export function PoApprovalClient({
                 value={form.rate}
                 placeholder="e.g. 265"
                 onChange={(e) => set('rate', e.target.value)}
+              />
+            </Field>
+            <Field
+              label="CMTP cost (this PO)"
+              hint={
+                stdCmForProduct != null
+                  ? `standard CMTP ${stdCmForProduct}`
+                  : 'the FINAL CMTP figure for this PO'
+              }
+            >
+              <div className="wf-issue-row">
+                <input
+                  type="number"
+                  min={0}
+                  value={form.cm_cost}
+                  placeholder="e.g. 92"
+                  onChange={(e) => set('cm_cost', e.target.value)}
+                />
+                {stdCmForProduct != null && (
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-ghost wf-btn-sm"
+                    title="Fill with the standard CMTP"
+                    onClick={() => set('cm_cost', String(stdCmForProduct))}
+                  >
+                    Use standard
+                  </button>
+                )}
+              </div>
+            </Field>
+            <Field label="Grey cost (this PO)" hint="commodity — informational, not gated">
+              <input
+                type="number"
+                min={0}
+                value={form.grey_cost}
+                placeholder="e.g. 270"
+                onChange={(e) => set('grey_cost', e.target.value)}
+              />
+            </Field>
+            <Field label="Finished fabric cost (this PO)" hint="commodity — informational">
+              <input
+                type="number"
+                min={0}
+                value={form.finished_fabric_cost}
+                placeholder="e.g. 180"
+                onChange={(e) => set('finished_fabric_cost', e.target.value)}
+              />
+            </Field>
+            <Field label="Margin %" hint="optional">
+              <input
+                type="number"
+                min={0}
+                value={form.margin_pct}
+                placeholder="e.g. 5"
+                onChange={(e) => set('margin_pct', e.target.value)}
               />
             </Field>
             <Field label="PO quantity" hint="= sum of size lines (add them on the row after saving)">

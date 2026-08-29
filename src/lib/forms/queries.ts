@@ -47,6 +47,7 @@ import type {
   VendorTerm,
   StandardCost,
   StandardCostLine,
+  CmtpComponent,
   VendorCapacityLog,
   VendorTypeMultiplier,
 } from './types';
@@ -373,6 +374,33 @@ export async function loadStandardCostLines(): Promise<StandardCostLine[]> {
     .order('size')
     .limit(PAGE_SIZE);
   return (data ?? []) as StandardCostLine[];
+}
+
+/** product_code → standard CM (CMTP total), to pre-fill the PO cost pivot. */
+export async function loadStandardCmByCode(): Promise<Record<string, number>> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_standard_cost')
+    .select('product_code, cm_cost')
+    .not('cm_cost', 'is', null)
+    .limit(PAGE_SIZE);
+  const map: Record<string, number> = {};
+  for (const r of (data ?? []) as { product_code: string; cm_cost: number | null }[]) {
+    if (r.cm_cost != null) map[r.product_code] = Number(r.cm_cost);
+  }
+  return map;
+}
+
+/** CMTP cost-breakdown line items (all products), for the Standard Cost CMTP view. */
+export async function loadCmtpComponents(): Promise<CmtpComponent[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_cmtp_component')
+    .select('*')
+    .order('product_code')
+    .order('position')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as CmtpComponent[];
 }
 
 /** Every material-cost row, for the Material tab of the Standard Cost page. */
@@ -1265,6 +1293,45 @@ export async function loadApprovalQueue(): Promise<{
       }
     }
 
+    // Standard CM (CMTP total) + standard finished-fabric per product — the
+    // benchmarks the PO cost-pivot compares against (spec §5). CM gates approval;
+    // finished fabric is shown for awareness only.
+    const stdCmByCode: Record<string, number> = {};
+    const stdFabricByCode: Record<string, number> = {};
+    if (poCodes.length) {
+      const { data: scRows } = await supabase
+        .from('sd_standard_cost')
+        .select('product_code, cm_cost, fabric_code')
+        .in('product_code', poCodes);
+      const fabricCodes = [
+        ...new Set(
+          ((scRows ?? []) as { fabric_code: string | null }[])
+            .map((r) => r.fabric_code)
+            .filter(Boolean) as string[],
+        ),
+      ];
+      const fabricRate: Record<string, number> = {};
+      if (fabricCodes.length) {
+        const { data: fb } = await supabase
+          .from('sd_fabric_cost_base')
+          .select('fabric_code, finished_fabric_cost')
+          .in('fabric_code', fabricCodes);
+        for (const r of (fb ?? []) as { fabric_code: string; finished_fabric_cost: number | null }[]) {
+          if (r.finished_fabric_cost != null) fabricRate[r.fabric_code] = Number(r.finished_fabric_cost);
+        }
+      }
+      for (const r of (scRows ?? []) as {
+        product_code: string;
+        cm_cost: number | null;
+        fabric_code: string | null;
+      }[]) {
+        if (r.cm_cost != null) stdCmByCode[r.product_code] = Number(r.cm_cost);
+        if (r.fabric_code && fabricRate[r.fabric_code] != null) {
+          stdFabricByCode[r.product_code] = fabricRate[r.fabric_code];
+        }
+      }
+    }
+
     for (const po of poList) {
       const qty = Number(po.po_qty || 0);
       const vendor = (po.vendor_code ?? '').trim();
@@ -1302,6 +1369,12 @@ export async function loadApprovalQueue(): Promise<{
           poQty: qty,
           writtenRate: po.rate,
           stdCost,
+          poCm: po.cm_cost,
+          stdCm: po.product_code ? stdCmByCode[po.product_code] ?? null : null,
+          poGrey: po.grey_cost,
+          poFinishedFabric: po.finished_fabric_cost,
+          stdFinishedFabric: po.product_code ? stdFabricByCode[po.product_code] ?? null : null,
+          marginPct: po.margin_pct,
           inventory: inv
             ? {
                 currentStock: inv.stock,

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadCmtpComponents,
   loadCostStandards,
   loadFabricCostBase,
   loadMaterialStandardCosts,
@@ -39,14 +40,15 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, standards] =
+  const [costs, lines, fabricBase, standards, cmtp] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards()]
+      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), []]
       : await Promise.all([
           loadStandardCosts(),
           loadStandardCostLines(),
           loadFabricCostBase(),
           loadCostStandards(),
+          loadCmtpComponents(),
         ]);
 
   // Fabric rate map (finished fabric cost) + code list, for the CM matrix's
@@ -75,6 +77,7 @@ export default async function StandardCostPage({
       <StandardCostClient
         costs={costs}
         lines={lines}
+        cmtp={cmtp}
         fabricRates={fabricRates}
         fabricCodes={fabricCodes}
         standards={standards}

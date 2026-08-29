@@ -517,6 +517,21 @@ export type StandardCostLine = {
   total_cost: number | null;
 };
 
+/**
+ * One line item of a product's CMTP (Cutting/Manufacturing/Trims/Packaging) cost
+ * breakdown (sd_cmtp_component). Rows roll up by `category` head; the sum of all
+ * amounts is the product's CM cost. `label` names a sub-item (e.g. "Ironing"); a
+ * plain head amount has an empty label.
+ */
+export type CmtpComponent = {
+  id: number;
+  product_code: string;
+  category: string;
+  label: string | null;
+  amount: number | null;
+  position: number;
+};
+
 export type ApprovalLogRow = {
   id: number;
   entity_type: ApprovalEntity;
@@ -671,6 +686,16 @@ export type PoApproval = {
   buying_plan_no: string | null;
   category: PoCategory;
   rate: number | null; // negotiated rate, filled with the cost sheet
+  // Per-PO cost parameters (spec §5): commodity params are informational at
+  // approval; cm_cost is the CMTP figure the hard gate validates against standard.
+  grey_cost: number | null;
+  finished_fabric_cost: number | null;
+  cm_cost: number | null;
+  margin_pct: number | null;
+  // Approved above-standard-CM exception (remark mandatory when it applies).
+  cm_override_note: string | null;
+  cm_override_by: string | null;
+  cm_override_at: string | null;
   requested_total_days: number | null; // day-count as requested at submission (locked)
   // approval workflow
   status: SdStatus;
@@ -815,6 +840,14 @@ export type PoApprovalDetail = {
   poQty: number;
   writtenRate: number | null;
   stdCost: { job: number; fob: number; efob: number } | null;
+  // Cost pivot (spec §5): CM is the gated parameter; grey/finished-fabric are
+  // commodity context (informational). stdCm/stdFinishedFabric are the standards.
+  poCm: number | null;
+  stdCm: number | null;
+  poGrey: number | null;
+  poFinishedFabric: number | null;
+  stdFinishedFabric: number | null;
+  marginPct: number | null;
   inventory: {
     currentStock: number;
     inProgress: number;

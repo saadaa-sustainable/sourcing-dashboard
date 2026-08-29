@@ -546,6 +546,11 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
 
   // Hard gate: a PO's cost cannot be approved until its TNA critical-path dates are
   // confirmed and locked by the approver (see confirmTna). Rejection is always allowed.
+  //
+  // NOTE (spec §5): the CMTP-deviation hard-block (block approval when the PO's CMTP
+  // is above the product's standard CMTP unless the approver confirms with a remark)
+  // is DEFERRED — for now the approval cost tab shows the CMTP-vs-standard comparison
+  // for review only, and does not block. The block will be added later.
   if (entityType === 'po_approval' && decision === 'approve') {
     const { data: po } = await supabase
       .from('sd_po_approval')
@@ -843,12 +848,11 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     );
   }
 
-  const patch = {
+  const patch: Record<string, unknown> = {
     product_code,
     job_cost: numOrNull(formData.get('job_cost')),
     fob_cost: numOrNull(formData.get('fob_cost')),
     efob_cost: numOrNull(formData.get('efob_cost')),
-    cm_cost: numOrNull(formData.get('cm_cost')),
     total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
     cad_link: textOrNull(formData.get('cad_link')),
     rfp_link: textOrNull(formData.get('rfp_link')),
@@ -857,6 +861,9 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     documented: true,
     updated_at: new Date().toISOString(),
   };
+  // cm_cost is owned by the CMTP breakdown (saveCmtpComponents). Only touch it
+  // when a caller explicitly sends it, so a header save never wipes the CMTP total.
+  if (formData.has('cm_cost')) patch.cm_cost = numOrNull(formData.get('cm_cost'));
   const { data, error } = await supabase
     .from('sd_standard_cost')
     .upsert(patch, { onConflict: 'product_code' })
@@ -923,6 +930,71 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
 
   revalidatePath('/standard-cost');
   return done(`Saved ${clean.length} cost line(s) for ${product_code}.`);
+}
+
+/**
+ * Replace the CMTP (Cutting/Manufacturing/Trims/Packaging) breakdown for one
+ * product. The sum of all line-item amounts becomes the product's CM cost
+ * (sd_standard_cost.cm_cost) — the CMTP breakdown is the authoritative CM source.
+ */
+export async function saveCmtpComponents(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit standard costs.');
+  }
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+
+  let rows: { category?: string; label?: string; amount?: unknown }[] = [];
+  try {
+    rows = JSON.parse(String(formData.get('components') ?? '[]'));
+  } catch {
+    rows = [];
+  }
+
+  const supabase = await supa();
+  const { data: parent } = await supabase
+    .from('sd_standard_cost')
+    .select('id, frozen')
+    .eq('product_code', product_code)
+    .maybeSingle();
+  if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
+
+  // Keep only rows that carry a head; drop fully-empty scratch rows.
+  const clean = rows
+    .map((r, i) => ({
+      product_code,
+      category: String(r.category ?? '').trim(),
+      label: textOrNull(r.label),
+      amount: numOrNull(r.amount),
+      position: i,
+    }))
+    .filter((r) => r.category && (r.label != null || r.amount != null));
+
+  const total = clean.reduce((s, r) => s + (r.amount ?? 0), 0);
+
+  // Replace strategy: clear the product's CMTP rows, then insert the current set.
+  await supabase.from('sd_cmtp_component').delete().eq('product_code', product_code);
+  if (clean.length) {
+    const { error } = await supabase.from('sd_cmtp_component').insert(clean);
+    if (error) return fail(`Could not save CMTP breakdown: ${error.message}`);
+  }
+
+  // CMTP total is the CM cost. Saving is documenting — clears the data-gap flag.
+  const { error: upErr } = await supabase.from('sd_standard_cost').upsert(
+    {
+      product_code,
+      cm_cost: clean.length ? total : null,
+      documented: true,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'product_code' },
+  );
+  if (upErr) return fail(`Could not save CM cost: ${upErr.message}`);
+
+  revalidatePath('/standard-cost');
+  return done(`Saved CMTP breakdown for ${product_code} — CM ${total}.`);
 }
 
 export async function submitStandardCost(formData: FormData): Promise<ActionResult> {
@@ -1407,6 +1479,11 @@ function readPoFields(formData: FormData) {
     tna_sheet_url: textOrNull(formData.get('tna_sheet_url')),
     cost_sheet_url: textOrNull(formData.get('cost_sheet_url')),
     rate: numOrNull(formData.get('rate')),
+    // Per-PO cost pivot (spec §5) — commodity params + the gated CM figure.
+    grey_cost: numOrNull(formData.get('grey_cost')),
+    finished_fabric_cost: numOrNull(formData.get('finished_fabric_cost')),
+    cm_cost: numOrNull(formData.get('cm_cost')),
+    margin_pct: numOrNull(formData.get('margin_pct')),
     // po_qty is NOT taken from the form — it is derived from the size lines
     // (savePoLines keeps sd_po_approval.po_qty = sum of line qty).
     po_closing_date: dateOrNull(formData.get('po_closing_date')),
