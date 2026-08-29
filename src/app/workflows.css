@@ -922,6 +922,10 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .wf-legend-input { background: #33302b; color: #fff; }
 .wf-legend-calc { background: #d7efdc; color: #2f6b3a; }
+/* ---- Standard Cost detail: two-entity Fabric / Final views ---- */
+.wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
+.wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
+
 /* ---- PO approval: timeline-extension flag (delivered past approved date) ---- */
 .wf-timeline-flag {
   display: inline-block; margin-top: 2px; padding: 1px 7px; border-radius: 999px;

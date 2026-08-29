@@ -24,6 +24,22 @@ They are **separate ownership domains**. Both must be independently *standardize
 reflects this with sequential sign-off: **fabric rate confirmed first, then CM
 second** (`fabric_confirmed_at` → `cm_confirmed_at`).
 
+### v1 implementation (detail tabs)
+The per-product detail is reworked into three tabs matching the two-entity model:
+- **CMTP** — the CMTP breakdown (Nimisha / Durganshu). See §1.
+- **Fabric Cost** — the linked fabric's buildup pulled **read-only from the Fabric
+  Cost master** (`/fabric-cost`, Vikram ji), with an "Edit on Fabric Cost →" link;
+  plus a **per-size consumption grid** (XS…4XL). Fabric cost per garment =
+  finished-fabric rate × consumption(size). Consumption stored on
+  `sd_standard_cost_line.consumption`.
+- **Final Cost** — computed, never editable: per size **Fabric + CMTP = Garment**,
+  then **REJ / OH / MARGIN → FINAL PRICE** (see §4b). The PO-average final price is
+  saved to `sd_standard_cost.total_po_avg_cost`.
+
+Each entity is edited/owned separately; the Final tab is pure computation. Fuller
+**independent approval trails** per entity are part of the deferred approval rebuild
+(§5) — today the sequential fabric→CMTP sign-off still stands.
+
 ---
 
 ## 1. CMTP cost sheet — hierarchical template  *(building now)*
@@ -161,8 +177,12 @@ Notes:
   and everything downstream are green (computed).
 - REJ and OH each cap at **₹10** (the lower of 5% or ₹10). MARGIN is a flat **15%**.
 - FABRIC COST is size-dependent (consumption varies by size); CMTP is size-invariant.
-- This buildup is not yet implemented — §1 (CMTP) is the first slice of it. FINAL PRICE
-  automation (fabric buildup + REJ/OH/MARGIN) is a later piece.
+- **Implemented** in the Final Cost tab: Garment (Fabric + CMTP) → REJ (min 5%/₹10) →
+  OH (min 5%/₹10) → MARGIN 15% → FINAL PRICE, per size + PO-average. The fabric side
+  uses the master's **finished-fabric** rate × per-size consumption (the greige →
+  dyeing → shrinkage → dyed-fabric buildup lives on the Fabric Cost master, §4).
+- Margin base assumption in code: 15% on the subtotal **after** REJ + OH. Confirm
+  with Mahesh if margin should instead be 15% of the bare garment cost.
 
 ---
 

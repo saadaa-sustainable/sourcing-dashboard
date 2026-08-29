@@ -888,7 +888,14 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
   const product_code = String(formData.get('product_code') ?? '').trim();
   if (!product_code) return fail('Product code is required.');
 
-  let lines: { colour?: string; size?: string; fabric_cost?: unknown; cm_cost?: unknown; total_cost?: unknown }[] = [];
+  let lines: {
+    colour?: string;
+    size?: string;
+    consumption?: unknown;
+    fabric_cost?: unknown;
+    cm_cost?: unknown;
+    total_cost?: unknown;
+  }[] = [];
   try {
     lines = JSON.parse(String(formData.get('lines') ?? '[]'));
   } catch {
@@ -908,11 +915,20 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
       product_code,
       colour: textOrNull(l.colour),
       size: textOrNull(l.size),
+      consumption: numOrNull(l.consumption),
       fabric_cost: numOrNull(l.fabric_cost),
       cm_cost: numOrNull(l.cm_cost),
       total_cost: numOrNull(l.total_cost),
     }))
-    .filter((l) => l.colour || l.size || l.fabric_cost != null || l.cm_cost != null || l.total_cost != null);
+    .filter(
+      (l) =>
+        l.colour ||
+        l.size ||
+        l.consumption != null ||
+        l.fabric_cost != null ||
+        l.cm_cost != null ||
+        l.total_cost != null,
+    );
 
   // Replace strategy: clear the product's lines, then insert the current set.
   await supabase.from('sd_standard_cost_line').delete().eq('product_code', product_code);

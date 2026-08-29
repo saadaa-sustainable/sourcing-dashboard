@@ -512,6 +512,7 @@ export type StandardCostLine = {
   product_code: string;
   colour: string | null;
   size: string | null;
+  consumption: number | null; // per-size fabric consumption (mtr) — drives fabric cost
   fabric_cost: number | null;
   cm_cost: number | null;
   total_cost: number | null;

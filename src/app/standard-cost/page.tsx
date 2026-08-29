@@ -51,13 +51,17 @@ export default async function StandardCostPage({
           loadCmtpComponents(),
         ]);
 
-  // Fabric rate map (finished fabric cost) + code list, for the CM matrix's
-  // auto-pulled Fabric column.
-  const fabricRates: Record<string, number> = {};
+  // Fabric buildup map (grey / processing / finished) + code list — the Fabric
+  // Cost tab references these read-only from the Fabric Cost master.
+  const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
   const fabricCodes: string[] = [];
   for (const f of fabricBase) {
     fabricCodes.push(f.fabric_code);
-    if (f.finished_fabric_cost != null) fabricRates[f.fabric_code] = Number(f.finished_fabric_cost);
+    fabricByCode[f.fabric_code] = {
+      grey: f.grey_rate != null ? Number(f.grey_rate) : null,
+      processing: f.processing_cost != null ? Number(f.processing_cost) : null,
+      finished: f.finished_fabric_cost != null ? Number(f.finished_fabric_cost) : null,
+    };
   }
 
   return (
@@ -78,7 +82,7 @@ export default async function StandardCostPage({
         costs={costs}
         lines={lines}
         cmtp={cmtp}
-        fabricRates={fabricRates}
+        fabricBase={fabricByCode}
         fabricCodes={fabricCodes}
         standards={standards}
         initialOpen={openCode}

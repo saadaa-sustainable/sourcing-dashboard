@@ -1,8 +1,8 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState, useTransition } from 'react';
+import { Fragment, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { ChevronDown, ChevronRight, Download, Lock, Plus, Save, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, Plus, Save, Trash2 } from 'lucide-react';
 import {
   confirmCmRate,
   confirmFabricRate,
@@ -35,7 +35,6 @@ import {
   nextActor,
 } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
-import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice } from '@/components/forms/form-layout';
 import type {
   CmtpComponent,
@@ -47,11 +46,14 @@ import type {
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
 
+/** Read-only fabric buildup referenced from the Fabric Cost master. */
+type FabricBuildup = { grey: number | null; processing: number | null; finished: number | null };
+
 export function StandardCostClient({
   costs,
   lines = [],
   cmtp = [],
-  fabricRates = {},
+  fabricBase = {},
   fabricCodes = [],
   standards,
   initialOpen = null,
@@ -61,7 +63,7 @@ export function StandardCostClient({
   costs: StandardCost[];
   lines?: StandardCostLine[];
   cmtp?: CmtpComponent[];
-  fabricRates?: Record<string, number>;
+  fabricBase?: Record<string, FabricBuildup>;
   fabricCodes?: string[];
   standards?: CostStandards;
   initialOpen?: string | null;
@@ -203,7 +205,7 @@ export function StandardCostClient({
                           cost={cost}
                           lines={linesByCode.get(cost.product_code) ?? []}
                           cmtp={cmtpByCode.get(cost.product_code) ?? []}
-                          fabricRates={fabricRates}
+                          fabricBase={fabricBase}
                           fabricCodes={fabricCodes}
                           editable={!cost.frozen && canEdit(role, cost.status)}
                         />
@@ -531,156 +533,116 @@ function CostRow({
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'] as const;
 const numv = (s: string) => Number(s) || 0;
 
+// FINAL PRICE buildup (matches the live cost sheet): on the total garment cost,
+// REJ and OH each add min(5%, ₹10), then MARGIN adds 15% on the subtotal.
+const REJ_PCT = 0.05;
+const OH_PCT = 0.05;
+const MARGIN_PCT = 0.15;
+const RO_CAP = 10;
+const r2 = (n: number) => Math.round(n * 100) / 100;
+function buildFinal(garment: number) {
+  const rej = Math.min(garment * REJ_PCT, RO_CAP);
+  const oh = Math.min(garment * OH_PCT, RO_CAP);
+  const sub = garment + rej + oh;
+  const margin = sub * MARGIN_PCT;
+  return { rej, oh, margin, final: sub + margin };
+}
+
 /**
- * The expandable cost record — an Excel-paste-friendly CM cost matrix (sizes as
- * rows). Fabric rate is pulled from the Fabric Cost sheet (computed, read-only);
- * CM is entered (paste a column straight from Excel); Total and the size-wise
- * average compute automatically. Two output views: the editable matrix, a formal
- * Document view, and View More for the full record.
+ * The expandable cost record — the two linked standards that concatenate into the
+ * final cost, each independently owned:
+ *   • Fabric Cost — referenced read-only from the Fabric Cost master (Vikram ji);
+ *     per-size fabric cost = finished-fabric rate × consumption(size).
+ *   • CMTP — the CMTP breakdown tab (Nimisha / Durganshu).
+ * Final Cost = Fabric + CMTP → REJ / OH / MARGIN → FINAL PRICE, all computed and
+ * never directly editable.
  */
 function CostDetail({
   cost,
   lines,
   cmtp,
-  fabricRates,
+  fabricBase,
   fabricCodes,
   editable,
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
   cmtp: CmtpComponent[];
-  fabricRates: Record<string, number>;
+  fabricBase: Record<string, FabricBuildup>;
   fabricCodes: string[];
   editable: boolean;
 }) {
-  const [view, setView] = useState<'cmtp' | 'matrix' | 'document' | 'more'>('cmtp');
+  const [view, setView] = useState<'cmtp' | 'fabric' | 'final'>('cmtp');
   const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? '');
-  const [cmBySize, setCmBySize] = useState<Record<string, string>>(() => {
+  const [consBySize, setConsBySize] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
     for (const l of lines) {
-      if (l.size && l.cm_cost != null) m[l.size.toUpperCase()] = String(l.cm_cost);
+      if (l.size && l.consumption != null) m[l.size.toUpperCase()] = String(l.consumption);
     }
     return m;
   });
-  const [total, setTotal] = useState(cost.total_po_avg_cost?.toString() ?? '');
   const [cad, setCad] = useState(cost.cad_link ?? '');
   const [rfp, setRfp] = useState(cost.rfp_link ?? '');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  const fabricRate = fabricCode ? fabricRates[fabricCode] : undefined;
+  const fab = fabricCode ? fabricBase[fabricCode] : undefined;
+  const fabricRate = fab?.finished ?? null;
+  const cmtpTotal = cost.cm_cost; // FINAL CMTP owned by the CMTP tab
 
-  // Per-size computed rows.
-  const matrix = SIZES.map((size) => {
-    const cm = cmBySize[size] ?? '';
-    const has = cm !== '';
-    const totalCell = has ? (fabricRate ?? 0) + numv(cm) : null;
-    return { size, cm, fabric: fabricRate ?? null, total: totalCell, has };
+  // Per-size buildup: fabric = rate × consumption; garment = fabric + CMTP; then
+  // the FINAL PRICE chain.
+  const rows = SIZES.map((size) => {
+    const cons = consBySize[size] ?? '';
+    const has = cons !== '';
+    const fabric = has && fabricRate != null ? r2(fabricRate * numv(cons)) : null;
+    const garment = fabric != null && cmtpTotal != null ? r2(fabric + cmtpTotal) : null;
+    const f = garment != null ? buildFinal(garment) : null;
+    return {
+      size,
+      cons,
+      has,
+      fabric,
+      garment,
+      rej: f ? r2(f.rej) : null,
+      oh: f ? r2(f.oh) : null,
+      margin: f ? r2(f.margin) : null,
+      final: f ? r2(f.final) : null,
+    };
   });
-  const filled = matrix.filter((r) => r.has);
-  const sizeAvg = filled.length
-    ? Math.round(filled.reduce((s, r) => s + (r.total ?? 0), 0) / filled.length)
-    : null;
+  const filled = rows.filter((r) => r.has);
+  const poAvgFinal =
+    filled.length && filled.every((r) => r.final != null)
+      ? r2(filled.reduce((s, r) => s + (r.final ?? 0), 0) / filled.length)
+      : null;
 
-  function setCm(size: string, value: string) {
-    setCmBySize((cur) => ({ ...cur, [size]: value }));
+  function setCons(size: string, value: string) {
+    setConsBySize((cur) => ({ ...cur, [size]: value }));
   }
 
-  // Excel paste: a column of CM values (newline-separated) fills down from the
-  // pasted cell. Tabs are tolerated — first token per line is taken as the CM.
-  function onCmPaste(e: React.ClipboardEvent, startIdx: number) {
-    const text = e.clipboardData.getData('text');
-    if (!text || !/[\n\t]/.test(text)) return; // single value → let it paste normally
-    e.preventDefault();
-    const vals = text
-      .split(/\r\n|\r|\n/)
-      .map((line) => line.split('\t')[0].trim())
-      .filter((_, i, arr) => i < arr.length);
-    setCmBySize((cur) => {
-      const next = { ...cur };
-      vals.forEach((v, k) => {
-        const size = SIZES[startIdx + k];
-        if (size && v !== '') next[size] = v;
-      });
-      return next;
-    });
-  }
-
-  function copyMatrix() {
-    const head = 'Size\tFabric\tCMTP\tTotal';
-    const body = matrix
-      .filter((r) => r.has)
-      .map((r) => `${r.size}\t${r.fabric ?? ''}\t${r.cm}\t${r.total ?? ''}`)
-      .join('\n');
-    void navigator.clipboard?.writeText(`${head}\n${body}`);
-    setMsg('Matrix copied to clipboard.');
-  }
-
-  function downloadTemplate() {
-    downloadCsv(
-      `cost-cm-${cost.product_code}.csv`,
-      ['size', 'cm'],
-      SIZES.map((s) => [s, cmBySize[s] ?? '']),
-    );
-  }
-
-  async function onCsvFile(file: File) {
+  // Both the Fabric and Final tabs persist the same record (fabric link, per-size
+  // consumption, doc links, and the computed PO-average final price).
+  function save() {
     setErr(null);
-    setMsg(null);
-    let objects: Record<string, string>[];
-    try {
-      objects = csvObjects(await file.text());
-    } catch {
-      setErr('Could not read that file as CSV.');
-      return;
-    }
-    const sizeSet = new Set<string>(SIZES);
-    const patch: Record<string, string> = {};
-    let bad = 0;
-    for (const r of objects) {
-      const size = String(r.size ?? '').trim().toUpperCase();
-      const cm = String(r.cm ?? r.cm_cost ?? '').trim();
-      if (!sizeSet.has(size)) { bad += 1; continue; }
-      if (cm !== '') patch[size] = cm;
-    }
-    if (!Object.keys(patch).length) {
-      setErr('No matching sizes imported. Expected headers: size, cm.');
-      return;
-    }
-    setCmBySize((cur) => ({ ...cur, ...patch }));
-    setMsg(`Imported CMTP for ${Object.keys(patch).length} size(s)${bad ? `, skipped ${bad}` : ''}. Review, then Save.`);
-  }
-
-  function saveDetail() {
-    setErr(null);
-    setMsg(null);
     const header = new FormData();
     header.set('product_code', cost.product_code);
-    header.set('job_cost', cost.job_cost?.toString() ?? '');
-    header.set('fob_cost', cost.fob_cost?.toString() ?? '');
-    header.set('efob_cost', cost.efob_cost?.toString() ?? '');
-    // Note: cm_cost is owned by the CMTP breakdown, not the matrix — not sent here.
-    header.set('total_po_avg_cost', total);
+    header.set('fabric_code', fabricCode);
     header.set('cad_link', cad);
     header.set('rfp_link', rfp);
-    header.set('fabric_code', fabricCode);
+    if (poAvgFinal != null) header.set('total_po_avg_cost', String(poAvgFinal));
 
     const detail = new FormData();
     detail.set('product_code', cost.product_code);
     detail.set(
       'lines',
       JSON.stringify(
-        matrix
-          .filter((r) => r.has)
-          .map((r) => ({
-            colour: '',
-            size: r.size,
-            fabric_cost: r.fabric != null ? String(r.fabric) : '',
-            cm_cost: r.cm,
-            total_cost: r.total != null ? String(r.total) : '',
-          })),
+        filled.map((r) => ({
+          colour: '',
+          size: r.size,
+          consumption: r.cons,
+          fabric_cost: r.fabric != null ? String(r.fabric) : '',
+          total_cost: r.garment != null ? String(r.garment) : '',
+        })),
       ),
     );
 
@@ -693,163 +655,143 @@ function CostDetail({
     });
   }
 
-  const rw = editable && view !== 'document';
-
   return (
     <div className="wf-cost-detail">
       {err && <Notice tone="error">{err}</Notice>}
-      {msg && <Notice tone="ok">{msg}</Notice>}
 
       <div className="wf-cost-detail-head">
         <div className="segment wf-segment">
           <button type="button" className={view === 'cmtp' ? 'active' : ''} onClick={() => setView('cmtp')}>CMTP</button>
-          <button type="button" className={view === 'matrix' ? 'active' : ''} onClick={() => setView('matrix')}>Matrix</button>
-          <button type="button" className={view === 'document' ? 'active' : ''} onClick={() => setView('document')}>Document</button>
-          <button type="button" className={view === 'more' ? 'active' : ''} onClick={() => setView('more')}>View more</button>
+          <button type="button" className={view === 'fabric' ? 'active' : ''} onClick={() => setView('fabric')}>Fabric Cost</button>
+          <button type="button" className={view === 'final' ? 'active' : ''} onClick={() => setView('final')}>Final Cost</button>
         </div>
-        {view === 'matrix' && (
-          <div className="wf-toolbar-right">
-            <label className="wf-inline-field">
-              Fabric
-              <select value={fabricCode} disabled={!rw} onChange={(e) => setFabricCode(e.target.value)}>
-                <option value="">—</option>
-                {fabricCodes.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </label>
-            <span className="wf-subtle">
-              Fabric rate {fabricRate != null ? fabricRate : '— (set in Fabric Cost)'}
-            </span>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onCsvFile(f);
-                e.target.value = '';
-              }}
-            />
-            {rw && (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
-                <Download size={13} /> Template
-              </button>
-            )}
-            {rw && (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
-                <Upload size={13} /> Import CSV
-              </button>
-            )}
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={copyMatrix}>Copy</button>
-          </div>
-        )}
+        <span className="wf-subtle wf-two-entity-note">
+          Final = Fabric + CMTP (computed). Two owners: Fabric — Vikram ji · CMTP — Nimisha / Durganshu.
+        </span>
       </div>
 
       {view === 'cmtp' ? (
         <CmtpBreakdown cost={cost} cmtp={cmtp} editable={editable} />
-      ) : view === 'document' ? (
-        <div className="wf-cost-doc">
-          <h3>Cost sheet — {cost.product_code}</h3>
-          <dl className="wf-doc-meta">
-            <div><dt>Fabric</dt><dd>{fabricCode || '—'}</dd></div>
-            <div><dt>Fabric rate</dt><dd>{fabricRate ?? '—'}</dd></div>
-            <div><dt>Size-wise avg</dt><dd>{sizeAvg ?? '—'}</dd></div>
-            <div><dt>Total PO avg</dt><dd>{total || '—'}</dd></div>
-          </dl>
-          <table className="wf-grid wf-cost-lines">
-            <thead><tr><th>Size</th><th className="num">Fabric</th><th className="num">CMTP</th><th className="num">Total</th></tr></thead>
-            <tbody>
-              {filled.map((r) => (
-                <tr key={r.size}><td>{r.size}</td><td className="num">{r.fabric ?? '—'}</td><td className="num">{r.cm}</td><td className="num">{r.total ?? '—'}</td></tr>
-              ))}
-              {!filled.length && <tr><td colSpan={4} className="wf-empty-cell">No costed sizes yet.</td></tr>}
-            </tbody>
-            {filled.length > 0 && (
-              <tfoot><tr><td colSpan={3}>Size-wise average</td><td className="num strong">{sizeAvg}</td></tr></tfoot>
-            )}
-          </table>
-          {(cad || rfp) && (
-            <p className="wf-subtle">
-              {cad && <>CAD: <a href={cad}>{cad}</a> </>}
-              {rfp && <>· RFP: <a href={rfp}>{rfp}</a></>}
-            </p>
-          )}
-        </div>
-      ) : (
-        <>
-          {view === 'more' && (
-            <div className="wf-form-grid">
-              <label className="field wf-field">
-                <span>Fabric<small>rate pulled from Fabric Cost</small></span>
-                <select value={fabricCode} disabled={!rw} onChange={(e) => setFabricCode(e.target.value)}>
-                  <option value="">—</option>
-                  {fabricCodes.map((f) => (<option key={f} value={f}>{f}</option>))}
-                </select>
-              </label>
-              <Field label="Total PO average cost" hint="entered directly">
-                <input type="number" min={0} value={total} disabled={!rw} onChange={(e) => setTotal(e.target.value)} />
-              </Field>
-              <Field label="CAD link">
-                <input value={cad} disabled={!rw} placeholder="https://…" onChange={(e) => setCad(e.target.value)} />
-              </Field>
-              <Field label="RFP link">
-                <input value={rfp} disabled={!rw} placeholder="https://…" onChange={(e) => setRfp(e.target.value)} />
-              </Field>
-            </div>
-          )}
+      ) : view === 'fabric' ? (
+        <div className="wf-fabric-view">
+          <div className="wf-form-grid">
+            <label className="field wf-field">
+              <span>Fabric<small>the fabric this product uses</small></span>
+              <select value={fabricCode} disabled={!editable} onChange={(e) => setFabricCode(e.target.value)}>
+                <option value="">—</option>
+                {fabricCodes.map((f) => (<option key={f} value={f}>{f}</option>))}
+              </select>
+            </label>
+          </div>
+
+          <div className="wf-cost-param">
+            <span className="wf-cost-param-head">Fabric Cost — owned by the Fabric Cost master (Vikram ji)</span>
+            <dl className="wf-doc-meta">
+              <div><dt>Grey rate</dt><dd className="wf-cell-input">{disp(fab?.grey ?? null)}</dd></div>
+              <div><dt>Processing</dt><dd className="wf-cell-input">{disp(fab?.processing ?? null)}</dd></div>
+              <div><dt>Finished fabric (INR/mtr)</dt><dd className="wf-cell-calc">{disp(fab?.finished ?? null)}</dd></div>
+            </dl>
+            <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/fabric-cost">Edit on Fabric Cost →</a>
+          </div>
 
           <table className="wf-grid wf-cost-lines wf-cost-matrix">
             <thead>
               <tr>
                 <th>Size</th>
-                <th className="num wf-cell-calc">Fabric*</th>
-                <th className="num input-col wf-cell-input">CMTP</th>
-                <th className="num wf-cell-calc">Total*</th>
+                <th className="num input-col wf-cell-input">Consumption (mtr)</th>
+                <th className="num wf-cell-calc">Fabric cost*</th>
               </tr>
             </thead>
             <tbody>
-              {matrix.map((r, i) => (
+              {rows.map((r) => (
                 <tr key={r.size}>
                   <td className="strong">{r.size}</td>
-                  <td className="num wf-cell-calc">{r.fabric ?? '—'}</td>
                   <td className="num input-col wf-cell-input">
                     <input
                       type="number"
                       min={0}
-                      value={r.cm}
-                      disabled={!rw}
-                      onChange={(e) => setCm(r.size, e.target.value)}
-                      onPaste={(e) => rw && onCmPaste(e, i)}
+                      step="0.01"
+                      value={r.cons}
+                      disabled={!editable}
+                      onChange={(e) => setCons(r.size, e.target.value)}
                     />
                   </td>
-                  <td className="num wf-cell-calc">{r.total ?? '—'}</td>
+                  <td className="num wf-cell-calc">{disp(r.fabric)}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3}>Size-wise average*</td>
-                <td className="num strong wf-cell-calc">{sizeAvg ?? '—'}</td>
-              </tr>
-            </tfoot>
           </table>
           <p className="wf-subtle wf-legend">
             <span className="wf-legend-input">input</span>
             <span className="wf-legend-calc">computed</span>
-            — the <strong>computed</strong> (green) cells fill themselves: fabric is pulled from the
-            Fabric Cost sheet, total = fabric + CMTP. Paste a CMTP column straight from Excel.
+            — fabric cost = finished-fabric rate × consumption. The rate is owned by the Fabric Cost master.
+            {fabricRate == null && ' Pick a fabric with a finished rate to compute.'}
           </p>
 
           {editable && (
             <div className="wf-cost-detail-foot">
-              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={saveDetail} disabled={busy}>
-                <Save size={13} /> {busy ? 'Saving…' : 'Save cost sheet'}
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
+                <Save size={13} /> {busy ? 'Saving…' : 'Save fabric cost'}
               </button>
             </div>
           )}
-        </>
+        </div>
+      ) : (
+        <div className="wf-final-view">
+          <div className="table-scroll">
+            <table className="wf-grid wf-cost-lines">
+              <thead>
+                <tr>
+                  <th>Size</th>
+                  <th className="num wf-cell-calc">Fabric</th>
+                  <th className="num wf-cell-calc">CMTP</th>
+                  <th className="num wf-cell-calc">Garment</th>
+                  <th className="num wf-cell-calc">REJ</th>
+                  <th className="num wf-cell-calc">OH</th>
+                  <th className="num wf-cell-calc">Margin</th>
+                  <th className="num wf-cell-calc">Final price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filled.map((r) => (
+                  <tr key={r.size}>
+                    <td className="strong">{r.size}</td>
+                    <td className="num wf-cell-calc">{disp(r.fabric)}</td>
+                    <td className="num wf-cell-calc">{disp(cmtpTotal)}</td>
+                    <td className="num wf-cell-calc">{disp(r.garment)}</td>
+                    <td className="num wf-cell-calc">{disp(r.rej)}</td>
+                    <td className="num wf-cell-calc">{disp(r.oh)}</td>
+                    <td className="num wf-cell-calc">{disp(r.margin)}</td>
+                    <td className="num strong wf-cell-calc">{disp(r.final)}</td>
+                  </tr>
+                ))}
+                {!filled.length && (
+                  <tr><td colSpan={8} className="wf-empty-cell">Fill fabric consumption (Fabric Cost tab) + CMTP to compute the final price.</td></tr>
+                )}
+              </tbody>
+              {poAvgFinal != null && (
+                <tfoot><tr><td colSpan={7}>PO AVG final price</td><td className="num strong wf-cell-calc">{poAvgFinal}</td></tr></tfoot>
+              )}
+            </table>
+          </div>
+          <p className="wf-subtle">
+            Final price = Garment (Fabric + CMTP) + REJ (5% or ₹10, lower) + OH (5% or ₹10, lower) + Margin 15%.
+            {cmtpTotal == null && ' · CMTP not filled yet — fill the CMTP tab.'}
+          </p>
+
+          <div className="wf-form-grid">
+            <Field label="CAD link"><input value={cad} disabled={!editable} placeholder="https://…" onChange={(e) => setCad(e.target.value)} /></Field>
+            <Field label="RFP link"><input value={rfp} disabled={!editable} placeholder="https://…" onChange={(e) => setRfp(e.target.value)} /></Field>
+          </div>
+
+          {editable && (
+            <div className="wf-cost-detail-foot">
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
+                <Save size={13} /> {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
