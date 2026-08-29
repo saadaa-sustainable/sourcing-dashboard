@@ -662,6 +662,17 @@ function PoRow({
   const canIssue = canEdit(role, 'draft');
   const issued = Boolean(po.po_issued_at);
 
+  // Timeline-change flag: actual first delivery landing past the approved
+  // first-delivery date is an "extended after approval" case — surfaced, not blocked.
+  const timelineExtDays =
+    po.first_actual_delivery_date && po.critical_path_first_delivery
+      ? Math.round(
+          (Date.parse(po.first_actual_delivery_date) -
+            Date.parse(po.critical_path_first_delivery)) /
+            86_400_000,
+        )
+      : null;
+
   // TNA gate — only this PO's approver may review/lock the critical-path dates.
   const isApprover =
     (po.status === 'submitted' || po.status === 'pending_l2') &&
@@ -787,6 +798,14 @@ function PoRow({
           )}
           {po.easycom_po_no && (
             <small className="wf-subtle">EasyCom {po.easycom_po_no}</small>
+          )}
+          {timelineExtDays != null && timelineExtDays > 0 && (
+            <small
+              className="wf-timeline-flag"
+              title={`Actual first delivery ${po.first_actual_delivery_date} is ${timelineExtDays} day(s) past the approved ${po.critical_path_first_delivery}`}
+            >
+              ⚠ timeline +{timelineExtDays}d
+            </small>
           )}
         </td>
         <td className="wf-subtle">

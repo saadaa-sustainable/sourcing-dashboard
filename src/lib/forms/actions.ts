@@ -1629,7 +1629,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, product_code, po_issued_at')
+    .select('id, status, product_code, po_issued_at, critical_path_first_delivery')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -1689,9 +1689,36 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
       `EasyCom PO ${easycom}`,
     );
   }
+
+  // Timeline-change flag (soft, spec: PO cycle-time / closure logic). After
+  // approval the planned timeline is locked; if the ACTUAL first delivery lands
+  // past the APPROVED first-delivery date, that's the "extended after approval"
+  // case (the 13-day-extension incident). We never block — we surface + log it so
+  // it can't slip by unnoticed.
+  const actual = patch.first_actual_delivery_date as string | null;
+  const approved = po.critical_path_first_delivery as string | null;
+  let extNote: string | null = null;
+  if (actual && approved) {
+    const days = Math.round((Date.parse(actual) - Date.parse(approved)) / 86_400_000);
+    if (days > 0) {
+      extNote = `Delivery extended ${days} day(s) beyond approved timeline (approved ${approved} → actual ${actual}).`;
+      await writeLog(
+        'po_approval',
+        String(id),
+        `PO ${easycom || `#${id}`} · timeline extended ${days}d`,
+        'approved',
+        'approved',
+        user.email,
+        extNote,
+      );
+    }
+  }
+
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
-  return done(alreadyIssued ? 'Signing details saved.' : `Issued as EasyCom PO ${easycom}.`);
+  revalidatePath('/approvals');
+  const base = alreadyIssued ? 'Signing details saved.' : `Issued as EasyCom PO ${easycom}.`;
+  return done(extNote ? `${base} ⚠ ${extNote}` : base);
 }
 
 /**
