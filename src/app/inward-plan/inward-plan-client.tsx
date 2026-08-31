@@ -23,9 +23,9 @@ const COLS: Column<InwardPlanGroup>[] = [
       </>
     ),
   },
-  { key: 'ordered_qty', label: 'Ordered', kind: 'num' },
-  { key: 'arriving_qty', label: 'Arriving', kind: 'num', render: (g) => <strong>{fmt.format(g.arriving_qty)}</strong> },
-  { key: 'expected_delivery_date', label: 'Expected', kind: 'text', filter: 'select' },
+  { key: 'ordered_qty', label: 'Ordered', kind: 'num', info: 'Total pieces ordered on this PO line.' },
+  { key: 'arriving_qty', label: 'Arriving', kind: 'num', info: 'Pieces still to arrive (ordered minus already received).', render: (g) => <strong>{fmt.format(g.arriving_qty)}</strong> },
+  { key: 'expected_delivery_date', label: 'Expected', kind: 'text', filter: 'select', info: 'Expected delivery date (EDD) for the arriving quantity.' },
 ];
 
 export function InwardPlanClient({ groups }: { groups: InwardPlanGroup[] }) {
