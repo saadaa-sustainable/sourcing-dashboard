@@ -698,7 +698,7 @@ function DashboardTab({
                   yAxisId="count"
                   dataKey="openPoCount"
                   name="Open PO count"
-                  fill="#8b5cf6"
+                  fill="#7b4fbf"
                   radius={[5, 5, 0, 0]}
                 >
                   <LabelList dataKey="openPoCount" position="top" />
@@ -707,7 +707,7 @@ function DashboardTab({
                   yAxisId="count"
                   dataKey="delayedPoCount"
                   name="Delayed PO count"
-                  fill="#f97316"
+                  fill="#f0a732"
                   radius={[5, 5, 0, 0]}
                 >
                   <LabelList dataKey="delayedPoCount" position="top" />
@@ -746,7 +746,7 @@ function DashboardTab({
                 <Bar
                   dataKey="qty"
                   name="Pending quantity"
-                  fill="#14b8a6"
+                  fill="#3d9e6b"
                   radius={[0, 5, 5, 0]}
                 >
                   <LabelList dataKey="qty" position="right" />
@@ -779,7 +779,7 @@ function DashboardTab({
                 <Bar
                   dataKey="delayPct"
                   name="Delay %"
-                  fill="#ef4444"
+                  fill="#c0392b"
                   radius={[0, 5, 5, 0]}
                 >
                   <LabelList
@@ -816,7 +816,7 @@ function DashboardTab({
                 <Bar
                   dataKey="openCount"
                   name="Open PO count"
-                  fill="#8b5cf6"
+                  fill="#7b4fbf"
                   radius={[0, 5, 5, 0]}
                 >
                   <LabelList dataKey="openCount" position="right" />
@@ -849,7 +849,7 @@ function DashboardTab({
                 <Bar
                   dataKey="delayPct"
                   name="Delay %"
-                  fill="#f59e0b"
+                  fill="#d9b113"
                   radius={[0, 5, 5, 0]}
                 >
                   <LabelList
@@ -1602,7 +1602,7 @@ function VendorTab({ data }: { data: DashboardData }) {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="openQty" name="Open quantity" fill="#8b5cf6">
+                <Bar dataKey="openQty" name="Open quantity" fill="#7b4fbf">
                   <LabelList
                     dataKey="openQty"
                     position="top"
@@ -1614,7 +1614,7 @@ function VendorTab({ data }: { data: DashboardData }) {
                 <Bar
                   dataKey="capacityPerMonth"
                   name="Monthly capacity"
-                  fill="#14b8a6"
+                  fill="#3d9e6b"
                 >
                   <LabelList
                     dataKey="capacityPerMonth"
@@ -1767,10 +1767,10 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
                       name="Open quantity"
                       fill={
                         bucket === "Woven"
-                          ? "#8b5cf6"
+                          ? "#7b4fbf"
                           : bucket === "Knit"
-                            ? "#14b8a6"
-                            : "#64748b"
+                            ? "#3d9e6b"
+                            : "#9a9384"
                       }
                     >
                       <LabelList dataKey="openQty" position="right" />
@@ -1778,7 +1778,7 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
                     <Bar
                       dataKey="delayedQty"
                       name="Delayed quantity"
-                      fill="#f97316"
+                      fill="#f0a732"
                     >
                       <LabelList dataKey="delayedQty" position="right" />
                     </Bar>
@@ -1870,13 +1870,13 @@ function MerchantTab({ data }: { data: DashboardData }) {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="openPoCount" name="Open PO count" fill="#8b5cf6">
+                <Bar dataKey="openPoCount" name="Open PO count" fill="#7b4fbf">
                   <LabelList dataKey="openPoCount" position="top" />
                 </Bar>
                 <Bar
                   dataKey="delayedPoCount"
                   name="Delayed PO count"
-                  fill="#f97316"
+                  fill="#f0a732"
                 >
                   <LabelList dataKey="delayedPoCount" position="top" />
                 </Bar>
@@ -1906,7 +1906,7 @@ function MerchantTab({ data }: { data: DashboardData }) {
                 />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="openQty" name="Open quantity" fill="#14b8a6">
+                <Bar dataKey="openQty" name="Open quantity" fill="#3d9e6b">
                   <LabelList dataKey="openQty" position="top" />
                 </Bar>
               </BarChart>
@@ -2266,7 +2266,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
                 <Bar
                   dataKey="qty"
                   name="Pending quantity"
-                  fill="#39bfa7"
+                  fill="#4f7c4d"
                   radius={[0, 5, 5, 0]}
                 />
               </BarChart>
@@ -2306,7 +2306,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
                 <Bar
                   dataKey="count"
                   name="Out-of-stock count"
-                  fill="#ef6a7a"
+                  fill="#b54f7a"
                   radius={[0, 5, 5, 0]}
                 />
               </BarChart>

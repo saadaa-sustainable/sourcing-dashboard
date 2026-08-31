@@ -101,6 +101,32 @@ measured with a stopwatch, operation-level, during the first production run** �
 
 ---
 
+## 2b. Persistent reminders for outstanding mandatory pre-invoice tasks  *(standing UI requirement, later)*
+
+Source: third participant (not Mahesh/Prakash) — *"whatever is continuously mandatory
+— like once a PO is released, this must happen before invoicing — that tab should
+show it continuously. It's a pending task, notifications should keep coming there."*
+
+This is broader than the one-shot SMV gate (§2): a mandatory pre-invoice step should
+be surfaced as a **persistent, recurring reminder** in the relevant tab — not a single
+check at the invoicing gate, but something that **keeps nudging until it's actually
+done**.
+
+Requirements:
+- A **standing banner / badge** in the relevant tab listing the outstanding mandatory
+  pre-invoice fields for released POs (SMV-before-invoice is the concrete first case).
+- It **persists and recurs** (notifications keep coming) until the field is filled —
+  the gate is the hard stop; this is the ongoing nudge that stops it reaching the gate
+  unfilled.
+- Driven off the same rule set as the gate (one source of truth for "what's mandatory
+  before invoicing"), so a new mandatory field automatically shows here too.
+- Ties into the existing notification bell (pending-approvals) pattern — reuse it
+  rather than a parallel mechanism.
+
+Deferred alongside §2 (SMV) — build the gate + this recurring surface together.
+
+---
+
 ## 3. Product Trims Master  *(separate entity, later)*
 
 - Replicates the Standard Cost UI/edit pattern.
@@ -271,8 +297,10 @@ through remark + approval), the system **logs that specific approved exception**
 2. Approval: temp vs permanent + CMTP-only hard-block *(§5)* — 🟡 per-PO cost pivot +
    CMTP-vs-standard review UI done; **hard-block deferred** (added later); batch
    change-request table + last-PO delta deferred.
-3. SMV hard gate *(§2)*
+3. SMV hard gate *(§2)* + persistent pre-invoice reminders *(§2b)* — build together.
 4. PO hard gate vs approval log *(§7)*
 
 Also outstanding: Product Trims Master *(§3)*, Fabric Cost Master population *(§4)*,
 EFOB Fabric Cost field *(§6)*.
+
+Detail tabs (§0 v1) ✅ done — CMTP · Fabric Cost · Final Cost (FINAL PRICE).

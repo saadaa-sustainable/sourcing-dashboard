@@ -131,12 +131,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: rgba(250, 248, 245, 0.85);
+  color: var(--ink-2);
   background:
-    radial-gradient(circle at 10% 0, rgba(240, 198, 30, 0.13), transparent 17rem),
-    linear-gradient(180deg, rgba(55, 45, 40, 0.96) 0%, rgba(44, 36, 32, 0.96) 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.055);
-  box-shadow: 12px 0 40px rgba(28, 24, 67, 0.08);
+    radial-gradient(circle at 12% 0, rgba(240, 198, 30, 0.10), transparent 16rem),
+    var(--bg-tint);
+  border-right: 1px solid var(--line);
+  box-shadow: 4px 0 24px rgba(44, 36, 32, 0.04);
 }
 
 .sidebar::before {
@@ -146,9 +146,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   height: 190px;
   right: -120px;
   top: 38%;
-  border: 1px solid rgba(240, 198, 30, 0.14);
+  border: 1px solid rgba(240, 198, 30, 0.20);
   border-radius: 50%;
-  box-shadow: 0 0 0 28px rgba(240, 198, 30, 0.035), 0 0 0 60px rgba(240, 198, 30, 0.02);
+  box-shadow: 0 0 0 28px rgba(240, 198, 30, 0.05), 0 0 0 60px rgba(240, 198, 30, 0.025);
   pointer-events: none;
 }
 
@@ -176,22 +176,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 .brand strong, .brand span { display: block; }
-.brand strong { font-size: 15px; letter-spacing: 0.15em; }
-.brand span { margin-top: 4px; color: #969db8; font-size: 10px; letter-spacing: 0.025em; }
+.brand strong { color: var(--ink-1); font-size: 15px; letter-spacing: 0.15em; }
+.brand span { margin-top: 4px; color: var(--ink-4); font-size: 10px; letter-spacing: 0.025em; }
 
-.sidebar nav { position: relative; display: grid; gap: 5px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; padding-right: 2px; }
+.sidebar nav { position: relative; display: grid; gap: 5px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #c9c2ae transparent; padding-right: 2px; }
 .sidebar nav::-webkit-scrollbar { width: 6px; }
-.sidebar nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 6px; }
+.sidebar nav::-webkit-scrollbar-thumb { background: #c9c2ae; border-radius: 6px; }
 .sidebar nav::before {
   content: "WORKSPACE";
   padding: 0 11px 9px;
-  color: #686f8c;
+  color: var(--ink-4);
   font-size: 8px;
   font-weight: 750;
   letter-spacing: 0.18em;
 }
 
-.sidebar nav button, .sidebar-foot button {
+.sidebar nav button, .sidebar nav a, .sidebar-foot button {
   width: 100%;
   padding: 12px 13px;
   display: flex;
@@ -200,40 +200,36 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border: 1px solid transparent;
   border-radius: 11px;
   background: transparent;
-  color: #9ea5bf;
+  color: var(--ink-3);
   font-size: 12px;
   text-align: left;
+  text-decoration: none;
   transition: color .18s ease, background .18s ease, transform .18s ease, border-color .18s ease;
 }
 
-.sidebar nav button svg { color: #7f87a4; transition: color .18s ease; }
-.sidebar nav button:hover { color: #fff; background: rgba(255,255,255,.055); transform: translateX(2px); }
-.sidebar nav button:hover svg { color: #b7aeff; }
-.sidebar nav button.active {
-  color: #fff;
-  background: linear-gradient(100deg, rgba(109, 93, 252, 0.25), rgba(109, 93, 252, 0.08));
-  border-color: rgba(159, 145, 255, 0.16);
-  box-shadow: inset 3px 0 #8f80ff, 0 8px 22px rgba(8, 8, 20, 0.12);
+.sidebar nav button svg, .sidebar nav a svg { color: var(--ink-4); transition: color .18s ease; }
+.sidebar nav button:hover, .sidebar nav a:hover { color: var(--ink-1); background: rgba(240,198,30,.12); transform: translateX(2px); }
+.sidebar nav button:hover svg, .sidebar nav a:hover svg { color: var(--accent-strong); }
+.sidebar nav button.active, .sidebar nav a.active {
+  color: var(--ink-1);
+  font-weight: 600;
+  background: rgba(240, 198, 30, 0.20);
+  border-color: rgba(240, 198, 30, 0.42);
+  box-shadow: inset 3px 0 #f0c61e, 0 6px 16px rgba(240, 198, 30, 0.14);
 }
-.sidebar nav button.active svg { color: #c6beff; filter: drop-shadow(0 3px 5px rgba(109,93,252,.3)); }
-.sidebar nav a { width: 100%; padding: 12px 13px; display: flex; align-items: center; gap: 12px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #9ea5bf; font-size: 12px; text-decoration: none; transition: color .18s ease, background .18s ease, transform .18s ease, border-color .18s ease; }
-.sidebar nav a svg { color: rgba(250, 248, 245, 0.50); transition: color .18s ease; }
-.sidebar nav a:hover { color: #faf8f5; background: rgba(255,255,255,.06); transform: translateX(2px); }
-.sidebar nav a:hover svg { color: #f0c61e; }
-.sidebar nav a.active { color: #fff; background: linear-gradient(100deg, rgba(109, 93, 252, 0.25), rgba(109, 93, 252, 0.08)); border-color: rgba(159, 145, 255, 0.16); box-shadow: inset 3px 0 #8f80ff, 0 8px 22px rgba(8, 8, 20, 0.12); }
-.sidebar nav a.active svg { color: #c6beff; }
+.sidebar nav button.active svg, .sidebar nav a.active svg { color: var(--accent-strong); }
 .sidebar-toggle { position: fixed; top: 14px; left: 14px; z-index: 40; }
-.wf-nav-divider { margin: 15px 0 3px; padding: 0 11px; color: #8a8172; font-size: 8px; font-weight: 750; letter-spacing: 0.18em; text-transform: uppercase; }
+.wf-nav-divider { margin: 15px 0 3px; padding: 0 11px; color: var(--ink-4); font-size: 8px; font-weight: 750; letter-spacing: 0.18em; text-transform: uppercase; }
 
 .sidebar-foot {
   position: relative;
   margin-top: auto;
   padding: 18px 9px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--line);
 }
-.sidebar-foot small { display: block; margin: 10px 3px; overflow: hidden; color: #727a96; font-size: 10px; text-overflow: ellipsis; }
-.status-dot { display: flex; align-items: center; gap: 8px; color: #cbd0df; font-size: 10px; letter-spacing: .02em; }
-.status-dot i { width: 7px; height: 7px; border-radius: 50%; background: #36d9b6; box-shadow: 0 0 0 4px rgba(54,217,182,.1), 0 0 12px rgba(54,217,182,.55); }
+.sidebar-foot small { display: block; margin: 10px 3px; overflow: hidden; color: var(--ink-4); font-size: 10px; text-overflow: ellipsis; }
+.status-dot { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 10px; letter-spacing: .02em; }
+.status-dot i { width: 7px; height: 7px; border-radius: 50%; background: #4f7c4d; box-shadow: 0 0 0 4px rgba(79,124,77,.14), 0 0 10px rgba(79,124,77,.35); }
 .mobile-close { display: none !important; width: auto !important; margin-left: auto !important; }
 
 .app-shell > main { min-height: 100vh; margin-left: 258px; }
@@ -659,7 +655,7 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 
 @media (max-width: 760px) {
   .sidebar { width: 258px; transform: translateX(-100%); transition: transform .22s ease; }
-  .sidebar.open { transform: none; box-shadow: 25px 0 60px rgba(10,12,26,.35); }
+  .sidebar.open { transform: none; box-shadow: 25px 0 60px rgba(44,36,32,.20); }
   .mobile-close { display: flex !important; }
   .app-shell > main { margin-left: 0; }
   .app-shell header { height: 76px; padding: 0 16px; }
@@ -697,21 +693,14 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 /* Typography (§4): headings share the body sans stack and differ only by a
    tight letter-spacing — hierarchy comes from size + weight + ink steps. */
 h1, h2, h3, h4 { font-family: var(--font-sans); letter-spacing: -0.01em; }
-.sidebar nav::before, .brand span, .sidebar nav button, .sidebar-foot small { color: rgba(250, 248, 245, 0.50); }
-.sidebar nav button svg { color: rgba(250, 248, 245, 0.50); }
-.sidebar nav button:hover { color: #faf8f5; background: rgba(255,255,255,.06); }
-.sidebar nav button:hover svg { color: #f0c61e; }
-.sidebar nav button.active { color: #faf8f5; background: rgba(240,198,30,.16); border-color: rgba(240,198,30,.24); box-shadow: inset 3px 0 #f0c61e, 0 8px 22px rgba(20,16,14,.12); }
-.sidebar nav button.active svg { color: #f0c61e; filter: none; }
-.sidebar nav a.active { color: #faf8f5; background: rgba(240,198,30,.16); border-color: rgba(240,198,30,.24); box-shadow: inset 3px 0 #f0c61e, 0 8px 22px rgba(20,16,14,.12); }
-.sidebar nav a.active svg { color: #f0c61e; }
-.status-dot { color: rgba(250,248,245,.85); }
-.status-dot i { background: #4f7c4d; box-shadow: 0 0 0 4px rgba(79,124,77,.16); }
+/* Sidebar is now styled light-ecru directly in the base rules above (§2.5:
+   sidebar #F6F3F1, black text, yellow accent) — no dark override needed. */
 .app-shell header { background: rgba(250,248,245,.85); border-color: #e7e2d2; }
 .help-button, .icon-button, .menu-button { color: #494640; background: rgba(255,252,248,.92); }
 .help-button:hover, .icon-button:hover { border-color: #c9c2ae; box-shadow: var(--shadow); }
 .build-badge { color: #9a9384; background: #f0ede6; }
-.panel, .filter-bar { background: rgba(255,252,248,.75); border-color: rgba(255,255,255,.55); box-shadow: var(--shadow); backdrop-filter: blur(12px); }
+/* §2.4 standard card: solid white, flat — no glass/blur on content panels. */
+.panel, .filter-bar { background: var(--bg-surface-2); border-color: var(--line); box-shadow: var(--sh-2); backdrop-filter: none; }
 .metric-card { background: #fff; border-color: #e7e2d2; box-shadow: var(--shadow-sm); }
 .metric-card:hover { border-color: #c9c2ae; box-shadow: var(--shadow); }
 .metric-label, .panel-kicker, .field span { color: #6e695e !important; }
@@ -756,15 +745,17 @@ tbody tr:hover { background: rgba(240,198,30,.08); }
 
 /* ---- Unified interface polish ---- */
 :root {
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  --radius-sm: 8px;   /* §4: input/button */
+  --radius-md: 14px;  /* §4: card */
+  --radius-lg: 16px;  /* §2.4: card top of 14–16 range */
   --surface-raised: rgba(255, 253, 249, 0.94);
   --surface-soft: #f6f2e9;
   --focus-ring: 0 0 0 3px rgba(240, 198, 30, 0.2);
 }
 
-html { font-size: 16px; }
+/* §4 type scale: 14px root on mobile → 15px ≥640px (guards Android inflation). */
+html { font-size: 14px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (min-width: 640px) { html { font-size: 15px; } }
 body { line-height: 1.5; }
 /* §4: tabular figures on every metric/numeric column so digits align. */
 .tabular { font-variant-numeric: tabular-nums; }
@@ -824,7 +815,7 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .icon-button { min-height: 40px; }
 .badge { padding: 5px 9px; font-size: 9px; }
 
-.modal { border-radius: 22px; border-color: #ded6c5; box-shadow: 0 32px 90px rgba(44,36,32,.24); }
+.modal { border-radius: 16px; border-color: #ded6c5; box-shadow: 0 32px 90px rgba(44,36,32,.24); }
 .modal-head { height: 72px; padding: 0 24px; }
 .modal-head h2 { font-size: 18px; }
 .help-intro { margin: 24px 28px 0; padding: 18px 20px; }
