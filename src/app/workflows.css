@@ -926,6 +926,45 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- Cutting Register: cards, link result ---- */
+.wf-card { border: 1px solid #e7e2d2; border-radius: 12px; background: #fff; padding: 14px 16px; margin-bottom: 14px; }
+.wf-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: #6e695e; margin: 0 0 10px; }
+.wf-table-head { padding: 12px 14px 0; }
+.wf-pad-sm { padding: 8px 14px 12px; margin: 0; }
+.wf-link-result { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.wf-link-url {
+  display: block; padding: 8px 10px; border-radius: 8px; background: #faf7ef; border: 1px solid #ece7d9;
+  font-size: 12px; word-break: break-all; color: #33302b;
+}
+
+/* ---- Public /fill/[token] page (standalone, no app shell) ---- */
+.fill-shell {
+  min-height: 100vh; display: grid; place-items: center; padding: 24px;
+  background: var(--surface-app, #f6f4ef);
+}
+.fill-card {
+  width: 100%; max-width: 460px; background: #fff; border: 1px solid #e7e2d2; border-radius: 16px;
+  padding: 26px 24px; box-shadow: 0 2px 20px rgba(40, 36, 28, 0.06);
+}
+.fill-brand { font-weight: 800; letter-spacing: 0.08em; font-size: 13px; color: #b8933a; }
+.fill-card h1 { margin: 10px 0 2px; font-size: 20px; }
+.fill-meta { margin: 0 0 16px; font-size: 13px; color: #6e695e; }
+.fill-form { display: flex; flex-direction: column; gap: 12px; }
+.fill-field { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 560; color: #33302b; }
+.fill-field input, .fill-field textarea {
+  padding: 9px 11px; font: inherit; font-size: 14px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, 0.16);
+}
+.fill-field input:disabled { background: rgba(0, 0, 0, 0.035); opacity: 0.75; }
+.fill-error { margin: 2px 0 0; font-size: 12.5px; color: #b3261e; }
+.fill-submit {
+  margin-top: 4px; padding: 12px; font: inherit; font-size: 14px; font-weight: 700; color: #fff;
+  background: #1f1d1a; border: none; border-radius: 10px; cursor: pointer;
+}
+.fill-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.fill-done { text-align: center; padding: 12px 0; }
+.fill-done h2 { margin: 0 0 6px; color: #2f6b3a; }
+.fill-done p { margin: 0; color: #6e695e; font-size: 13px; }
+
 /* ---- PO approval: timeline-extension flag (delivered past approved date) ---- */
 .wf-timeline-flag {
   display: inline-block; margin-top: 2px; padding: 1px 7px; border-radius: 999px;

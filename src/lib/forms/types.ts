@@ -533,6 +533,45 @@ export type CmtpComponent = {
   position: number;
 };
 
+/* ------------------------------------------------------------------ */
+/* PO Closure & Cutting Register                                       */
+/* ------------------------------------------------------------------ */
+
+/** One actual-fabric-consumption entry per PO (sd_cutting_register). */
+export type CuttingRegister = {
+  id: number;
+  po_ref_num: string;
+  product_code: string | null;
+  bom_standard_qty: number | null; // snapshotted at creation
+  bom_uom: string | null;
+  actual_consumption_qty: number | null;
+  cutting_date: string | null;
+  remarks: string | null;
+  submitted_via: string; // 'dashboard' | 'dynamic_link'
+  submitted_by_email: string | null;
+  submitted_by_name: string | null;
+  dynamic_link_id: number | null;
+  created_at: string;
+};
+
+/** A tokenized, expiring, single-use data-capture link (sd_dynamic_links). */
+export type DynamicLink = {
+  id: number;
+  token: string;
+  link_type: string;
+  po_ref_num: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  is_active: boolean;
+  submitted_at: string | null;
+  sent_via: string[] | null;
+  sent_to: string | null;
+};
+
+/** Product-level BOM standard, for the cutting register's read-only reference. */
+export type ProductBom = { bom_quantity: number | null; bom_uom: string | null };
+
 export type ApprovalLogRow = {
   id: number;
   entity_type: ApprovalEntity;

@@ -48,6 +48,9 @@ import type {
   StandardCost,
   StandardCostLine,
   CmtpComponent,
+  CuttingRegister,
+  DynamicLink,
+  ProductBom,
   VendorCapacityLog,
   VendorTypeMultiplier,
 } from './types';
@@ -387,6 +390,43 @@ export async function loadStandardCmByCode(): Promise<Record<string, number>> {
   const map: Record<string, number> = {};
   for (const r of (data ?? []) as { product_code: string; cm_cost: number | null }[]) {
     if (r.cm_cost != null) map[r.product_code] = Number(r.cm_cost);
+  }
+  return map;
+}
+
+/** Cutting-register entries (most recent first), for the Cutting Register page. */
+export async function loadCuttingRegisters(): Promise<CuttingRegister[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_cutting_register')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(PAGE_SIZE);
+  return (data ?? []) as CuttingRegister[];
+}
+
+/** Cutting-register dynamic links (most recent first). */
+export async function loadDynamicLinks(): Promise<DynamicLink[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_dynamic_links')
+    .select('*')
+    .eq('link_type', 'cutting_register')
+    .order('created_at', { ascending: false })
+    .limit(PAGE_SIZE);
+  return (data ?? []) as DynamicLink[];
+}
+
+/** product_code → BOM standard, so the cutting form can show the standard by product. */
+export async function loadProductBom(): Promise<Record<string, ProductBom>> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_product_master')
+    .select('product_code, bom_quantity, bom_uom')
+    .limit(PAGE_SIZE);
+  const map: Record<string, ProductBom> = {};
+  for (const r of (data ?? []) as { product_code: string; bom_quantity: number | null; bom_uom: string | null }[]) {
+    map[r.product_code] = { bom_quantity: r.bom_quantity, bom_uom: r.bom_uom };
   }
   return map;
 }

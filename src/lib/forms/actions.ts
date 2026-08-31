@@ -21,9 +21,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
+import { createPublicClient } from '@/lib/supabase/public';
 import { currentUser } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
 import {
@@ -784,6 +786,148 @@ export async function setPoClosure(formData: FormData): Promise<ActionResult> {
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/po-approval');
   return done(status === 'approved' ? 'PO marked closed.' : status === 'rejected' ? 'PO flagged.' : 'Saved.');
+}
+
+/* ================================================================== */
+/* Cutting Register & dynamic links (PO Closure feature)               */
+/* ================================================================== */
+
+// product_code is encoded in po_ref_num: FY.../<TYPE>/<PRODUCT>/<VENDOR>-<SEQ>.
+const productFromPoRef = (po: string) => {
+  const parts = po.split('/');
+  return parts[2]?.trim() || null;
+};
+
+/**
+ * Authenticated Cutting Register entry. Snapshots the product's BOM standard at
+ * creation time (spec §3) — reads it fresh from sd_product_master so the record
+ * reflects the standard as it was at cutting, not a stale client value.
+ */
+export async function saveCuttingRegister(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to add cutting entries.');
+
+  const po_ref_num = String(formData.get('po_ref_num') ?? '').trim();
+  if (!po_ref_num) return fail('Enter the PO reference.');
+  const actual = numOrNull(formData.get('actual_consumption_qty'));
+  if (actual == null) return fail('Enter the actual consumption.');
+
+  const product_code = productFromPoRef(po_ref_num);
+  const supabase = await supa();
+
+  // Snapshot BOM from the master (null when there's no BOM on file — never 0).
+  let bomQ: number | null = null;
+  let bomU: string | null = null;
+  if (product_code) {
+    const { data: pm } = await supabase
+      .from('sd_product_master')
+      .select('bom_quantity, bom_uom')
+      .eq('product_code', product_code)
+      .maybeSingle();
+    bomQ = pm?.bom_quantity ?? null;
+    bomU = pm?.bom_uom ?? null;
+  }
+
+  const { error } = await supabase.from('sd_cutting_register').insert({
+    po_ref_num,
+    product_code,
+    bom_standard_qty: bomQ,
+    bom_uom: bomU,
+    actual_consumption_qty: actual,
+    cutting_date: dateOrNull(formData.get('cutting_date')),
+    remarks: textOrNull(formData.get('remarks')),
+    submitted_via: 'dashboard',
+    submitted_by_email: user.email,
+  });
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/cutting-register');
+  return done(`Saved cutting entry for ${po_ref_num}.`);
+}
+
+export type LinkResult = { ok: true; token: string; expiresAt: string } | { ok: false; error: string };
+
+/**
+ * Generate a tokenized, expiring, single-use data-capture link for a PO's cutting
+ * register. Expiry = min(created+30d, easycom_completed_at+15d) — the link doesn't
+ * outlive the SLA window; 30d if the PO isn't completed yet (spec §2).
+ */
+export async function generateDynamicLink(formData: FormData): Promise<LinkResult> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  if (!canEdit(user.role, 'draft')) return { ok: false, error: 'You do not have permission to generate links.' };
+
+  const po_ref_num = String(formData.get('po_ref_num') ?? '').trim();
+  if (!po_ref_num) return { ok: false, error: 'Enter the PO reference.' };
+
+  const token = randomBytes(24).toString('base64url');
+  const supabase = await supa();
+
+  const { data: closure } = await supabase
+    .from('sd_po_closure')
+    .select('easycom_completed_at')
+    .eq('po_ref_num', po_ref_num)
+    .maybeSingle();
+
+  const now = Date.now();
+  let expires = now + 30 * 86_400_000;
+  if (closure?.easycom_completed_at) {
+    expires = Math.min(expires, Date.parse(closure.easycom_completed_at) + 15 * 86_400_000);
+  }
+  const expiresAt = new Date(expires).toISOString();
+
+  const { error } = await supabase.from('sd_dynamic_links').insert({
+    token,
+    link_type: 'cutting_register',
+    po_ref_num,
+    created_by: user.email,
+    expires_at: expiresAt,
+  });
+  if (error) return { ok: false, error: `Could not generate link: ${error.message}` };
+  revalidatePath('/cutting-register');
+  return { ok: true, token, expiresAt };
+}
+
+/** Revoke an open link (spec §2) — needed if it was sent to the wrong person. */
+export async function revokeDynamicLink(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to revoke links.');
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid link.');
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_dynamic_links').update({ is_active: false }).eq('id', id);
+  if (error) return fail(`Could not revoke: ${error.message}`);
+  revalidatePath('/cutting-register');
+  return done('Link revoked.');
+}
+
+/**
+ * Public submission from the /fill/[token] route (no login). Runs as anon and only
+ * calls the SECURITY DEFINER RPC, which re-validates the token, snapshots the BOM,
+ * inserts the register row, and burns the link (single-use).
+ */
+export async function submitCuttingViaLink(formData: FormData): Promise<ActionResult> {
+  const token = String(formData.get('token') ?? '').trim();
+  const name = String(formData.get('name') ?? '').trim();
+  const contact = String(formData.get('contact') ?? '').trim();
+  const actual = numOrNull(formData.get('actual_consumption_qty'));
+  if (!token) return fail('Invalid link.');
+  if (!name || !contact) return fail('Enter your name and email/phone.');
+  if (actual == null) return fail('Enter the actual consumption.');
+
+  const supabase = createPublicClient();
+  const { data, error } = await supabase.rpc('sd_submit_cutting_register', {
+    p_token: token,
+    p_actual: actual,
+    p_cutting_date: dateOrNull(formData.get('cutting_date')),
+    p_remarks: textOrNull(formData.get('remarks')),
+    p_name: name,
+    p_email: contact,
+  });
+  if (error) return fail('Could not submit — this link may no longer be active.');
+  if (data === false) return fail('This link is no longer active.');
+  return done('Submitted — thank you!');
 }
 
 /** Standard TNA lead-times (singleton) — the offsets that auto-generate the critical path. */
