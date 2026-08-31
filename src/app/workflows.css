@@ -609,13 +609,13 @@
   gap: 4px;
   margin-bottom: 20px;
   padding: 4px;
-  background: rgba(231, 233, 243, 0.85);
-  border: 1px solid rgba(34, 40, 74, 0.045);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
   border-radius: 12px;
 }
 .wf-plan-tab {
   padding: 8px 18px;
-  color: #747c91;
+  color: var(--ink-3);
   font-size: 11.5px;
   font-weight: 580;
   text-decoration: none;
@@ -627,7 +627,7 @@
   color: var(--purple-dark);
   font-weight: 690;
   background: #fff;
-  box-shadow: 0 4px 12px rgba(34, 40, 74, .09), inset 0 -2px rgba(109, 93, 252, .08);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ---- PO approval: cycle-time KPI strip ---- */
@@ -639,7 +639,7 @@
   margin: 4px 0 20px;
   padding: 14px 16px;
   background: var(--panel, #fff);
-  border: 1px solid rgba(34, 40, 74, 0.08);
+  border: 1px solid var(--line);
   border-radius: 12px;
 }
 .wf-kpi {
@@ -648,9 +648,9 @@
   gap: 3px;
   min-width: 130px;
 }
-.wf-kpi-label { font-size: 11px; color: #747c91; font-weight: 560; }
-.wf-kpi-value { font-size: 20px; font-weight: 700; color: var(--purple-dark, #22284a); }
-.wf-kpi-note { flex: 1; min-width: 180px; margin: 0; text-align: right; font-size: 11px; color: #9aa0b4; }
+.wf-kpi-label { font-size: 11px; color: var(--ink-3); font-weight: 560; }
+.wf-kpi-value { font-size: 20px; font-weight: 700; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.wf-kpi-note { flex: 1; min-width: 180px; margin: 0; text-align: right; font-size: 11px; color: var(--ink-4); }
 
 /* ---- PO approval: TNA gate badges ---- */
 .wf-tna-ok,
@@ -660,8 +660,8 @@
   font-size: 11px;
   font-weight: 600;
 }
-.wf-tna-ok { color: #2e7d32; }
-.wf-tna-pending { color: #b26a00; }
+.wf-tna-ok { color: var(--success-text); }
+.wf-tna-pending { color: var(--warning-text); }
 
 /* ---- PO Details (form) doc links ---- */
 .wf-doc-cell { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -674,12 +674,12 @@
   font-size: 10.5px;
   font-weight: 600;
   border-radius: 999px;
-  border: 1px solid rgba(34, 40, 74, 0.14);
+  border: 1px solid var(--line);
   white-space: nowrap;
 }
-.wf-doc-link { color: var(--purple-dark, #4b3fb0); background: rgba(109, 93, 252, 0.07); text-decoration: none; }
-.wf-doc-link:hover { background: rgba(109, 93, 252, 0.16); }
-.wf-doc-flat { color: #9aa0b4; background: transparent; }
+.wf-doc-link { color: var(--info-text); background: var(--info-bg); text-decoration: none; }
+.wf-doc-link:hover { background: #c9d8f1; }
+.wf-doc-flat { color: var(--ink-4); background: transparent; }
 
 /* ---- Buying plan: labelled Job/FOB/E-FOB standard cost ---- */
 .wf-cost-triple {

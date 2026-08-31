@@ -1,22 +1,92 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   SAADAA design tokens — canonical implementation of the shared UI/UX design
+   system (ecru / yellow / black). Section refs (§) point at the design-system
+   reference. Yellow #F0C61E is the ONLY accent; every base tone is warm ecru —
+   never cold blue/gray. Legacy alias names are kept at the bottom so existing
+   rules keep resolving to brand values.
+   ========================================================================== */
 :root {
-  --bg: #faf8f5;
-  --panel: rgba(255, 252, 248, 0.75);
-  --panel-solid: #ffffff;
-  --ink: #161513;
-  --muted: #6e695e;
+  /* Ecru scale (§2.1) — the warm neutral spine */
+  --color-ecru-50: #fcfbf7;
+  --color-ecru-100: #f6f3f1;
+  --color-ecru-200: #f2efe6;
+  --color-ecru-300: #e7e2d2;
+  --color-ecru-400: #c9c2ae;
+  --color-ecru-500: #9a9384;
+  --color-ecru-600: #6e695e;
+  --color-ecru-700: #494640;
+  --color-ecru-800: #2a2925;
+  --color-ecru-900: #161513;
+
+  /* Yellow scale (§2.2) — the single accent */
+  --color-yellow-100: #fcf3cc;
+  --color-yellow-200: #f7e384;
+  --color-yellow-400: #f0c61e;
+  --color-yellow-500: #d9b113;
+  --color-yellow-600: #a8870d;
+
+  /* Surfaces & ink (§2.3) */
+  --bg-app: #faf8f5;
+  --bg-surface: #f5f1ec;
+  --bg-surface-2: #ffffff;
+  --bg-tint: #f6f3f1;
+  --ink-1: #161513;
+  --ink-2: #494640;
+  --ink-3: #6e695e;
+  --ink-4: #9a9384;
   --line: #e7e2d2;
-  --line-strong: #c9c2ae;
-  --purple: #f0c61e;
+  --line-2: #efeae0;
+
+  /* Accent — yellow is the only CTA colour (§1) */
+  --accent: #f0c61e;
+  --accent-hover: #d9b113;
+  --accent-strong: #a8870d;
+  --accent-soft: #faf1dc;
+
+  /* Status sets — text · background · border (§3) */
+  --success-text: #4f7c4d;  --success-bg: #ecf1e9;  --success-border: #3d9e6b;
+  --warning-text: #b57514;  --warning-bg: #faf1dc;  --warning-border: #e8c87a;
+  --danger-text:  #c0392b;  --danger-bg:  #fdecea;  --danger-border:  #e5b6b0;
+  --info-text:    #355c7a;  --info-bg:    #d6e1f5;  --info-border:    #3b6fd4;
+  --link: #3b6fd4;
+
+  /* Glass & shadows (§2.4) */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-2: rgba(255, 255, 255, 0.78);
+  --glass-stroke: rgba(40, 36, 28, 0.06);
+  --glass-blur: 16px;
+  --sh-1: 0 1px 0 rgba(40, 36, 28, 0.04), 0 1px 2px rgba(40, 36, 28, 0.04);
+  --sh-2: 0 1px 0 rgba(40, 36, 28, 0.04), 0 4px 14px rgba(40, 36, 28, 0.06);
+  --sh-3: 0 2px 0 rgba(40, 36, 28, 0.05), 0 12px 32px rgba(40, 36, 28, 0.08);
+  --sh-yellow: 0 6px 18px rgba(240, 198, 30, 0.28);
+
+  /* Radii (§4): card 14 · subcard 10 · input/button 8 */
+  --r-card: 14px;
+  --r-sub: 10px;
+  --r-control: 8px;
+
+  /* Typography (§4) — system sans body, JetBrains Mono for numerics */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  /* ── Legacy aliases (resolve old names to the canonical brand values) ── */
+  --bg: var(--bg-app);
+  --panel: rgba(255, 252, 248, 0.75);
+  --panel-solid: var(--bg-surface-2);
+  --ink: var(--ink-1);
+  --muted: var(--ink-3);
+  --line-strong: var(--color-ecru-400);
+  --purple: var(--accent);          /* misnomer retained: the accent is yellow */
   --purple-dark: #2c2420;
-  --purple-soft: #faf1dc;
-  --teal: #4f7c4d;
-  --blue: #3b6fd4;
-  --orange: #b57514;
-  --red: #c0392b;
+  --purple-soft: var(--accent-soft);
+  --teal: var(--success-text);
+  --blue: var(--link);
+  --orange: var(--warning-text);
+  --red: var(--danger-text);
   --sidebar: rgba(44, 36, 32, 0.88);
-  --shadow-sm: 0 1px 0 rgba(40, 36, 28, 0.04), 0 4px 14px rgba(40, 36, 28, 0.06);
+  --shadow-sm: var(--sh-2);
   --shadow: 0 4px 24px rgba(180, 150, 120, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 24px 70px rgba(44, 36, 32, 0.18);
 }
@@ -28,13 +98,16 @@ html, body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
+/* Page backdrop (§2.4): yellow glow top-left, softer yellow top-right, ink
+   bottom-right — over the cream base. */
 body {
   background:
-    radial-gradient(circle at 82% -10%, rgba(240, 198, 30, 0.12), transparent 30rem),
-    radial-gradient(circle at 20% 100%, rgba(201, 168, 130, 0.10), transparent 28rem),
+    radial-gradient(circle at 0% 0%, rgba(240, 198, 30, 0.10), transparent 32rem),
+    radial-gradient(circle at 100% 0%, rgba(240, 198, 30, 0.05), transparent 30rem),
+    radial-gradient(circle at 100% 100%, rgba(40, 36, 28, 0.04), transparent 30rem),
     var(--bg);
 }
 
@@ -73,9 +146,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   height: 190px;
   right: -120px;
   top: 38%;
-  border: 1px solid rgba(147, 129, 255, 0.14);
+  border: 1px solid rgba(240, 198, 30, 0.14);
   border-radius: 50%;
-  box-shadow: 0 0 0 28px rgba(147, 129, 255, 0.035), 0 0 0 60px rgba(147, 129, 255, 0.02);
+  box-shadow: 0 0 0 28px rgba(240, 198, 30, 0.035), 0 0 0 60px rgba(240, 198, 30, 0.02);
   pointer-events: none;
 }
 
@@ -211,7 +284,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .build-badge {
   padding: 8px 11px;
   color: #8b91a5;
-  font-family: "Geist Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
   background: rgba(244,245,249,.82);
   border: 1px solid var(--line);
@@ -291,8 +364,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   right: -43px;
   border-radius: 50%;
   opacity: .75;
-  background: var(--card-glow, rgba(109,93,252,.14));
-  box-shadow: 0 0 0 18px color-mix(in srgb, var(--card-glow, rgba(109,93,252,.14)) 28%, transparent);
+  background: var(--card-glow, rgba(240,198,30,.14));
+  box-shadow: 0 0 0 18px color-mix(in srgb, var(--card-glow, rgba(240,198,30,.14)) 28%, transparent);
 }
 .metric-card:hover { transform: translateY(-3px); border-color: rgba(109,93,252,.16); box-shadow: 0 14px 34px rgba(31,35,64,.1); }
 .metric-card:disabled { cursor: default; }
@@ -308,7 +381,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   border-radius: 10px;
 }
 .metric-label { color: #737b90 !important; font-size: 10px !important; font-weight: 650; letter-spacing: .025em; }
-.metric-card strong { display: block; margin: 7px 0 5px; font-family: "Geist Mono", monospace; font-size: 24px; font-weight: 650; letter-spacing: -.055em; }
+.metric-card strong { display: block; margin: 7px 0 5px; font-family: var(--font-mono); font-size: 24px; font-weight: 650; letter-spacing: -.055em; }
 .metric-card small { display: block; color: #959caf; font-size: 9px; }
 .metric-grid.summary .metric-card { min-height: 218px; padding: 24px; }
 .metric-card.big .metric-icon { width: 42px; height: 42px; margin-bottom: 30px; }
@@ -342,10 +415,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .chart-panel .panel-title { padding: 0; }
 .panel-kicker { display: block; color: #9ca2b3 !important; font-size: 8px !important; font-weight: 760; letter-spacing: .14em; text-transform: uppercase; }
 .panel-spark { display: flex; align-items: flex-end; gap: 3px; height: 19px; padding: 0 5px; }
-.panel-spark i { display: block; width: 3px; border-radius: 4px; background: #d9d5ff; }
+.panel-spark i { display: block; width: 3px; border-radius: 4px; background: var(--color-ecru-300); }
 .panel-spark i:nth-child(1) { height: 7px; }
-.panel-spark i:nth-child(2) { height: 13px; background: #a89dff; }
-.panel-spark i:nth-child(3) { height: 18px; background: var(--purple); }
+.panel-spark i:nth-child(2) { height: 13px; background: var(--color-yellow-200); }
+.panel-spark i:nth-child(3) { height: 18px; background: var(--accent); }
 .chart-area { height: 315px; padding-top: 11px; }
 .chart-area.tall { height: 525px; padding: 10px 16px 20px; }
 .recharts-cartesian-grid line { stroke: rgba(50,55,83,.08); }
@@ -425,7 +498,7 @@ tbody tr:nth-child(even) { background: rgba(248,249,252,.45); }
 tbody tr:hover { background: rgba(109,93,252,.045); }
 td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 .wide-table table { min-width: 1320px; }
-.mono { color: #424960; font-family: "Geist Mono", monospace; font-size: 9px; }
+.mono { color: var(--ink-2); font-family: var(--font-mono); font-size: 9px; font-variant-numeric: tabular-nums; }
 .badge { padding: 5px 8px; display: inline-flex; align-items: center; border-radius: 20px; font-size: 8px; font-weight: 690; border: 1px solid transparent; }
 .badge.danger { color: #c84d5d; background: #fff1f3; border-color: #fbd8dd; }
 .badge.success { color: #07846d; background: #eaf9f5; border-color: #ccefe6; }
@@ -440,7 +513,7 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 .table-meta-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-right: 12px; }
 .table-meta.has-filters { height: auto; min-height: 49px; padding: 8px 18px; flex-wrap: wrap; row-gap: 8px; }
 .meta-select { height: 31px; padding: 0 8px; color: #51596f; font-size: 10px; background: rgba(255,255,255,.95); border: 1px solid var(--line-strong); border-radius: 8px; transition: border-color .18s ease, box-shadow .18s ease; }
-.meta-select:hover { border-color: rgba(109,93,252,.3); box-shadow: 0 0 0 3px rgba(109,93,252,.07); }
+.meta-select:hover { border-color: var(--color-ecru-400); box-shadow: 0 0 0 3px rgba(240,198,30,.15); }
 .download-button { padding: 6px 10px; display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--purple-dark); font-size: 10px; font-weight: 640; background: var(--purple-soft); border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: background .17s ease, border-color .17s ease, transform .17s ease; }
 .download-button:hover { background: #e5e1ff; border-color: rgba(109,93,252,.28); transform: translateY(-1px); }
 .download-button:disabled { color: var(--muted); background: rgba(148,163,184,.12); cursor: not-allowed; transform: none; }
@@ -496,13 +569,13 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 .help-intro p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .definition-grid { padding: 18px 24px 26px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .definition-card { min-width: 0; padding: 16px; display: flex; align-items: flex-start; gap: 12px; background: #fff; border: 1px solid #e7e2d2; border-radius: 14px; box-shadow: 0 1px 0 rgba(40,36,28,.03); }
-.definition-number { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; color: #2c2420; font-family: var(--font-space-grotesk), sans-serif; font-size: 10px; font-weight: 700; background: #faf1dc; border-radius: 9px; }
+.definition-number { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; color: #2c2420; font-family: var(--font-mono); font-size: 10px; font-weight: 700; background: #faf1dc; border-radius: 9px; }
 .definition-card h3 { margin: 1px 0 6px; color: var(--ink); font-size: 12px; }
 .definition-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .definition-card small { margin-top: 9px; padding: 7px 9px; display: block; color: #355c7a; font-size: 10px; line-height: 1.45; background: #d6e1f5; border-radius: 8px; }
 .definition-meta { margin-top: 9px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .definition-source { padding: 3px 9px; font-size: 8.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--purple-dark); background: var(--purple-soft); border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
-.definition-formula { padding: 4px 9px; font-family: "Geist Mono", ui-monospace, monospace; font-size: 10.5px; color: #355c7a; background: #d6e1f5; border-radius: 7px; }
+.definition-formula { padding: 4px 9px; font-family: var(--font-mono); font-size: 10.5px; color: var(--info-text); background: var(--info-bg); border-radius: 7px; }
 .detail-summary { padding: 16px 20px; display: flex; gap: 8px; flex-wrap: wrap; }
 .detail-summary span { padding: 7px 10px; color: #5d4dd5; font-size: 9px; font-weight: 620; background: #f0eeff; border: 1px solid #dedaff; border-radius: 9px; }
 
@@ -549,7 +622,7 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
   box-shadow: var(--shadow-sm);
   transition: border-color .17s ease, box-shadow .17s ease, transform .17s ease;
 }
-.google-button:hover { border-color: rgba(109,93,252,.28); box-shadow: 0 6px 18px rgba(31,35,64,.08); transform: translateY(-1px); }
+.google-button:hover { border-color: var(--color-ecru-400); box-shadow: var(--shadow); transform: translateY(-1px); }
 .google-button:disabled { color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
 .google-button svg { width: 18px; height: 18px; flex: none; }
 .login-divider { margin: 18px 0 4px; display: flex; align-items: center; gap: 12px; color: #a3abbd; font-size: 9px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
@@ -621,7 +694,9 @@ td small { display: block; margin-top: 4px; color: #9aa1b2; font-size: 8px; }
 }
 
 /* SAADAA brand palette */
-h1, h2, h3, .brand strong, .panel-kicker, .field span, th { font-family: var(--font-space-grotesk), "Space Grotesk", sans-serif; }
+/* Typography (§4): headings share the body sans stack and differ only by a
+   tight letter-spacing — hierarchy comes from size + weight + ink steps. */
+h1, h2, h3, h4 { font-family: var(--font-sans); letter-spacing: -0.01em; }
 .sidebar nav::before, .brand span, .sidebar nav button, .sidebar-foot small { color: rgba(250, 248, 245, 0.50); }
 .sidebar nav button svg { color: rgba(250, 248, 245, 0.50); }
 .sidebar nav button:hover { color: #faf8f5; background: rgba(255,255,255,.06); }
@@ -691,6 +766,8 @@ tbody tr:hover { background: rgba(240,198,30,.08); }
 
 html { font-size: 16px; }
 body { line-height: 1.5; }
+/* §4: tabular figures on every metric/numeric column so digits align. */
+.tabular { font-variant-numeric: tabular-nums; }
 button, input, select, textarea { font-family: inherit; }
 button { min-height: 40px; }
 
@@ -835,7 +912,7 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #5c4dd4;
+  color: var(--link);
   font-weight: 600;
   text-decoration: none;
 }
@@ -848,13 +925,13 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
    hides behind them. Left offsets are set inline (measured from the headers);
    which columns are frozen is user-chosen (double-click a header). */
 .wide-table th.frz, .wide-table td.frz { position: sticky; z-index: 3; background: #fff; }
-.wide-table th.frz { z-index: 6; background: #f7f8fb; }
-.wide-table tbody tr:nth-child(even) td.frz { background: #f9fafc; }
-.wide-table tbody tr:hover td.frz { background: #f4f2fe; }
-.wide-table .frz-edge { box-shadow: inset -1px 0 var(--line), 3px 0 6px rgba(16,18,39,.06); }
+.wide-table th.frz { z-index: 6; background: var(--bg-surface); }
+.wide-table tbody tr:nth-child(even) td.frz { background: var(--bg-app); }
+.wide-table tbody tr:hover td.frz { background: rgba(240,198,30,.10); }
+.wide-table .frz-edge { box-shadow: inset -1px 0 var(--line), 3px 0 6px rgba(44,36,32,.06); }
 /* Every header on a freeze-enabled table is a double-click freeze target. */
 .freeze-table thead th { cursor: pointer; user-select: none; }
-.freeze-table thead th:hover { background: #eef0f6; }
+.freeze-table thead th:hover { background: var(--color-ecru-200); }
 /* Vendor Recommendation: centre the numeric columns under their headers so the
    value sits directly below its label (not right-aligned drifting to the next). */
 .vr-grid th.num, .vr-grid td.num { text-align: center; }

@@ -91,7 +91,7 @@ function MultiSelectFilter({
           fontWeight: value.length ? 600 : 400,
           fontSize: 12,
           background: '#fff',
-          border: '1px solid var(--line-strong, #d7d9e4)',
+          border: '1px solid var(--line-strong, #c9c2ae)',
           borderRadius: 6,
           cursor: 'pointer',
           overflow: 'hidden',
@@ -122,7 +122,7 @@ function MultiSelectFilter({
             zIndex: 60,
             padding: 4,
             background: '#fff',
-            border: '1px solid var(--line-strong, #d7d9e4)',
+            border: '1px solid var(--line-strong, #c9c2ae)',
             borderRadius: 8,
             boxShadow: '0 10px 28px rgba(34,40,74,.18)',
             fontWeight: 400,
@@ -141,7 +141,7 @@ function MultiSelectFilter({
                 marginBottom: 2,
                 fontSize: 12,
                 fontWeight: 400,
-                border: '1px solid var(--line, #e8e9f0)',
+                border: '1px solid var(--line, #e7e2d2)',
                 borderRadius: 6,
               }}
             />
@@ -153,10 +153,10 @@ function MultiSelectFilter({
               padding: '3px 6px',
               textAlign: 'left',
               fontSize: 12,
-              color: value.length ? 'var(--purple-dark, #5c4dd4)' : 'inherit',
+              color: value.length ? 'var(--accent-strong, #a8870d)' : 'inherit',
               background: 'transparent',
               border: 0,
-              borderBottom: '1px solid var(--line, #e8e9f0)',
+              borderBottom: '1px solid var(--line, #e7e2d2)',
               cursor: 'pointer',
             }}
             onClick={() => onChange([])}
