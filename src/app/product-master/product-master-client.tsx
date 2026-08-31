@@ -10,7 +10,7 @@ const COLS: Column<EeProductMaster>[] = [
   { key: 'product_name', label: 'Product Name', kind: 'text' },
   { key: 'colour', label: 'Colour', kind: 'text' },
   { key: 'size', label: 'Size', kind: 'text' },
-  { key: 'product_state', label: 'Status', kind: 'text' },
+  { key: 'product_state', label: 'Product State', kind: 'text' },
   { key: 'weave_type', label: 'Weave', kind: 'text' },
   { key: 'category_name', label: 'Category', kind: 'text' },
   { key: 'gender', label: 'Gender', kind: 'text' },

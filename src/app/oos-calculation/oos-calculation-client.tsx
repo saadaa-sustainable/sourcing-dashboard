@@ -6,7 +6,7 @@ import type { OosCalculationRow } from '@/lib/forms/types';
 // The full sheet, column-for-column. Per-column filters + click-to-sort come from FilterTable.
 const COLS: Column<OosCalculationRow>[] = [
   { key: 'sku', label: 'SKU', kind: 'mono' },
-  { key: 'product_status', label: 'Product Status', kind: 'text' },
+  { key: 'product_status', label: 'Product State', kind: 'text' },
   { key: 'category_with_gender', label: 'Category w/ Gender', kind: 'text' },
   { key: 'rm_code', label: 'RM Code', kind: 'mono' },
   { key: 'dyed_fabric_sku', label: 'Dyed Fabric SKU', kind: 'mono' },

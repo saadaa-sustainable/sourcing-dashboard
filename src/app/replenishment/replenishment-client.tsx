@@ -18,7 +18,7 @@ const COLS: Column<ReplenishmentRow>[] = [
       </>
     ),
   },
-  { key: 'product_state', label: 'Status', kind: 'text', accessor: (r) => r.product_state },
+  { key: 'product_state', label: 'Product State', kind: 'text', accessor: (r) => r.product_state },
   { key: 'current_stock', label: 'Stock', kind: 'num' },
   { key: 'in_progress', label: 'In process', kind: 'num' },
   { key: 'daily_demand', label: 'Daily demand', kind: 'num' },

@@ -14,7 +14,7 @@ const COLS: Column<DoqInventoryRow>[] = [
   { key: 'warehouse', label: 'Warehouse', kind: 'text' },
   { key: 'size', label: 'Size', kind: 'text' },
   { key: 'date_day', label: 'Snapshot', kind: 'text', accessor: (r) => date(r.date_day) },
-  { key: 'product_state', label: 'Status', kind: 'text' },
+  { key: 'product_state', label: 'Product State', kind: 'text' },
   { key: 'product_name', label: 'Product Name', kind: 'text' },
   { key: 'category', label: 'Category', kind: 'text' },
   { key: 'categorytype', label: 'Category Type', kind: 'text' },

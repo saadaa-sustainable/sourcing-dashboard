@@ -193,7 +193,9 @@ export function BuyingPlanClient({
         totalQty > 0 ? Math.min(100, Math.round((actual.qty / totalQty) * 100)) : 0,
       isOverdue: remaining > 0 && now != null && now > overdueThreshold,
       fabricType: row.fabric_type || productMaster[row.product_code]?.fabric_type || 'Unspecified',
-      productStatus: row.product_status || productMaster[row.product_code]?.status || '—',
+      // Product State is sourced from the product master (rolled up to the code),
+      // falling back to the stored line only when the master has nothing for it.
+      productStatus: productMaster[row.product_code]?.status || row.product_status || '—',
       // Red, but never blocking. Mahesh: show it, don't refuse it.
       overPlan: totalQty > 0 && actual.qty > totalQty,
     };
@@ -213,7 +215,7 @@ export function BuyingPlanClient({
     { key: 'job_rate', label: 'Buy value (Job)', kind: 'num',
       accessor: (v) => rate(v.row.job_rate),
       render: (v) => (rate(v.row.job_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.job_rate))) },
-    { key: 'status', label: 'Product status', kind: 'text', accessor: (v) => v.productStatus },
+    { key: 'status', label: 'Product State', kind: 'text', accessor: (v) => v.productStatus },
     { key: 'pending', label: 'Pending qty', kind: 'num', accessor: (v) => v.pending },
     { key: 'job', label: 'Job', kind: 'num', accessor: (v) => Number(v.row.job_work_qty) },
     { key: 'efob', label: 'E-FOB', kind: 'num', accessor: (v) => Number(v.row.efob_qty) },
@@ -563,7 +565,7 @@ export function BuyingPlanClient({
             <thead>
               <tr>
                 <th>Product code</th>
-                <th>Product status</th>
+                <th>Product State</th>
                 <th>Woven / Knitted</th>
                 <th className="num wf-cell-calc">Pending qty</th>
                 <th className="num input-col wf-cell-input">Job work qty</th>
