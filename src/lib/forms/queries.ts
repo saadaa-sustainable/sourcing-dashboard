@@ -2,6 +2,7 @@ import 'server-only';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import {
   buildVendorRollups,
+  computeClosureCompliance,
   computeInternalStatus,
   daysBetween,
   isTnaHighRisk,
@@ -51,6 +52,8 @@ import type {
   CuttingRegister,
   DynamicLink,
   ProductBom,
+  PoClosure,
+  PoClosureView,
   VendorCapacityLog,
   VendorTypeMultiplier,
 } from './types';
@@ -403,6 +406,30 @@ export async function loadCuttingRegisters(): Promise<CuttingRegister[]> {
     .order('created_at', { ascending: false })
     .limit(PAGE_SIZE);
   return (data ?? []) as CuttingRegister[];
+}
+
+/**
+ * PO closures with derived compliance. First syncs closure rows for recently-
+ * completed POs (SECURITY DEFINER; the SLA clock starts at completion), then reads
+ * and attaches the real-time RAG/SLA (computed, never stored).
+ */
+export async function loadPoClosures(): Promise<PoClosureView[]> {
+  const supabase = await client();
+  try {
+    await supabase.rpc('sd_sync_po_closures');
+  } catch {
+    /* best-effort — a sync hiccup must not blank the page */
+  }
+  const { data } = await supabase
+    .from('sd_po_closure')
+    .select('*')
+    .order('easycom_completed_at', { ascending: false, nullsFirst: false })
+    .limit(PAGE_SIZE);
+  return ((data ?? []) as PoClosure[]).map((r) => ({
+    ...r,
+    productCode: r.po_ref_num.split('/')[2]?.trim() || null,
+    compliance: computeClosureCompliance(r),
+  }));
 }
 
 /** Cutting-register dynamic links (most recent first). */
@@ -1250,6 +1277,18 @@ export async function loadApprovalQueue(): Promise<{
   const stdCosts: Record<string, { job: number; fob: number; efob: number }> =
     (plans ?? []).length ? await loadApprovedStandardCosts() : {};
 
+  // Weave on approval lines is sourced from the product master (live), not the
+  // line's stored fabric_type snapshot — one weave source across the project.
+  const weaveByCode: Record<string, string> = {};
+  if ((plans ?? []).length) {
+    const { data: wv } = await supabase
+      .from('sd_ee_product_code_status')
+      .select('product_code, fabric_type');
+    ((wv ?? []) as { product_code: string | null; fabric_type: string | null }[]).forEach((r) => {
+      if (r.product_code && r.fabric_type) weaveByCode[r.product_code] = r.fabric_type;
+    });
+  }
+
   for (const plan of (plans ?? []) as BuyingPlan[]) {
     const { data: lines } = await supabase
       .from('sd_buying_plan_line')
@@ -1286,7 +1325,7 @@ export async function loadApprovalQueue(): Promise<{
           label: `${l.product_code ?? '—'} · ${lineQty.toLocaleString('en-IN')} pcs`,
           qty: lineQty,
           value,
-          fabricType: l.fabric_type ?? null,
+          fabricType: (l.product_code ? weaveByCode[l.product_code] : undefined) ?? l.fabric_type ?? null,
           lineStatus: (l.line_status ?? null) as SdStatus | null,
         };
       }),

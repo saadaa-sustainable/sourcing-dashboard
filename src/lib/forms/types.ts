@@ -6,6 +6,7 @@
  */
 
 import type { InternalStatus } from '@/lib/types';
+import type { ClosureCompliance } from '@/lib/business-logic';
 
 // Two working roles:
 //   admin — founders. Full access and can approve everything.
@@ -571,6 +572,37 @@ export type DynamicLink = {
 
 /** Product-level BOM standard, for the cutting register's read-only reference. */
 export type ProductBom = { bom_quantity: number | null; bom_uom: string | null };
+
+/** One PO's closure workflow row — both legs + SLA timestamps (sd_po_closure). */
+export type PoClosure = {
+  id: number;
+  po_ref_num: string;
+  easycom_completed_at: string | null;
+  closure_initiated_at: string | null;
+  initiated_by: string | null;
+  sourcing_status: string; // pending | submitted
+  sourcing_submitted_at: string | null;
+  sourcing_submitted_by: string | null;
+  cutting_register_ref: number | null;
+  surplus_fabric_qty: number | null;
+  surplus_fabric_value: number | null;
+  finance_status: string; // pending | submitted
+  finance_submitted_at: string | null;
+  finance_submitted_by: string | null;
+  challan_number: string | null;
+  debit_note_number: string | null;
+  debit_note_value: number | null;
+  finance_remarks: string | null;
+  closed_at: string | null;
+  compliance_status: string | null;
+  synced_at: string;
+};
+
+/** Derived closure view — compliance (RAG/SLA) computed, never stored. */
+export type PoClosureView = PoClosure & {
+  productCode: string | null;
+  compliance: ClosureCompliance;
+};
 
 export type ApprovalLogRow = {
   id: number;

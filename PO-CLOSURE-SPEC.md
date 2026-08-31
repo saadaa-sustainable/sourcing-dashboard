@@ -66,10 +66,29 @@ reason leaked).
   sourcing_submitted_by / finance_submitted_by), and a Closure badge on Open PO
   Tracker once Completed.
 
+## Implementation notes (built)
+- **Completion detection** — `sd_sync_po_closures()` (SECURITY DEFINER, granted to
+  authenticated) creates closure rows for SAADAA completed POs (same working-set
+  filter as the view) in a **rolling 45-day window** (3× the SLA cap). Forward-looking:
+  retro-creating rows for POs completed months ago would only add stale breaches.
+  `easycom_completed_at = max(po_updated_date)` so the clock starts at completion.
+  Called on each PO Closure page load (idempotent).
+- **Surplus** computed in `submitSourcingLeg` (not a trigger — value needs the
+  standard-cost lookup): qty = actual − BOM (null if BOM missing), value = qty ×
+  finished-fabric cost (`product → sd_standard_cost.fabric_code → sd_fabric_cost_base`).
+  Finance can override the value on the finance leg.
+- **SLA** — `computeClosureCompliance` (pure, in `business-logic.ts`, unit-tested):
+  merch ≤7d, finance ≤7d, total cap 15d; RAG is real-time (open POs past 15d read red).
+- **Gate** — closure rows exist only for completed POs, so "Initiate" / legs are
+  inherently gated; `initiateClosure` also re-checks `easycom_completed_at`.
+- **PO Closure screen** (`/po-closure`): metric row, RAG table, "open beyond 15 days"
+  filter, per-person breach breakdown, inline two-leg forms.
+
 ## Build order
-1. Schema ✅ · 2. BOM auto-populate · 3. Cutting Register dashboard form ·
-4. Dynamic link gen + `/fill/[token]` · 5. Surplus trigger · 6. Gating + two-leg +
-SLA · 7. Compliance dashboard views.
+1. Schema ✅ · 2. BOM auto-populate ✅ · 3. Cutting Register form ✅ ·
+4. Dynamic link gen + `/fill/[token]` ✅ · 5. Surplus ✅ · 6. Gating + two-leg + SLA ✅ ·
+7. Compliance dashboard ✅ · **Deferred:** Closure badge on Open PO Tracker (small
+follow-up — surface `sd_po_closure` status on the tracker rows).
 
 ## Out of scope (this pass)
 Automated WhatsApp API sending; multi-submission links (single-use only);

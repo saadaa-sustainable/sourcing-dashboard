@@ -40,6 +40,56 @@ export function istToday(now = new Date()): Date {
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
 }
 
+/* ---- PO Closure SLA (spec §5) ------------------------------------- */
+// Merchandiser leg ≤ 7d, finance leg ≤ 7d, total (completion → close) hard-capped
+// at 15d. RAG is real-time so a still-open PO already past 15d reads red.
+export const CLOSURE_SLA = { legDays: 7, totalCap: 15 } as const;
+
+export type ClosureLeg = 'sourcing' | 'finance' | 'closed';
+export type ClosureCompliance = {
+  daysToMerch: number | null; // sourcing_submitted − completed
+  daysToFinance: number | null; // finance_submitted − sourcing_submitted
+  totalDays: number | null; // (closed ?? today) − completed
+  status: 'on_time' | 'breached';
+  rag: 'green' | 'amber' | 'red';
+  leg: ClosureLeg;
+};
+
+export function computeClosureCompliance(
+  c: {
+    easycom_completed_at: string | null;
+    sourcing_status: string;
+    sourcing_submitted_at: string | null;
+    finance_submitted_at: string | null;
+    closed_at: string | null;
+  },
+  today = istToday(),
+): ClosureCompliance {
+  const completed = parseIsoDate(c.easycom_completed_at);
+  const sourcing = parseIsoDate(c.sourcing_submitted_at);
+  const finance = parseIsoDate(c.finance_submitted_at);
+  const closed = parseIsoDate(c.closed_at);
+
+  const daysToMerch = completed && sourcing ? daysBetween(sourcing, completed) : null;
+  const daysToFinance = sourcing && finance ? daysBetween(finance, sourcing) : null;
+  const leg: ClosureLeg = closed ? 'closed' : c.sourcing_status === 'submitted' ? 'finance' : 'sourcing';
+  const totalDays = completed ? daysBetween(closed ?? today, completed) : null;
+  const status: 'on_time' | 'breached' =
+    totalDays != null && totalDays > CLOSURE_SLA.totalCap ? 'breached' : 'on_time';
+
+  let rag: 'green' | 'amber' | 'red' = 'green';
+  if (status === 'breached') {
+    rag = 'red';
+  } else if (leg !== 'closed' && completed) {
+    // Amber/red on the current open leg's own elapsed days.
+    const legStart = leg === 'finance' ? sourcing : completed;
+    const legElapsed = legStart ? daysBetween(today, legStart) : 0;
+    if (legElapsed > CLOSURE_SLA.legDays) rag = 'red';
+    else if (legElapsed >= 5) rag = 'amber';
+  }
+  return { daysToMerch, daysToFinance, totalDays, status, rag, leg };
+}
+
 export function vendorBucket(label: string | null | undefined): 'Woven' | 'Knit' | 'Other' {
   const k = key(label);
   if (k.includes('woven')) return 'Woven';
@@ -279,7 +329,9 @@ export function buildTrackerRows(
     return {
       key: groupKey, poRef: text(first.po_ref_num), productCode: text(first.product_code) || 'Unmapped',
       vendorName: text(first.vendor_name) || 'Unknown', vendorCode: text(first.vendor_code),
-      merchant: vendor.merchant, vendorBucket: vendor.bucket, poType: text(first.po_type) || 'Unknown',
+      // Weave is the product's, from the master (baked on at load); the vendor's
+      // type is only a fallback for codes the master doesn't cover.
+      merchant: vendor.merchant, vendorBucket: first.master_weave ?? vendor.bucket, poType: text(first.po_type) || 'Unknown',
       poNumber: text(first.po_number),
       variantCount: variants.length, variantName: variants.length === 1 ? variants[0] : '',
       pendingQty: rows.reduce((sum, row) => sum + number(row.pending_qty_actual), 0),
@@ -381,8 +433,14 @@ export function buildVendorRollups(
 ): VendorRollup[] {
   const tracker = buildTrackerRows(pendingPos, vendorTypes, vendorMasters, tnaRecords, today);
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);
+  // Split each vendor per weave: a vendor supplying both Woven and Knit products
+  // yields one rollup per weave (qty/value/PO counts scoped to that weave), since
+  // weave is now the product's, not the vendor's. Capacity stays vendor-level.
   const byVendor = new Map<string, TrackerRow[]>();
-  tracker.forEach((row) => byVendor.set(key(row.vendorCode || row.vendorName), [...(byVendor.get(key(row.vendorCode || row.vendorName)) ?? []), row]));
+  tracker.forEach((row) => {
+    const groupKey = `${key(row.vendorCode || row.vendorName)}${row.vendorBucket}`;
+    byVendor.set(groupKey, [...(byVendor.get(groupKey) ?? []), row]);
+  });
   return [...byVendor.values()].map((rows) => {
     const first = rows[0];
     const sample = rows[0].skuRows[0];

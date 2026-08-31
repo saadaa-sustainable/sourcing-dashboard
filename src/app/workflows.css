@@ -926,6 +926,30 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- PO Closure: RAG dots, metric row, owner chips, legs ---- */
+.wf-rag { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+.wf-rag-green { background: #3c8b52; }
+.wf-rag-amber { background: #d9a521; }
+.wf-rag-red { background: #c14a3a; }
+.wf-metric-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.wf-metric {
+  flex: 1 1 130px; min-width: 120px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid #e7e2d2; background: #fff; display: flex; flex-direction: column; gap: 2px;
+}
+.wf-metric-value { font-size: 22px; font-weight: 700; color: #33302b; }
+.wf-metric-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #6e695e; }
+.wf-metric-red { border-color: rgba(193, 74, 58, 0.4); background: rgba(193, 74, 58, 0.05); }
+.wf-metric-red .wf-metric-value { color: #a1483a; }
+.wf-metric-amber { border-color: rgba(217, 165, 33, 0.45); background: rgba(217, 165, 33, 0.07); }
+.wf-owner-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.wf-owner-chip {
+  padding: 4px 10px; border-radius: 999px; background: rgba(193, 74, 58, 0.1); color: #a1483a;
+  font-size: 12px; font-weight: 560;
+}
+.wf-owner-chip strong { margin-left: 4px; }
+.wf-leg { border-top: 1px solid #ece7d9; padding-top: 10px; margin-top: 6px; }
+.wf-leg:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+
 /* ---- Cutting Register: cards, link result ---- */
 .wf-card { border: 1px solid #e7e2d2; border-radius: 12px; background: #fff; padding: 14px 16px; margin-bottom: 14px; }
 .wf-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: #6e695e; margin: 0 0 10px; }

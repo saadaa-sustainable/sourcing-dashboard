@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorPoCapacity } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeClosureCompliance, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorPoCapacity } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -180,5 +180,45 @@ describe('sourcing business rules', () => {
     assert.equal(v.poCapacity, 750);
     // Utilisation = open qty (300) ÷ monthly capacity (1000) = 30%.
     assert.equal(v.utilizationPct, 30);
+  });
+});
+
+describe('PO closure SLA compliance', () => {
+  const today = istToday(new Date('2026-08-31T06:00:00Z'));
+  const open = (over: Partial<Parameters<typeof computeClosureCompliance>[0]>) =>
+    computeClosureCompliance(
+      { easycom_completed_at: null, sourcing_status: 'pending', sourcing_submitted_at: null, finance_submitted_at: null, closed_at: null, ...over },
+      today,
+    );
+
+  it('is green early in the sourcing leg', () => {
+    const c = open({ easycom_completed_at: '2026-08-29' }); // 2 days in
+    assert.equal(c.leg, 'sourcing');
+    assert.equal(c.rag, 'green');
+    assert.equal(c.status, 'on_time');
+  });
+
+  it('goes amber at day 5-7 of the open leg', () => {
+    const c = open({ easycom_completed_at: '2026-08-25' }); // 6 days in
+    assert.equal(c.rag, 'amber');
+  });
+
+  it('reads red for a still-open PO already past the 15-day total cap', () => {
+    const c = open({ easycom_completed_at: '2026-08-10' }); // 21 days, still open
+    assert.equal(c.status, 'breached');
+    assert.equal(c.rag, 'red');
+    assert.equal(c.totalDays, 21);
+  });
+
+  it('measures the finance leg from the sourcing submission, and closes on time', () => {
+    const c = computeClosureCompliance(
+      { easycom_completed_at: '2026-08-20', sourcing_status: 'submitted', sourcing_submitted_at: '2026-08-24', finance_submitted_at: '2026-08-28', closed_at: '2026-08-28' },
+      today,
+    );
+    assert.equal(c.leg, 'closed');
+    assert.equal(c.daysToMerch, 4);
+    assert.equal(c.daysToFinance, 4);
+    assert.equal(c.totalDays, 8);
+    assert.equal(c.rag, 'green');
   });
 });
