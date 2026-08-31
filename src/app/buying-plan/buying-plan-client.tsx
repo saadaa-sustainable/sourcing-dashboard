@@ -192,7 +192,9 @@ export function BuyingPlanClient({
       pctComplete:
         totalQty > 0 ? Math.min(100, Math.round((actual.qty / totalQty) * 100)) : 0,
       isOverdue: remaining > 0 && now != null && now > overdueThreshold,
-      fabricType: row.fabric_type || productMaster[row.product_code]?.fabric_type || 'Unspecified',
+      // Weave/category is the product master's, falling back to the stored line only
+      // when the master has nothing for this code.
+      fabricType: productMaster[row.product_code]?.fabric_type || row.fabric_type || 'Unspecified',
       // Product State is sourced from the product master (rolled up to the code),
       // falling back to the stored line only when the master has nothing for it.
       productStatus: productMaster[row.product_code]?.status || row.product_status || '—',

@@ -90,6 +90,28 @@ async function fetchDashboardPos(supabase: Reader): Promise<PendingPo[]> {
   return rows;
 }
 
+/**
+ * Product-code → weave (Woven/Knit) from the product master (sd_ee_product_code_status,
+ * itself rolled up from the EasyEcom product master). This is the single source of weave
+ * across the project: it's baked onto every PO row so the vendor's own type never decides
+ * a product's weave. Keyed on trimmed/upper product code for a forgiving match.
+ */
+async function fetchMasterWeaveByCode(supabase: Reader): Promise<Map<string, 'Woven' | 'Knit'>> {
+  const map = new Map<string, 'Woven' | 'Knit'>();
+  const { data, error } = await supabase
+    .from('sd_ee_product_code_status')
+    .select('product_code, fabric_type');
+  if (error) throw new Error(`Supabase read failed for sd_ee_product_code_status: ${error.message}`);
+  (data as { product_code: string | null; fabric_type: string | null }[] | null)?.forEach((r) => {
+    const code = (r.product_code ?? '').trim().toUpperCase();
+    if (!code) return;
+    const w = (r.fabric_type ?? '').trim().toLowerCase();
+    if (w === 'woven') map.set(code, 'Woven');
+    else if (w === 'knitted' || w === 'knit') map.set(code, 'Knit');
+  });
+  return map;
+}
+
 async function fixture(name: string) {
   return readFile(path.join(process.cwd(), 'data', 'fixtures', name), 'utf8');
 }
@@ -300,7 +322,7 @@ async function fetchVendorCapacity(supabase: Reader): Promise<VendorCapacityRow[
 export async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseEnv()) return loadFixtures();
   const supabase = await createClient();
-  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals, stageInspectionRows, vendorCapacity] = await Promise.all([
+  const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals, stageInspectionRows, vendorCapacity, weaveByCode] = await Promise.all([
     fetchDashboardPos(supabase),
     fetchAllRows<VendorType>(supabase, 'vendor_type_master', 'vendor_name'),
     fetchAllRows<VendorMaster>(supabase, 'vendor_master_data', 'vendor_code'),
@@ -308,7 +330,14 @@ export async function loadDashboardData(): Promise<DashboardData> {
     fetchStageActuals(supabase),
     fetchStageInspections(supabase),
     fetchVendorCapacity(supabase),
+    fetchMasterWeaveByCode(supabase),
   ]);
+  // Weave comes from the product master, never the vendor's type: bake each PO's
+  // product-code weave onto the row so every downstream split reads it directly.
+  for (const po of pendingPos) {
+    const w = weaveByCode.get((po.product_code ?? '').trim().toUpperCase());
+    if (w) po.master_weave = w;
+  }
   // Stage ACTUAL dates come from the Google Forms (Production Dashboard); planned
   // TNA dates stay from tna_tracker.
   mergeStageActuals(tnaRecords, stageActuals);

@@ -22,6 +22,10 @@ export type PendingPo = {
   pending_qty_actual: number;
   po_type: string | null;
   match_flag: boolean;
+  // Weave (Woven/Knit) resolved from the product master by product_code, baked on
+  // at load time so it — not the vendor's type — drives every weave split. Undefined
+  // when the code isn't in the master (callers fall back to the vendor-type bucket).
+  master_weave?: 'Woven' | 'Knit';
 };
 
 export type VendorType = {
