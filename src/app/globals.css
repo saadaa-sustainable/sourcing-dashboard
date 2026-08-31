@@ -943,3 +943,56 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .badge.warn { color: #9a6b00; background: #fff7e6; border-color: #ffe4a3; }
 .gap-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; margin-left: 10px; color: #9a6b00; background: #fff7e6; border: 1px solid #ffe4a3; border-radius: 20px; font-size: 9px; font-weight: 650; cursor: pointer; }
 .gap-chip.active { color: #fff; background: #d38a00; border-color: #d38a00; }
+
+/* ---- DAM-style overview: KPI cards, tab pills, bento grid, donut ---- */
+/* KPI card (DAM): colored top border, head row (icon · label · ⓘ), big number. */
+.metric-card { min-height: 148px; padding: 19px 20px 18px; border-top: 3px solid var(--card-accent, var(--accent)); cursor: default; }
+.metric-card.clickable { cursor: pointer; }
+.metric-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.metric-head .metric-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metric-icon { width: 30px; height: 30px; margin-bottom: 0; flex: 0 0 30px; border-radius: 9px; }
+.metric-card strong { margin: 15px 0 7px; font-size: 30px; letter-spacing: -.025em; }
+.metric-card small { color: #9a9384; font-size: 10.5px; }
+.metric-grid.dashboard-metrics .metric-card strong { margin: 15px 0 7px; font-size: 30px; }
+.metric-grid.dashboard-metrics .metric-card small { color: #9a9384; font-size: 10.5px; font-weight: 500; }
+.metric-card.big .metric-icon { width: 30px; height: 30px; margin-bottom: 0; }
+.metric-card.big strong { margin: 15px 0 7px; font-size: 30px; }
+.tone-amber { --card-accent: #d9a514; --card-soft: #faf1dc; --card-glow: rgba(240, 198, 30, 0.20); }
+
+/* DAM tab pills: black active pill on the segment control. */
+.segment { padding: 4px; border-radius: 999px; }
+.segment button { border-radius: 999px; }
+.segment button.active { color: #fff; font-weight: 650; background: var(--ink-1); box-shadow: 0 6px 16px rgba(22, 21, 19, 0.20); }
+
+/* Bento row: wide EDD area chart + production-pipeline donut. */
+.bento-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 17px; margin-bottom: 17px; }
+.bento-grid > * { animation: cardIn .45s cubic-bezier(.22, .61, .36, 1) both; animation-delay: .12s; }
+.bento-grid > *:nth-child(2) { animation-delay: .18s; }
+
+.legend-pills { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.legend-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; color: var(--ink-2); font-size: 10px; font-weight: 650; background: #fff; border: 1px solid var(--line); border-radius: 999px; }
+.legend-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--pill-color, var(--accent)); }
+
+.donut-wrap { display: flex; align-items: center; gap: 18px; height: 315px; padding-top: 14px; }
+.donut-chart { position: relative; width: 47%; min-width: 160px; height: 100%; flex: none; }
+.donut-center { position: absolute; inset: 0; display: grid; place-content: center; gap: 3px; text-align: center; pointer-events: none; }
+.donut-center strong { font-size: 27px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.donut-center span { color: var(--ink-4); font-size: 8px; font-weight: 750; letter-spacing: .15em; text-transform: uppercase; }
+.donut-legend { flex: 1; min-width: 0; display: grid; gap: 8px; align-content: center; }
+.donut-row { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 11px; }
+.donut-row i { width: 8px; height: 8px; flex: none; border-radius: 50%; }
+.donut-row b { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.donut-row em { color: var(--ink-4); font-size: 9.5px; font-style: normal; font-variant-numeric: tabular-nums; min-width: 27px; text-align: right; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-grid > * { animation: none !important; }
+}
+@media (max-width: 1180px) {
+  .bento-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .metric-card strong, .metric-card.big strong,
+  .metric-grid.dashboard-metrics .metric-card strong { font-size: 22px; }
+  .donut-wrap { height: auto; flex-direction: column; align-items: stretch; padding-bottom: 6px; }
+  .donut-chart { width: 100%; height: 210px; }
+}

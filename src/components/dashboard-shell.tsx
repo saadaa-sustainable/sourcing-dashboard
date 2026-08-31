@@ -11,6 +11,7 @@ import {
   CircleHelp,
   Download,
   FileDown,
+  IndianRupee,
   Info,
   LayoutDashboard,
   Lock,
@@ -18,8 +19,11 @@ import {
   PackageSearch,
   Search,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -28,6 +32,9 @@ import {
   LabelList,
   Legend,
   Line,
+  Pie,
+  PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -53,6 +60,7 @@ import type {
   VendorRollup,
 } from "@/lib/types";
 import { TnaBreakdown } from "./tna-breakdown";
+import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import type { SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
@@ -66,6 +74,8 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Open POs", text: "Purchase orders that still have pieces left to receive — counted as unique PO references where pending quantity (actual) is above 0. Fully received POs drop off.", tip: "Open quantity = sum of pending pieces; Open value = sum of (pending qty × item price)." },
     { title: "Overdue POs", text: "Open POs whose expected delivery date (EDD) is already in the past (Layer 2 · Overdue). The % on the card is overdue ÷ open POs.", tip: "Click the card to open the overdue audit list." },
     { title: "High-risk POs", text: "A live early-warning flag: an open PO where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet. It is a snapshot, not a permanent label — the moment that stage is marked done, even late, the PO stops being High Risk.", tip: "Independent of the final delivery date; click the card to see which POs and stages." },
+    { title: "Deliveries due (±30 days)", text: "Pending quantity plotted on its expected delivery date, 30 days back and 30 days ahead, split by vendor type. Everything left of the Today line is overdue backlog; right of it is the upcoming delivery load." },
+    { title: "Production pipeline", text: "Every open PO placed at its current TNA stage — the earliest stage without an actual date. The centre number is the count of live (open) POs.", tip: "'No TNA' means the PO has no TNA timeline at all — an adoption gap, not a production state." },
     { title: "PO ageing", text: "Open POs grouped by how overdue they are: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD when no delivery date is set." },
     { title: "Vendor & product charts", text: "Open vs delayed POs per vendor with a delay-% line, plus the top product codes and product·variant pairs by pending quantity and by delay %." },
     { title: "All / Woven / Knitted / Other", text: "Filter every card and chart to a vendor type. A vendor whose type contains 'woven' counts as Woven; one containing 'knit' counts as Knitted; anything else — including blank — is grouped separately as Other." },
@@ -129,13 +139,14 @@ const norm = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
 const unique = (values: string[]) =>
   [...new Set(values.filter(Boolean))].sort();
-const metricIcons = {
+const metricIcons: Record<string, LucideIcon> = {
   purple: LayoutDashboard,
   teal: Boxes,
   blue: CalendarClock,
+  amber: Boxes,
   orange: Info,
   red: AlertTriangle,
-} as const;
+};
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -184,12 +195,17 @@ function CountUp({ text }: { text: string }) {
   return <>{m[1]}{formatted}{m[3]}</>;
 }
 
+// DAM-style KPI card: colored top border + head row (icon · label · ⓘ), big
+// count-up number, muted note. A <div>, not a <button>, so the InfoDot's own
+// button can nest legally; clickable cards get role/tabIndex instead.
 function Card({
   label,
   value,
   note,
   tone = "purple",
   big = false,
+  icon,
+  info,
   onClick,
 }: {
   label: string;
@@ -197,24 +213,39 @@ function Card({
   note?: string;
   tone?: string;
   big?: boolean;
+  icon?: LucideIcon;
+  info?: string;
   onClick?: () => void;
 }) {
-  const Icon = metricIcons[tone as keyof typeof metricIcons] ?? LayoutDashboard;
+  const Icon = icon ?? metricIcons[tone] ?? LayoutDashboard;
   return (
-    <button
-      type="button"
-      className={`metric-card tone-${tone}${big ? " big" : ""}`}
+    <div
+      className={`metric-card tone-${tone}${big ? " big" : ""}${onClick ? " clickable" : ""}`}
       onClick={onClick}
-      disabled={!onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
-      <span className="metric-icon">
-        <Icon size={17} strokeWidth={1.8} />
+      <span className="metric-head">
+        <span className="metric-icon">
+          <Icon size={15} strokeWidth={1.9} />
+        </span>
+        <span className="metric-label">{label}</span>
+        {info && <InfoDot text={info} label={`About ${label}`} />}
       </span>
-      <span className="metric-label">{label}</span>
       <strong><CountUp text={value} /></strong>
       {note && <small>{note}</small>}
       {onClick && <ArrowUpRight className="metric-action" size={15} />}
-    </button>
+    </div>
   );
 }
 
@@ -524,6 +555,61 @@ function DashboardTab({
     data.tnaRecords,
     today,
   );
+  // EDD schedule (±30 days): pending qty placed on its expected delivery date,
+  // split by vendor bucket. Left of Today = overdue backlog, right = upcoming load.
+  const dayMs = 86_400_000;
+  const eddWindow: {
+    label: string;
+    Woven: number;
+    Knit: number;
+    Other: number;
+  }[] = [];
+  const eddByDate = new Map<string, (typeof eddWindow)[number]>();
+  for (let i = -30; i <= 30; i++) {
+    const d = new Date(today.getTime() + i * dayMs);
+    const entry = {
+      label: d.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      }),
+      Woven: 0,
+      Knit: 0,
+      Other: 0,
+    };
+    eddWindow.push(entry);
+    eddByDate.set(d.toISOString().slice(0, 10), entry);
+  }
+  const todayLabel = eddWindow[30].label;
+  tracker.forEach((row) => {
+    const entry = row.edd && eddByDate.get(row.edd.slice(0, 10));
+    if (entry) entry[row.vendorBucket] += row.pendingQty;
+  });
+  const hasEddData = eddWindow.some((d) => d.Woven || d.Knit || d.Other);
+  // Production pipeline donut: distinct open POs at each TNA stage.
+  const stageMeta: [stage: string, label: string, color: string][] = [
+    ["Not in TNA Tracker", "No TNA", "#c9c2ae"],
+    ["PP Sample Pending", "PP Sample", "#c9a882"],
+    ["GPT Pending", "GPT", "#7b4fbf"],
+    ["Cutting Pending", "Cutting", "#e68950"],
+    ["Inline / Midline QC Pending", "Inline QC", "#3b6fd4"],
+    ["First Delivery Pending", "First Delivery", "#d9b113"],
+    ["PO Closer Pending", "PO Closer", "#b54f7a"],
+    ["Production", "Production", "#3d9e6b"],
+  ];
+  const stageRefs = new Map<string, Set<string>>();
+  tracker.forEach((row) => {
+    if (!stageRefs.has(row.stage)) stageRefs.set(row.stage, new Set());
+    stageRefs.get(row.stage)!.add(row.poRef);
+  });
+  const pipeline = stageMeta
+    .map(([stage, name, color]) => ({
+      name,
+      color,
+      value: stageRefs.get(stage)?.size ?? 0,
+    }))
+    .filter((s) => s.value);
+  const pipelineTotal = pipeline.reduce((s, p) => s + p.value, 0);
   const ageing = [
     "Not Due",
     "0-7 Days",
@@ -638,25 +724,17 @@ function DashboardTab({
           label="Open POs"
           value={fmt.format(openRefs.length)}
           note={`${fmt.format(open.length)} SKU rows`}
-        />
-        <Card
-          label="Open Qty"
-          value={fmt.format(open.reduce((s, r) => s + r.pending_qty_actual, 0))}
-          tone="teal"
-        />
-        <Card
-          label="Open Value"
-          value={money.format(
-            open.reduce((s, r) => s + r.pending_qty_actual * r.item_price, 0),
-          )}
           tone="blue"
+          icon={LayoutDashboard}
+          info="Unique PO references that still have pending quantity above 0. Fully received POs drop off."
         />
         <Card
           label="Overdue POs"
           value={fmt.format(delayedRefs.length)}
-          note={`${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · audit`}
-          tone="orange"
-          big
+          note={`${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · view audit`}
+          tone="red"
+          icon={CalendarClock}
+          info="Open POs whose expected delivery date is already past. Click to open the audit list."
           onClick={() => onOverdue(delayed)}
         />
         <Card
@@ -664,11 +742,159 @@ function DashboardTab({
           value={fmt.format(
             unique(highRisk.map((r) => r.po_ref_num ?? "")).length,
           )}
-          note="View details"
-          tone="red"
-          big
+          note="TNA stage slipped · view details"
+          tone="orange"
+          icon={AlertTriangle}
+          info="A critical-path TNA stage is past its planned date with no actual date yet. Clears the moment the stage is marked done."
           onClick={() => onHighRisk(highRisk)}
         />
+        <Card
+          label="Open Qty"
+          value={fmt.format(open.reduce((s, r) => s + r.pending_qty_actual, 0))}
+          note="pieces pending"
+          tone="amber"
+          info="Sum of pending pieces across every open SKU row."
+        />
+        <Card
+          label="Open Value"
+          value={money.format(
+            open.reduce((s, r) => s + r.pending_qty_actual * r.item_price, 0),
+          )}
+          note="pending qty × item price"
+          tone="teal"
+          icon={IndianRupee}
+          info="Pending quantity times item price, summed across open SKU rows."
+        />
+      </div>
+      <div className="bento-grid">
+        <section className="panel chart-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">EDD schedule</span>
+              <h3>Deliveries due — ±30 days</h3>
+            </div>
+            <span className="legend-pills">
+              <span className="legend-pill" style={{ "--pill-color": "#7b4fbf" } as CSSProperties}>
+                <i /> Woven
+              </span>
+              <span className="legend-pill" style={{ "--pill-color": "#3d9e6b" } as CSSProperties}>
+                <i /> Knitted
+              </span>
+              <span className="legend-pill" style={{ "--pill-color": "#e68950" } as CSSProperties}>
+                <i /> Other
+              </span>
+            </span>
+          </div>
+          <div className="chart-area">
+            {hasEddData ? (
+              <ResponsiveContainer>
+                <AreaChart data={eddWindow} margin={{ left: -14, right: 8 }}>
+                  <defs>
+                    <linearGradient id="gWoven" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#7b4fbf" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#7b4fbf" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="gKnit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3d9e6b" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#3d9e6b" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="gOther" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#e68950" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#e68950" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" minTickGap={32} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <ReferenceLine
+                    x={todayLabel}
+                    stroke="#161513"
+                    strokeDasharray="4 3"
+                    label={{ value: "Today", position: "top", fontSize: 9, fill: "#6e695e" }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="Woven"
+                    name="Woven"
+                    stroke="#7b4fbf"
+                    strokeWidth={2.2}
+                    fill="url(#gWoven)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="Knit"
+                    name="Knitted"
+                    stroke="#3d9e6b"
+                    strokeWidth={2.2}
+                    fill="url(#gKnit)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="Other"
+                    name="Other"
+                    stroke="#e68950"
+                    strokeWidth={2.2}
+                    fill="url(#gOther)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <Empty text="No EDDs inside the ±30 day window" />
+            )}
+          </div>
+        </section>
+        <section className="panel chart-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">Work in progress</span>
+              <h3>Production pipeline</h3>
+            </div>
+          </div>
+          {pipeline.length ? (
+            <div className="donut-wrap">
+              <div className="donut-chart">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={pipeline}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius="68%"
+                      outerRadius="94%"
+                      paddingAngle={2}
+                      cornerRadius={4}
+                      strokeWidth={0}
+                    >
+                      {pipeline.map((s) => (
+                        <Cell key={s.name} fill={s.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="donut-center">
+                  <strong><CountUp text={fmt.format(pipelineTotal)} /></strong>
+                  <span>Live POs</span>
+                </div>
+              </div>
+              <div className="donut-legend">
+                {pipeline.map((s) => (
+                  <div className="donut-row" key={s.name}>
+                    <i style={{ background: s.color }} />
+                    {s.name}
+                    <b>{fmt.format(s.value)}</b>
+                    <em>{Math.round((s.value / pipelineTotal) * 100)}%</em>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="chart-area">
+              <Empty />
+            </div>
+          )}
+        </section>
       </div>
       <div className="chart-grid">
         <ChartCard
