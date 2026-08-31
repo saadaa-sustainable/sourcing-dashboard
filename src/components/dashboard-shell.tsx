@@ -2799,6 +2799,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           note="Expected within 365 days"
           tone="teal"
           big
+          info="Distinct SKUs with pending PO quantity expected to arrive within the next 365 days."
         />
         <Card
           label="Out of Stock"
@@ -2806,11 +2807,13 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           note="0 pending quantity"
           tone="orange"
           big
+          info="SKUs currently at zero pending quantity — nothing on order to replenish them."
         />
       </div>
       <div className="chart-grid">
         <ChartCard
-          title="In Process - Top products by pending quantity"
+          title="In Process — top products by pending quantity"
+          info="The SKUs with the largest pending PO quantity arriving within 365 days — your biggest inbound replenishment."
           download={{
             filename: "in-process-365",
             headers: ["Product", "Vendor", "Qty", "EDD", "Delay days"],
@@ -2853,6 +2856,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
         </ChartCard>
         <ChartCard
           title="Out of Stock products by occurrence count"
+          info="SKUs that have gone out of stock most often, by number of recorded occurrences — the repeat offenders to prioritise."
           download={{
             filename: "out-of-stock",
             headers: ["Product code", "Count", "Last vendor"],
