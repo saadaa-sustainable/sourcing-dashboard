@@ -98,10 +98,15 @@ async function fetchDashboardPos(supabase: Reader): Promise<PendingPo[]> {
  */
 async function fetchMasterWeaveByCode(supabase: Reader): Promise<Map<string, 'Woven' | 'Knit'>> {
   const map = new Map<string, 'Woven' | 'Knit'>();
+  // Never fatal: weave enrichment failing must not take the dashboard down —
+  // rows without master_weave fall back to the vendor-type bucket downstream.
   const { data, error } = await supabase
     .from('sd_ee_product_code_status')
     .select('product_code, fabric_type');
-  if (error) throw new Error(`Supabase read failed for sd_ee_product_code_status: ${error.message}`);
+  if (error) {
+    console.warn(`sd_ee_product_code_status read failed (weave falls back to vendor type): ${error.message}`);
+    return map;
+  }
   (data as { product_code: string | null; fabric_type: string | null }[] | null)?.forEach((r) => {
     const code = (r.product_code ?? '').trim().toUpperCase();
     if (!code) return;

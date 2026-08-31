@@ -22,9 +22,13 @@
 -- null. Weave/fabric_type keeps its mode() roll-up, unchanged.
 -- =====================================================================
 
+-- codes is MATERIALIZED: without it the correlated per-SKU subquery rescans
+-- sd_product_master (re-evaluating its sd_is_saadaa() RLS qual) ~11K times under
+-- the authenticated role — statement timeout on the dashboard. Materialized, the
+-- RLS runs once and each probe scans the ~50-row in-memory list (fast).
 create or replace view public.sd_ee_product_code_status
 with (security_invoker = true) as
-with codes as (
+with codes as materialized (
   select distinct product_code from public.sd_product_master
   where product_code is not null and btrim(product_code) <> ''
 ),
