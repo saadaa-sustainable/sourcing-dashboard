@@ -2632,9 +2632,40 @@ function ProductTab({ data }: { data: DashboardData }) {
           onChange={(v) => set({ ...filters, variant: v })}
         />
       </div>
+      <div className="metric-grid compact">
+        <Card
+          label="Product codes"
+          value={fmt.format(summary.length)}
+          info="Distinct product codes with open PO quantity under the current filters."
+        />
+        <Card
+          label="Variant rows"
+          value={fmt.format(products.length)}
+          tone="blue"
+          info="Distinct product-code × variant combinations with open quantity."
+        />
+        <Card
+          label="Open quantity"
+          value={fmt.format(summary.reduce((s, r) => s + r.qty, 0))}
+          tone="teal"
+          info="Total pending pieces across the filtered products."
+        />
+        <Card
+          label="Open value"
+          value={money.format(summary.reduce((s, r) => s + r.value, 0))}
+          tone="orange"
+          info="Total pending value across the filtered products."
+        />
+      </div>
       <section className="panel table-panel product-table">
         <div className="panel-title">
-          <h3>Product + variant rollup</h3>
+          <h3>
+            Product + variant rollup
+            <InfoDot
+              text="Open pending quantity and value for every product-code × variant combination, after the filters above."
+              label="About Product + variant rollup"
+            />
+          </h3>
           <span className="table-meta-actions">
             <span>{products.length} rows</span>
             <DownloadButton
@@ -2689,7 +2720,13 @@ function ProductTab({ data }: { data: DashboardData }) {
       </section>
       <section className="panel table-panel">
         <div className="panel-title">
-          <h3>Product code summary</h3>
+          <h3>
+            Product code summary
+            <InfoDot
+              text="One row per product code: how many variants it spans, plus total pending quantity and value."
+              label="About Product code summary"
+            />
+          </h3>
           <DownloadButton
             filename="product-code-summary"
             headers={[
