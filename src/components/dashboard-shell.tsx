@@ -1932,6 +1932,29 @@ function VendorTab({ data }: { data: DashboardData }) {
           (p.po_type ?? "Unknown") === t,
       )
       .reduce((s, p) => s + p.pending_qty_actual, 0);
+
+  // Capacity-load donut: vendors bucketed by open-qty ÷ modelled monthly capacity.
+  const totalCap = rows.reduce((s, r) => s + r.capacityPerMonth, 0);
+  const totalOpen = rows.reduce((s, r) => s + r.openQty, 0);
+  const overallUtil = totalCap ? Math.round((totalOpen / totalCap) * 100) : 0;
+  const utilBands = (() => {
+    let over = 0, near = 0, under = 0, noData = 0;
+    for (const r of rows) {
+      if (!r.capacityPerMonth) { noData++; continue; }
+      const ratio = r.openQty / r.capacityPerMonth;
+      if (ratio > 1) over++;
+      else if (ratio >= 0.7) near++;
+      else under++;
+    }
+    return [
+      { name: "Over capacity", value: over, color: "#c0392b" },
+      { name: "Near capacity", value: near, color: "#d9a514" },
+      { name: "Under capacity", value: under, color: "#4f7c4d" },
+      { name: "No capacity data", value: noData, color: "#9a9384" },
+    ].filter((b) => b.value > 0);
+  })();
+  const utilTotal = utilBands.reduce((s, b) => s + b.value, 0);
+
   return (
     <>
       <div className="metric-grid compact">
@@ -1940,6 +1963,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           value={fmt.format(
             data.vendorTypes.filter((v) => norm(v.status) === "active").length,
           )}
+          info="Vendors marked active in the Vendor Type master."
         />
         <Card
           label="Active with 0 open PO"
@@ -1951,106 +1975,164 @@ function VendorTab({ data }: { data: DashboardData }) {
               .join(", ") || "None"
           }
           tone="orange"
+          info="Active vendors with no open purchase order right now — idle capacity worth chasing."
         />
         <Card
           label="Total monthly capacity"
-          value={fmt.format(rows.reduce((s, r) => s + r.capacityPerMonth, 0))}
+          value={fmt.format(totalCap)}
           tone="teal"
+          info="Sum of each vendor's modelled monthly production capacity."
         />
         <Card
-          label="Total Open PO Quantity"
-          value={fmt.format(rows.reduce((s, r) => s + r.openQty, 0))}
+          label="Total open PO quantity"
+          value={fmt.format(totalOpen)}
           tone="blue"
+          info="Total pending pieces across all open POs."
         />
       </div>
-      <div className="chart-grid">
+      <div className="bento-grid">
         <ChartCard
           title="Open quantity vs monthly capacity"
-          wide
+          info="Per vendor: total open-PO pieces vs modelled monthly capacity. A vendor whose open quantity tops its capacity is over-committed."
           download={{
             filename: "vendor-open-qty-vs-capacity",
             headers: vendorCsvHeaders,
             rows: vendorCsvRows(rows),
           }}
+          footer={
+            <div className="chart-legend">
+              <span className="chart-legend-item"><i style={{ background: "#7b4fbf" }} />Open quantity</span>
+              <span className="chart-legend-item"><i style={{ background: "#3d9e6b" }} />Monthly capacity</span>
+            </div>
+          }
         >
           {rows.length ? (
             <ResponsiveContainer>
-              <BarChart data={rows} margin={{ left: -20, bottom: 28 }}>
+              <BarChart data={rows} margin={{ left: -14, bottom: 30, top: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="vendorCode"
                   interval={0}
                   angle={-35}
                   textAnchor="end"
-                  height={50}
+                  height={56}
+                  tickLine={false}
+                  fontSize={9}
                 />
-                <YAxis />
+                <YAxis tickLine={false} />
                 <Tooltip />
-                <Legend />
-                <Bar dataKey="openQty" name="Open quantity" fill="#7b4fbf">
-                  <LabelList
-                    dataKey="openQty"
-                    position="top"
-                    angle={-90}
-                    offset={14}
-                    fontSize={9}
-                  />
-                </Bar>
-                <Bar
-                  dataKey="capacityPerMonth"
-                  name="Monthly capacity"
-                  fill="#3d9e6b"
-                >
-                  <LabelList
-                    dataKey="capacityPerMonth"
-                    position="top"
-                    angle={-90}
-                    offset={14}
-                    fontSize={9}
-                  />
-                </Bar>
+                <Bar dataKey="openQty" name="Open quantity" fill="#7b4fbf" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="capacityPerMonth" name="Monthly capacity" fill="#3d9e6b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <Empty />
           )}
         </ChartCard>
-        <ChartCard
-          title="Vendor × PO type (open quantity)"
-          download={{
-            filename: "vendor-by-po-type",
-            headers: ["Vendor", ...types],
-            rows: rows.map((vendor) => [
-              vendor.vendorCode,
-              ...types.map((t) => typeQty(vendor.vendorCode, t)),
-            ]),
-          }}
-        >
-          <div className="matrix-mini">
-            <table>
-              <thead>
-                <tr>
-                  <th>Vendor</th>
+        <section className="panel chart-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">Capacity load</span>
+              <h3>
+                Capacity utilisation
+                <InfoDot
+                  text="Vendors split by load: Over (open qty above capacity), Near (70–100%), Under (below 70%), or no capacity data on file. Centre shows total vendors; the bar is book-wide open qty ÷ capacity."
+                  label="About Capacity utilisation"
+                />
+              </h3>
+            </div>
+          </div>
+          {utilTotal ? (
+            <div className="donut-wrap">
+              <div className="donut-chart">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={utilBands}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius="68%"
+                      outerRadius="94%"
+                      paddingAngle={2}
+                      cornerRadius={4}
+                      strokeWidth={0}
+                    >
+                      {utilBands.map((b) => (
+                        <Cell key={b.name} fill={b.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="donut-center">
+                  <strong><CountUp text={fmt.format(utilTotal)} /></strong>
+                  <span>Vendors</span>
+                </div>
+              </div>
+              <div className="donut-legend">
+                {utilBands.map((b) => (
+                  <div className="donut-row" key={b.name}>
+                    <i style={{ background: b.color }} />
+                    {b.name}
+                    <b>{fmt.format(b.value)}</b>
+                    <em>{Math.round((b.value / utilTotal) * 100)}%</em>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="chart-area">
+              <Empty />
+            </div>
+          )}
+          <div className="coverage">
+            <div className="coverage-row">
+              <span>Overall utilisation</span>
+              <b>{overallUtil}%</b>
+            </div>
+            <div className="coverage-bar">
+              <i style={{ width: `${Math.min(overallUtil, 100)}%` }} />
+            </div>
+          </div>
+        </section>
+      </div>
+      <ChartCard
+        title="Vendor × PO type (open quantity)"
+        info="Open pieces per vendor broken down by PO type (EFOB / FOB / JOB …)."
+        download={{
+          filename: "vendor-by-po-type",
+          headers: ["Vendor", ...types],
+          rows: rows.map((vendor) => [
+            vendor.vendorCode,
+            ...types.map((t) => typeQty(vendor.vendorCode, t)),
+          ]),
+        }}
+      >
+        <div className="matrix-mini">
+          <table>
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                {types.map((t) => (
+                  <th key={t}>{t}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((vendor) => (
+                <tr key={vendor.vendorCode}>
+                  <td>{vendor.vendorCode}</td>
                   {types.map((t) => (
-                    <th key={t}>{t}</th>
+                    <td key={t}>
+                      {fmt.format(typeQty(vendor.vendorCode, t))}
+                    </td>
                   ))}
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((vendor) => (
-                  <tr key={vendor.vendorCode}>
-                    <td>{vendor.vendorCode}</td>
-                    {types.map((t) => (
-                      <td key={t}>
-                        {fmt.format(typeQty(vendor.vendorCode, t))}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </ChartCard>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </ChartCard>
       <VendorTypeCharts data={data} />
       <section className="panel table-panel">
         <div className="panel-title">
