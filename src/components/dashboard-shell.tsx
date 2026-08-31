@@ -2231,6 +2231,8 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
                     <Bar
                       dataKey="openQty"
                       name="Open quantity"
+                      maxBarSize={22}
+                      radius={[0, 4, 4, 0]}
                       fill={
                         bucket === "Woven"
                           ? "#7b4fbf"
@@ -2239,14 +2241,16 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
                             : "#9a9384"
                       }
                     >
-                      <LabelList dataKey="openQty" position="right" />
+                      <LabelList dataKey="openQty" position="right" fontSize={9} />
                     </Bar>
                     <Bar
                       dataKey="delayedQty"
                       name="Delayed quantity"
+                      maxBarSize={22}
+                      radius={[0, 4, 4, 0]}
                       fill="#f0a732"
                     >
-                      <LabelList dataKey="delayedQty" position="right" />
+                      <LabelList dataKey="delayedQty" position="right" fontSize={9} />
                     </Bar>
                   </BarChart>
                 </VScrollChart>
@@ -2311,77 +2315,183 @@ function MerchantTab({ data }: { data: DashboardData }) {
         : 0,
     }))
     .sort((a, b) => b.openValue - a.openValue);
+
+  const totalMerchants = rows.length;
+  const totalOpenPo = rows.reduce((s, r) => s + r.openPoCount, 0);
+  const totalDelayed = rows.reduce((s, r) => s + r.delayedPoCount, 0);
+  const totalOpenQty = rows.reduce((s, r) => s + r.openQty, 0);
+  const onTimePct = totalOpenPo
+    ? Math.round(((totalOpenPo - totalDelayed) / totalOpenPo) * 100)
+    : 0;
+  const delayBands = [
+    { name: "On-time", value: totalOpenPo - totalDelayed, color: "#4f7c4d" },
+    { name: "Delayed", value: totalDelayed, color: "#f0a732" },
+  ].filter((b) => b.value > 0);
+
   return (
     <>
-      <div className="chart-grid">
+      <div className="metric-grid compact">
+        <Card
+          label="Merchants"
+          value={fmt.format(totalMerchants)}
+          info="Distinct merchants across vendors that currently have open POs."
+        />
+        <Card
+          label="Open POs"
+          value={fmt.format(totalOpenPo)}
+          tone="blue"
+          info="Total open purchase orders across all merchants."
+        />
+        <Card
+          label="Delayed POs"
+          value={fmt.format(totalDelayed)}
+          tone="orange"
+          info="Open POs already past their expected delivery date."
+        />
+        <Card
+          label="Open quantity"
+          value={fmt.format(totalOpenQty)}
+          tone="teal"
+          info="Total pending pieces across open POs."
+        />
+      </div>
+      <div className="bento-grid">
         <ChartCard
           title="Open vs delayed by merchant"
+          info="Per merchant: open PO count vs how many are delayed. A tall orange bar flags a merchant with a delivery problem."
           download={{
             filename: "merchant-open-vs-delayed",
             headers: vendorCsvHeaders,
             rows: vendorCsvRows(rows),
           }}
+          footer={
+            <div className="chart-legend">
+              <span className="chart-legend-item"><i style={{ background: "#7b4fbf" }} />Open POs</span>
+              <span className="chart-legend-item"><i style={{ background: "#f0a732" }} />Delayed POs</span>
+            </div>
+          }
         >
           {rows.length ? (
             <ResponsiveContainer>
-              <BarChart data={rows}>
+              <BarChart data={rows} margin={{ left: -14, bottom: 30, top: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="merchant"
                   interval={0}
                   angle={-35}
                   textAnchor="end"
-                  height={55}
+                  height={56}
+                  tickLine={false}
+                  fontSize={9}
                 />
-                <YAxis />
+                <YAxis tickLine={false} />
                 <Tooltip />
-                <Legend />
-                <Bar dataKey="openPoCount" name="Open PO count" fill="#7b4fbf">
-                  <LabelList dataKey="openPoCount" position="top" />
-                </Bar>
-                <Bar
-                  dataKey="delayedPoCount"
-                  name="Delayed PO count"
-                  fill="#f0a732"
-                >
-                  <LabelList dataKey="delayedPoCount" position="top" />
-                </Bar>
+                <Bar dataKey="openPoCount" name="Open PO count" fill="#7b4fbf" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="delayedPoCount" name="Delayed PO count" fill="#f0a732" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <Empty />
           )}
         </ChartCard>
-        <ChartCard
-          title="Merchant open qty"
-          download={{
-            filename: "merchant-open-qty",
-            headers: vendorCsvHeaders,
-            rows: vendorCsvRows(rows),
-          }}
-        >
-          {rows.length ? (
-            <ResponsiveContainer>
-              <BarChart data={rows}>
-                <XAxis
-                  dataKey="merchant"
-                  interval={0}
-                  angle={-35}
-                  textAnchor="end"
-                  height={55}
+        <section className="panel chart-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">Delivery health</span>
+              <h3>
+                On-time vs delayed
+                <InfoDot
+                  text="Open POs split into on-time and delayed (past expected delivery). Centre is total open POs; the bar is the on-time share."
+                  label="About On-time vs delayed"
                 />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="openQty" name="Open quantity" fill="#3d9e6b">
-                  <LabelList dataKey="openQty" position="top" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+              </h3>
+            </div>
+          </div>
+          {totalOpenPo ? (
+            <div className="donut-wrap">
+              <div className="donut-chart">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={delayBands}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius="68%"
+                      outerRadius="94%"
+                      paddingAngle={2}
+                      cornerRadius={4}
+                      strokeWidth={0}
+                    >
+                      {delayBands.map((b) => (
+                        <Cell key={b.name} fill={b.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="donut-center">
+                  <strong><CountUp text={fmt.format(totalOpenPo)} /></strong>
+                  <span>Open POs</span>
+                </div>
+              </div>
+              <div className="donut-legend">
+                {delayBands.map((b) => (
+                  <div className="donut-row" key={b.name}>
+                    <i style={{ background: b.color }} />
+                    {b.name}
+                    <b>{fmt.format(b.value)}</b>
+                    <em>{Math.round((b.value / totalOpenPo) * 100)}%</em>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
-            <Empty />
+            <div className="chart-area">
+              <Empty />
+            </div>
           )}
-        </ChartCard>
+          <div className="coverage">
+            <div className="coverage-row">
+              <span>On-time share</span>
+              <b>{onTimePct}%</b>
+            </div>
+            <div className="coverage-bar teal">
+              <i style={{ width: `${onTimePct}%` }} />
+            </div>
+          </div>
+        </section>
       </div>
+      <ChartCard
+        title="Merchant open quantity"
+        info="Total pending pieces per merchant across open POs."
+        download={{
+          filename: "merchant-open-qty",
+          headers: vendorCsvHeaders,
+          rows: vendorCsvRows(rows),
+        }}
+      >
+        {rows.length ? (
+          <ResponsiveContainer>
+            <BarChart data={rows} margin={{ left: -10, bottom: 30, top: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="merchant"
+                interval={0}
+                angle={-35}
+                textAnchor="end"
+                height={56}
+                tickLine={false}
+                fontSize={9}
+              />
+              <YAxis tickLine={false} />
+              <Tooltip />
+              <Bar dataKey="openQty" name="Open quantity" fill="#3d9e6b" radius={[4, 4, 0, 0]} maxBarSize={48} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <Empty />
+        )}
+      </ChartCard>
       <section className="panel table-panel">
         <div className="panel-title">
           <h3>Merchant performance</h3>
