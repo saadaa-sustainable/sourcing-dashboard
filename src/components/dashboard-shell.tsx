@@ -41,6 +41,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  TNA_STAGES,
   aggregateProductRows,
   buildTrackerRows,
   buildVendorRollups,
@@ -49,6 +50,7 @@ import {
   isHighRiskLine,
   isOpenPo,
   istToday,
+  parseIsoDate,
   resolveVendor,
   stageDelay,
 } from "@/lib/business-logic";
@@ -74,9 +76,12 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Open POs", text: "Purchase orders that still have pieces left to receive — counted as unique PO references where pending quantity (actual) is above 0. Fully received POs drop off.", tip: "Open quantity = sum of pending pieces; Open value = sum of (pending qty × item price)." },
     { title: "Overdue POs", text: "Open POs whose expected delivery date (EDD) is already in the past (Layer 2 · Overdue). The % on the card is overdue ÷ open POs.", tip: "Click the card to open the overdue audit list." },
     { title: "High-risk POs", text: "A live early-warning flag: an open PO where any critical-path stage (PP Sample → GPT → Cutting → Inline → First Delivery → PO Closer) is past its planned TNA date with no actual date yet. It is a snapshot, not a permanent label — the moment that stage is marked done, even late, the PO stops being High Risk.", tip: "Independent of the final delivery date; click the card to see which POs and stages." },
-    { title: "Deliveries due (±30 days)", text: "Pending quantity plotted on its expected delivery date, 30 days back and 30 days ahead, split by vendor type. Everything left of the Today line is overdue backlog; right of it is the upcoming delivery load." },
+    { title: "Deliveries due (±30 days)", text: "Pending quantity summed into weekly buckets by expected delivery date, 30 days back and 30 days ahead, split by vendor type. Weeks left of the This-week line are overdue backlog; right of it is the upcoming delivery load." },
     { title: "Production pipeline", text: "Every open PO placed at its current TNA stage — the earliest stage without an actual date. The centre number is the count of live (open) POs.", tip: "'No TNA' means the PO has no TNA timeline at all — an adoption gap, not a production state." },
-    { title: "PO ageing", text: "Open POs grouped by how overdue they are: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD when no delivery date is set." },
+    { title: "PO ageing", text: "Open POs grouped by how overdue they are: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD when no delivery date is set. Colours run from safe green to worst-case dark red." },
+    { title: "Open-PO checkpoints", text: "Distinct open POs at each operational checkpoint (due today, closure pending, missing TNA, sequence errors), plus TNA coverage (share of open POs with a timeline) and quantity delivered (received ÷ ordered)." },
+    { title: "Stage turnaround", text: "For each production stage, the average days late among POs that completed that stage after its planned TNA date. Green ≤3d, amber ≤7d, red >7d." },
+    { title: "Variants on order", text: "Top product · variant pairs by open PO count; the badge is the share of that variant's POs already past EDD." },
     { title: "Vendor & product charts", text: "Open vs delayed POs per vendor with a delay-% line, plus the top product codes and product·variant pairs by pending quantity and by delay %." },
     { title: "All / Woven / Knitted / Other", text: "Filter every card and chart to a vendor type. A vendor whose type contains 'woven' counts as Woven; one containing 'knit' counts as Knitted; anything else — including blank — is grouped separately as Other." },
   ],
@@ -126,14 +131,6 @@ const money = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
 });
-const colors = [
-  "#7b4fbf",
-  "#c9a882",
-  "#4f7c4d",
-  "#f0c61e",
-  "#3b6fd4",
-  "#b54f7a",
-];
 const today = istToday();
 const norm = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
@@ -236,10 +233,12 @@ function Card({
       }
     >
       <span className="metric-head">
-        <span className="metric-icon">
-          <Icon size={15} strokeWidth={1.9} />
+        <span className="metric-head-left">
+          <span className="metric-icon">
+            <Icon size={13} strokeWidth={2} />
+          </span>
+          <span className="metric-label">{label}</span>
         </span>
-        <span className="metric-label">{label}</span>
         {info && <InfoDot text={info} label={`About ${label}`} />}
       </span>
       <strong><CountUp text={value} /></strong>
@@ -390,33 +389,40 @@ function PdfButton({
 
 function ChartCard({
   title,
+  kicker = "Live analysis",
+  info,
   children,
   download,
   wide = false,
+  footer,
+  actions,
 }: {
   title: string;
+  kicker?: string;
+  info?: string;
   children: React.ReactNode;
   download?: { filename: string; headers: string[]; rows: CsvValue[][] };
   wide?: boolean;
+  footer?: React.ReactNode;
+  actions?: React.ReactNode;
 }) {
   return (
     <section className={`panel chart-panel${wide ? " chart-wide" : ""}`}>
       <div className="panel-title">
         <div>
-          <span className="panel-kicker">Live analysis</span>
-          <h3>{title}</h3>
+          <span className="panel-kicker">{kicker}</span>
+          <h3>
+            {title}
+            {info && <InfoDot text={info} label={`About ${title}`} />}
+          </h3>
         </div>
-        {download ? (
-          <DownloadButton {...download} />
-        ) : (
-          <span className="panel-spark">
-            <i />
-            <i />
-            <i />
-          </span>
-        )}
+        <span className="panel-actions">
+          {actions}
+          {download && <DownloadButton {...download} />}
+        </span>
       </div>
       <div className="chart-area">{children}</div>
+      {footer}
     </section>
   );
 }
@@ -555,20 +561,14 @@ function DashboardTab({
     data.tnaRecords,
     today,
   );
-  // EDD schedule (±30 days): pending qty placed on its expected delivery date,
-  // split by vendor bucket. Left of Today = overdue backlog, right = upcoming load.
+  // EDD schedule (±30 days, weekly buckets — daily was too spiky to read):
+  // pending qty due per week, split by vendor bucket. Weeks left of the
+  // This-week line are overdue backlog.
   const dayMs = 86_400_000;
-  const eddWindow: {
-    label: string;
-    Woven: number;
-    Knit: number;
-    Other: number;
-  }[] = [];
-  const eddByDate = new Map<string, (typeof eddWindow)[number]>();
-  for (let i = -30; i <= 30; i++) {
-    const d = new Date(today.getTime() + i * dayMs);
-    const entry = {
-      label: d.toLocaleDateString("en-GB", {
+  const eddWeeks = Array.from({ length: 9 }, (_, w) => {
+    const start = new Date(today.getTime() + (w * 7 - 30) * dayMs);
+    return {
+      label: start.toLocaleDateString("en-GB", {
         day: "numeric",
         month: "short",
         timeZone: "UTC",
@@ -577,15 +577,17 @@ function DashboardTab({
       Knit: 0,
       Other: 0,
     };
-    eddWindow.push(entry);
-    eddByDate.set(d.toISOString().slice(0, 10), entry);
-  }
-  const todayLabel = eddWindow[30].label;
-  tracker.forEach((row) => {
-    const entry = row.edd && eddByDate.get(row.edd.slice(0, 10));
-    if (entry) entry[row.vendorBucket] += row.pendingQty;
   });
-  const hasEddData = eddWindow.some((d) => d.Woven || d.Knit || d.Other);
+  tracker.forEach((row) => {
+    const edd = row.edd ? parseIsoDate(row.edd) : null;
+    if (!edd) return;
+    const offset = Math.round((edd.getTime() - today.getTime()) / dayMs);
+    if (offset < -30 || offset > 30) return;
+    eddWeeks[Math.min(8, Math.floor((offset + 30) / 7))][row.vendorBucket] +=
+      row.pendingQty;
+  });
+  const thisWeekLabel = eddWeeks[4].label;
+  const hasEddData = eddWeeks.some((d) => d.Woven || d.Knit || d.Other);
   // Production pipeline donut: distinct open POs at each TNA stage.
   const stageMeta: [stage: string, label: string, color: string][] = [
     ["Not in TNA Tracker", "No TNA", "#c9c2ae"],
@@ -610,23 +612,69 @@ function DashboardTab({
     }))
     .filter((s) => s.value);
   const pipelineTotal = pipeline.reduce((s, p) => s + p.value, 0);
-  const ageing = [
-    "Not Due",
-    "0-7 Days",
-    "8-15 Days",
-    "16-30 Days",
-    "30+ Days",
-    "No EDD",
-  ]
-    .map((name) => ({
-      name,
-      value: unique(
-        tracker
-          .filter((row) => row.delayBucket === name)
-          .map((row) => row.poRef),
-      ).length,
-    }))
-    .filter((item) => item.value);
+  // Per-stage turnaround: among POs that completed a stage late, avg days late.
+  const tnaByPoRef = new Map<string, NonNullable<TrackerRow["tna"]>>();
+  tracker.forEach((row) => {
+    if (row.tna) tnaByPoRef.set(row.poRef, row.tna);
+  });
+  const stageTat = TNA_STAGES.map((s) => {
+    let done = 0;
+    let late = 0;
+    let lateDays = 0;
+    tnaByPoRef.forEach((tna) => {
+      const d = stageDelay(tna[s.tnaField], tna[s.actualField]);
+      if (d.state === "Delay") {
+        done += 1;
+        late += 1;
+        lateDays += d.days;
+      } else if (d.state === "On Time") {
+        done += 1;
+      }
+    });
+    return {
+      name: s.name === "Inline / Midline QC" ? "Inline QC" : s.name,
+      avg: late ? Number((lateDays / late).toFixed(1)) : 0,
+      late,
+      done,
+    };
+  });
+  const tatColor = (avg: number) =>
+    avg <= 3 ? "#4f7c4d" : avg <= 7 ? "#d9a514" : "#c0392b";
+  // Execution health: distinct-PO checkpoint counters + progress coverage.
+  const distinct = (test: (r: TrackerRow) => boolean) =>
+    unique(tracker.filter(test).map((r) => r.poRef)).length;
+  const withTna = distinct((r) => !r.tnaMissing);
+  const coveragePct = openRefs.length
+    ? Math.round((withTna / openRefs.length) * 100)
+    : 0;
+  const orderedTotal = tracker.reduce((s, r) => s + r.orderedQty, 0);
+  const deliveredPct = orderedTotal
+    ? Math.round(
+        (tracker.reduce((s, r) => s + r.receivedQty, 0) / orderedTotal) * 100,
+      )
+    : 0;
+  const health = [
+    { label: "Due Today", value: distinct((r) => r.dueToday), note: "TNA stage planned today", tone: "amber" },
+    { label: "Closure Pending", value: distinct((r) => r.easycomStatus === "Closure Pending"), note: "≥95% received, not closed", tone: "blue" },
+    { label: "Missing TNA", value: distinct((r) => r.tnaMissing), note: "no timeline entered", tone: "orange" },
+    { label: "Sequence Errors", value: distinct((r) => r.sequenceError), note: "stages done out of order", tone: "red" },
+  ];
+  // PO ageing: fixed severity-ordered buckets, zeros kept so the scale reads.
+  const ageingMeta: [name: string, color: string][] = [
+    ["Not Due", "#4f7c4d"],
+    ["0-7 Days", "#d9a514"],
+    ["8-15 Days", "#e68950"],
+    ["16-30 Days", "#c0392b"],
+    ["30+ Days", "#7f231a"],
+    ["No EDD", "#c9c2ae"],
+  ];
+  const ageing = ageingMeta.map(([name, color]) => ({
+    name,
+    color,
+    value: unique(
+      tracker.filter((row) => row.delayBucket === name).map((row) => row.poRef),
+    ).length,
+  }));
   const products = Object.values(
     tracker.reduce<Record<string, { name: string; qty: number }>>(
       (acc, row) => {
@@ -638,7 +686,7 @@ function DashboardTab({
     ),
   )
     .sort((a, b) => b.qty - a.qty)
-    .slice(0, 15);
+    .slice(0, 10);
   const codeAgg: Record<
     string,
     { name: string; open: Set<string>; delayed: Set<string> }
@@ -652,6 +700,7 @@ function DashboardTab({
     c.open.add(row.poRef);
     if (row.delayDays > 0) c.delayed.add(row.poRef);
   });
+  // Only codes actually running late — a wall of 0% bars says nothing.
   const codeDelay = Object.values(codeAgg)
     .map((c) => ({
       name: c.name,
@@ -660,8 +709,9 @@ function DashboardTab({
         : 0,
       open: c.open.size,
     }))
-    .sort((a, b) => b.open - a.open)
-    .slice(0, 15);
+    .filter((c) => c.delayPct > 0)
+    .sort((a, b) => b.delayPct - a.delayPct || b.open - a.open)
+    .slice(0, 10);
   const varAgg: Record<
     string,
     { name: string; open: Set<string>; delayed: Set<string> }
@@ -678,19 +728,19 @@ function DashboardTab({
       if (row.delayDays > 0) v.delayed.add(row.poRef);
     }),
   );
-  const variantRows = Object.values(varAgg).map((v) => ({
-    name: v.name,
-    openCount: v.open.size,
-    delayPct: v.open.size
-      ? Math.round((v.delayed.size / v.open.size) * 100)
-      : 0,
-  }));
-  const variantOpen = [...variantRows]
-    .sort((a, b) => b.openCount - a.openCount)
-    .slice(0, 15);
-  const variantDelay = [...variantRows]
-    .sort((a, b) => b.delayPct - a.delayPct)
-    .slice(0, 15);
+  // One ranked list replaces the two old variant bar charts (their bars were
+  // all-equal counts — a chart said nothing a precise list can't say better).
+  const variants = Object.values(varAgg)
+    .map((v) => ({
+      name: v.name,
+      openCount: v.open.size,
+      delayPct: v.open.size
+        ? Math.round((v.delayed.size / v.open.size) * 100)
+        : 0,
+    }))
+    .sort((a, b) => b.openCount - a.openCount || b.delayPct - a.delayPct)
+    .slice(0, 12);
+  const maxVariantOpen = Math.max(1, ...variants.map((v) => v.openCount));
   return (
     <>
       <div className="segment">
@@ -767,12 +817,11 @@ function DashboardTab({
         />
       </div>
       <div className="bento-grid">
-        <section className="panel chart-panel">
-          <div className="panel-title">
-            <div>
-              <span className="panel-kicker">EDD schedule</span>
-              <h3>Deliveries due — ±30 days</h3>
-            </div>
+        <ChartCard
+          title="Deliveries due — ±30 days"
+          kicker="EDD schedule"
+          info="Pending quantity summed into weekly buckets by expected delivery date, split by vendor type. Weeks left of the dashed line are overdue backlog; right of it is the upcoming load."
+          actions={
             <span className="legend-pills">
               <span className="legend-pill" style={{ "--pill-color": "#7b4fbf" } as CSSProperties}>
                 <i /> Woven
@@ -784,71 +833,76 @@ function DashboardTab({
                 <i /> Other
               </span>
             </span>
-          </div>
-          <div className="chart-area">
-            {hasEddData ? (
-              <ResponsiveContainer>
-                <AreaChart data={eddWindow} margin={{ left: -14, right: 8 }}>
-                  <defs>
-                    <linearGradient id="gWoven" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#7b4fbf" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="#7b4fbf" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="gKnit" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#3d9e6b" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="#3d9e6b" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="gOther" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#e68950" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="#e68950" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="label" minTickGap={32} />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <ReferenceLine
-                    x={todayLabel}
-                    stroke="#161513"
-                    strokeDasharray="4 3"
-                    label={{ value: "Today", position: "top", fontSize: 9, fill: "#6e695e" }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="Woven"
-                    name="Woven"
-                    stroke="#7b4fbf"
-                    strokeWidth={2.2}
-                    fill="url(#gWoven)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="Knit"
-                    name="Knitted"
-                    stroke="#3d9e6b"
-                    strokeWidth={2.2}
-                    fill="url(#gKnit)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="Other"
-                    name="Other"
-                    stroke="#e68950"
-                    strokeWidth={2.2}
-                    fill="url(#gOther)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <Empty text="No EDDs inside the ±30 day window" />
-            )}
-          </div>
-        </section>
+          }
+        >
+          {hasEddData ? (
+            <ResponsiveContainer>
+              <AreaChart data={eddWeeks} margin={{ left: -8, right: 26, top: 14 }}>
+                <defs>
+                  <linearGradient id="gWoven" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#7b4fbf" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="#7b4fbf" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="gKnit" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3d9e6b" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="#3d9e6b" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="gOther" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#e68950" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="#e68950" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" interval={0} tickLine={false} />
+                <YAxis allowDecimals={false} tickLine={false} />
+                <Tooltip />
+                <ReferenceLine
+                  x={thisWeekLabel}
+                  stroke="#161513"
+                  strokeDasharray="4 3"
+                  label={{ value: "This week", position: "top", fontSize: 9, fill: "#6e695e" }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="Woven"
+                  name="Woven"
+                  stroke="#7b4fbf"
+                  strokeWidth={2.2}
+                  fill="url(#gWoven)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="Knit"
+                  name="Knitted"
+                  stroke="#3d9e6b"
+                  strokeWidth={2.2}
+                  fill="url(#gKnit)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="Other"
+                  name="Other"
+                  stroke="#e68950"
+                  strokeWidth={2.2}
+                  fill="url(#gOther)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty text="No EDDs inside the ±30 day window" />
+          )}
+        </ChartCard>
         <section className="panel chart-panel">
           <div className="panel-title">
             <div>
               <span className="panel-kicker">Work in progress</span>
-              <h3>Production pipeline</h3>
+              <h3>
+                Production pipeline
+                <InfoDot
+                  text="Every open PO placed at its current TNA stage — the earliest stage without an actual date. The centre number is the count of live (open) POs."
+                  label="About Production pipeline"
+                />
+              </h3>
             </div>
           </div>
           {pipeline.length ? (
@@ -896,42 +950,162 @@ function DashboardTab({
           )}
         </section>
       </div>
-      <div className="chart-grid">
+      <div className="bento-grid">
         <ChartCard
           title="PO ageing"
+          kicker="Overdue buckets"
+          info="Open POs grouped by how far past their EDD they are, ordered from safe (Not Due) to worst (30+ days). No EDD means no delivery date is set at all."
           download={{
             filename: "po-ageing",
             headers: ["Ageing bucket", "Open PO count"],
             rows: ageing.map((a) => [a.name, a.value]),
           }}
+          footer={
+            <div className="chart-legend">
+              {ageing.map((a) => (
+                <span className="chart-legend-item" key={a.name}>
+                  <i style={{ background: a.color }} />
+                  {a.name} <b>{fmt.format(a.value)}</b>
+                </span>
+              ))}
+            </div>
+          }
         >
-          {ageing.length ? (
-            <ResponsiveContainer>
-              <BarChart data={ageing} margin={{ left: -20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  interval={0}
-                  angle={-35}
-                  textAnchor="end"
-                  height={60}
+          <ResponsiveContainer>
+            <BarChart data={ageing} margin={{ left: -22, top: 16 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" interval={0} tickLine={false} />
+              <YAxis allowDecimals={false} tickLine={false} />
+              <Tooltip />
+              <Bar dataKey="value" name="Open POs" barSize={36} radius={[5, 5, 0, 0]}>
+                {ageing.map((a) => (
+                  <Cell key={a.name} fill={a.color} />
+                ))}
+                <LabelList dataKey="value" position="top" fontSize={10} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        <section className="panel chart-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">Execution health</span>
+              <h3>
+                Open-PO checkpoints
+                <InfoDot
+                  text="Distinct open POs at each operational checkpoint, plus how much of the book is covered: TNA coverage = share of open POs with a timeline entered; Qty delivered = pieces received ÷ pieces ordered across open POs."
+                  label="About Open-PO checkpoints"
                 />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" name="Open PO count" radius={[5, 5, 0, 0]}>
-                  {ageing.map((_, i) => (
-                    <Cell key={i} fill={colors[i % colors.length]} />
-                  ))}
-                  <LabelList dataKey="value" position="top" />
+              </h3>
+            </div>
+          </div>
+          <div className="stat-tiles">
+            {health.map((h) => (
+              <div className={`stat-tile tone-${h.tone}`} key={h.label}>
+                <span className="stat-label">{h.label}</span>
+                <strong><CountUp text={fmt.format(h.value)} /></strong>
+                <small>{h.note}</small>
+              </div>
+            ))}
+          </div>
+          <div className="coverage">
+            <div className="coverage-row">
+              <span>TNA coverage</span>
+              <b>{coveragePct}%</b>
+            </div>
+            <div className="coverage-bar">
+              <i style={{ width: `${coveragePct}%` }} />
+            </div>
+            <div className="coverage-row">
+              <span>Qty delivered</span>
+              <b>{deliveredPct}%</b>
+            </div>
+            <div className="coverage-bar teal">
+              <i style={{ width: `${deliveredPct}%` }} />
+            </div>
+          </div>
+        </section>
+      </div>
+      <div className="bento-grid">
+        <ChartCard
+          title="Stage turnaround — avg days late"
+          kicker="TNA discipline"
+          info="For each production stage: among POs that completed the stage later than its planned TNA date, the average days late. Green ≤3d, amber ≤7d, red >7d. Pending stages are not counted until an actual date lands."
+          download={{
+            filename: "stage-turnaround",
+            headers: ["Stage", "Avg days late", "Late completions", "Total completions"],
+            rows: stageTat.map((s) => [s.name, s.avg, s.late, s.done]),
+          }}
+          footer={
+            <div className="chart-legend">
+              <span className="chart-legend-item"><i style={{ background: "#4f7c4d" }} />≤3d avg</span>
+              <span className="chart-legend-item"><i style={{ background: "#d9a514" }} />≤7d avg</span>
+              <span className="chart-legend-item"><i style={{ background: "#c0392b" }} />&gt;7d avg</span>
+            </div>
+          }
+        >
+          <ResponsiveContainer>
+            <BarChart data={stageTat} layout="vertical" margin={{ left: 26, right: 38, top: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+              <XAxis type="number" unit="d" tickLine={false} />
+              <YAxis type="category" dataKey="name" interval={0} width={82} tickLine={false} />
+              <Tooltip
+                formatter={(v) => [`${v}d average`, "Late by"]}
+                labelFormatter={(l) => {
+                  const s = stageTat.find((x) => x.name === l);
+                  return s ? `${l} · ${s.late} of ${s.done} completions late` : l;
+                }}
+              />
+              <Bar dataKey="avg" name="Avg days late" barSize={9} radius={[0, 5, 5, 0]}>
+                {stageTat.map((s) => (
+                  <Cell key={s.name} fill={tatColor(s.avg)} />
+                ))}
+                <LabelList
+                  dataKey="avg"
+                  position="right"
+                  fontSize={10}
+                  formatter={(v) => `${v}d`}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        <ChartCard
+          title="Delay % by product code"
+          kicker="Problem codes"
+          info="Product codes with at least one overdue PO, ranked by the share of their open POs that are past EDD. Codes running fully on time are hidden."
+          download={{
+            filename: "product-code-delay-pct",
+            headers: ["Product code", "Delay %", "Open POs"],
+            rows: codeDelay.map((c) => [c.name, c.delayPct, c.open]),
+          }}
+        >
+          {codeDelay.length ? (
+            <ResponsiveContainer>
+              <BarChart data={codeDelay} layout="vertical" margin={{ left: 8, right: 36, top: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} unit="%" tickLine={false} />
+                <YAxis type="category" dataKey="name" interval={0} width={70} tickLine={false} />
+                <Tooltip formatter={(v) => `${v}%`} />
+                <Bar dataKey="delayPct" name="Delay %" fill="#c0392b" barSize={9} radius={[0, 5, 5, 0]}>
+                  <LabelList
+                    dataKey="delayPct"
+                    position="right"
+                    fontSize={10}
+                    formatter={(v) => `${v}%`}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <Empty />
+            <Empty text="No delayed product codes — everything on time" />
           )}
         </ChartCard>
+      </div>
+      <div className="chart-grid">
         <ChartCard
           title="Vendor PO status and delay percentage"
+          info="Per vendor: open PO count, how many are past EDD, and the delay percentage line on the right axis."
           wide
           download={{
             filename: "vendor-po-status-and-delay-percentage",
@@ -1002,7 +1176,9 @@ function DashboardTab({
           )}
         </ChartCard>
         <ChartCard
-        title="Top product codes by pending quantity"
+          title="Top product codes by pending quantity"
+          kicker="Volume ranking"
+          info="The 10 product codes with the most pieces still to be delivered across open POs."
           download={{
             filename: "top-product-codes",
             headers: ["Product code", "Pending qty"],
@@ -1011,18 +1187,19 @@ function DashboardTab({
         >
           {products.length ? (
             <ResponsiveContainer>
-              <BarChart data={products} layout="vertical" margin={{ left: 15 }}>
+              <BarChart data={products} layout="vertical" margin={{ left: 8, right: 42, top: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" interval={0} width={75} />
+                <XAxis type="number" tickLine={false} />
+                <YAxis type="category" dataKey="name" interval={0} width={72} tickLine={false} />
                 <Tooltip />
                 <Bar
                   dataKey="qty"
                   name="Pending quantity"
                   fill="#3d9e6b"
+                  barSize={13}
                   radius={[0, 5, 5, 0]}
                 >
-                  <LabelList dataKey="qty" position="right" />
+                  <LabelList dataKey="qty" position="right" fontSize={10} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -1030,113 +1207,47 @@ function DashboardTab({
             <Empty />
           )}
         </ChartCard>
-        <ChartCard
-        title="Product code delay percentage"
-          download={{
-            filename: "product-code-delay-pct",
-            headers: ["Product code", "Delay %", "Open POs"],
-            rows: codeDelay.map((c) => [c.name, c.delayPct, c.open]),
-          }}
-        >
-          {codeDelay.length ? (
-            <ResponsiveContainer>
-              <BarChart
-                data={codeDelay}
-                layout="vertical"
-                margin={{ left: 15 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" unit="%" />
-                <YAxis type="category" dataKey="name" interval={0} width={75} />
-                <Tooltip formatter={(v) => `${v}%`} />
-                <Bar
-                  dataKey="delayPct"
-                  name="Delay %"
-                  fill="#c0392b"
-                  radius={[0, 5, 5, 0]}
-                >
-                  <LabelList
-                    dataKey="delayPct"
-                    position="right"
-                    formatter={(v) => `${v}%`}
-                  />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+        <section className="panel chart-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">Variant ranking</span>
+              <h3>
+                Variants on order
+                <InfoDot
+                  text="Top product · variant pairs by open PO count. The bar shows relative volume; the badge is the share of that variant's POs past EDD (green 0%, amber ≤50%, red >50%)."
+                  label="About Variants on order"
+                />
+              </h3>
+            </div>
+            <span className="panel-actions">
+              <DownloadButton
+                filename="variants-on-order"
+                headers={["Product · variant", "Open POs", "Delay %"]}
+                rows={variants.map((v) => [v.name, v.openCount, v.delayPct])}
+              />
+            </span>
+          </div>
+          {variants.length ? (
+            <div className="rank-list">
+              {variants.map((v) => (
+                <div className="rank-row" key={v.name}>
+                  <span className="rank-name" title={v.name}>{v.name}</span>
+                  <span className="rank-bar">
+                    <i style={{ width: `${(v.openCount / maxVariantOpen) * 100}%` }} />
+                  </span>
+                  <b>{fmt.format(v.openCount)}</b>
+                  <span
+                    className={`badge ${v.delayPct === 0 ? "success" : v.delayPct <= 50 ? "warn" : "danger"}`}
+                  >
+                    {v.delayPct}%
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : (
             <Empty />
           )}
-        </ChartCard>
-        <ChartCard
-        title="Product variant · Open PO count"
-          download={{
-            filename: "product-variant-open-po-count",
-            headers: ["Product · variant", "Open PO count"],
-            rows: variantOpen.map((v) => [v.name, v.openCount]),
-          }}
-        >
-          {variantOpen.length ? (
-            <ResponsiveContainer>
-              <BarChart
-                data={variantOpen}
-                layout="vertical"
-                margin={{ left: 15 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" interval={0} width={140} />
-                <Tooltip />
-                <Bar
-                  dataKey="openCount"
-                  name="Open PO count"
-                  fill="#7b4fbf"
-                  radius={[0, 5, 5, 0]}
-                >
-                  <LabelList dataKey="openCount" position="right" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <Empty />
-          )}
-        </ChartCard>
-        <ChartCard
-        title="Product variant · Delay percentage"
-          download={{
-            filename: "product-variant-delay-pct",
-            headers: ["Product · variant", "Delay %"],
-            rows: variantDelay.map((v) => [v.name, v.delayPct]),
-          }}
-        >
-          {variantDelay.length ? (
-            <ResponsiveContainer>
-              <BarChart
-                data={variantDelay}
-                layout="vertical"
-                margin={{ left: 15 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" unit="%" />
-                <YAxis type="category" dataKey="name" interval={0} width={140} />
-                <Tooltip formatter={(v) => `${v}%`} />
-                <Bar
-                  dataKey="delayPct"
-                  name="Delay %"
-                  fill="#d9b113"
-                  radius={[0, 5, 5, 0]}
-                >
-                  <LabelList
-                    dataKey="delayPct"
-                    position="right"
-                    formatter={(v) => `${v}%`}
-                  />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <Empty />
-          )}
-        </ChartCard>
+        </section>
       </div>
     </>
   );
