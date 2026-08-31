@@ -137,6 +137,53 @@ const metricIcons = {
   red: AlertTriangle,
 } as const;
 
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return reduced;
+}
+
+// Count a formatted metric string up from zero — "₹70,19,989", "1,96,051", "12.5%".
+// Falls back to static text for reduced-motion or non-single-number values
+// (e.g. ranges like "465 / 500"), and preserves the ₹/%/prefix + Indian grouping.
+function CountUp({ text }: { text: string }) {
+  const reduced = useReducedMotion();
+  const m = /^(\D*)([\d,]+(?:\.\d+)?)(\D*)$/.exec(text.trim());
+  const target = m ? parseFloat(m[2].replace(/,/g, "")) : NaN;
+  const decimals = m && m[2].includes(".") ? m[2].split(".")[1].length : 0;
+  const [display, setDisplay] = useState<number | null>(m && !Number.isNaN(target) ? 0 : null);
+
+  useEffect(() => {
+    if (!m || Number.isNaN(target)) return;
+    if (reduced) { setDisplay(target); return; }
+    let raf = 0;
+    let start = 0;
+    const dur = 700;
+    const tick = (t: number) => {
+      if (!start) start = t;
+      const p = Math.min(1, (t - start) / dur);
+      setDisplay(target * (1 - Math.pow(1 - p, 3))); // easeOutCubic
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, reduced]);
+
+  if (!m || Number.isNaN(target) || display === null) return <>{text}</>;
+  const formatted = display.toLocaleString("en-IN", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return <>{m[1]}{formatted}{m[3]}</>;
+}
+
 function Card({
   label,
   value,
@@ -164,7 +211,7 @@ function Card({
         <Icon size={17} strokeWidth={1.8} />
       </span>
       <span className="metric-label">{label}</span>
-      <strong>{value}</strong>
+      <strong><CountUp text={value} /></strong>
       {note && <small>{note}</small>}
       {onClick && <ArrowUpRight className="metric-action" size={15} />}
     </button>
