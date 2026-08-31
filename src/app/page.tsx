@@ -2,8 +2,8 @@ import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard-shell';
 import { loadDashboardData } from '@/lib/data';
 import { hasSupabaseEnv } from '@/lib/supabase/server';
-import { currentUser } from '@/lib/forms/queries';
-import type { SdRole } from '@/lib/forms/types';
+import { currentUser, loadOpenClosures } from '@/lib/forms/queries';
+import type { PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,5 +19,10 @@ export default async function Home() {
     role = user.role;
   }
   const dashboardData = await loadDashboardData();
-  return <DashboardShell data={dashboardData} userEmail={userEmail} role={role} />;
+  // Pending-closure panel on the Open PO Tracker (best-effort — never block the dashboard).
+  let closures: PoClosureView[] = [];
+  if (hasSupabaseEnv()) {
+    try { closures = await loadOpenClosures(); } catch { closures = []; }
+  }
+  return <DashboardShell data={dashboardData} closures={closures} userEmail={userEmail} role={role} />;
 }

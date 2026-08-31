@@ -926,6 +926,21 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- Pending-closure panel on the Open PO Tracker ---- */
+.wf-closure-panel {
+  border: 1px solid #e7e2d2; border-radius: 12px; background: #fff; padding: 10px 14px; margin-bottom: 12px;
+}
+.wf-closure-panel > summary {
+  cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #33302b;
+}
+.wf-closure-breach { color: #a1483a; }
+.wf-closure-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.wf-closure-item {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 8px;
+  background: #faf7ef; border: 1px solid #ece7d9; font-size: 12px;
+}
+.wf-closure-open { align-self: center; }
+
 /* ---- PO Closure: RAG dots, metric row, owner chips, legs ---- */
 .wf-rag { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
 .wf-rag-green { background: #3c8b52; }

@@ -64,7 +64,7 @@ import type {
 import { TnaBreakdown } from "./tna-breakdown";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
-import type { SdRole } from "@/lib/forms/types";
+import type { PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
 import { ApprovalsBell } from "@/components/forms/approvals-bell";
 
@@ -83,7 +83,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Stage turnaround", text: "For each production stage, the average days late among POs that completed that stage after its planned TNA date. Green ≤3d, amber ≤7d, red >7d." },
     { title: "Variants on order", text: "Top product · variant pairs by open PO count; the badge is the share of that variant's POs already past EDD." },
     { title: "Vendor & product charts", text: "Open vs delayed POs per vendor with a delay-% line, plus the top product codes and product·variant pairs by pending quantity and by delay %." },
-    { title: "All / Woven / Knitted / Other", text: "Filter every card and chart to a vendor type. A vendor whose type contains 'woven' counts as Woven; one containing 'knit' counts as Knitted; anything else — including blank — is grouped separately as Other." },
+    { title: "All / Woven / Knitted / Other", text: "Filter every card and chart by weave. Weave comes from the product master (per product code): each PO counts as Woven or Knitted by its product; a code the master doesn't cover falls back to the vendor's type, and anything still unresolved is grouped as Other." },
   ],
   "open-po": [
     { title: "One row = one open PO", text: "Each row is a purchase order grouped by PO number, product and delivery date. 'Variants' counts the distinct variants (e.g. colours) on that PO — it is not a piece count." },
@@ -99,7 +99,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Capacity & open quantity", text: "Total monthly capacity is the sum of every vendor's signed monthly capacity; Total Open PO Quantity is the sum of their pending pieces." },
     { title: "Open / Delayed / Delay %", text: "Per vendor: distinct open PO references, how many are past EDD, and delayed ÷ open × 100." },
     { title: "Utilisation", text: "How full a vendor is: open quantity ÷ monthly capacity × 100. Above 100% means booked beyond capacity; shows 0 when the master has no capacity for that vendor.", tip: "Vendors are matched by vendor code first, then by name." },
-    { title: "Woven, Knitted & Other charts", text: "Open vs delayed quantity for each vendor, split into Woven, Knitted and Other (neither woven nor knitted) groups." },
+    { title: "Woven, Knitted & Other charts", text: "Open vs delayed quantity for each vendor, split into Woven, Knitted and Other by each PO's product weave (from the product master). A vendor supplying both weaves appears under each, with its quantity split accordingly." },
   ],
   merchants: [
     { title: "Grouped by merchant", text: "Every vendor's figures roll up to the merchant who owns the relationship. The merchant is read from the vendor master first, then the vendor-type sheet." },
@@ -1283,11 +1283,48 @@ const TRACKER_COLS = [
   "TNA stage", "Internal status", "TNA sequence", "",
 ];
 
+/**
+ * Pending-closure surface on the Open PO Tracker tab. Completed POs leave the
+ * Approved-only tracker feed, so their closure status can't ride on the tracker
+ * rows — this panel puts it on the same screen instead (spec §7).
+ */
+function PendingClosurePanel({ closures }: { closures: PoClosureView[] }) {
+  if (!closures.length) return null;
+  const breached = closures.filter((c) => c.compliance.rag === "red").length;
+  const stage = (c: PoClosureView) =>
+    c.compliance.leg === "finance" ? "Finance pending" : c.closure_initiated_at ? "In progress" : "Pending";
+  return (
+    <details className="wf-closure-panel" open={breached > 0}>
+      <summary>
+        <span className={`wf-rag wf-rag-${breached ? "red" : "amber"}`} />
+        Pending closure — {closures.length} PO{closures.length === 1 ? "" : "s"}
+        {breached > 0 && <strong className="wf-closure-breach"> · {breached} breached</strong>}
+      </summary>
+      <div className="wf-closure-list">
+        {closures.slice(0, 12).map((c) => (
+          <div key={c.id} className="wf-closure-item">
+            <span className={`wf-rag wf-rag-${c.compliance.rag}`} />
+            <span className="mono">{c.po_ref_num}</span>
+            <span className="wf-subtle">
+              {c.compliance.totalDays ?? "—"}d open · {stage(c)}
+            </span>
+          </div>
+        ))}
+        <a href="/po-closure" className="wf-btn wf-btn-ghost wf-btn-sm wf-closure-open">
+          Open PO Closure →
+        </a>
+      </div>
+    </details>
+  );
+}
+
 function TrackerTab({
   data,
+  closures = [],
   onView,
 }: {
   data: DashboardData;
+  closures?: PoClosureView[];
   onView: (row: TrackerRow) => void;
 }) {
   const all = useMemo(
@@ -1383,6 +1420,7 @@ function TrackerTab({
 
   return (
     <>
+      <PendingClosurePanel closures={closures} />
       <div className="filter-bar">
         <label className="search-field">
           <Search size={16} />
@@ -3189,10 +3227,12 @@ function MatrixTab({ data }: { data: DashboardData }) {
 }
 export function DashboardShell({
   data,
+  closures = [],
   userEmail,
   role = 'viewer',
 }: {
   data: DashboardData;
+  closures?: PoClosureView[];
   userEmail: string | null;
   role?: SdRole;
 }) {
@@ -3256,7 +3296,7 @@ export function DashboardShell({
               onOverdue={setOverdue}
             />
           )}{" "}
-          {tab === "open-po" && <TrackerTab data={data} onView={setDetail} />}{" "}
+          {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} />}{" "}
           {tab === "vendors" && <VendorTab data={data} />}{" "}
           {tab === "merchants" && <MerchantTab data={data} />}{" "}
           {tab === "products" && <ProductTab data={data} />}{" "}

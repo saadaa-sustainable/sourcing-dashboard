@@ -432,6 +432,27 @@ export async function loadPoClosures(): Promise<PoClosureView[]> {
   }));
 }
 
+/**
+ * Open (not-yet-closed) closures with derived compliance, read-only (NO sync) —
+ * for the dashboard's Pending Closure panel. Row creation is handled by the
+ * twice-daily BqSync + the /po-closure page, so the high-traffic dashboard stays
+ * a pure read.
+ */
+export async function loadOpenClosures(): Promise<PoClosureView[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_po_closure')
+    .select('*')
+    .is('closed_at', null)
+    .order('easycom_completed_at', { ascending: true, nullsFirst: false })
+    .limit(PAGE_SIZE);
+  return ((data ?? []) as PoClosure[]).map((r) => ({
+    ...r,
+    productCode: r.po_ref_num.split('/')[2]?.trim() || null,
+    compliance: computeClosureCompliance(r),
+  }));
+}
+
 /** Cutting-register dynamic links (most recent first). */
 export async function loadDynamicLinks(): Promise<DynamicLink[]> {
   const supabase = await client();

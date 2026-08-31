@@ -87,8 +87,17 @@ reason leaked).
 ## Build order
 1. Schema ✅ · 2. BOM auto-populate ✅ · 3. Cutting Register form ✅ ·
 4. Dynamic link gen + `/fill/[token]` ✅ · 5. Surplus ✅ · 6. Gating + two-leg + SLA ✅ ·
-7. Compliance dashboard ✅ · **Deferred:** Closure badge on Open PO Tracker (small
-follow-up — surface `sd_po_closure` status on the tracker rows).
+7. Compliance dashboard ✅ · Pending-closure surface on Open PO Tracker ✅ —
+**Pending Closure panel** on the tracker tab (completed POs leave the Approved-only
+feed, so a panel replaces per-row badges: RAG + PO + days-open + stage + link).
+
+## Scheduled sync
+`sd_sync_po_closures()` is called on PO Closure page load **and** twice-daily by
+`apps-script/BqSync.gs` (morningB ~6 AM + evening ~6 PM, right after `sd_po_master_raw`
+refresh), so closure rows appear within ~12h of completion even if nobody opens the
+screen. The SLA clock is anchored to `easycom_completed_at` = the PO's completion date
+regardless, so timing of the sync never skews compliance.
+**Redeploy the Apps Script** (BqSync.gs) for the twice-daily call to take effect.
 
 ## Out of scope (this pass)
 Automated WhatsApp API sending; multi-submission links (single-use only);

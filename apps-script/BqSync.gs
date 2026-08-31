@@ -572,6 +572,15 @@ const BqSync_ = (function () {
     throwIfErrors(errors);
   }
 
+  // Create sd_po_closure rows for POs that just turned Completed, so the closure
+  // SLA clock starts near the actual EasyCom completion (not whenever someone next
+  // opens the PO Closure screen). Runs after sd_po_master_raw is refreshed above.
+  // Non-fatal: a closure-sync hiccup must never fail the PO sync.
+  function syncPoClosures_() {
+    try { supa('post', 'rpc/sd_sync_po_closures', {}); }
+    catch (e) { console.log('po-closure sync skipped: ' + e); }
+  }
+
   function morningB() {
     throwIfErrors([
       runTarget('sd_po_master_raw', poMaster),
@@ -580,6 +589,7 @@ const BqSync_ = (function () {
       runTarget('vendor_master_data', vendors),
       runTarget('sd_po_qty_manual_adjustment', adjustments),
     ]);
+    syncPoClosures_();
   }
 
   function evening() {
@@ -587,6 +597,7 @@ const BqSync_ = (function () {
       runTarget('sd_po_master_raw', poMaster),
       runTarget('sd_po_grn_mapping', grn),
     ]);
+    syncPoClosures_();
   }
 
   function install() {
