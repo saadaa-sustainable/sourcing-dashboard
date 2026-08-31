@@ -68,7 +68,7 @@
   --r-control: 8px;
 
   /* Typography (§4) — system sans body, JetBrains Mono for numerics */
-  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-sans: var(--font-inter), Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
 
   /* ── Legacy aliases (resolve old names to the canonical brand values) ── */
