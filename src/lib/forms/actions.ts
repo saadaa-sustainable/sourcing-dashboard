@@ -770,7 +770,7 @@ export async function setPoClosure(formData: FormData): Promise<ActionResult> {
   const status: SdStatus = decision === 'yes' ? 'approved' : decision === 'no' ? 'rejected' : 'draft';
 
   const supabase = await supa();
-  const { error } = await supabase.from('sd_po_closure').upsert(
+  const { error } = await supabase.from('sd_po_closure_decision').upsert(
     {
       po_number,
       status,

@@ -1102,7 +1102,7 @@ export async function loadPoSubmissions(): Promise<PoSubmissionGroup[]> {
     if (data.length < PAGE_SIZE) break;
   }
 
-  const { data: closures } = await supabase.from('sd_po_closure').select('po_number, status');
+  const { data: closures } = await supabase.from('sd_po_closure_decision').select('po_number, status');
   const closureByPo = new Map(
     ((closures ?? []) as { po_number: string; status: SdStatus }[]).map((c) => [
       String(c.po_number),
