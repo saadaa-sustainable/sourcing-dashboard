@@ -1421,6 +1421,31 @@ function TrackerTab({
   return (
     <>
       <PendingClosurePanel closures={closures} />
+      <div className="metric-grid compact">
+        <Card
+          label="Open PO lines"
+          value={fmt.format(all.length)}
+          info="Open purchase-order lines in the tracker (Approved, not yet completed)."
+        />
+        <Card
+          label="Delayed lines"
+          value={fmt.format(all.filter((r) => r.delayDays > 0).length)}
+          tone="orange"
+          info="Open lines already past their expected delivery date."
+        />
+        <Card
+          label="Missing TNA"
+          value={fmt.format(missingTnaCount)}
+          tone="red"
+          info="Open lines with no TNA timeline entered at all — an adoption gap, not a production state."
+        />
+        <Card
+          label="Open quantity"
+          value={fmt.format(all.reduce((s, r) => s + r.pendingQty, 0))}
+          tone="teal"
+          info="Total pending pieces across all open PO lines."
+        />
+      </div>
       <div className="filter-bar">
         <label className="search-field">
           <Search size={16} />
@@ -3138,6 +3163,10 @@ function MatrixTab({ data }: { data: DashboardData }) {
             {mode === "variant" ? "product · variant" : "product"} rows ×{" "}
             {vendors.length} vendors
           </span>
+          <InfoDot
+            text="Open pending quantity for each product (or product · variant) split across the vendors producing it. Use the toggle above to group by variant or by product code."
+            label="About the product matrix"
+          />
           <DownloadButton
             filename={
               mode === "variant" ? "matrix-by-variant" : "matrix-by-product"
