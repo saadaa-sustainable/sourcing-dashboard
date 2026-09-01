@@ -1263,3 +1263,84 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   margin-top: 3px;
   font-size: 12px;
 }
+
+/* Member-row roles dropdown (multi-select) */
+.wf-role-dd {
+  position: relative;
+  min-width: 180px;
+}
+.wf-role-dd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-3, #6e695e);
+  background: var(--bg-surface-2, #fff);
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.wf-role-dd-btn:hover {
+  border-color: var(--color-ecru-400, #c9c2ae);
+}
+.wf-role-dd-btn.has {
+  color: var(--ink-1, #161513);
+  font-weight: 600;
+  background: var(--accent-soft, #faf1dc);
+  border-color: var(--accent, #f0c61e);
+}
+.wf-role-dd-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+}
+.wf-role-dd-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 240px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-surface-2, #fff);
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(22, 21, 19, 0.12);
+  padding: 6px;
+}
+.wf-role-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--ink-2, #494640);
+  user-select: none;
+}
+.wf-role-dd-item:hover {
+  background: var(--bg-tint, #f6f3f1);
+}
+.wf-role-dd-item input {
+  margin: 0;
+  accent-color: var(--color-ecru-900, #161513);
+}
+.wf-role-dd-name {
+  flex: 1;
+}
+.wf-role-dd-item .wf-subtle {
+  font-size: 11px;
+}
+.wf-role-dd-note {
+  margin: 4px 6px 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-2, #efeae0);
+  font-size: 11px;
+  color: var(--ink-4, #9a9384);
+}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
 import {
   createUserLogin,
   deleteCustomRole,
@@ -332,18 +332,7 @@ function UserRow({
         {role === 'admin' ? (
           <span className="wf-subtle">All views (admin)</span>
         ) : roles.length ? (
-          <div className="wf-role-chips">
-            {roles.map((r) => (
-              <label key={r.id} className={`wf-role-chip${roleIds.has(r.id) ? ' on' : ''}`}>
-                <input
-                  type="checkbox"
-                  checked={roleIds.has(r.id)}
-                  onChange={() => toggleRole(r.id)}
-                />
-                {r.name}
-              </label>
-            ))}
-          </div>
+          <RoleDropdown roles={roles} selected={roleIds} onToggle={toggleRole} />
         ) : (
           <span className="wf-subtle">No roles defined yet</span>
         )}
@@ -371,6 +360,66 @@ function UserRow({
         </button>
       </td>
     </tr>
+  );
+}
+
+/**
+ * Multi-select roles dropdown for a member row. Closed it reads like a select
+ * ("No roles — all views" / "Merchant" / "Merchant +2"); open it lists every
+ * role as a checkbox with its views count. Scales to many roles where inline
+ * chips would bloat the row.
+ */
+function RoleDropdown({
+  roles,
+  selected,
+  onToggle,
+}: {
+  roles: SdCustomRole[];
+  selected: Set<number>;
+  onToggle: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const picked = roles.filter((r) => selected.has(r.id));
+  const label = !picked.length
+    ? 'No roles — all views'
+    : picked.length === 1
+      ? picked[0].name
+      : `${picked[0].name} +${picked.length - 1}`;
+
+  return (
+    <div className="wf-role-dd">
+      <button
+        type="button"
+        className={`wf-role-dd-btn${picked.length ? ' has' : ''}`}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span>{label}</span>
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <>
+          {/* click-away backdrop */}
+          <div className="wf-role-dd-backdrop" onClick={() => setOpen(false)} />
+          <div className="wf-role-dd-panel" role="listbox">
+            {roles.map((r) => (
+              <label key={r.id} className="wf-role-dd-item">
+                <input
+                  type="checkbox"
+                  checked={selected.has(r.id)}
+                  onChange={() => onToggle(r.id)}
+                />
+                <span className="wf-role-dd-name">{r.name}</span>
+                <span className="wf-subtle">{r.pages.length} views</span>
+              </label>
+            ))}
+            <p className="wf-role-dd-note">
+              Several roles combine — the person sees the union of views.
+            </p>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
