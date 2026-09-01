@@ -10,7 +10,7 @@ import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { LineRework } from '@/components/forms/line-rework';
 import { PlanPivot } from '@/components/forms/plan-pivot';
-import type { ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
+import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
 
 const money = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -19,6 +19,16 @@ const money = new Intl.NumberFormat('en-IN', {
 });
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
+// Type tabs over the queue — born of the 27 Aug incident where a Standard-Cost
+// approval session accidentally approved the buying plan sitting in the same
+// list. Scoping the view to one approval type makes "approve everything I see"
+// safe. Cost approvals stay on their own pages, so only these types queue here.
+const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
+  { key: 'buying_plan', label: 'Buying Plans' },
+  { key: 'po_approval', label: 'PO Approvals' },
+  { key: 'discontinue', label: 'Discontinue' },
+  { key: 'receivable_plan', label: 'Receivable Plan' },
+];
 
 export function ApprovalsClient({
   items,
@@ -32,9 +42,14 @@ export function ApprovalsClient({
   stats: { approved: number; edited: number; pct: number };
 }) {
   const [filter, setFilter] = useState<'all' | 'mine'>('mine');
+  const [typeFilter, setTypeFilter] = useState<ApprovalEntity | 'all'>('all');
 
   const mine = items.filter((item) => canApprove(role, item.status));
-  const shown = filter === 'mine' ? mine : items;
+  const byLevel = filter === 'mine' ? mine : items;
+  const shown =
+    typeFilter === 'all' ? byLevel : byLevel.filter((item) => item.entityType === typeFilter);
+  const shownLog =
+    typeFilter === 'all' ? log : log.filter((row) => row.entity_type === typeFilter);
 
   // Buying-plan pivot: full scale (Total Qty/Value) + Woven-vs-Knitted split
   // across every plan in the queue, so the approver sees the shape before drilling.
@@ -51,7 +66,9 @@ export function ApprovalsClient({
 
   return (
     <>
-      <PlanPivot rows={pivotRows} title="Buying plans awaiting approval — Woven vs Knitted" />
+      {(typeFilter === 'all' || typeFilter === 'buying_plan') && (
+        <PlanPivot rows={pivotRows} title="Buying plans awaiting approval — Woven vs Knitted" />
+      )}
 
       <div className="metric-grid wf-metric-grid">
         <div className="metric-card tone-orange">
@@ -91,6 +108,28 @@ export function ApprovalsClient({
           >
             Everything pending
           </button>
+        </div>
+        <div className="segment wf-segment">
+          <button
+            type="button"
+            className={typeFilter === 'all' ? 'active' : ''}
+            onClick={() => setTypeFilter('all')}
+          >
+            All types ({byLevel.length})
+          </button>
+          {TYPE_TABS.map((t) => {
+            const count = byLevel.filter((item) => item.entityType === t.key).length;
+            return (
+              <button
+                type="button"
+                key={t.key}
+                className={typeFilter === t.key ? 'active' : ''}
+                onClick={() => setTypeFilter(t.key)}
+              >
+                {t.label} ({count})
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -183,7 +222,11 @@ export function ApprovalsClient({
         {!shown.length && (
           <div className="empty-state">
             <ShieldCheck size={28} />
-            <p>Nothing waiting on you.</p>
+            <p>
+              {typeFilter === 'all'
+                ? 'Nothing waiting on you.'
+                : `No ${TYPE_TABS.find((t) => t.key === typeFilter)?.label.toLowerCase() ?? 'items'} pending.`}
+            </p>
           </div>
         )}
       </div>
@@ -191,7 +234,11 @@ export function ApprovalsClient({
       <div className="table-panel">
         <div className="table-meta">
           <h3>Approval history</h3>
-          <span>Last {log.length} decisions</span>
+          <span>
+            {typeFilter === 'all'
+              ? `Last ${shownLog.length} decisions`
+              : `${shownLog.length} of the last ${log.length} decisions`}
+          </span>
         </div>
         <div className="table-scroll">
           <table className="wide-table">
@@ -205,7 +252,7 @@ export function ApprovalsClient({
               </tr>
             </thead>
             <tbody>
-              {log.map((row) => (
+              {shownLog.map((row) => (
                 <tr key={row.id}>
                   <td className="wf-subtle">
                     {new Date(row.created_at).toLocaleString('en-IN')}
@@ -219,10 +266,12 @@ export function ApprovalsClient({
                   <td>{row.notes ?? '—'}</td>
                 </tr>
               ))}
-              {!log.length && (
+              {!shownLog.length && (
                 <tr>
                   <td colSpan={5} className="wf-empty-cell">
-                    No decisions recorded yet.
+                    {typeFilter === 'all'
+                      ? 'No decisions recorded yet.'
+                      : 'No recent decisions of this type.'}
                   </td>
                 </tr>
               )}
