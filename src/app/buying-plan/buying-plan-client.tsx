@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import {
   ChevronDown,
@@ -144,18 +144,12 @@ export function BuyingPlanClient({
   // Input module (fill the plan) vs View module (running read-only view). Default
   // to View — "एक view चलता रहे"; supply chain switches to Input to fill it.
   const [mode, setMode] = useState<'view' | 'input'>('view');
-  const [overdueOnly, setOverdueOnly] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  // Input-table filters (Woven/Knitted, product state, code search).
+  // Input-table filters (Woven/Knitted, product state, PO type, code search).
   const [inputFabric, setInputFabric] = useState('');
   const [inputStatus, setInputStatus] = useState('');
+  const [inputPoType, setInputPoType] = useState('');
   const [inputSearch, setInputSearch] = useState('');
-
-  // Overdue = buying still outstanding more than a week into the plan month.
-  // Evaluated after mount so server/client render match.
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => setNow(Date.now()), []);
-  const overdueThreshold = Date.parse(`${planMonth}T00:00:00Z`) + 7 * 86_400_000;
 
   const used = useMemo(
     () => new Set(rows.map((row) => row.product_code)),
@@ -199,7 +193,6 @@ export function BuyingPlanClient({
       remaining,
       pctComplete:
         totalQty > 0 ? Math.min(100, Math.round((actual.qty / totalQty) * 100)) : 0,
-      isOverdue: remaining > 0 && now != null && now > overdueThreshold,
       // Weave/category is the product master's, falling back to the stored line only
       // when the master has nothing for this code.
       fabricType: productMaster[row.product_code]?.fabric_type || row.fabric_type || 'Unspecified',
@@ -218,10 +211,19 @@ export function BuyingPlanClient({
   const fabricOptions = [...new Set(view.map((v) => v.fabricType))].sort();
   const statusOptions = [...new Set(view.map((v) => v.productStatus))].sort();
   const inputSearchQ = inputSearch.trim().toLowerCase();
+  // PO-type filter: a plan line splits across Job/FOB/E-FOB, so filter to lines
+  // carrying quantity in the chosen type.
+  const poTypeQty = (v: ViewItem, t: string) =>
+    t === 'job'
+      ? Number(v.row.job_work_qty)
+      : t === 'fob'
+        ? Number(v.row.fob_qty)
+        : Number(v.row.efob_qty);
   const inputRows = view.filter(
     (v) =>
       (!inputFabric || v.fabricType === inputFabric) &&
       (!inputStatus || v.productStatus === inputStatus) &&
+      (!inputPoType || poTypeQty(v, inputPoType) > 0) &&
       (!inputSearchQ || v.row.product_code.toLowerCase().includes(inputSearchQ)),
   );
 
@@ -257,8 +259,7 @@ export function BuyingPlanClient({
     value: v.valueToBeBought,
     approved: v.row.line_status === 'approved',
   }));
-  const overdueCount = planned.filter((v) => v.isOverdue).length;
-  const viewRows = overdueOnly ? planned.filter((v) => v.isOverdue) : planned;
+  const viewRows = planned;
   const groups: [string, ViewItem[]][] = (() => {
     const m = new Map<string, ViewItem[]>();
     for (const item of viewRows) {
@@ -545,9 +546,6 @@ export function BuyingPlanClient({
           groups={groups}
           totals={plannedTotals}
           pctBought={pctBought}
-          overdueCount={overdueCount}
-          overdueOnly={overdueOnly}
-          setOverdueOnly={setOverdueOnly}
           collapsed={collapsed}
           setCollapsed={setCollapsed}
           plannedCount={planned.length}
@@ -595,13 +593,22 @@ export function BuyingPlanClient({
             ))}
           </select>
         </label>
+        <label className="wf-inline-field">
+          PO type
+          <select value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
+            <option value="">All</option>
+            <option value="job">Job Work</option>
+            <option value="fob">FOB</option>
+            <option value="efob">E-FOB</option>
+          </select>
+        </label>
         <span className="wf-subtle">
           {inputRows.length} of {view.length} shown
-          {(inputFabric || inputStatus || inputSearchQ) && (
+          {(inputFabric || inputStatus || inputPoType || inputSearchQ) && (
             <button
               type="button"
               className="wf-btn wf-btn-ghost wf-btn-sm"
-              onClick={() => { setInputFabric(''); setInputStatus(''); setInputSearch(''); }}
+              onClick={() => { setInputFabric(''); setInputStatus(''); setInputPoType(''); setInputSearch(''); }}
             >
               Clear
             </button>
@@ -783,17 +790,16 @@ type ViewItemFull = {
   actualValue: number;
   remaining: number;
   pctComplete: number;
-  isOverdue: boolean;
   fabricType: string;
   productStatus: string;
   overPlan: boolean;
 };
 
-function Progress({ pct, overdue = false }: { pct: number; overdue?: boolean }) {
+function Progress({ pct }: { pct: number }) {
   return (
     <div className="wf-progress">
       <div
-        className={overdue ? 'wf-progress-fill wf-progress-over' : 'wf-progress-fill'}
+        className="wf-progress-fill"
         style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
       />
     </div>
@@ -804,9 +810,6 @@ function PlanView({
   groups,
   totals,
   pctBought,
-  overdueCount,
-  overdueOnly,
-  setOverdueOnly,
   collapsed,
   setCollapsed,
   plannedCount,
@@ -814,9 +817,6 @@ function PlanView({
   groups: [string, ViewItemFull[]][];
   totals: { qty: number; value: number; actualQty: number; actualValue: number };
   pctBought: number;
-  overdueCount: number;
-  overdueOnly: boolean;
-  setOverdueOnly: (v: boolean) => void;
   collapsed: Record<string, boolean>;
   setCollapsed: (updater: (c: Record<string, boolean>) => Record<string, boolean>) => void;
   plannedCount: number;
@@ -850,29 +850,9 @@ function PlanView({
           <strong>{pctBought}%</strong>
           <Progress pct={pctBought} />
         </div>
-        <div className={overdueCount ? 'metric-card tone-orange' : 'metric-card'}>
-          <span className="metric-label">Overdue</span>
-          <strong>{overdueCount}</strong>
-        </div>
       </div>
 
       <div className="wf-toolbar">
-        <div className="segment wf-segment">
-          <button
-            type="button"
-            className={!overdueOnly ? 'active' : ''}
-            onClick={() => setOverdueOnly(false)}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            className={overdueOnly ? 'active' : ''}
-            onClick={() => setOverdueOnly(true)}
-          >
-            Overdue only ({overdueCount})
-          </button>
-        </div>
         <div className="wf-toolbar-right">
           <button
             type="button"
@@ -926,10 +906,7 @@ function PlanView({
               {!isCollapsed && (
                 <div className="wf-plan-group-body">
                   {items.map((it) => (
-                    <div
-                      className={it.isOverdue ? 'wf-plan-line wf-plan-line-over' : 'wf-plan-line'}
-                      key={it.row.key}
-                    >
+                    <div className="wf-plan-line" key={it.row.key}>
                       <span className="mono wf-plan-code">{it.row.product_code}</span>
                       <span className="wf-subtle">{it.productStatus}</span>
                       <span className="num">{fmt.format(it.totalQty)} pcs</span>
@@ -941,13 +918,12 @@ function PlanView({
                         )}
                       </span>
                       <span className="wf-plan-line-bar">
-                        <Progress pct={it.pctComplete} overdue={it.isOverdue} />
+                        <Progress pct={it.pctComplete} />
                       </span>
                       <span className="num wf-subtle">{it.pctComplete}%</span>
                       <span className="num wf-subtle">
                         {it.remaining > 0 ? `${fmt.format(it.remaining)} left` : 'done'}
                       </span>
-                      {it.isOverdue && <span className="wf-overdue-tag">overdue</span>}
                     </div>
                   ))}
                 </div>
