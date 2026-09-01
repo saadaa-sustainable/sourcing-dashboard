@@ -15,11 +15,20 @@
 export type ViewDef = {
   path: string;
   label: string;
-  group: 'Workspace' | 'Workflows' | 'Data & Admin';
+  group: 'Dashboard' | 'Workspace' | 'Workflows' | 'Data & Admin';
   adminOnly?: boolean;
 };
 
 export const ALL_VIEWS: ViewDef[] = [
+  // Dashboard tabs — in-page tabs on '/', granted individually via the
+  // pseudo-path tab:<id> (the sidebar filters its tab buttons with these).
+  // The Dashboard tab itself is the landing view and always visible.
+  { path: 'tab:open-po', label: 'Open PO Tracker', group: 'Dashboard' },
+  { path: 'tab:vendors', label: 'Vendor Performance', group: 'Dashboard' },
+  { path: 'tab:merchants', label: 'Merchant Performance', group: 'Dashboard' },
+  { path: 'tab:products', label: 'Product Tracker', group: 'Dashboard' },
+  { path: 'tab:urgent-replenish', label: 'Urgent Replenishment', group: 'Dashboard' },
+  { path: 'tab:matrix', label: 'Product Matrix View', group: 'Dashboard' },
   // Workspace — read-only analytical views.
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
@@ -50,7 +59,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/sync-status', label: 'Sync Health', group: 'Data & Admin' },
 ];
 
-export const VIEW_GROUPS = ['Workspace', 'Workflows', 'Data & Admin'] as const;
+export const VIEW_GROUPS = ['Dashboard', 'Workspace', 'Workflows', 'Data & Admin'] as const;
 
 /**
  * Can this user open `path`? allowedPages null/undefined = unrestricted.
@@ -61,7 +70,8 @@ export function canView(
   role: string,
   allowedPages: string[] | null | undefined,
 ): boolean {
-  if (path === '/') return true;
+  // The dashboard route and its first tab are the landing view — always visible.
+  if (path === '/' || path === 'tab:dashboard') return true;
   const def = ALL_VIEWS.find((v) => v.path === path);
   if (def?.adminOnly && role !== 'admin') return false;
   if (role === 'admin' || allowedPages == null) return true;

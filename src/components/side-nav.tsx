@@ -188,6 +188,7 @@ export function SideNav({
         <nav>
           {tabs
             .filter(([id]) => id !== 'urgent-replenish')
+            .filter(([id]) => canView(`tab:${id}`, role, allowedPages))
             .map(([id, label, Icon]) =>
               onTab ? (
                 <button

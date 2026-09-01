@@ -64,6 +64,7 @@ import type {
 import { TnaBreakdown } from "./tna-breakdown";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
+import { canView } from "@/lib/views";
 import type { PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
 import { ApprovalsBell } from "@/components/forms/approvals-bell";
@@ -3274,12 +3275,19 @@ export function DashboardShell({
   const [overdue, setOverdue] = useState<PendingPo[] | null>(null);
   const [bucket, setBucket] = useState("All");
   // Let /?tab=<id> deep-link a specific tab (used by the sidebar on other pages).
+  // Tabs are individually grantable views (tab:<id>) — a deep-link to a tab the
+  // caller's roles don't include stays on the Dashboard tab.
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
-    if (requested && tabs.some(([id]) => id === requested)) {
+    if (
+      requested &&
+      tabs.some(([id]) => id === requested) &&
+      canView(`tab:${requested}`, role, allowedPages)
+    ) {
       const timer = window.setTimeout(() => setTab(requested as TabId), 0);
       return () => window.clearTimeout(timer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const current = tabs.find(([id]) => id === tab)!;
   const helpItems: HelpItem[] = simpleGlossary[tab] ?? [];

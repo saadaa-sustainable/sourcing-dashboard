@@ -1120,33 +1120,146 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .spin { animation: spin 0.8s linear infinite; }
 
-/* ---- User Panel: custom roles (Team & access) ---- */
-.wf-role-chips { display: flex; flex-wrap: wrap; gap: 6px; max-width: 380px; }
+/* ---- User Panel: custom roles (Team & access) — DAM recipe ---- */
+.wf-role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 420px;
+}
 .wf-role-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 10px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--line, #e4ded2); background: var(--panel-2, #faf8f4);
-  font-size: 12px; user-select: none; transition: background 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--line, #e7e2d2);
+  background: var(--bg-surface-2, #fff);
+  color: var(--ink-2, #494640);
+  font-size: 12px;
+  line-height: 1;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.wf-role-chip input { margin: 0; accent-color: var(--accent, #f0c61e); }
+.wf-role-chip:hover {
+  border-color: var(--color-ecru-400, #c9c2ae);
+}
+.wf-role-chip input {
+  margin: 0;
+  width: 13px;
+  height: 13px;
+  accent-color: var(--color-ecru-900, #161513);
+}
 .wf-role-chip.on {
-  background: #fdf6dd; border-color: var(--accent, #f0c61e); font-weight: 600;
+  background: var(--accent-soft, #faf1dc);
+  border-color: var(--accent, #f0c61e);
+  color: var(--ink-1, #161513);
+  font-weight: 600;
 }
+.wf-role-chip small {
+  color: var(--ink-4, #9a9384);
+}
+
+/* Role cards grid — same card recipe as the dashboard KPI cards. */
 .wf-role-cards {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px; margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
 }
 .wf-role-card {
-  background: var(--panel, #fff); border: 1px solid var(--line, #e4ded2);
-  border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--bg-surface-2, #fff);
+  border: 1px solid var(--line, #e7e2d2);
   border-top: 3px solid var(--accent, #f0c61e);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 1px 2px rgba(22, 21, 19, 0.04);
 }
-.wf-role-card h3 { margin: 0; font-size: 15px; }
-.wf-role-pages { font-size: 12px; margin: 0; }
-.wf-view-group { margin-top: 14px; }
+.wf-role-card h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink-1, #161513);
+}
+.wf-role-card .wf-queue-meta {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-tint, #f6f3f1);
+  border-radius: 10px;
+}
+.wf-role-pages {
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* View picker — one bordered section per group, DAM spacing. */
+.wf-view-group {
+  margin-top: 14px;
+  border: 1px solid var(--line-2, #efeae0);
+  border-radius: 12px;
+  background: var(--bg-surface-2, #fff);
+  overflow: hidden;
+}
 .wf-view-group-head {
-  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
-  margin-bottom: 8px; font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-tint, #f6f3f1);
+  border-bottom: 1px solid var(--line-2, #efeae0);
 }
-.wf-view-group-head input { accent-color: var(--accent, #f0c61e); }
-.wf-view-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.wf-view-group-head strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2, #494640);
+  margin-right: 10px;
+}
+.wf-view-group-head .wf-subtle {
+  font-size: 11px;
+}
+.wf-view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-3, #6e695e);
+  user-select: none;
+}
+.wf-view-all input {
+  margin: 0;
+  accent-color: var(--color-ecru-900, #161513);
+}
+.wf-view-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+/* Role editor card + header */
+.wf-role-editor {
+  background: var(--bg-surface-2, #fff);
+  border: 1px solid var(--line, #e7e2d2);
+  border-top: 3px solid var(--accent, #f0c61e);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 2px rgba(22, 21, 19, 0.04);
+}
+.wf-role-editor-head strong {
+  display: block;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink-1, #161513);
+}
+.wf-role-editor-head .wf-subtle {
+  margin-top: 3px;
+  font-size: 12px;
+}

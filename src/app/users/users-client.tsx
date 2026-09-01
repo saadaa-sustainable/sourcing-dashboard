@@ -519,7 +519,13 @@ function RoleEditor({
   }
 
   return (
-    <div className="wf-form-panel">
+    <div className="wf-form-panel wf-role-editor">
+      <div className="wf-role-editor-head">
+        <strong>{role ? `Tune views — ${role.name}` : 'Create role'}</strong>
+        <span className="wf-subtle">
+          Tick the views this role grants. People holding several roles see the union.
+        </span>
+      </div>
       <div className="wf-form-grid">
         <Field label="Role name">
           <input
@@ -539,23 +545,32 @@ function RoleEditor({
 
       {VIEW_GROUPS.map((group) => {
         const views = ALL_VIEWS.filter((v) => v.group === group);
-        const allOn = views.every((v) => pages.has(v.path));
+        const onCount = views.filter((v) => pages.has(v.path)).length;
+        const allOn = onCount === views.length;
         return (
-          <div key={group} className="wf-view-group">
-            <label className="wf-view-group-head">
-              <input
-                type="checkbox"
-                checked={allOn}
-                onChange={() =>
-                  setPages((cur) => {
-                    const next = new Set(cur);
-                    views.forEach((v) => (allOn ? next.delete(v.path) : next.add(v.path)));
-                    return next;
-                  })
-                }
-              />
-              <strong>{group}</strong>
-            </label>
+          <section key={group} className="wf-view-group">
+            <div className="wf-view-group-head">
+              <div>
+                <strong>{group}</strong>
+                <span className="wf-subtle">
+                  {onCount} of {views.length} granted
+                </span>
+              </div>
+              <label className="wf-view-all">
+                <input
+                  type="checkbox"
+                  checked={allOn}
+                  onChange={() =>
+                    setPages((cur) => {
+                      const next = new Set(cur);
+                      views.forEach((v) => (allOn ? next.delete(v.path) : next.add(v.path)));
+                      return next;
+                    })
+                  }
+                />
+                Select all
+              </label>
+            </div>
             <div className="wf-view-grid">
               {views.map((v) => (
                 <label key={v.path} className={`wf-role-chip${pages.has(v.path) ? ' on' : ''}`}>
@@ -569,12 +584,12 @@ function RoleEditor({
                 </label>
               ))}
             </div>
-          </div>
+          </section>
         );
       })}
       <p className="wf-subtle">
         ⚿ marked views additionally require the admin access level — granting them
-        to a non-admin has no effect. The dashboard itself is always visible.
+        to a non-admin has no effect. The Dashboard landing tab is always visible.
       </p>
 
       <div className="wf-queue-foot">
