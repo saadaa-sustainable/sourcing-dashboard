@@ -1,0 +1,892 @@
+/* Decision-board composition: keeps the established DAM card recipe while
+   giving exception, allocation, and control questions distinct reading lanes. */
+.ana-board {
+  display: grid;
+  gap: 28px;
+  margin-bottom: 34px;
+}
+.ana-brief {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px;
+  background:
+    radial-gradient(
+      circle at 92% -40%,
+      rgba(240, 198, 30, 0.2),
+      transparent 15rem
+    ),
+    var(--bg-surface-2, #fff);
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: var(--r-card, 14px);
+  box-shadow: var(--sh-1);
+}
+.ana-brief-copy {
+  min-width: 250px;
+}
+.ana-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent-strong, #a8870d);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.ana-brief h2 {
+  margin: 0;
+  color: var(--ink-1, #161513);
+  font-size: 24px;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+.ana-brief p {
+  margin: 5px 0 0;
+  color: var(--ink-3, #6e695e);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.ana-signal-strip {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ana-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 10px;
+  color: var(--ink-3, #6e695e);
+  background: var(--bg-tint, #f6f3f1);
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.ana-signal.is-red {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+.ana-signal.is-amber {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+.ana-signal.is-green {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success-border) 38%, transparent);
+}
+
+.ana-section {
+  display: grid;
+  gap: 12px;
+}
+.ana-section + .ana-section {
+  padding-top: 27px;
+  border-top: 1px solid var(--line, #e7e2d2);
+}
+.ana-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 0 2px;
+}
+.ana-section-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  color: var(--ink-2, #494640);
+  background: var(--color-yellow-100, #fcf3cc);
+  border: 1px solid var(--color-yellow-200, #f7e384);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+}
+.ana-section-head h3 {
+  margin: 0;
+  color: var(--ink-1, #161513);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.ana-section-head p {
+  margin: 3px 0 0;
+  color: var(--ink-3, #6e695e);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.ana-grid {
+  margin: 0;
+  align-items: stretch;
+}
+.ana-span6 {
+  grid-column: span 6;
+}
+.ana-rowspan2 {
+  grid-row: span 2;
+}
+.ana-card {
+  min-width: 0;
+  height: 100%;
+  gap: 0;
+  padding: 16px 18px 0;
+  overflow: hidden;
+  box-shadow: var(--sh-1);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.ana-card.clickable:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-ecru-400, #c9c2ae);
+  box-shadow: var(--sh-2);
+}
+.ana-card.clickable:focus-visible {
+  outline: 3px solid rgba(240, 198, 30, 0.3);
+  outline-offset: 2px;
+}
+.ana-head {
+  min-height: 26px;
+}
+.ana-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.ana-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 7px;
+  color: var(--ink-4, #9a9384);
+  background: var(--bg-tint, #f6f3f1);
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 999px;
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ana-state-red {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+.ana-state-amber {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+.ana-state-green {
+  color: var(--success-text);
+  background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--success-border) 35%, transparent);
+}
+.ana-red .ana-icon {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+.ana-amber .ana-icon {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+.ana-green .ana-icon {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+.ana-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 15px 0 13px;
+}
+.ana-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 37px;
+  margin-top: auto;
+  padding: 10px 0 11px;
+  color: var(--ink-2, #494640);
+  border-top: 1px solid var(--line-2, #efeae0);
+  font-size: 10px;
+  font-weight: 700;
+}
+.ana-card.clickable:hover .ana-footer {
+  color: var(--ink-1, #161513);
+}
+
+.ana-value-xl {
+  font-size: clamp(27px, 2.4vw, 36px);
+  line-height: 1;
+}
+.ana-value-label {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-3, #6e695e);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ana-metric-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ana-count-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 5px 8px;
+  color: var(--ink-3);
+  background: var(--bg-tint);
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ana-count-chip.is-red {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+.ana-count-chip.is-amber {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+.ana-count-chip.is-green {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+.ana-decision-line {
+  margin: 12px 0 5px;
+  color: var(--ink-3, #6e695e);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.ana-list {
+  margin-top: 5px;
+}
+.ana-list li {
+  min-height: 40px;
+  padding: 7px 0;
+}
+.ana-list-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+  overflow: hidden;
+}
+.ana-list-stack > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ana-list-stack small {
+  color: var(--ink-4, #9a9384);
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ana-rank {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: var(--ink-3, #6e695e);
+  background: var(--bg-tint, #f6f3f1);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+}
+.ana-nodata {
+  display: grid;
+  align-content: center;
+  min-height: 118px;
+  margin: 0;
+  padding: 15px;
+  background: var(--bg-tint, #f6f3f1);
+  border: 1px dashed var(--color-ecru-400, #c9c2ae);
+  border-radius: 10px;
+  font-style: normal;
+}
+.ana-nodata > span {
+  color: var(--ink-3);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.ana-nodata p {
+  margin: 7px 0 0;
+  color: var(--ink-4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.ana-zero {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 150px;
+  padding: 18px;
+  color: var(--success-text, #4f7c4d);
+  background: color-mix(in srgb, var(--success-bg) 70%, white);
+  border: 1px solid color-mix(in srgb, var(--success-border) 25%, transparent);
+  border-radius: 10px;
+  text-align: center;
+}
+.ana-zero strong {
+  margin-top: 8px;
+  color: var(--ink-1);
+  font-size: 12px;
+}
+.ana-zero span {
+  max-width: 340px;
+  margin-top: 4px;
+  color: var(--ink-3);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.ana-zero-compact {
+  min-height: 105px;
+}
+.ana-mini-split {
+  display: flex;
+  gap: 7px;
+}
+.ana-mini-split span {
+  padding: 7px 8px;
+  color: var(--ink-3);
+  background: var(--bg-tint);
+  border-radius: 8px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.ana-mini-split b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink-1);
+  font-size: 14px;
+}
+.ana-code-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.ana-code-list span {
+  padding: 5px 7px;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 6px;
+  font-size: 9px;
+}
+
+.ana-capacity-summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ana-capacity-summary > svg {
+  color: var(--ink-4);
+}
+.ana-capacity-summary > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 9px;
+  padding: 12px;
+  border-radius: 10px;
+}
+.ana-capacity-summary > div.is-red {
+  background: var(--danger-bg);
+}
+.ana-capacity-summary > div.is-green {
+  background: var(--success-bg);
+}
+.ana-capacity-summary span {
+  grid-column: 1 / -1;
+  color: var(--ink-3);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.ana-capacity-summary strong {
+  grid-row: 2 / 4;
+  font-size: 26px;
+  line-height: 1;
+}
+.ana-capacity-summary .is-red strong {
+  color: var(--danger-text);
+}
+.ana-capacity-summary .is-green strong {
+  color: var(--success-text);
+}
+.ana-capacity-summary small {
+  align-self: end;
+  color: var(--ink-3);
+  font-size: 9px;
+}
+.ana-capacity-split {
+  align-items: stretch;
+  gap: 12px;
+}
+.ana-capacity-panel {
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+}
+.ana-capacity-panel.is-red {
+  background: color-mix(in srgb, var(--danger-bg) 45%, white);
+}
+.ana-capacity-panel.is-green {
+  background: color-mix(in srgb, var(--success-bg) 50%, white);
+}
+.ana-capacity-panel.is-red .ana-split-title {
+  color: var(--danger-text);
+}
+.ana-capacity-panel.is-green .ana-split-title {
+  color: var(--success-text);
+}
+.ana-vendor-row {
+  padding: 9px 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+}
+.ana-vendor-row:first-of-type {
+  margin-top: 4px;
+}
+.ana-vendor-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 10px;
+}
+.ana-vendor-row > div:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ana-vendor-row b {
+  color: var(--ink-1);
+  font-size: 9px;
+}
+.ana-vendor-meter {
+  height: 4px;
+  margin: 5px 0 4px;
+  overflow: hidden;
+  background: var(--color-ecru-200);
+  border-radius: 99px;
+}
+.ana-vendor-meter i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 99px;
+}
+.ana-capacity-panel.is-red .ana-vendor-meter i {
+  background: var(--danger-text);
+}
+.ana-capacity-panel.is-green .ana-vendor-meter i {
+  background: var(--success-text);
+}
+.ana-vendor-row small {
+  color: var(--ink-4);
+  font-size: 8.5px;
+}
+.ana-inline-more {
+  display: block;
+  padding-top: 7px;
+  color: var(--ink-4);
+  font-size: 9px;
+  text-align: center;
+}
+
+.ana-threshold-bar {
+  position: relative;
+  height: 8px;
+  margin: 15px 0 8px;
+  background: var(--color-ecru-200);
+  border-radius: 99px;
+}
+.ana-threshold-bar i {
+  display: block;
+  width: var(--ana-value);
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+}
+.ana-threshold-bar b {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: var(--ana-threshold);
+  width: 2px;
+  background: var(--ink-2);
+  border-radius: 2px;
+}
+.ana-share-list li {
+  min-height: 34px;
+}
+.ana-share-bar {
+  width: 74px;
+  height: 5px;
+  overflow: hidden;
+  background: var(--color-ecru-200);
+  border-radius: 99px;
+}
+.ana-share-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent-strong);
+  border-radius: 99px;
+}
+.ana-reliability-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ana-reliability-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 10px;
+}
+.ana-reliability-row > div:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ana-reliability-row > div:first-child b {
+  color: var(--danger-text);
+  font-size: 9px;
+  white-space: nowrap;
+}
+.ana-reliability-row > div:nth-child(2) {
+  height: 5px;
+  margin: 5px 0 3px;
+  overflow: hidden;
+  background: var(--color-ecru-200);
+  border-radius: 99px;
+}
+.ana-reliability-row > div:nth-child(2) i {
+  display: block;
+  height: 100%;
+  background: var(--danger-border);
+  border-radius: 99px;
+}
+.ana-reliability-row small {
+  color: var(--ink-4);
+  font-size: 8.5px;
+}
+
+.ana-plan-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.ana-plan-values {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 8px;
+}
+.ana-plan-values span {
+  min-width: 92px;
+  padding: 8px 10px;
+  background: var(--bg-tint);
+  border-radius: 8px;
+}
+.ana-plan-values small {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink-4);
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.ana-plan-values b {
+  color: var(--ink-1);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.ana-plan-track {
+  height: 9px;
+  margin: 14px 0 16px;
+  overflow: hidden;
+  background: var(--color-ecru-200);
+  border-radius: 99px;
+}
+.ana-plan-track i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+}
+.ana-category-bars {
+  display: grid;
+  gap: 2px;
+}
+.ana-bar-row {
+  grid-template-columns: 68px minmax(80px, 1fr) minmax(164px, auto);
+  padding: 7px 0;
+}
+.ana-bar-val {
+  display: grid;
+  grid-template-columns: 34px auto;
+  gap: 7px;
+}
+.ana-bar-val b {
+  color: var(--ink-1);
+}
+.ana-months {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 18px;
+  min-height: 118px;
+  margin-top: 17px;
+  padding: 14px 16px 10px;
+  background: var(--bg-tint);
+  border-radius: 10px;
+}
+.ana-months > div {
+  display: grid;
+  grid-template-rows: 12px 64px 14px;
+  gap: 4px;
+  min-width: 46px;
+  text-align: center;
+}
+.ana-months span {
+  color: var(--ink-4);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.ana-months > div > div {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.ana-months i {
+  display: block;
+  width: 18px;
+  max-height: 100%;
+  background: var(--accent);
+  border-radius: 5px 5px 2px 2px;
+}
+.ana-months b {
+  color: var(--ink-2);
+  font-size: 9px;
+}
+.ana-trend-metric {
+  align-items: center;
+}
+.ana-delta {
+  padding: 5px 7px;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.ana-delta.is-up {
+  color: var(--success-text);
+  background: var(--success-bg);
+}
+.ana-delta.is-down {
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+.ana-status-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.ana-status-pair span {
+  padding: 8px 9px;
+  border-radius: 8px;
+  color: var(--ink-3);
+  font-size: 9px;
+}
+.ana-status-pair span.is-amber {
+  background: var(--warning-bg);
+}
+.ana-status-pair span.is-red {
+  background: var(--danger-bg);
+}
+.ana-status-pair b {
+  margin-right: 3px;
+  color: var(--ink-1);
+  font-size: 12px;
+}
+.ana-closure-layout {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  align-items: center;
+  gap: 18px;
+  min-height: 150px;
+}
+.ana-ring {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  padding: 9px;
+  background: conic-gradient(
+    var(--success-border) var(--ana-ring),
+    var(--color-ecru-200) 0
+  );
+  border-radius: 50%;
+}
+.ana-ring.is-empty {
+  background: var(--color-ecru-200);
+}
+.ana-ring > div {
+  display: grid;
+  place-content: center;
+  width: 100%;
+  height: 100%;
+  background: white;
+  border-radius: 50%;
+  text-align: center;
+}
+.ana-ring strong {
+  color: var(--ink-1);
+  font-size: 20px;
+}
+.ana-ring span {
+  margin-top: 2px;
+  color: var(--ink-4);
+  font-size: 7.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.ana-closure-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ana-breach-count,
+.ana-clear-count {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+}
+.ana-breach-count {
+  color: var(--danger-text);
+}
+.ana-clear-count {
+  color: var(--success-text);
+}
+.ana-closure-copy strong {
+  margin-top: 6px;
+  color: var(--ink-1);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.ana-closure-copy small {
+  margin-top: 7px;
+  color: var(--ink-4);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ana-card {
+    transition: none;
+  }
+}
+@media (max-width: 1180px) {
+  .ana-plan-hero {
+    flex-direction: column;
+  }
+  .ana-plan-values {
+    width: 100%;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .ana-plan-values span {
+    min-width: 0;
+  }
+}
+@media (max-width: 1100px) {
+  .ana-rowspan2 {
+    grid-row: auto;
+  }
+  .ana-span6 {
+    grid-column: span 6;
+  }
+  .ana-brief {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .ana-signal-strip {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 760px) {
+  .ana-board {
+    gap: 22px;
+  }
+  .ana-brief {
+    padding: 17px;
+  }
+  .ana-signal-strip {
+    display: grid;
+    width: 100%;
+  }
+  .ana-signal {
+    justify-content: center;
+  }
+  .ana-span6 {
+    grid-column: span 12;
+  }
+  .ana-card {
+    padding-inline: 15px;
+  }
+  .ana-capacity-summary {
+    grid-template-columns: 1fr;
+  }
+  .ana-capacity-summary > svg {
+    display: none;
+  }
+  .ana-plan-values {
+    grid-template-columns: 1fr;
+  }
+  .ana-bar-row {
+    grid-template-columns: 60px 1fr;
+  }
+  .ana-bar-val {
+    grid-column: 2;
+  }
+  .ana-closure-layout {
+    grid-template-columns: 96px 1fr;
+    gap: 13px;
+  }
+  .ana-ring {
+    width: 92px;
+    height: 92px;
+  }
+}

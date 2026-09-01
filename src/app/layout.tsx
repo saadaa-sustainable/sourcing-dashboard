@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import './workflows.css';
+import './analytics-cards.css';
 import { ToastHost } from '@/components/toast-host';
 
 // Design system §4 intent: one clean neutral sans for body + headings (hierarchy by
