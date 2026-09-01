@@ -86,23 +86,23 @@ const decisionTabs = [
   {
     id: "protect",
     number: "01",
-    label: "Protect the business",
+    label: "Key updates",
     description:
-      "Cash, availability, margin, and master-data exceptions that need intervention now.",
+      "Review cash, availability, cost, and master-data updates in one place.",
   },
   {
     id: "allocate",
     number: "02",
-    label: "Allocate smarter",
+    label: "Vendor planning",
     description:
-      "Move demand toward available capacity without increasing concentration or delivery risk.",
+      "Compare demand, vendor capacity, concentration, and recent delivery performance.",
   },
   {
     id: "execution",
     number: "03",
-    label: "Stay on plan",
+    label: "Plan progress",
     description:
-      "Buying-plan realization, TNA execution, and closure discipline in one control view.",
+      "Track buying-plan realization, TNA progress, and PO closure compliance.",
   },
 ] as const;
 
@@ -378,8 +378,8 @@ export function AnalyticsCards({
     <section className="ana-board" aria-labelledby="decision-briefing-title">
       <header className="ana-brief">
         <div className="ana-brief-copy">
-          <span className="ana-eyebrow">Leadership decision view</span>
-          <h2 id="decision-briefing-title">Decision briefing</h2>
+          <span className="ana-eyebrow">Cross-module insights</span>
+          <h2 id="decision-briefing-title">Dashboard overview</h2>
           <p>{activeDecisionTab.description}</p>
         </div>
         <div className="ana-signal-strip" aria-label="Current decision signals">
