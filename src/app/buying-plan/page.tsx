@@ -4,6 +4,7 @@ import { monthLabel, monthStart } from '@/lib/forms/approval';
 import {
   currentUser,
   loadActualsByProduct,
+  loadAnalyticsRules,
   loadBuyingPlan,
   loadMaterialPlan,
   loadProductCatalog,
@@ -73,10 +74,12 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
     { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
     actualsMap,
     catalog,
+    rules,
   ] = await Promise.all([
     loadBuyingPlan(planMonth),
     loadActualsByProduct(planMonth),
     loadProductCatalog(),
+    loadAnalyticsRules(),
   ]);
   return (
     <BuyingPlanClient
@@ -89,6 +92,7 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       pendingByCode={pendingByCode}
       actuals={Object.fromEntries(actualsMap)}
       catalog={catalog}
+      leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
       role={role}
     />
   );

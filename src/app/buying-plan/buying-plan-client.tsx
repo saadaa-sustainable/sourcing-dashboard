@@ -15,7 +15,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
+import { saveAnalyticsRule, saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { PlanPivot } from '@/components/forms/plan-pivot';
 import { FilterTable, type Column } from '@/components/filter-table';
@@ -110,6 +110,7 @@ export function BuyingPlanClient({
   pendingByCode,
   actuals,
   catalog = [],
+  leadDays = { job: 30, efob: 45, fob: 90 },
   role,
 }: {
   planMonth: string;
@@ -121,6 +122,7 @@ export function BuyingPlanClient({
   pendingByCode: Record<string, number>;
   actuals: Record<string, { qty: number; value: number }>;
   catalog?: ProductCatalogItem[];
+  leadDays?: { job: number; efob: number; fob: number };
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
@@ -264,6 +266,15 @@ export function BuyingPlanClient({
 
   // View module works over products that actually have a planned quantity.
   const planned = view.filter((v) => v.totalQty > 0);
+  // §7 time-bucket demand coverage: pending = 30-day ROP, so N-day coverage scales
+  // linearly. Reads the lead-time day-counts from the Rules Master.
+  const totalPending = planned.reduce((s, v) => s + (pendingByCode[v.row.product_code] ?? 0), 0);
+  const coverage = (days: number) => Math.round((totalPending / 30) * days);
+  const buckets = [
+    { key: 'job', label: 'Job Work', ruleKey: 'lead_days_job', days: leadDays.job, qty: coverage(leadDays.job) },
+    { key: 'efob', label: 'E-FOB', ruleKey: 'lead_days_efob', days: leadDays.efob, qty: coverage(leadDays.efob) },
+    { key: 'fob', label: 'FOB', ruleKey: 'lead_days_fob', days: leadDays.fob, qty: coverage(leadDays.fob) },
+  ];
   const pivotRows = planned.map((v) => ({
     fabricType: v.fabricType,
     qty: v.totalQty,
@@ -561,6 +572,7 @@ export function BuyingPlanClient({
 
       {mode === 'view' && (
         <>
+        <TimeBuckets buckets={buckets} isAdmin={role === 'admin'} />
         <PlanPivot rows={pivotRows} title="Woven vs Knitted — pending & approved" />
         <PlanView
           groups={groups}
@@ -824,6 +836,82 @@ function Progress({ pct }: { pct: number }) {
         className="wf-progress-fill"
         style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
       />
+    </div>
+  );
+}
+
+/**
+ * §7 — coverage by PO-type lead time. Three windows (Job/EFOB/FOB) show the pieces
+ * needed to cover each lead time, so leadership can size the split at freeze time.
+ * Day-counts come from the editable Rules Master (sd_analytics_rule); admins edit
+ * them inline.
+ */
+function TimeBuckets({
+  buckets,
+  isAdmin,
+}: {
+  buckets: { key: string; label: string; ruleKey: string; days: number; qty: number }[];
+  isAdmin: boolean;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [val, setVal] = useState('');
+  const [busy, start] = useTransition();
+
+  function save(ruleKey: string) {
+    const fd = new FormData();
+    fd.set('rule_key', ruleKey);
+    fd.set('value', val);
+    start(async () => {
+      const res = await saveAnalyticsRule(fd);
+      setEditing(null);
+      if (res.ok) reloadWithToast();
+    });
+  }
+
+  return (
+    <div className="wf-buckets">
+      <div className="wf-buckets-head">
+        <h3>Coverage by PO-type lead time</h3>
+        <span className="wf-subtle">pieces needed to cover each window · demand from 30-day ROP</span>
+      </div>
+      <div className="wf-buckets-row">
+        {buckets.map((b) => (
+          <div className="wf-bucket-card" key={b.key}>
+            <span className="wf-bucket-type">{b.label}</span>
+            <strong className="wf-bucket-qty">{fmt.format(b.qty)} pcs</strong>
+            {editing === b.key ? (
+              <span className="wf-issue-row">
+                <input
+                  className="wf-mini-input"
+                  type="number"
+                  min={1}
+                  value={val}
+                  onChange={(e) => setVal(e.target.value)}
+                />
+                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => save(b.ruleKey)}>
+                  Save
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setEditing(null)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <span className="wf-bucket-days">
+                {b.days}-day window
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-ghost wf-btn-sm"
+                    onClick={() => { setEditing(b.key); setVal(String(b.days)); }}
+                  >
+                    edit
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

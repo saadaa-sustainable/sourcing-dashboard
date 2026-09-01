@@ -174,6 +174,10 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   utilization_over_pct: 100,
   reliability_window_days: 60,
   closure_sla_days: 15,
+  // PO-type lead times (days) — Buying Plan time-buckets (spec §7).
+  lead_days_job: 30,
+  lead_days_efob: 45,
+  lead_days_fob: 90,
 };
 
 export async function loadAnalyticsRules(): Promise<Record<string, number>> {

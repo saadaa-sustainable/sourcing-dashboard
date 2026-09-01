@@ -926,6 +926,19 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- Buying Plan: PO-type lead-time coverage buckets (§7) ---- */
+.wf-buckets { margin-bottom: 14px; }
+.wf-buckets-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.wf-buckets-head h3 { margin: 0; font-size: 13px; }
+.wf-buckets-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.wf-bucket-card {
+  flex: 1 1 160px; min-width: 150px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid #e7e2d2; background: #fff; display: flex; flex-direction: column; gap: 3px;
+}
+.wf-bucket-type { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #6e695e; font-weight: 700; }
+.wf-bucket-qty { font-size: 20px; color: #33302b; }
+.wf-bucket-days { font-size: 12px; color: #6e695e; display: inline-flex; align-items: center; gap: 6px; }
+
 /* ---- Add-Product picker (search by code / name) ---- */
 .wf-picker { position: relative; min-width: 260px; flex: 1 1 260px; }
 .wf-picker-input {

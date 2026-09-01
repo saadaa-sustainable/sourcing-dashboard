@@ -1717,6 +1717,27 @@ export async function saveEfobFabricCost(formData: FormData): Promise<ActionResu
   return done(`EFOB fabric cost set for ${month.slice(0, 7)}.`);
 }
 
+/** Admin: set a Rules Master value (sd_analytics_rule) — e.g. PO-type lead times (§7). */
+export async function saveAnalyticsRule(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role !== 'admin') return fail('Only an admin can edit the Rules Master.');
+  const rule_key = String(formData.get('rule_key') ?? '').trim();
+  const value = numOrNull(formData.get('value'));
+  if (!rule_key) return fail('Missing rule.');
+  if (value == null) return fail('Enter a value.');
+
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_analytics_rule')
+    .update({ value, updated_by: user.email, updated_at: new Date().toISOString() })
+    .eq('rule_key', rule_key);
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/buying-plan');
+  revalidatePath('/');
+  return done('Rule updated.');
+}
+
 /** The document-once standard fields (singleton) — same across all products. */
 export async function saveCostStandards(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
