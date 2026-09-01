@@ -833,7 +833,7 @@ export async function loadProductCatalog(): Promise<ProductCatalogItem[]> {
   const supabase = await client();
   const { data } = await supabase
     .from('sd_product_catalog')
-    .select('product_code, product_name')
+    .select('product_code, product_name, category, sub_category')
     .order('product_code')
     .limit(PAGE_SIZE);
   return (data ?? []) as ProductCatalogItem[];

@@ -150,6 +150,14 @@ export function BuyingPlanClient({
   const [inputStatus, setInputStatus] = useState('');
   const [inputPoType, setInputPoType] = useState('');
   const [inputSearch, setInputSearch] = useState('');
+  // View-mode grouping dimension (spec §2 — category, not product code, by default).
+  const [groupBy, setGroupBy] = useState<'category' | 'subcategory' | 'weave' | 'code'>('category');
+
+  const catalogByCode = useMemo(() => {
+    const m: Record<string, { category: string | null; sub_category: string | null }> = {};
+    for (const c of catalog) m[c.product_code] = { category: c.category, sub_category: c.sub_category };
+    return m;
+  }, [catalog]);
 
   const used = useMemo(
     () => new Set(rows.map((row) => row.product_code)),
@@ -199,6 +207,9 @@ export function BuyingPlanClient({
       // Product State is sourced from the product master (rolled up to the code),
       // falling back to the stored line only when the master has nothing for it.
       productStatus: productMaster[row.product_code]?.status || row.product_status || '—',
+      // Garment category / sub-category (from the product catalog) — for Group By.
+      category: catalogByCode[row.product_code]?.category || 'Uncategorised',
+      subCategory: catalogByCode[row.product_code]?.sub_category || 'Uncategorised',
       // Red, but never blocking. Mahesh: show it, don't refuse it.
       overPlan: totalQty > 0 && actual.qty > totalQty,
     };
@@ -260,12 +271,21 @@ export function BuyingPlanClient({
     approved: v.row.line_status === 'approved',
   }));
   const viewRows = planned;
+  const groupKey = (item: ViewItem) =>
+    groupBy === 'category'
+      ? item.category
+      : groupBy === 'subcategory'
+        ? item.subCategory
+        : groupBy === 'code'
+          ? item.row.product_code
+          : item.fabricType;
   const groups: [string, ViewItem[]][] = (() => {
     const m = new Map<string, ViewItem[]>();
     for (const item of viewRows) {
-      const list = m.get(item.fabricType) ?? [];
+      const k = groupKey(item);
+      const list = m.get(k) ?? [];
       list.push(item);
-      m.set(item.fabricType, list);
+      m.set(k, list);
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   })();
@@ -549,6 +569,8 @@ export function BuyingPlanClient({
           collapsed={collapsed}
           setCollapsed={setCollapsed}
           plannedCount={planned.length}
+          groupBy={groupBy}
+          setGroupBy={setGroupBy}
         />
         <div className="wf-section-head" style={{ marginTop: 18 }}>
           <h3>Plan detail — every line, as on the sheet</h3>
@@ -813,6 +835,8 @@ function PlanView({
   collapsed,
   setCollapsed,
   plannedCount,
+  groupBy,
+  setGroupBy,
 }: {
   groups: [string, ViewItemFull[]][];
   totals: { qty: number; value: number; actualQty: number; actualValue: number };
@@ -820,6 +844,8 @@ function PlanView({
   collapsed: Record<string, boolean>;
   setCollapsed: (updater: (c: Record<string, boolean>) => Record<string, boolean>) => void;
   plannedCount: number;
+  groupBy: 'category' | 'subcategory' | 'weave' | 'code';
+  setGroupBy: (v: 'category' | 'subcategory' | 'weave' | 'code') => void;
 }) {
   if (!plannedCount) {
     return (
@@ -853,6 +879,15 @@ function PlanView({
       </div>
 
       <div className="wf-toolbar">
+        <label className="wf-inline-field">
+          Group by
+          <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}>
+            <option value="category">Category</option>
+            <option value="subcategory">Sub-category</option>
+            <option value="weave">Woven / Knitted</option>
+            <option value="code">Product code</option>
+          </select>
+        </label>
         <div className="wf-toolbar-right">
           <button
             type="button"
