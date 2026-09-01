@@ -6,7 +6,7 @@
  * protect the business, allocate smarter, and stay on plan.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   AlertTriangle,
@@ -81,6 +81,32 @@ function quantile(sortedAsc: number[], q: number): number {
 }
 
 type Tone = "red" | "amber" | "green" | "neutral";
+
+const decisionTabs = [
+  {
+    id: "protect",
+    number: "01",
+    label: "Protect the business",
+    description:
+      "Cash, availability, margin, and master-data exceptions that need intervention now.",
+  },
+  {
+    id: "allocate",
+    number: "02",
+    label: "Allocate smarter",
+    description:
+      "Move demand toward available capacity without increasing concentration or delivery risk.",
+  },
+  {
+    id: "execution",
+    number: "03",
+    label: "Stay on plan",
+    description:
+      "Buying-plan realization, TNA execution, and closure discipline in one control view.",
+  },
+] as const;
+
+type DecisionTab = (typeof decisionTabs)[number]["id"];
 
 function AnaCard({
   title,
@@ -174,26 +200,6 @@ const ZeroState = ({
   </div>
 );
 
-function SectionHeading({
-  number,
-  title,
-  description,
-}: {
-  number: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="ana-section-head">
-      <span className="ana-section-number">{number}</span>
-      <div>
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-    </div>
-  );
-}
-
 export function AnalyticsCards({
   data,
   rules,
@@ -206,6 +212,9 @@ export function AnalyticsCards({
   onTab: (id: TabId) => void;
 }) {
   const today = istToday();
+  const [decisionTab, setDecisionTab] = useState<DecisionTab>("protect");
+  const activeDecisionTab =
+    decisionTabs.find((tab) => tab.id === decisionTab) ?? decisionTabs[0];
   const tracker = useMemo(
     () =>
       buildTrackerRows(
@@ -366,10 +375,7 @@ export function AnalyticsCards({
         <div className="ana-brief-copy">
           <span className="ana-eyebrow">Leadership decision view</span>
           <h2 id="decision-briefing-title">Decision briefing</h2>
-          <p>
-            Exceptions first, allocation choices second, execution control
-            third.
-          </p>
+          <p>{activeDecisionTab.description}</p>
         </div>
         <div className="ana-signal-strip" aria-label="Current decision signals">
           <span
@@ -405,807 +411,858 @@ export function AnalyticsCards({
         </div>
       </header>
 
-      <div className="ana-section">
-        <SectionHeading
-          number="01"
-          title="Protect the business"
-          description="Cash, availability, margin, and master-data exceptions that need intervention now."
-        />
-        <div className="ana-grid">
-          <AnaCard
-            title="Capital at Risk"
-            icon={AlertTriangle}
-            tone={!tnaDataPresent ? "neutral" : atRisk.length ? "red" : "green"}
-            status={
-              !tnaDataPresent ? "WAITING" : atRisk.length ? "ACT NOW" : "CLEAR"
-            }
-            cta="Review high-risk POs"
-            span={7}
-            onClick={() => onTab("open-po")}
-            info={`Open POs that are both TNA High Risk and in the top ${quantilePct}% by pending value. The quantile is editable in Rules Master.`}
-          >
-            {!tnaDataPresent ? (
-              <NoData text="TNA stage data is not available yet, so capital exposure cannot be assessed." />
-            ) : atRisk.length ? (
-              <>
-                <div className="ana-metric-row">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {money.format(capitalAtRisk)}
-                    </strong>
-                    <span className="ana-value-label">open value exposed</span>
-                  </div>
-                  <span className="ana-count-chip is-red">
-                    {atRisk.length} priority PO{atRisk.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <p className="ana-decision-line">
-                  Protect these orders first—the list is ranked by rupee
-                  exposure.
-                </p>
-                <ul className="ana-list ana-ranked-list">
-                  {atRisk.slice(0, 4).map((row, index) => (
-                    <li key={row.key}>
-                      <span className="ana-rank">{index + 1}</span>
-                      <span className="ana-list-stack">
-                        <span className="mono">{row.poRef}</span>
-                        <small>{row.vendorName}</small>
-                      </span>
-                      <span className="ana-list-val">
-                        {money.format(row.pendingValue)}
-                      </span>
-                    </li>
-                  ))}
-                  {atRisk.length > 4 && (
-                    <li className="ana-more">
-                      +{atRisk.length - 4} more high-value exceptions
-                    </li>
-                  )}
-                </ul>
-              </>
-            ) : (
-              <ZeroState
-                title="No high-value TNA exception"
-                text={`None of the top ${quantilePct}% open POs by value is high risk.`}
-              />
-            )}
-          </AnaCard>
+      <div className="ana-tabs" role="tablist" aria-label="Decision views">
+        {decisionTabs.map((tab, index) => (
+          <button
+            key={tab.id}
+            id={`ana-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={decisionTab === tab.id}
+            aria-controls="ana-decision-panel"
+            tabIndex={decisionTab === tab.id ? 0 : -1}
+            className={decisionTab === tab.id ? "active" : ""}
+            onClick={() => setDecisionTab(tab.id)}
+            onKeyDown={(event) => {
+              let nextIndex = index;
+              if (event.key === "ArrowRight")
+                nextIndex = (index + 1) % decisionTabs.length;
+              else if (event.key === "ArrowLeft")
+                nextIndex =
+                  (index - 1 + decisionTabs.length) % decisionTabs.length;
+              else if (event.key === "Home") nextIndex = 0;
+              else if (event.key === "End") nextIndex = decisionTabs.length - 1;
+              else return;
 
-          <AnaCard
-            title="Stockout Risk · No Coverage"
-            icon={PackageX}
-            tone={gaps == null ? "neutral" : gaps.length ? "red" : "green"}
-            status={
-              gaps == null ? "WAITING" : gaps.length ? "ACT NOW" : "COVERED"
-            }
-            cta="Open urgent replenishment"
-            span={5}
-            onClick={() => onTab("urgent-replenish")}
-            info="High-demand variants with zero sellable stock and no open PO covering them, ranked by DOQ 45."
+              event.preventDefault();
+              const nextTab = decisionTabs[nextIndex];
+              setDecisionTab(nextTab.id);
+              event.currentTarget.parentElement
+                ?.querySelector<HTMLButtonElement>(`#ana-tab-${nextTab.id}`)
+                ?.focus();
+            }}
           >
-            {gaps == null ? (
-              <NoData text="Replenishment data is not available, so uncovered demand cannot be checked." />
-            ) : gaps.length ? (
-              <>
-                <div className="ana-metric-row">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {gaps.length === 8 ? "8+" : gaps.length}
-                    </strong>
-                    <span className="ana-value-label">uncovered variants</span>
-                  </div>
-                  <span className="ana-count-chip is-red">
-                    No stock · No PO
-                  </span>
-                </div>
-                <ul className="ana-list ana-demand-list">
-                  {gaps.slice(0, 5).map((gap, index) => (
-                    <li key={gap.product_variant}>
-                      <span className="ana-rank">{index + 1}</span>
-                      <span className="ana-list-stack">
-                        <span>
-                          {gap.product_name ??
-                            gap.product_code ??
-                            gap.product_variant}
-                        </span>
-                        <small className="mono">{gap.product_variant}</small>
-                      </span>
-                      <span className="ana-list-val">
-                        DOQ {fmt.format(gap.doq_45)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <ZeroState
-                title="No uncovered high-demand item"
-                text="Every high-demand variant has stock or an open PO in flight."
-              />
-            )}
-          </AnaCard>
-
-          <AnaCard
-            title="Cost Variance · This Month"
-            icon={IndianRupee}
-            tone={cost == null ? "neutral" : cost.count ? "amber" : "green"}
-            status={
-              cost == null ? "WAITING" : cost.count ? "MARGIN WATCH" : "CLEAR"
-            }
-            cta="Review cost exceptions"
-            span={6}
-            href="/po-approval"
-            info="Approved or issued POs this month whose written rate exceeded the approved standard cost, aggregated as margin impact."
-          >
-            {cost == null ? (
-              <NoData text="Standard-cost or PO approval data is not available." />
-            ) : cost.count ? (
-              <>
-                <div className="ana-metric-row">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {money.format(cost.impact)}
-                    </strong>
-                    <span className="ana-value-label">
-                      approved margin erosion
-                    </span>
-                  </div>
-                  <span className="ana-count-chip is-amber">
-                    {cost.count} exception{cost.count === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <ul className="ana-list">
-                  {cost.top.map((item) => (
-                    <li key={`${item.poRef}-${item.productCode}`}>
-                      <span className="ana-list-stack">
-                        <span className="mono">{item.poRef}</span>
-                        <small>{item.productCode}</small>
-                      </span>
-                      <span className="ana-list-val ana-text-red">
-                        +{money.format(item.delta)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <ZeroState
-                compact
-                title="No above-standard PO this month"
-                text="Approved PO rates are within standard cost."
-              />
-            )}
-          </AnaCard>
-
-          <AnaCard
-            title="Discontinued but Active"
-            icon={Ban}
-            tone={
-              disc == null ? "neutral" : discontinuedCount ? "red" : "green"
-            }
-            status={
-              disc == null
-                ? "WAITING"
-                : discontinuedCount
-                  ? "DATA ISSUE"
-                  : "CLEAN"
-            }
-            cta="Review affected PO lines"
-            span={6}
-            onClick={() => onTab("open-po")}
-            info="Open POs or current buying-plan lines referencing a product marked Discontinued in Product Master. This should always be zero."
-          >
-            {disc == null ? (
-              <NoData text="Product Master data is not available, so lifecycle integrity cannot be checked." />
-            ) : discontinuedCount ? (
-              <>
-                <div className="ana-metric-row">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {discontinuedCount}
-                    </strong>
-                    <span className="ana-value-label">
-                      invalid active lines
-                    </span>
-                  </div>
-                  <div className="ana-mini-split">
-                    <span>
-                      <b>{disc.openPoCount}</b> open PO
-                    </span>
-                    <span>
-                      <b>{disc.planLineCount}</b> plan
-                    </span>
-                  </div>
-                </div>
-                <p className="ana-decision-line">
-                  {fmt.format(disc.openPoQty)} pending pieces reference
-                  discontinued products.
-                </p>
-                {disc.codes.length > 0 && (
-                  <div className="ana-code-list">
-                    {disc.codes.slice(0, 6).map((code) => (
-                      <span className="mono" key={code}>
-                        {code}
-                      </span>
-                    ))}
-                    {disc.codes.length > 6 && (
-                      <span>+{disc.codes.length - 6}</span>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <ZeroState
-                compact
-                title="Lifecycle data is clean"
-                text="No discontinued product is being bought or planned."
-              />
-            )}
-          </AnaCard>
-        </div>
+            <span>{tab.number}</span>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div className="ana-section">
-        <SectionHeading
-          number="02"
-          title="Allocate smarter"
-          description="Move demand toward available capacity without increasing concentration or delivery risk."
-        />
-        <div className="ana-grid">
-          <AnaCard
-            title="Capacity vs Demand"
-            icon={Scale}
-            tone={
-              !withCapacity.length ? "neutral" : over.length ? "red" : "green"
-            }
-            status={
-              !withCapacity.length
-                ? "WAITING"
-                : over.length
-                  ? "REALLOCATE"
-                  : "BALANCED"
-            }
-            cta="Open vendor capacity"
-            span={7}
-            rowSpan
-            onClick={() => onTab("vendors")}
-            info={`Compares open vendor quantity with signed monthly capacity. Under ${rules.utilization_under_pct ?? 70}% has room; above ${rules.utilization_over_pct ?? 100}% is over-committed. Bands are editable in Rules Master.`}
-          >
-            {!withCapacity.length ? (
-              <NoData text="No vendor has a signed monthly capacity yet, so allocation headroom cannot be compared." />
-            ) : (
-              <>
-                <div className="ana-capacity-summary">
-                  <div className="is-red">
-                    <span>Demand to move</span>
-                    <strong>{over.length}</strong>
-                    <small>over-committed vendors</small>
-                  </div>
-                  <ArrowRight size={18} />
-                  <div className="is-green">
-                    <span>Where it can go</span>
-                    <strong>{under.length}</strong>
-                    <small>vendors with spare room</small>
-                  </div>
-                </div>
-                <div className="ana-split ana-capacity-split">
-                  <div className="ana-capacity-panel is-red">
-                    <span className="ana-split-title">Over-committed</span>
-                    {over.length ? (
-                      over.slice(0, 5).map((vendor) => {
-                        const excess = Math.max(
-                          0,
-                          vendor.openQty - vendor.capacityPerMonth,
-                        );
-                        return (
-                          <div
-                            className="ana-vendor-row"
-                            key={`${vendor.vendorCode}-${vendor.vendorBucket}`}
-                          >
-                            <div>
-                              <span>{vendor.vendorName}</span>
-                              <b>{vendor.utilizationPct}%</b>
-                            </div>
-                            <div className="ana-vendor-meter">
-                              <i
-                                style={{
-                                  width: `${clampPct(vendor.utilizationPct / 1.5)}%`,
-                                }}
-                              />
-                            </div>
-                            <small>
-                              {fmt.format(excess)} pcs above capacity
-                            </small>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="ana-ok">No vendor is above capacity.</p>
-                    )}
-                    {over.length > 5 && (
-                      <span className="ana-inline-more">
-                        +{over.length - 5} more
+      <div
+        id="ana-decision-panel"
+        className="ana-tab-panel"
+        role="tabpanel"
+        aria-labelledby={`ana-tab-${decisionTab}`}
+      >
+        {decisionTab === "protect" && (
+          <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Capital at Risk"
+              icon={AlertTriangle}
+              tone={
+                !tnaDataPresent ? "neutral" : atRisk.length ? "red" : "green"
+              }
+              status={
+                !tnaDataPresent
+                  ? "WAITING"
+                  : atRisk.length
+                    ? "ACT NOW"
+                    : "CLEAR"
+              }
+              cta="Review high-risk POs"
+              span={7}
+              onClick={() => onTab("open-po")}
+              info={`Open POs that are both TNA High Risk and in the top ${quantilePct}% by pending value. The quantile is editable in Rules Master.`}
+            >
+              {!tnaDataPresent ? (
+                <NoData text="TNA stage data is not available yet, so capital exposure cannot be assessed." />
+              ) : atRisk.length ? (
+                <>
+                  <div className="ana-metric-row">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {money.format(capitalAtRisk)}
+                      </strong>
+                      <span className="ana-value-label">
+                        open value exposed
                       </span>
-                    )}
-                  </div>
-                  <div className="ana-capacity-panel is-green">
-                    <span className="ana-split-title">Room to absorb</span>
-                    {under.length ? (
-                      under.slice(0, 5).map((vendor) => {
-                        const spare = Math.max(
-                          0,
-                          vendor.capacityPerMonth - vendor.openQty,
-                        );
-                        return (
-                          <div
-                            className="ana-vendor-row"
-                            key={`${vendor.vendorCode}-${vendor.vendorBucket}`}
-                          >
-                            <div>
-                              <span>{vendor.vendorName}</span>
-                              <b>{vendor.utilizationPct}%</b>
-                            </div>
-                            <div className="ana-vendor-meter">
-                              <i
-                                style={{
-                                  width: `${clampPct(vendor.utilizationPct)}%`,
-                                }}
-                              />
-                            </div>
-                            <small>{fmt.format(spare)} pcs available</small>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="ana-alert">
-                        No spare capacity is available.
-                      </p>
-                    )}
-                    {under.length > 5 && (
-                      <span className="ana-inline-more">
-                        +{under.length - 5} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </AnaCard>
-
-          <AnaCard
-            title="Vendor Concentration"
-            icon={Factory}
-            tone={
-              totalOpenValue === 0
-                ? "neutral"
-                : concentrationPct > concentrationAlert
-                  ? "amber"
-                  : "green"
-            }
-            status={
-              totalOpenValue === 0
-                ? "WAITING"
-                : concentrationPct > concentrationAlert
-                  ? "ABOVE RULE"
-                  : "WITHIN RULE"
-            }
-            cta="Review vendor allocation"
-            span={5}
-            onClick={() => onTab("vendors")}
-            info={`Share of open buying value held by the top 3 vendors. The alert line is ${concentrationAlert}% and is editable in Rules Master.`}
-          >
-            {totalOpenValue === 0 ? (
-              <NoData text="There is no open PO value to measure." />
-            ) : (
-              <>
-                <div className="ana-metric-row">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {concentrationPct}%
-                    </strong>
-                    <span className="ana-value-label">of value with top 3</span>
-                  </div>
-                  <span
-                    className={`ana-count-chip ${concentrationPct > concentrationAlert ? "is-amber" : "is-green"}`}
-                  >
-                    Rule {concentrationAlert}%
-                  </span>
-                </div>
-                <div
-                  className="ana-threshold-bar"
-                  style={
-                    {
-                      "--ana-value": `${clampPct(concentrationPct)}%`,
-                      "--ana-threshold": `${clampPct(concentrationAlert)}%`,
-                    } as CSSProperties
-                  }
-                  aria-label={`${concentrationPct}% concentration against ${concentrationAlert}% rule`}
-                >
-                  <i />
-                  <b />
-                </div>
-                <ul className="ana-list ana-share-list">
-                  {top3.map((vendor, index) => {
-                    const share =
-                      totalOpenValue > 0
-                        ? Math.round((vendor.value / totalOpenValue) * 100)
-                        : 0;
-                    return (
-                      <li key={vendor.name}>
-                        <span className="ana-rank">{index + 1}</span>
-                        <span className="ana-list-mid">{vendor.name}</span>
-                        <span className="ana-share-bar">
-                          <i style={{ width: `${clampPct(share)}%` }} />
-                        </span>
-                        <span className="ana-list-val">{share}%</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-          </AnaCard>
-
-          <AnaCard
-            title={`Delivery Reliability · ${windowDays}d`}
-            icon={Factory}
-            tone={
-              recent.length === 0
-                ? "neutral"
-                : struggling.length
-                  ? "amber"
-                  : "green"
-            }
-            status={
-              recent.length === 0
-                ? "WAITING"
-                : struggling.length
-                  ? "WATCH"
-                  : "RELIABLE"
-            }
-            cta="Review vendor performance"
-            span={5}
-            onClick={() => onTab("vendors")}
-            info={`Delay rate for POs raised in the last ${windowDays} days. Vendors with fewer than 2 recent POs are excluded; the rolling window is editable in Rules Master.`}
-          >
-            {recent.length === 0 ? (
-              <NoData
-                text={`No PO was raised in the last ${windowDays} days.`}
-              />
-            ) : struggling.length ? (
-              <>
-                <p className="ana-decision-line">
-                  Prioritize proven capacity; these vendors are missing dates
-                  now.
-                </p>
-                <div className="ana-reliability-list">
-                  {struggling.map((vendor) => (
-                    <div className="ana-reliability-row" key={vendor.name}>
-                      <div>
-                        <span>{vendor.name}</span>
-                        <b>{vendor.pct}% late</b>
-                      </div>
-                      <div>
-                        <i style={{ width: `${clampPct(vendor.pct)}%` }} />
-                      </div>
-                      <small>
-                        {vendor.delayed} of {vendor.total} recent POs late
-                      </small>
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <ZeroState
-                compact
-                title="No repeated recent delay pattern"
-                text={`${recent.length} recent POs measured.`}
-              />
-            )}
-          </AnaCard>
-        </div>
-      </div>
-
-      <div className="ana-section">
-        <SectionHeading
-          number="03"
-          title="Stay on plan"
-          description="Buying-plan realization, TNA execution, and closure discipline in one control view."
-        />
-        <div className="ana-grid">
-          <AnaCard
-            title="Buying Plan Realization"
-            icon={Target}
-            tone={
-              !realization || !curMonth?.buckets.length ? "neutral" : "green"
-            }
-            status={
-              !realization || !curMonth?.buckets.length
-                ? "WAITING"
-                : "MONTH TO DATE"
-            }
-            cta="Open buying plan"
-            span={7}
-            rowSpan
-            href="/buying-plan"
-            info="Current-month planned buying value versus issued PO value by weave, with the prior two months for context."
-          >
-            {!realization ? (
-              <NoData text="Buying-plan or PO actuals data is not available." />
-            ) : !curMonth || !curMonth.buckets.length ? (
-              <NoData
-                text={`No buying plan was found for ${new Date().toISOString().slice(0, 7)}.`}
-              />
-            ) : (
-              <>
-                <div className="ana-plan-hero">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {planPct ?? "—"}
-                      {planPct != null ? "%" : ""}
-                    </strong>
-                    <span className="ana-value-label">of plan issued</span>
-                  </div>
-                  <div className="ana-plan-values">
-                    <span>
-                      <small>Issued</small>
-                      <b>{money.format(planTotals.actual)}</b>
-                    </span>
-                    <span>
-                      <small>Planned</small>
-                      <b>{money.format(planTotals.planned)}</b>
-                    </span>
-                    <span>
-                      <small>
-                        {planVariance >= 0 ? "Above plan" : "Still to issue"}
-                      </small>
-                      <b>{money.format(Math.abs(planVariance))}</b>
+                    <span className="ana-count-chip is-red">
+                      {atRisk.length} priority PO
+                      {atRisk.length === 1 ? "" : "s"}
                     </span>
                   </div>
-                </div>
-                <div className="ana-plan-track">
-                  <i style={{ width: `${clampPct(planPct ?? 0)}%` }} />
-                </div>
-                <div className="ana-category-bars">
-                  {curMonth.buckets.map((bucket) => {
-                    const pct =
-                      bucket.planned > 0
-                        ? Math.round((bucket.actual / bucket.planned) * 100)
-                        : null;
-                    return (
-                      <div key={bucket.category} className="ana-bar-row">
-                        <span className="ana-bar-label">{bucket.category}</span>
-                        <div className="ana-bar">
-                          <div
-                            className="ana-bar-fill"
-                            style={{ width: `${clampPct(pct ?? 0)}%` }}
-                          />
-                        </div>
-                        <span className="ana-bar-val">
-                          <b>{pct == null ? "—" : `${pct}%`}</b>
-                          {money.format(bucket.actual)} /{" "}
-                          {money.format(bucket.planned)}
+                  <p className="ana-decision-line">
+                    Protect these orders first—the list is ranked by rupee
+                    exposure.
+                  </p>
+                  <ul className="ana-list ana-ranked-list">
+                    {atRisk.slice(0, 4).map((row, index) => (
+                      <li key={row.key}>
+                        <span className="ana-rank">{index + 1}</span>
+                        <span className="ana-list-stack">
+                          <span className="mono">{row.poRef}</span>
+                          <small>{row.vendorName}</small>
                         </span>
+                        <span className="ana-list-val">
+                          {money.format(row.pendingValue)}
+                        </span>
+                      </li>
+                    ))}
+                    {atRisk.length > 4 && (
+                      <li className="ana-more">
+                        +{atRisk.length - 4} more high-value exceptions
+                      </li>
+                    )}
+                  </ul>
+                </>
+              ) : (
+                <ZeroState
+                  title="No high-value TNA exception"
+                  text={`None of the top ${quantilePct}% open POs by value is high risk.`}
+                />
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Stockout Risk · No Coverage"
+              icon={PackageX}
+              tone={gaps == null ? "neutral" : gaps.length ? "red" : "green"}
+              status={
+                gaps == null ? "WAITING" : gaps.length ? "ACT NOW" : "COVERED"
+              }
+              cta="Open urgent replenishment"
+              span={5}
+              onClick={() => onTab("urgent-replenish")}
+              info="High-demand variants with zero sellable stock and no open PO covering them, ranked by DOQ 45."
+            >
+              {gaps == null ? (
+                <NoData text="Replenishment data is not available, so uncovered demand cannot be checked." />
+              ) : gaps.length ? (
+                <>
+                  <div className="ana-metric-row">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {gaps.length === 8 ? "8+" : gaps.length}
+                      </strong>
+                      <span className="ana-value-label">
+                        uncovered variants
+                      </span>
+                    </div>
+                    <span className="ana-count-chip is-red">
+                      No stock · No PO
+                    </span>
+                  </div>
+                  <ul className="ana-list ana-demand-list">
+                    {gaps.slice(0, 5).map((gap, index) => (
+                      <li key={gap.product_variant}>
+                        <span className="ana-rank">{index + 1}</span>
+                        <span className="ana-list-stack">
+                          <span>
+                            {gap.product_name ??
+                              gap.product_code ??
+                              gap.product_variant}
+                          </span>
+                          <small className="mono">{gap.product_variant}</small>
+                        </span>
+                        <span className="ana-list-val">
+                          DOQ {fmt.format(gap.doq_45)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <ZeroState
+                  title="No uncovered high-demand item"
+                  text="Every high-demand variant has stock or an open PO in flight."
+                />
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Cost Variance · This Month"
+              icon={IndianRupee}
+              tone={cost == null ? "neutral" : cost.count ? "amber" : "green"}
+              status={
+                cost == null ? "WAITING" : cost.count ? "MARGIN WATCH" : "CLEAR"
+              }
+              cta="Review cost exceptions"
+              span={6}
+              href="/po-approval"
+              info="Approved or issued POs this month whose written rate exceeded the approved standard cost, aggregated as margin impact."
+            >
+              {cost == null ? (
+                <NoData text="Standard-cost or PO approval data is not available." />
+              ) : cost.count ? (
+                <>
+                  <div className="ana-metric-row">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {money.format(cost.impact)}
+                      </strong>
+                      <span className="ana-value-label">
+                        approved margin erosion
+                      </span>
+                    </div>
+                    <span className="ana-count-chip is-amber">
+                      {cost.count} exception{cost.count === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <ul className="ana-list">
+                    {cost.top.map((item) => (
+                      <li key={`${item.poRef}-${item.productCode}`}>
+                        <span className="ana-list-stack">
+                          <span className="mono">{item.poRef}</span>
+                          <small>{item.productCode}</small>
+                        </span>
+                        <span className="ana-list-val ana-text-red">
+                          +{money.format(item.delta)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <ZeroState
+                  compact
+                  title="No above-standard PO this month"
+                  text="Approved PO rates are within standard cost."
+                />
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Discontinued but Active"
+              icon={Ban}
+              tone={
+                disc == null ? "neutral" : discontinuedCount ? "red" : "green"
+              }
+              status={
+                disc == null
+                  ? "WAITING"
+                  : discontinuedCount
+                    ? "DATA ISSUE"
+                    : "CLEAN"
+              }
+              cta="Review affected PO lines"
+              span={6}
+              onClick={() => onTab("open-po")}
+              info="Open POs or current buying-plan lines referencing a product marked Discontinued in Product Master. This should always be zero."
+            >
+              {disc == null ? (
+                <NoData text="Product Master data is not available, so lifecycle integrity cannot be checked." />
+              ) : discontinuedCount ? (
+                <>
+                  <div className="ana-metric-row">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {discontinuedCount}
+                      </strong>
+                      <span className="ana-value-label">
+                        invalid active lines
+                      </span>
+                    </div>
+                    <div className="ana-mini-split">
+                      <span>
+                        <b>{disc.openPoCount}</b> open PO
+                      </span>
+                      <span>
+                        <b>{disc.planLineCount}</b> plan
+                      </span>
+                    </div>
+                  </div>
+                  <p className="ana-decision-line">
+                    {fmt.format(disc.openPoQty)} pending pieces reference
+                    discontinued products.
+                  </p>
+                  {disc.codes.length > 0 && (
+                    <div className="ana-code-list">
+                      {disc.codes.slice(0, 6).map((code) => (
+                        <span className="mono" key={code}>
+                          {code}
+                        </span>
+                      ))}
+                      {disc.codes.length > 6 && (
+                        <span>+{disc.codes.length - 6}</span>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <ZeroState
+                  compact
+                  title="Lifecycle data is clean"
+                  text="No discontinued product is being bought or planned."
+                />
+              )}
+            </AnaCard>
+          </div>
+        )}
+
+        {decisionTab === "allocate" && (
+          <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Capacity vs Demand"
+              icon={Scale}
+              tone={
+                !withCapacity.length ? "neutral" : over.length ? "red" : "green"
+              }
+              status={
+                !withCapacity.length
+                  ? "WAITING"
+                  : over.length
+                    ? "REALLOCATE"
+                    : "BALANCED"
+              }
+              cta="Open vendor capacity"
+              span={7}
+              rowSpan
+              onClick={() => onTab("vendors")}
+              info={`Compares open vendor quantity with signed monthly capacity. Under ${rules.utilization_under_pct ?? 70}% has room; above ${rules.utilization_over_pct ?? 100}% is over-committed. Bands are editable in Rules Master.`}
+            >
+              {!withCapacity.length ? (
+                <NoData text="No vendor has a signed monthly capacity yet, so allocation headroom cannot be compared." />
+              ) : (
+                <>
+                  <div className="ana-capacity-summary">
+                    <div className="is-red">
+                      <span>Demand to move</span>
+                      <strong>{over.length}</strong>
+                      <small>over-committed vendors</small>
+                    </div>
+                    <ArrowRight size={18} />
+                    <div className="is-green">
+                      <span>Where it can go</span>
+                      <strong>{under.length}</strong>
+                      <small>vendors with spare room</small>
+                    </div>
+                  </div>
+                  <div className="ana-split ana-capacity-split">
+                    <div className="ana-capacity-panel is-red">
+                      <span className="ana-split-title">Over-committed</span>
+                      {over.length ? (
+                        over.slice(0, 5).map((vendor) => {
+                          const excess = Math.max(
+                            0,
+                            vendor.openQty - vendor.capacityPerMonth,
+                          );
+                          return (
+                            <div
+                              className="ana-vendor-row"
+                              key={`${vendor.vendorCode}-${vendor.vendorBucket}`}
+                            >
+                              <div>
+                                <span>{vendor.vendorName}</span>
+                                <b>{vendor.utilizationPct}%</b>
+                              </div>
+                              <div className="ana-vendor-meter">
+                                <i
+                                  style={{
+                                    width: `${clampPct(vendor.utilizationPct / 1.5)}%`,
+                                  }}
+                                />
+                              </div>
+                              <small>
+                                {fmt.format(excess)} pcs above capacity
+                              </small>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="ana-ok">No vendor is above capacity.</p>
+                      )}
+                      {over.length > 5 && (
+                        <span className="ana-inline-more">
+                          +{over.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                    <div className="ana-capacity-panel is-green">
+                      <span className="ana-split-title">Room to absorb</span>
+                      {under.length ? (
+                        under.slice(0, 5).map((vendor) => {
+                          const spare = Math.max(
+                            0,
+                            vendor.capacityPerMonth - vendor.openQty,
+                          );
+                          return (
+                            <div
+                              className="ana-vendor-row"
+                              key={`${vendor.vendorCode}-${vendor.vendorBucket}`}
+                            >
+                              <div>
+                                <span>{vendor.vendorName}</span>
+                                <b>{vendor.utilizationPct}%</b>
+                              </div>
+                              <div className="ana-vendor-meter">
+                                <i
+                                  style={{
+                                    width: `${clampPct(vendor.utilizationPct)}%`,
+                                  }}
+                                />
+                              </div>
+                              <small>{fmt.format(spare)} pcs available</small>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="ana-alert">
+                          No spare capacity is available.
+                        </p>
+                      )}
+                      {under.length > 5 && (
+                        <span className="ana-inline-more">
+                          +{under.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Vendor Concentration"
+              icon={Factory}
+              tone={
+                totalOpenValue === 0
+                  ? "neutral"
+                  : concentrationPct > concentrationAlert
+                    ? "amber"
+                    : "green"
+              }
+              status={
+                totalOpenValue === 0
+                  ? "WAITING"
+                  : concentrationPct > concentrationAlert
+                    ? "ABOVE RULE"
+                    : "WITHIN RULE"
+              }
+              cta="Review vendor allocation"
+              span={5}
+              onClick={() => onTab("vendors")}
+              info={`Share of open buying value held by the top 3 vendors. The alert line is ${concentrationAlert}% and is editable in Rules Master.`}
+            >
+              {totalOpenValue === 0 ? (
+                <NoData text="There is no open PO value to measure." />
+              ) : (
+                <>
+                  <div className="ana-metric-row">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {concentrationPct}%
+                      </strong>
+                      <span className="ana-value-label">
+                        of value with top 3
+                      </span>
+                    </div>
+                    <span
+                      className={`ana-count-chip ${concentrationPct > concentrationAlert ? "is-amber" : "is-green"}`}
+                    >
+                      Rule {concentrationAlert}%
+                    </span>
+                  </div>
+                  <div
+                    className="ana-threshold-bar"
+                    style={
+                      {
+                        "--ana-value": `${clampPct(concentrationPct)}%`,
+                        "--ana-threshold": `${clampPct(concentrationAlert)}%`,
+                      } as CSSProperties
+                    }
+                    aria-label={`${concentrationPct}% concentration against ${concentrationAlert}% rule`}
+                  >
+                    <i />
+                    <b />
+                  </div>
+                  <ul className="ana-list ana-share-list">
+                    {top3.map((vendor, index) => {
+                      const share =
+                        totalOpenValue > 0
+                          ? Math.round((vendor.value / totalOpenValue) * 100)
+                          : 0;
+                      return (
+                        <li key={vendor.name}>
+                          <span className="ana-rank">{index + 1}</span>
+                          <span className="ana-list-mid">{vendor.name}</span>
+                          <span className="ana-share-bar">
+                            <i style={{ width: `${clampPct(share)}%` }} />
+                          </span>
+                          <span className="ana-list-val">{share}%</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title={`Delivery Reliability · ${windowDays}d`}
+              icon={Factory}
+              tone={
+                recent.length === 0
+                  ? "neutral"
+                  : struggling.length
+                    ? "amber"
+                    : "green"
+              }
+              status={
+                recent.length === 0
+                  ? "WAITING"
+                  : struggling.length
+                    ? "WATCH"
+                    : "RELIABLE"
+              }
+              cta="Review vendor performance"
+              span={5}
+              onClick={() => onTab("vendors")}
+              info={`Delay rate for POs raised in the last ${windowDays} days. Vendors with fewer than 2 recent POs are excluded; the rolling window is editable in Rules Master.`}
+            >
+              {recent.length === 0 ? (
+                <NoData
+                  text={`No PO was raised in the last ${windowDays} days.`}
+                />
+              ) : struggling.length ? (
+                <>
+                  <p className="ana-decision-line">
+                    Prioritize proven capacity; these vendors are missing dates
+                    now.
+                  </p>
+                  <div className="ana-reliability-list">
+                    {struggling.map((vendor) => (
+                      <div className="ana-reliability-row" key={vendor.name}>
+                        <div>
+                          <span>{vendor.name}</span>
+                          <b>{vendor.pct}% late</b>
+                        </div>
+                        <div>
+                          <i style={{ width: `${clampPct(vendor.pct)}%` }} />
+                        </div>
+                        <small>
+                          {vendor.delayed} of {vendor.total} recent POs late
+                        </small>
                       </div>
-                    );
-                  })}
-                </div>
-                <div
-                  className="ana-months"
-                  aria-label="Three-month buying plan realization"
-                >
-                  {(realization ?? [])
-                    .slice()
-                    .reverse()
-                    .map((month) => {
-                      const planned = month.buckets.reduce(
-                        (sum, bucket) => sum + bucket.planned,
-                        0,
-                      );
-                      const actual = month.buckets.reduce(
-                        (sum, bucket) => sum + bucket.actual,
-                        0,
-                      );
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <ZeroState
+                  compact
+                  title="No repeated recent delay pattern"
+                  text={`${recent.length} recent POs measured.`}
+                />
+              )}
+            </AnaCard>
+          </div>
+        )}
+
+        {decisionTab === "execution" && (
+          <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Buying Plan Realization"
+              icon={Target}
+              tone={
+                !realization || !curMonth?.buckets.length ? "neutral" : "green"
+              }
+              status={
+                !realization || !curMonth?.buckets.length
+                  ? "WAITING"
+                  : "MONTH TO DATE"
+              }
+              cta="Open buying plan"
+              span={7}
+              rowSpan
+              href="/buying-plan"
+              info="Current-month planned buying value versus issued PO value by weave, with the prior two months for context."
+            >
+              {!realization ? (
+                <NoData text="Buying-plan or PO actuals data is not available." />
+              ) : !curMonth || !curMonth.buckets.length ? (
+                <NoData
+                  text={`No buying plan was found for ${new Date().toISOString().slice(0, 7)}.`}
+                />
+              ) : (
+                <>
+                  <div className="ana-plan-hero">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {planPct ?? "—"}
+                        {planPct != null ? "%" : ""}
+                      </strong>
+                      <span className="ana-value-label">of plan issued</span>
+                    </div>
+                    <div className="ana-plan-values">
+                      <span>
+                        <small>Issued</small>
+                        <b>{money.format(planTotals.actual)}</b>
+                      </span>
+                      <span>
+                        <small>Planned</small>
+                        <b>{money.format(planTotals.planned)}</b>
+                      </span>
+                      <span>
+                        <small>
+                          {planVariance >= 0 ? "Above plan" : "Still to issue"}
+                        </small>
+                        <b>{money.format(Math.abs(planVariance))}</b>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="ana-plan-track">
+                    <i style={{ width: `${clampPct(planPct ?? 0)}%` }} />
+                  </div>
+                  <div className="ana-category-bars">
+                    {curMonth.buckets.map((bucket) => {
                       const pct =
-                        planned > 0
-                          ? Math.round((actual / planned) * 100)
+                        bucket.planned > 0
+                          ? Math.round((bucket.actual / bucket.planned) * 100)
                           : null;
                       return (
-                        <div key={month.month}>
-                          <span>{monthLabel(month.month)}</span>
-                          <div>
-                            <i
-                              style={{
-                                height: `${Math.max(4, clampPct(pct ?? 0))}%`,
-                              }}
+                        <div key={bucket.category} className="ana-bar-row">
+                          <span className="ana-bar-label">
+                            {bucket.category}
+                          </span>
+                          <div className="ana-bar">
+                            <div
+                              className="ana-bar-fill"
+                              style={{ width: `${clampPct(pct ?? 0)}%` }}
                             />
                           </div>
-                          <b>{pct == null ? "—" : `${pct}%`}</b>
+                          <span className="ana-bar-val">
+                            <b>{pct == null ? "—" : `${pct}%`}</b>
+                            {money.format(bucket.actual)} /{" "}
+                            {money.format(bucket.planned)}
+                          </span>
                         </div>
                       );
                     })}
-                </div>
-              </>
-            )}
-          </AnaCard>
-
-          <AnaCard
-            title="TNA Compliance Trend"
-            icon={TrendingUp}
-            tone={
-              trend == null || trendData.length < 2
-                ? "neutral"
-                : latestTrend?.overdue
-                  ? "red"
-                  : latestTrend?.highRisk
-                    ? "amber"
-                    : "green"
-            }
-            status={
-              trend == null || trendData.length < 2
-                ? "COLLECTING"
-                : latestTrend?.overdue
-                  ? "OVERDUE"
-                  : latestTrend?.highRisk
-                    ? "WATCH"
-                    : "ON TRACK"
-            }
-            cta="Review PO tracker"
-            span={5}
-            onClick={() => onTab("open-po")}
-            info="Daily share of open POs that are On Track, using the same TNA logic as the tracker. This shows whether execution is improving or degrading, not only today's status."
-          >
-            {trend == null ? (
-              <NoData text="The TNA snapshot table is not available." />
-            ) : trendData.length < 2 ? (
-              <NoData
-                text={`Trend collection ${trendData.length ? `started ${trend[0].snapshot_date}` : "starts with the next snapshot"}; at least two points are needed.`}
-              />
-            ) : (
-              <>
-                <div className="ana-metric-row ana-trend-metric">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {latestTrend?.onTimePct}%
-                    </strong>
-                    <span className="ana-value-label">on track today</span>
                   </div>
-                  <span
-                    className={`ana-delta ${(trendDelta ?? 0) >= 0 ? "is-up" : "is-down"}`}
+                  <div
+                    className="ana-months"
+                    aria-label="Three-month buying plan realization"
                   >
-                    {(trendDelta ?? 0) > 0 ? "+" : ""}
-                    {trendDelta} pts
-                  </span>
-                </div>
-                <div className="ana-chart">
-                  <ResponsiveContainer width="100%" height={142}>
-                    <AreaChart
-                      data={trendData}
-                      margin={{ top: 8, right: 6, left: -20, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient
-                          id="anaOnTime"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="0%"
-                            stopColor="#3d9e6b"
-                            stopOpacity={0.32}
-                          />
-                          <stop
-                            offset="100%"
-                            stopColor="#3d9e6b"
-                            stopOpacity={0.01}
-                          />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid
-                        stroke="#efeae0"
-                        strokeDasharray="3 3"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="date"
-                        fontSize={9}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        domain={[0, 100]}
-                        fontSize={9}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <Tooltip
-                        formatter={(value) => [`${Number(value)}%`, "On track"]}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="onTimePct"
-                        stroke="#3d9e6b"
-                        fill="url(#anaOnTime)"
-                        strokeWidth={2.25}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="ana-status-pair">
-                  <span className="is-amber">
-                    <b>{latestTrend?.highRisk ?? 0}</b> high risk
-                  </span>
-                  <span className="is-red">
-                    <b>{latestTrend?.overdue ?? 0}</b> overdue
-                  </span>
-                </div>
-              </>
-            )}
-          </AnaCard>
-
-          <AnaCard
-            title="PO Closure Compliance"
-            icon={CheckCheck}
-            tone={
-              !closure ? "neutral" : closure.openBeyondSla > 0 ? "red" : "green"
-            }
-            status={
-              !closure
-                ? "WAITING"
-                : closure.openBeyondSla > 0
-                  ? "SLA BREACH"
-                  : "COMPLIANT"
-            }
-            cta="Open closure queue"
-            span={5}
-            href="/po-closure"
-            info={`Share of completed POs closed within the ${closure?.slaDays ?? 15}-day SLA, plus open closures already beyond it. The SLA is editable in Rules Master.`}
-          >
-            {!closure ? (
-              <NoData text="PO closure data is not available." />
-            ) : (
-              <div className="ana-closure-layout">
-                <div
-                  className={`ana-ring ${closurePct == null ? "is-empty" : ""}`}
-                  style={
-                    {
-                      "--ana-ring": `${clampPct(closurePct ?? 0)}%`,
-                    } as CSSProperties
-                  }
-                >
-                  <div>
-                    <strong>
-                      {closurePct == null ? "—" : `${closurePct}%`}
-                    </strong>
-                    <span>within SLA</span>
+                    {(realization ?? [])
+                      .slice()
+                      .reverse()
+                      .map((month) => {
+                        const planned = month.buckets.reduce(
+                          (sum, bucket) => sum + bucket.planned,
+                          0,
+                        );
+                        const actual = month.buckets.reduce(
+                          (sum, bucket) => sum + bucket.actual,
+                          0,
+                        );
+                        const pct =
+                          planned > 0
+                            ? Math.round((actual / planned) * 100)
+                            : null;
+                        return (
+                          <div key={month.month}>
+                            <span>{monthLabel(month.month)}</span>
+                            <div>
+                              <i
+                                style={{
+                                  height: `${Math.max(4, clampPct(pct ?? 0))}%`,
+                                }}
+                              />
+                            </div>
+                            <b>{pct == null ? "—" : `${pct}%`}</b>
+                          </div>
+                        );
+                      })}
                   </div>
-                </div>
-                <div className="ana-closure-copy">
-                  <span
-                    className={
-                      closure.openBeyondSla
-                        ? "ana-breach-count"
-                        : "ana-clear-count"
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="TNA Compliance Trend"
+              icon={TrendingUp}
+              tone={
+                trend == null || trendData.length < 2
+                  ? "neutral"
+                  : latestTrend?.overdue
+                    ? "red"
+                    : latestTrend?.highRisk
+                      ? "amber"
+                      : "green"
+              }
+              status={
+                trend == null || trendData.length < 2
+                  ? "COLLECTING"
+                  : latestTrend?.overdue
+                    ? "OVERDUE"
+                    : latestTrend?.highRisk
+                      ? "WATCH"
+                      : "ON TRACK"
+              }
+              cta="Review PO tracker"
+              span={5}
+              onClick={() => onTab("open-po")}
+              info="Daily share of open POs that are On Track, using the same TNA logic as the tracker. This shows whether execution is improving or degrading, not only today's status."
+            >
+              {trend == null ? (
+                <NoData text="The TNA snapshot table is not available." />
+              ) : trendData.length < 2 ? (
+                <NoData
+                  text={`Trend collection ${trendData.length ? `started ${trend[0].snapshot_date}` : "starts with the next snapshot"}; at least two points are needed.`}
+                />
+              ) : (
+                <>
+                  <div className="ana-metric-row ana-trend-metric">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {latestTrend?.onTimePct}%
+                      </strong>
+                      <span className="ana-value-label">on track today</span>
+                    </div>
+                    <span
+                      className={`ana-delta ${(trendDelta ?? 0) >= 0 ? "is-up" : "is-down"}`}
+                    >
+                      {(trendDelta ?? 0) > 0 ? "+" : ""}
+                      {trendDelta} pts
+                    </span>
+                  </div>
+                  <div className="ana-chart">
+                    <ResponsiveContainer width="100%" height={142}>
+                      <AreaChart
+                        data={trendData}
+                        margin={{ top: 8, right: 6, left: -20, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient
+                            id="anaOnTime"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#3d9e6b"
+                              stopOpacity={0.32}
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#3d9e6b"
+                              stopOpacity={0.01}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid
+                          stroke="#efeae0"
+                          strokeDasharray="3 3"
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="date"
+                          fontSize={9}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          domain={[0, 100]}
+                          fontSize={9}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          formatter={(value) => [
+                            `${Number(value)}%`,
+                            "On track",
+                          ]}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="onTimePct"
+                          stroke="#3d9e6b"
+                          fill="url(#anaOnTime)"
+                          strokeWidth={2.25}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="ana-status-pair">
+                    <span className="is-amber">
+                      <b>{latestTrend?.highRisk ?? 0}</b> high risk
+                    </span>
+                    <span className="is-red">
+                      <b>{latestTrend?.overdue ?? 0}</b> overdue
+                    </span>
+                  </div>
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="PO Closure Compliance"
+              icon={CheckCheck}
+              tone={
+                !closure
+                  ? "neutral"
+                  : closure.openBeyondSla > 0
+                    ? "red"
+                    : "green"
+              }
+              status={
+                !closure
+                  ? "WAITING"
+                  : closure.openBeyondSla > 0
+                    ? "SLA BREACH"
+                    : "COMPLIANT"
+              }
+              cta="Open closure queue"
+              span={5}
+              href="/po-closure"
+              info={`Share of completed POs closed within the ${closure?.slaDays ?? 15}-day SLA, plus open closures already beyond it. The SLA is editable in Rules Master.`}
+            >
+              {!closure ? (
+                <NoData text="PO closure data is not available." />
+              ) : (
+                <div className="ana-closure-layout">
+                  <div
+                    className={`ana-ring ${closurePct == null ? "is-empty" : ""}`}
+                    style={
+                      {
+                        "--ana-ring": `${clampPct(closurePct ?? 0)}%`,
+                      } as CSSProperties
                     }
                   >
-                    {closure.openBeyondSla}
-                  </span>
-                  <strong>
-                    open closure{closure.openBeyondSla === 1 ? "" : "s"} past{" "}
-                    {closure.slaDays} days
-                  </strong>
-                  <small>
-                    {closure.closedTotal
-                      ? `${closure.closedWithinSla} of ${closure.closedTotal} completed closures met SLA`
-                      : "No completed closure history yet"}
-                  </small>
+                    <div>
+                      <strong>
+                        {closurePct == null ? "—" : `${closurePct}%`}
+                      </strong>
+                      <span>within SLA</span>
+                    </div>
+                  </div>
+                  <div className="ana-closure-copy">
+                    <span
+                      className={
+                        closure.openBeyondSla
+                          ? "ana-breach-count"
+                          : "ana-clear-count"
+                      }
+                    >
+                      {closure.openBeyondSla}
+                    </span>
+                    <strong>
+                      open closure{closure.openBeyondSla === 1 ? "" : "s"} past{" "}
+                      {closure.slaDays} days
+                    </strong>
+                    <small>
+                      {closure.closedTotal
+                        ? `${closure.closedWithinSla} of ${closure.closedTotal} completed closures met SLA`
+                        : "No completed closure history yet"}
+                    </small>
+                  </div>
                 </div>
-              </div>
-            )}
-          </AnaCard>
-        </div>
+              )}
+            </AnaCard>
+          </div>
+        )}
       </div>
     </section>
   );

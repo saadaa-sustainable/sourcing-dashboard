@@ -2,7 +2,7 @@
    giving exception, allocation, and control questions distinct reading lanes. */
 .ana-board {
   display: grid;
-  gap: 28px;
+  gap: 14px;
   margin-bottom: 34px;
 }
 .ana-brief {
@@ -83,46 +83,85 @@
   border-color: color-mix(in srgb, var(--success-border) 38%, transparent);
 }
 
-.ana-section {
-  display: grid;
-  gap: 12px;
-}
-.ana-section + .ana-section {
-  padding-top: 27px;
-  border-top: 1px solid var(--line, #e7e2d2);
-}
-.ana-section-head {
+.ana-tabs {
   display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 0 2px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  overflow-x: auto;
+  background: var(--bg-surface, #f5f1ec);
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ecru-300) transparent;
 }
-.ana-section-number {
+.ana-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+.ana-tabs::-webkit-scrollbar-thumb {
+  background: var(--color-ecru-300);
+  border-radius: 999px;
+}
+.ana-tabs button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 15px 8px 9px;
+  color: var(--ink-2, #494640);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.ana-tabs button > span {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  color: var(--ink-2, #494640);
-  background: var(--color-yellow-100, #fcf3cc);
-  border: 1px solid var(--color-yellow-200, #f7e384);
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-}
-.ana-section-head h3 {
-  margin: 0;
-  color: var(--ink-1, #161513);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-}
-.ana-section-head p {
-  margin: 3px 0 0;
+  width: 24px;
+  height: 24px;
   color: var(--ink-3, #6e695e);
-  font-size: 11px;
-  line-height: 1.4;
+  background: var(--color-ecru-200, #f2efe6);
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+}
+.ana-tabs button:hover {
+  color: var(--ink-1, #161513);
+  background: rgba(240, 198, 30, 0.12);
+}
+.ana-tabs button.active {
+  color: #fff;
+  background: var(--ink-1, #161513);
+  box-shadow: 0 5px 14px rgba(22, 21, 19, 0.18);
+}
+.ana-tabs button.active > span {
+  color: var(--ink-1, #161513);
+  background: var(--accent, #f0c61e);
+}
+.ana-tab-panel {
+  min-width: 0;
+  min-height: 320px;
+}
+.ana-tab-grid {
+  animation: ana-tab-in 0.22s ease both;
+}
+@keyframes ana-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .ana-grid {
@@ -818,6 +857,9 @@
   .ana-card {
     transition: none;
   }
+  .ana-tab-grid {
+    animation: none;
+  }
 }
 @media (max-width: 1180px) {
   .ana-plan-hero {
@@ -848,7 +890,7 @@
 }
 @media (max-width: 760px) {
   .ana-board {
-    gap: 22px;
+    gap: 12px;
   }
   .ana-brief {
     padding: 17px;
@@ -859,6 +901,9 @@
   }
   .ana-signal {
     justify-content: center;
+  }
+  .ana-tabs button {
+    flex: 1 0 auto;
   }
   .ana-span6 {
     grid-column: span 12;
