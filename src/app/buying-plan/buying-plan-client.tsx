@@ -146,6 +146,10 @@ export function BuyingPlanClient({
   const [mode, setMode] = useState<'view' | 'input'>('view');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // Input-table filters (Woven/Knitted, product state, code search).
+  const [inputFabric, setInputFabric] = useState('');
+  const [inputStatus, setInputStatus] = useState('');
+  const [inputSearch, setInputSearch] = useState('');
 
   // Overdue = buying still outstanding more than a week into the plan month.
   // Evaluated after mount so server/client render match.
@@ -208,6 +212,18 @@ export function BuyingPlanClient({
   });
 
   type ViewItem = (typeof view)[number];
+
+  // Input-table filter options + filtered rows (edits still target row.key, so
+  // filtering only narrows what's shown — never what's saved).
+  const fabricOptions = [...new Set(view.map((v) => v.fabricType))].sort();
+  const statusOptions = [...new Set(view.map((v) => v.productStatus))].sort();
+  const inputSearchQ = inputSearch.trim().toLowerCase();
+  const inputRows = view.filter(
+    (v) =>
+      (!inputFabric || v.fabricType === inputFabric) &&
+      (!inputStatus || v.productStatus === inputStatus) &&
+      (!inputSearchQ || v.row.product_code.toLowerCase().includes(inputSearchQ)),
+  );
 
   // The full sheet, line-for-line — every column the buying-plan sheet has, verbatim,
   // with per-column filters + sort (via FilterTable). Rates come from the stored line.
@@ -554,6 +570,44 @@ export function BuyingPlanClient({
 
       {mode === 'input' && (
       <>
+      <div className="wf-toolbar wf-filter-bar">
+        <input
+          className="wf-search"
+          placeholder="Filter product code…"
+          value={inputSearch}
+          onChange={(e) => setInputSearch(e.target.value)}
+        />
+        <label className="wf-inline-field">
+          Woven / Knitted
+          <select value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
+            <option value="">All</option>
+            {fabricOptions.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+        <label className="wf-inline-field">
+          Product State
+          <select value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
+            <option value="">All</option>
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </label>
+        <span className="wf-subtle">
+          {inputRows.length} of {view.length} shown
+          {(inputFabric || inputStatus || inputSearchQ) && (
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost wf-btn-sm"
+              onClick={() => { setInputFabric(''); setInputStatus(''); setInputSearch(''); }}
+            >
+              Clear
+            </button>
+          )}
+        </span>
+      </div>
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
           <table className="wide-table wf-grid">
@@ -578,7 +632,7 @@ export function BuyingPlanClient({
               </tr>
             </thead>
             <tbody>
-              {view.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, actualQty, actualValue, overPlan }) => (
+              {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, actualQty, actualValue, overPlan }) => (
                 <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
                   <td className="mono">{row.product_code}</td>
                   <td>{productStatus}</td>
@@ -647,11 +701,12 @@ export function BuyingPlanClient({
                   )}
                 </tr>
               ))}
-              {!view.length && (
+              {!inputRows.length && (
                 <tr>
                   <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
-                    No product codes added yet. Discontinued variants are excluded
-                    automatically.
+                    {view.length
+                      ? 'No products match the filters.'
+                      : 'No product codes added yet. Discontinued variants are excluded automatically.'}
                   </td>
                 </tr>
               )}
