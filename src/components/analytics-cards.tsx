@@ -347,6 +347,11 @@ export function AnalyticsCards({
   const cost = extras?.costVariance ?? null;
   const disc = extras?.discontinued ?? null;
   const gaps = extras?.stockoutGaps ?? null;
+  const issued = extras?.issuedLastWeek ?? null;
+  const pending = extras?.pendingApproval ?? null;
+  const inward = extras?.inwardLastWeek ?? null;
+  const inwardPct =
+    inward && inward.planned > 0 ? Math.round((inward.actual / inward.planned) * 100) : null;
 
   const planTotals = curMonth?.buckets.reduce(
     (acc, bucket) => ({
@@ -960,6 +965,102 @@ export function AnalyticsCards({
 
         {decisionTab === "execution" && (
           <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="POs issued — last 7 days"
+              icon={CheckCheck}
+              tone={issued && issued.count > 0 ? "green" : "neutral"}
+              status={issued ? `${issued.count} ISSUED` : "WAITING"}
+              cta="Open PO Approval"
+              span={4}
+              href="/po-approval"
+              info="Purchase orders issued to EasyCom in the last 7 days — count, total quantity, and the most recent."
+            >
+              {!issued ? (
+                <NoData text="PO issuance data is not available." />
+              ) : issued.count === 0 ? (
+                <ZeroState title="None issued" text="No POs were issued in the last 7 days." compact />
+              ) : (
+                <>
+                  <div className="ana-plan-hero">
+                    <div>
+                      <strong className="ana-value ana-value-xl">{fmt.format(issued.count)}</strong>
+                      <span className="ana-value-label">POs · {fmt.format(issued.qty)} pcs</span>
+                    </div>
+                  </div>
+                  <ul className="ana-list">
+                    {issued.top.map((p) => (
+                      <li key={p.poRef}>
+                        <span className="ana-list-stack"><span className="mono">{p.poRef}</span><small>{p.vendor}</small></span>
+                        <span className="ana-list-val">{fmt.format(p.qty)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Pending approval — now"
+              icon={CircleAlert}
+              tone={pending && pending.count > 0 ? "amber" : "neutral"}
+              status={pending ? `${pending.count} WAITING` : "WAITING"}
+              cta="Open Approvals"
+              span={4}
+              href="/approvals"
+              info="Purchase orders currently submitted and awaiting approval (live count + total quantity)."
+            >
+              {!pending ? (
+                <NoData text="Approval-queue data is not available." />
+              ) : pending.count === 0 ? (
+                <ZeroState title="Queue clear" text="No POs are waiting for approval." compact />
+              ) : (
+                <>
+                  <div className="ana-plan-hero">
+                    <div>
+                      <strong className="ana-value ana-value-xl">{fmt.format(pending.count)}</strong>
+                      <span className="ana-value-label">POs · {fmt.format(pending.qty)} pcs</span>
+                    </div>
+                  </div>
+                  <ul className="ana-list">
+                    {pending.top.map((p) => (
+                      <li key={p.poRef}>
+                        <span className="ana-list-stack"><span className="mono">{p.poRef}</span><small>{p.category}</small></span>
+                        <span className="ana-list-val">{fmt.format(p.qty)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Inward — last 7 days"
+              icon={Scale}
+              tone={inward && inwardPct != null && inwardPct >= 80 ? "green" : inward ? "amber" : "neutral"}
+              status={inwardPct != null ? `${inwardPct}% RECEIVED` : "WAITING"}
+              cta="Open Inward Plan"
+              span={4}
+              href="/inward-plan"
+              info="Planned arrivals due last week (still-open lines) vs quantity actually received (GRN). Approximate — the two are not line-matched."
+            >
+              {!inward ? (
+                <NoData text="Inward-plan / GRN data is not available." />
+              ) : (
+                <div className="ana-plan-hero">
+                  <div>
+                    <strong className="ana-value ana-value-xl">
+                      {inwardPct ?? "—"}{inwardPct != null ? "%" : ""}
+                    </strong>
+                    <span className="ana-value-label">received vs planned</span>
+                  </div>
+                  <div className="ana-plan-values">
+                    <span><small>Actual</small><b>{fmt.format(inward.actual)}</b></span>
+                    <span><small>Planned</small><b>{fmt.format(inward.planned)}</b></span>
+                  </div>
+                </div>
+              )}
+            </AnaCard>
+
             <AnaCard
               title="Buying Plan Realization"
               icon={Target}

@@ -99,6 +99,16 @@ export type AnalyticsExtras = {
         codes: string[];
       }
     | null;
+  /** POs issued in the last 7 days (from sd_po_approval.po_issued_at). */
+  issuedLastWeek:
+    | { count: number; qty: number; top: { poRef: string; qty: number; vendor: string }[] }
+    | null;
+  /** POs pending approval right now (submitted / pending_l2). */
+  pendingApproval:
+    | { count: number; qty: number; top: { poRef: string; qty: number; category: string }[] }
+    | null;
+  /** Inward last week: planned (due) vs actual (received) quantity. */
+  inwardLastWeek: { planned: number; actual: number } | null;
 };
 
 /** One data source's freshness, for the Sync Health tab (sd_sync_status view). */

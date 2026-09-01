@@ -260,7 +260,72 @@ export async function loadAnalyticsExtras(
     closure: null,
     costVariance: null,
     discontinued: null,
+    issuedLastWeek: null,
+    pendingApproval: null,
+    inwardLastWeek: null,
   };
+
+  const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const weekAgoDate = weekAgoIso.slice(0, 10);
+  const todayDate = new Date().toISOString().slice(0, 10);
+
+  /* POs issued in the last 7 days. */
+  try {
+    const { data } = await supabase
+      .from('sd_po_approval')
+      .select('po_ref_num, po_qty, vendor_name, po_issued_at')
+      .gte('po_issued_at', weekAgoIso)
+      .order('po_issued_at', { ascending: false });
+    const rows = (data ?? []) as { po_ref_num: string | null; po_qty: number | null; vendor_name: string | null }[];
+    extras.issuedLastWeek = {
+      count: rows.length,
+      qty: rows.reduce((s, r) => s + (Number(r.po_qty) || 0), 0),
+      top: rows.slice(0, 5).map((r) => ({
+        poRef: r.po_ref_num ?? '—',
+        qty: Number(r.po_qty) || 0,
+        vendor: r.vendor_name ?? '—',
+      })),
+    };
+  } catch { /* stays null */ }
+
+  /* POs pending approval right now (submitted / pending_l2). */
+  try {
+    const { data } = await supabase
+      .from('sd_po_approval')
+      .select('po_ref_num, po_qty, category, submitted_for_approval_at')
+      .in('status', ['submitted', 'pending_l2'])
+      .order('submitted_for_approval_at', { ascending: true });
+    const rows = (data ?? []) as { po_ref_num: string | null; po_qty: number | null; category: string | null }[];
+    extras.pendingApproval = {
+      count: rows.length,
+      qty: rows.reduce((s, r) => s + (Number(r.po_qty) || 0), 0),
+      top: rows.slice(0, 5).map((r) => ({
+        poRef: r.po_ref_num ?? '—',
+        qty: Number(r.po_qty) || 0,
+        category: (r.category ?? '').toUpperCase(),
+      })),
+    };
+  } catch { /* stays null */ }
+
+  /* Inward last week: planned (arrivals due last week, still-open lines) vs actual
+     (GRN received last week). Approximate — the two aren't line-matched. */
+  try {
+    const [{ data: due }, { data: grn }] = await Promise.all([
+      supabase
+        .from('sd_po_lines_enriched')
+        .select('original_qty, expected_delivery_date')
+        .eq('po_status_code', 3)
+        .gte('expected_delivery_date', weekAgoDate)
+        .lte('expected_delivery_date', todayDate),
+      supabase
+        .from('sd_ee_grn')
+        .select('received_quantity, grn_created_at')
+        .gte('grn_created_at', weekAgoDate),
+    ]);
+    const planned = ((due ?? []) as { original_qty: number | null }[]).reduce((s, r) => s + (Number(r.original_qty) || 0), 0);
+    const actual = ((grn ?? []) as { received_quantity: number | null }[]).reduce((s, r) => s + (Number(r.received_quantity) || 0), 0);
+    extras.inwardLastWeek = { planned, actual };
+  } catch { /* stays null */ }
 
   // Weave + lifecycle per product code — shared by 1.5 and 1.10.
   let weaveByCode: Record<string, string> = {};
