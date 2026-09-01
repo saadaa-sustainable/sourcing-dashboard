@@ -1372,11 +1372,21 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* ---- Main-dashboard analytics cards (cross-tab "so what" layer) ---- */
 .ana-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 4px;
 }
-@media (max-width: 900px) { .ana-grid { grid-template-columns: 1fr; } }
+.ana-span4 { grid-column: span 4; }
+.ana-span5 { grid-column: span 5; }
+.ana-span7 { grid-column: span 7; }
+.ana-span12 { grid-column: span 12; }
+@media (max-width: 1100px) {
+  .ana-span4 { grid-column: span 6; }
+  .ana-span5, .ana-span7 { grid-column: span 12; }
+}
+@media (max-width: 760px) {
+  .ana-span4, .ana-span5, .ana-span7 { grid-column: span 12; }
+}
 .ana-card {
   position: relative;
   display: flex;
@@ -1392,6 +1402,7 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .ana-card.clickable { cursor: pointer; }
 .ana-card.clickable:hover { border-color: var(--color-ecru-400, #c9c2ae); }
 .ana-red   { border-top-color: var(--danger-border, #c65a49); }
+.ana-amber { border-top-color: var(--warning-border, #e8c87a); }
 .ana-green { border-top-color: var(--success-border, #3d9e6b); }
 .ana-head {
   display: flex;
@@ -1482,3 +1493,32 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .ana-text-red   { color: var(--danger-text, #a2401f); }
 .ana-text-green { color: var(--success-text, #4f7c4d); }
+
+.ana-alert { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--danger-text, #c0392b); }
+.ana-chart { margin-top: 2px; }
+.ana-bar-row {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.ana-bar-label { color: var(--ink-2, #494640); font-weight: 600; }
+.ana-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-tint, #f6f3f1);
+  overflow: hidden;
+}
+.ana-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #f0c61e);
+}
+.ana-bar-val {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3, #6e695e);
+  white-space: nowrap;
+  font-size: 11px;
+}

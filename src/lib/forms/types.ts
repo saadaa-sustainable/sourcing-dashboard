@@ -49,6 +49,58 @@ export type SdCustomRole = {
   members?: string[];
 };
 
+/**
+ * Server-computed sections for the main-dashboard analytics cards (the parts
+ * that need module data the DashboardShell doesn't already carry). Any section
+ * may be null = "data not available" — cards must show that state, never a
+ * fake zero.
+ */
+export type AnalyticsExtras = {
+  /** 1.4 — variant-level demand with no stock and no open PO covering it. */
+  stockoutGaps:
+    | {
+        product_variant: string;
+        product_code: string | null;
+        product_name: string | null;
+        doq_45: number;
+        current_stock: number;
+        oos: boolean;
+      }[]
+    | null;
+  /** 1.5 — planned vs issued value per month (current + 2 prior) split by weave. */
+  planRealization:
+    | {
+        month: string; // YYYY-MM
+        buckets: { category: string; planned: number; actual: number }[];
+      }[]
+    | null;
+  /** 1.6 — daily TNA status mix history (oldest first). */
+  tnaTrend:
+    | { snapshot_date: string; on_time: number; high_risk: number; overdue: number; open_total: number }[]
+    | null;
+  /** 1.7 — closure SLA compliance. */
+  closure:
+    | { closedTotal: number; closedWithinSla: number; openBeyondSla: number; slaDays: number }
+    | null;
+  /** 1.8 — POs issued above standard this month. */
+  costVariance:
+    | {
+        count: number;
+        impact: number;
+        top: { poRef: string; productCode: string; delta: number }[];
+      }
+    | null;
+  /** 1.10 — Discontinued products still on open POs / the current buying plan. */
+  discontinued:
+    | {
+        openPoCount: number;
+        openPoQty: number;
+        planLineCount: number;
+        codes: string[];
+      }
+    | null;
+};
+
 /** One data source's freshness, for the Sync Health tab (sd_sync_status view). */
 export type SyncStatusRow = {
   source: string;

@@ -12,6 +12,7 @@ import {
 import { loadDashboardData, loadMergedTnaRecords } from '@/lib/data';
 import { monthStart } from './approval';
 import type {
+  AnalyticsExtras,
   ApprovalQueueItem,
   ApprovalLogRow,
   BuyingPlan,
@@ -231,6 +232,257 @@ export async function loadTnaSnapshots(): Promise<
   } catch {
     return [];
   }
+}
+
+/**
+ * Server-computed sections for the analytics cards that need module data the
+ * DashboardShell doesn't already carry (replenishment, buying plan, closures,
+ * standard costs). Each section is independently best-effort: a failed source
+ * yields null for that section (card shows "data not available"), never an
+ * exception — the dashboard must always render.
+ */
+export async function loadAnalyticsExtras(
+  openPos: { code: string; variant: string; qty: number }[],
+  rules: Record<string, number>,
+): Promise<AnalyticsExtras> {
+  const supabase = await client();
+  const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
+  const openVariants = new Set(openPos.map((p) => norm(p.variant)).filter(Boolean));
+
+  const extras: AnalyticsExtras = {
+    stockoutGaps: null,
+    planRealization: null,
+    tnaTrend: null,
+    closure: null,
+    costVariance: null,
+    discontinued: null,
+  };
+
+  // Weave + lifecycle per product code — shared by 1.5 and 1.10.
+  let weaveByCode: Record<string, string> = {};
+  let discontinuedCodes = new Set<string>();
+  try {
+    const { data } = await supabase
+      .from('sd_ee_product_code_status')
+      .select('product_code, product_status, fabric_type');
+    ((data ?? []) as { product_code: string; product_status: string | null; fabric_type: string | null }[]).forEach((r) => {
+      if (r.fabric_type) weaveByCode[r.product_code] = r.fabric_type;
+      if (r.product_status === 'Discontinued') discontinuedCodes.add(r.product_code);
+    });
+  } catch {
+    weaveByCode = {};
+    discontinuedCodes = new Set();
+  }
+
+  /* 1.4 Stockout Risk — sustained demand, no stock, and no open PO covering the variant. */
+  try {
+    const { data } = await supabase
+      .from('sd_replenishment')
+      .select('product_variant, product_code, product_name, current_stock, doq_45, oos_flag')
+      .gt('doq_45', 0)
+      .order('doq_45', { ascending: false })
+      .limit(500);
+    extras.stockoutGaps = ((data ?? []) as {
+      product_variant: string; product_code: string | null; product_name: string | null;
+      current_stock: number | null; doq_45: number | null; oos_flag: boolean | null;
+    }[])
+      .filter(
+        (r) =>
+          (Number(r.current_stock) || 0) <= 0 &&
+          !openVariants.has(norm(r.product_variant)),
+      )
+      .slice(0, 8)
+      .map((r) => ({
+        product_variant: r.product_variant,
+        product_code: r.product_code,
+        product_name: r.product_name,
+        doq_45: Number(r.doq_45) || 0,
+        current_stock: Number(r.current_stock) || 0,
+        oos: Boolean(r.oos_flag),
+      }));
+  } catch { /* section stays null */ }
+
+  /* Months for 1.5 / 1.8 / 1.10 — current + two prior (IST). */
+  const ist = new Date(Date.now() + 5.5 * 3600_000);
+  const months: string[] = [0, 1, 2].map((back) => {
+    const d = new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth() - back, 1));
+    return d.toISOString().slice(0, 10); // YYYY-MM-01
+  });
+
+  /* 1.5 Buying Plan Realization — planned vs issued value per month × weave. */
+  try {
+    const stdCosts = await loadApprovedStandardCosts();
+    const { data: plans } = await supabase
+      .from('sd_buying_plan')
+      .select('id, plan_month, status')
+      .eq('plan_type', 'fg')
+      .in('plan_month', months);
+    // One plan per month: prefer the approved one, else the latest.
+    const planByMonth = new Map<string, { id: number; rank: number }>();
+    ((plans ?? []) as { id: number; plan_month: string; status: string }[]).forEach((p) => {
+      const rank = p.status === 'approved' ? 2 : 1;
+      const cur = planByMonth.get(p.plan_month);
+      if (!cur || rank > cur.rank || (rank === cur.rank && p.id > cur.id)) {
+        planByMonth.set(p.plan_month, { id: p.id, rank });
+      }
+    });
+    const planIds = [...planByMonth.values()].map((p) => p.id);
+    const { data: lines } = planIds.length
+      ? await supabase
+          .from('sd_buying_plan_line')
+          .select('plan_id, product_code, job_work_qty, fob_qty, efob_qty, standard_value')
+          .in('plan_id', planIds)
+      : { data: [] };
+    const monthOfPlan = new Map<number, string>();
+    planByMonth.forEach((v, month) => monthOfPlan.set(v.id, month));
+
+    const { data: actuals } = await supabase
+      .from('sd_po_actuals_by_product_month')
+      .select('product_code, plan_month, issued_value')
+      .in('plan_month', months);
+
+    const bucketOf = (code: string) => weaveByCode[code] ?? 'Other';
+    const acc = new Map<string, { planned: number; actual: number }>(); // `${month}|${bucket}`
+    const bump = (month: string, bucket: string, field: 'planned' | 'actual', v: number) => {
+      const k = `${month}|${bucket}`;
+      const cur = acc.get(k) ?? { planned: 0, actual: 0 };
+      cur[field] += v;
+      acc.set(k, cur);
+    };
+    ((lines ?? []) as {
+      plan_id: number; product_code: string; job_work_qty: number | null;
+      fob_qty: number | null; efob_qty: number | null; standard_value: number | null;
+    }[]).forEach((l) => {
+      const month = monthOfPlan.get(l.plan_id);
+      if (!month) return;
+      const cost = stdCosts[l.product_code];
+      const stored = Number(l.standard_value) || 0;
+      const value =
+        stored > 0
+          ? stored
+          : cost
+            ? (Number(l.job_work_qty) || 0) * cost.job +
+              (Number(l.fob_qty) || 0) * cost.fob +
+              (Number(l.efob_qty) || 0) * cost.efob
+            : 0;
+      if (value > 0) bump(month, bucketOf(l.product_code), 'planned', value);
+    });
+    ((actuals ?? []) as { product_code: string; plan_month: string; issued_value: number | null }[]).forEach((a) => {
+      const v = Number(a.issued_value) || 0;
+      if (v > 0) bump(a.plan_month, bucketOf(a.product_code), 'actual', v);
+    });
+
+    extras.planRealization = months.map((month) => ({
+      month: month.slice(0, 7),
+      buckets: ['Woven', 'Knitted', 'Other']
+        .map((category) => ({
+          category,
+          planned: acc.get(`${month}|${category}`)?.planned ?? 0,
+          actual: acc.get(`${month}|${category}`)?.actual ?? 0,
+        }))
+        .filter((b) => b.planned > 0 || b.actual > 0),
+    }));
+  } catch { /* section stays null */ }
+
+  /* 1.6 TNA compliance trend — recorded daily by the dashboard itself. */
+  extras.tnaTrend = await loadTnaSnapshots();
+
+  /* 1.7 PO Closure compliance vs the SLA. */
+  try {
+    const sla = rules.closure_sla_days ?? 15;
+    const { data } = await supabase
+      .from('sd_po_closure')
+      .select('easycom_completed_at, closed_at');
+    const rows = (data ?? []) as { easycom_completed_at: string | null; closed_at: string | null }[];
+    const dayMs = 86_400_000;
+    const now = Date.now();
+    let closedTotal = 0, closedWithinSla = 0, openBeyondSla = 0;
+    rows.forEach((r) => {
+      const completed = r.easycom_completed_at ? Date.parse(r.easycom_completed_at) : NaN;
+      if (Number.isNaN(completed)) return;
+      if (r.closed_at) {
+        closedTotal += 1;
+        if (Date.parse(r.closed_at) - completed <= sla * dayMs) closedWithinSla += 1;
+      } else if (now - completed > sla * dayMs) {
+        openBeyondSla += 1;
+      }
+    });
+    extras.closure = { closedTotal, closedWithinSla, openBeyondSla, slaDays: sla };
+  } catch { /* section stays null */ }
+
+  /* 1.8 Cost variance — approved POs issued above standard this month. */
+  try {
+    const stdCosts = await loadApprovedStandardCosts();
+    const monthStartIso = months[0];
+    const { data } = await supabase
+      .from('sd_po_approval')
+      .select('po_ref_num, product_code, po_type, rate, po_qty, approved_at, po_issued_at')
+      .eq('status', 'approved');
+    const rows = (data ?? []) as {
+      po_ref_num: string | null; product_code: string | null; po_type: string | null;
+      rate: number | null; po_qty: number | null; approved_at: string | null; po_issued_at: string | null;
+    }[];
+    const variances = rows
+      .filter((r) => {
+        const when = r.po_issued_at ?? r.approved_at;
+        return when != null && when >= monthStartIso;
+      })
+      .map((r) => {
+        const std = stdCosts[r.product_code ?? ''];
+        if (!std || r.rate == null) return null;
+        const type = (r.po_type ?? '').toLowerCase();
+        const stdRate = type.includes('job') ? std.job : type.includes('efob') ? std.efob : std.fob;
+        if (!stdRate) return null;
+        const delta = (Number(r.rate) - stdRate) * (Number(r.po_qty) || 0);
+        return delta > 0
+          ? { poRef: r.po_ref_num ?? '—', productCode: r.product_code ?? '—', delta }
+          : null;
+      })
+      .filter(Boolean) as { poRef: string; productCode: string; delta: number }[];
+    variances.sort((a, b) => b.delta - a.delta);
+    extras.costVariance = {
+      count: variances.length,
+      impact: variances.reduce((s, v) => s + v.delta, 0),
+      top: variances.slice(0, 3),
+    };
+  } catch { /* section stays null */ }
+
+  /* 1.10 Discontinued-but-active integrity check. */
+  try {
+    if (discontinuedCodes.size >= 0) {
+      const offendersPo = openPos.filter((p) => discontinuedCodes.has(p.code));
+      let planLineCount = 0;
+      const { data: curPlan } = await supabase
+        .from('sd_buying_plan')
+        .select('id')
+        .eq('plan_type', 'fg')
+        .eq('plan_month', months[0])
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (curPlan) {
+        const { data: lines } = await supabase
+          .from('sd_buying_plan_line')
+          .select('product_code, job_work_qty, fob_qty, efob_qty')
+          .eq('plan_id', (curPlan as { id: number }).id);
+        planLineCount = ((lines ?? []) as {
+          product_code: string; job_work_qty: number | null; fob_qty: number | null; efob_qty: number | null;
+        }[]).filter(
+          (l) =>
+            discontinuedCodes.has(l.product_code) &&
+            (Number(l.job_work_qty) || 0) + (Number(l.fob_qty) || 0) + (Number(l.efob_qty) || 0) > 0,
+        ).length;
+      }
+      extras.discontinued = {
+        openPoCount: offendersPo.length,
+        openPoQty: offendersPo.reduce((s, p) => s + p.qty, 0),
+        planLineCount,
+        codes: [...new Set(offendersPo.map((p) => p.code))],
+      };
+    }
+  } catch { /* section stays null */ }
+
+  return extras;
 }
 
 /** Cash-flow forecast (payment obligations by month) + editable vendor terms. */

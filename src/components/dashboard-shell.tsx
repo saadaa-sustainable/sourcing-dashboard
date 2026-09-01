@@ -66,7 +66,7 @@ import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { AnalyticsCards } from "./analytics-cards";
 import { canView } from "@/lib/views";
-import type { PoClosureView, SdRole } from "@/lib/forms/types";
+import type { AnalyticsExtras, PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
 import { ApprovalsBell } from "@/components/forms/approvals-bell";
 
@@ -3278,6 +3278,7 @@ export function DashboardShell({
   role = 'viewer',
   allowedPages = null,
   analyticsRules = {},
+  analyticsExtras = null,
 }: {
   data: DashboardData;
   closures?: PoClosureView[];
@@ -3286,6 +3287,8 @@ export function DashboardShell({
   allowedPages?: string[] | null;
   /** Card thresholds from the Rules Master (sd_analytics_rule). */
   analyticsRules?: Record<string, number>;
+  /** Server-computed sections for the cross-module cards. */
+  analyticsExtras?: AnalyticsExtras | null;
 }) {
   const [tab, setTab] = useState<TabId>("dashboard");
   const [info, setInfo] = useState(false);
@@ -3348,7 +3351,7 @@ export function DashboardShell({
           {tab === "dashboard" && (
             <>
               {/* Cross-tab decision cards — the "so what" layer above the KPIs. */}
-              <AnalyticsCards data={data} rules={analyticsRules} onTab={setTab} />
+              <AnalyticsCards data={data} rules={analyticsRules} extras={analyticsExtras} onTab={setTab} />
               <DashboardTab
                 data={data}
                 bucket={bucket}
