@@ -36,6 +36,7 @@ export default async function PoClosurePage() {
       active="/po-closure"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="teal"
     >
       <PoClosureClient closures={closures} cutting={cutting} editable={canEdit(user.role, 'draft')} />

@@ -40,6 +40,7 @@ export default async function ApprovalsPage() {
       active="/approvals"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <ApprovalsClient items={items} log={log} role={user.role} stats={stats} />
     </FormLayout>

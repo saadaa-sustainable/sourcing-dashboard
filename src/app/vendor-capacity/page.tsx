@@ -79,6 +79,7 @@ export default async function VendorCapacityPage() {
       active="/vendor-capacity"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <VendorCapacityClient vendors={vendors} role={user.role} />
     </FormLayout>

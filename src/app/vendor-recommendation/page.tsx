@@ -35,6 +35,7 @@ export default async function VendorRecommendationPage() {
       active="/vendor-recommendation"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="blue"
     >
       <VendorRecommendationClient rows={rows} />

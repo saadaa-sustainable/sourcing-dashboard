@@ -35,6 +35,7 @@ export default async function SyncStatusPage() {
       active="/sync-status"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <SyncStatusClient rows={rows} />
     </FormLayout>

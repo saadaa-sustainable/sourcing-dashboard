@@ -2,6 +2,7 @@
 
 import { useState, type ComponentType } from 'react';
 import type { SdRole } from '@/lib/forms/types';
+import { canView } from '@/lib/views';
 import {
   Activity,
   Award,
@@ -54,14 +55,15 @@ type NavLink = {
   label: string;
   Icon: ComponentType<{ size?: number }>;
   external?: boolean;
-  adminOnly?: boolean;
 };
 
 // Read-only analytical views. They're separate routes (not the SPA tabs above),
 // but they're just information to look at — so they belong in the Workspace
 // section with the dashboards, not among the operational Workflows below.
+// Admin-only flags live in the views registry (lib/views.ts) — canView applies
+// them together with the caller's custom-role page set.
 const WORKSPACE_LINKS: NavLink[] = [
-  { href: '/replenishment', label: 'Replenishment', Icon: Repeat, adminOnly: true },
+  { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
@@ -73,15 +75,28 @@ const WORKFLOW_LINKS: NavLink[] = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
-  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck, adminOnly: true },
+  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/cutting-register', label: 'Cutting Register', Icon: Scissors },
   { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
   { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
   { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
-  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet, adminOnly: true },
+  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
-  { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck, adminOnly: true },
+  { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
+];
+
+// Masters and datasets under the Admin divider.
+const ADMIN_LINKS: NavLink[] = [
+  { href: '/product-master', label: 'Product Master', Icon: Tags },
+  { href: '/grn-detail', label: 'GRN Detail', Icon: PackageCheck },
+  { href: '/doq', label: 'DOQ Dataset', Icon: Database },
+  { href: '/vendor-master', label: 'Vendor Master', Icon: Factory },
+  { href: '/fabric-master', label: 'Fabric Master', Icon: Layers },
+  { href: '/material-master', label: 'Material Master', Icon: Boxes },
+  { href: '/fabric-cost', label: 'Fabric Cost', Icon: IndianRupee },
+  { href: '/users', label: 'User Panel', Icon: UserCog },
+  { href: '/sync-status', label: 'Sync Health', Icon: Activity },
 ];
 
 /**
@@ -89,6 +104,8 @@ const WORKFLOW_LINKS: NavLink[] = [
  *  - Dashboard: pass `onTab` + `activeTab` — main items are buttons (instant SPA).
  *  - Any other page (workflow forms): omit `onTab` — main items link to /?tab=<id>,
  *    and `activeWorkflow` highlights the current form.
+ * `allowedPages` (from the caller's custom roles; null = unrestricted) filters
+ * every route link. The dashboard tabs always show — '/' is the landing page.
  */
 export function SideNav({
   activeTab,
@@ -96,15 +113,35 @@ export function SideNav({
   activeWorkflow,
   userEmail,
   role = 'viewer',
+  allowedPages = null,
 }: {
   activeTab?: TabId;
   onTab?: (id: TabId) => void;
   activeWorkflow?: string;
   userEmail: string | null;
   role?: SdRole;
+  allowedPages?: string[] | null;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const close = () => setNavOpen(false);
+  const visible = (links: NavLink[]) =>
+    links.filter(({ href }) => canView(href, role, allowedPages));
+  const workspace = visible(WORKSPACE_LINKS);
+  const workflows = visible(WORKFLOW_LINKS);
+  const admin = visible(ADMIN_LINKS);
+  const renderLink = ({ href, label, Icon, external }: NavLink) => (
+    <a
+      key={href}
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noopener noreferrer' : undefined}
+      className={!external && activeWorkflow === href ? 'active' : ''}
+      onClick={close}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </a>
+  );
   return (
     <>
       <button
@@ -148,107 +185,11 @@ export function SideNav({
                 </a>
               ),
             )}
-          {WORKSPACE_LINKS.filter(({ adminOnly }) => !adminOnly || role === 'admin').map(
-            ({ href, label, Icon }) => (
-              <a
-                key={href}
-                href={href}
-                className={activeWorkflow === href ? 'active' : ''}
-                onClick={close}
-              >
-                <Icon size={18} />
-                <span>{label}</span>
-              </a>
-            ),
-          )}
-          <div className="wf-nav-divider">Workflows</div>
-          {WORKFLOW_LINKS.filter(({ adminOnly }) => !adminOnly || role === 'admin').map(
-            ({ href, label, Icon, external }) => (
-            <a
-              key={href}
-              href={href}
-              target={external ? '_blank' : undefined}
-              rel={external ? 'noopener noreferrer' : undefined}
-              className={!external && activeWorkflow === href ? 'active' : ''}
-              onClick={close}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </a>
-          ))}
-          <div className="wf-nav-divider">Admin</div>
-          <a
-            href="/product-master"
-            className={activeWorkflow === '/product-master' ? 'active' : ''}
-            onClick={close}
-          >
-            <Tags size={18} />
-            <span>Product Master</span>
-          </a>
-          <a
-            href="/grn-detail"
-            className={activeWorkflow === '/grn-detail' ? 'active' : ''}
-            onClick={close}
-          >
-            <PackageCheck size={18} />
-            <span>GRN Detail</span>
-          </a>
-          <a
-            href="/doq"
-            className={activeWorkflow === '/doq' ? 'active' : ''}
-            onClick={close}
-          >
-            <Database size={18} />
-            <span>DOQ Dataset</span>
-          </a>
-          <a
-            href="/vendor-master"
-            className={activeWorkflow === '/vendor-master' ? 'active' : ''}
-            onClick={close}
-          >
-            <Factory size={18} />
-            <span>Vendor Master</span>
-          </a>
-          <a
-            href="/fabric-master"
-            className={activeWorkflow === '/fabric-master' ? 'active' : ''}
-            onClick={close}
-          >
-            <Layers size={18} />
-            <span>Fabric Master</span>
-          </a>
-          <a
-            href="/material-master"
-            className={activeWorkflow === '/material-master' ? 'active' : ''}
-            onClick={close}
-          >
-            <Boxes size={18} />
-            <span>Material Master</span>
-          </a>
-          <a
-            href="/fabric-cost"
-            className={activeWorkflow === '/fabric-cost' ? 'active' : ''}
-            onClick={close}
-          >
-            <IndianRupee size={18} />
-            <span>Fabric Cost</span>
-          </a>
-          <a
-            href="/users"
-            className={activeWorkflow === '/users' ? 'active' : ''}
-            onClick={close}
-          >
-            <UserCog size={18} />
-            <span>User Panel</span>
-          </a>
-          <a
-            href="/sync-status"
-            className={activeWorkflow === '/sync-status' ? 'active' : ''}
-            onClick={close}
-          >
-            <Activity size={18} />
-            <span>Sync Health</span>
-          </a>
+          {workspace.map(renderLink)}
+          {workflows.length > 0 && <div className="wf-nav-divider">Workflows</div>}
+          {workflows.map(renderLink)}
+          {admin.length > 0 && <div className="wf-nav-divider">Admin</div>}
+          {admin.map(renderLink)}
         </nav>
         <div className="sidebar-foot">
           <div className="status-dot">

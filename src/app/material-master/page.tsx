@@ -44,6 +44,7 @@ export default async function MaterialMasterPage({
       active="/material-master"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <MaterialMasterClient
         materials={materials}

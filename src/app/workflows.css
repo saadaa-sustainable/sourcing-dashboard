@@ -1119,3 +1119,34 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   letter-spacing: 0;
 }
 .spin { animation: spin 0.8s linear infinite; }
+
+/* ---- User Panel: custom roles (Team & access) ---- */
+.wf-role-chips { display: flex; flex-wrap: wrap; gap: 6px; max-width: 380px; }
+.wf-role-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line, #e4ded2); background: var(--panel-2, #faf8f4);
+  font-size: 12px; user-select: none; transition: background 0.15s, border-color 0.15s;
+}
+.wf-role-chip input { margin: 0; accent-color: var(--accent, #f0c61e); }
+.wf-role-chip.on {
+  background: #fdf6dd; border-color: var(--accent, #f0c61e); font-weight: 600;
+}
+.wf-role-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px; margin-top: 14px;
+}
+.wf-role-card {
+  background: var(--panel, #fff); border: 1px solid var(--line, #e4ded2);
+  border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  border-top: 3px solid var(--accent, #f0c61e);
+}
+.wf-role-card h3 { margin: 0; font-size: 15px; }
+.wf-role-pages { font-size: 12px; margin: 0; }
+.wf-view-group { margin-top: 14px; }
+.wf-view-group-head {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  margin-bottom: 8px; font-size: 13px;
+}
+.wf-view-group-head input { accent-color: var(--accent, #f0c61e); }
+.wf-view-grid { display: flex; flex-wrap: wrap; gap: 6px; }

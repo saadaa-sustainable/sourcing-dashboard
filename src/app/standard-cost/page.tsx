@@ -77,6 +77,7 @@ export default async function StandardCostPage({
       active="/standard-cost"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="purple"
     >
       <CostTrackTabs track={track} />

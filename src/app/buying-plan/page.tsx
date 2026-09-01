@@ -55,6 +55,7 @@ export default async function BuyingPlanPage({
       active="/buying-plan"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <PlanTypeTabs planMonth={planMonth} planType={planType} />
       {planType === 'material' ? (

@@ -36,6 +36,7 @@ export default async function FabricCostPage() {
       active="/fabric-cost"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="teal"
     >
       <FabricCostClient rows={rows} editable={canEdit(user.role, 'draft')} />

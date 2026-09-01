@@ -3259,11 +3259,13 @@ export function DashboardShell({
   closures = [],
   userEmail,
   role = 'viewer',
+  allowedPages = null,
 }: {
   data: DashboardData;
   closures?: PoClosureView[];
   userEmail: string | null;
   role?: SdRole;
+  allowedPages?: string[] | null;
 }) {
   const [tab, setTab] = useState<TabId>("dashboard");
   const [info, setInfo] = useState(false);
@@ -3283,7 +3285,7 @@ export function DashboardShell({
   const helpItems: HelpItem[] = simpleGlossary[tab] ?? [];
   return (
     <div className="app-shell">
-      <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} role={role} />
+      <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} role={role} allowedPages={allowedPages} />
       <main>
         <header>
           <div>

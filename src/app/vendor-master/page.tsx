@@ -35,6 +35,7 @@ export default async function VendorMasterPage() {
       active="/vendor-master"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <VendorMasterClient rows={rows} />
     </FormLayout>

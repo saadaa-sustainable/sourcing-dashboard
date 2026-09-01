@@ -49,6 +49,7 @@ export default async function PoApprovalPage() {
       active="/po-approval"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="blue"
     >
       <PoApprovalClient

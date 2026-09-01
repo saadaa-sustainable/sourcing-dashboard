@@ -43,6 +43,7 @@ export default async function PoManualAdjustmentPage() {
       active="/po-manual-adjustment"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="orange"
       actions={
         <a className="wf-btn wf-btn-primary" href={PORTAL_URL} target="_blank" rel="noopener noreferrer">

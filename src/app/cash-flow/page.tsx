@@ -33,6 +33,7 @@ export default async function CashFlowPage() {
       active="/cash-flow"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <CashFlowClient
         months={months}

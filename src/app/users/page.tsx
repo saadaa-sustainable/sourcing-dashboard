@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
+import { currentUser, loadCustomRoles, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
 import { hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { UsersClient } from './users-client';
 
@@ -24,19 +24,21 @@ export default async function UsersPage() {
   if (!user) redirect('/login');
 
   const isAdmin = user.role === 'admin';
-  const users = isAdmin ? await loadUsers() : [];
+  const [users, roles] = isAdmin ? await Promise.all([loadUsers(), loadCustomRoles()]) : [[], []];
 
   return (
     <FormLayout
       title="User Panel"
-      subtitle="Assign roles. Admins get full access; team members fill forms and approve routine items."
+      subtitle="Team & access — members, access levels and custom roles. A role is a named set of views; a person can hold several and sees the union."
       active="/users"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       {isAdmin ? (
         <UsersClient
           users={users}
+          roles={roles}
           currentEmail={user.email}
           canCreateLogins={hasSupabaseAdminEnv()}
         />

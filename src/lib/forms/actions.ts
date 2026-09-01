@@ -2553,6 +2553,86 @@ export async function saveUser(formData: FormData): Promise<ActionResult> {
   return done(`Saved ${email}.`);
 }
 
+/* ------------------------------------------------------------------ */
+/* Custom roles (User Panel — named view sets, multi-role per user)    */
+/* ------------------------------------------------------------------ */
+
+/** Create or update a custom role (name, description, view set). Admin-only. */
+export async function saveCustomRole(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can manage roles.');
+
+  const id = Number(formData.get('id')) || null;
+  const name = String(formData.get('name') ?? '').trim();
+  const description = String(formData.get('description') ?? '').trim() || null;
+  let pages: string[];
+  try {
+    pages = JSON.parse(String(formData.get('pages') ?? '[]'));
+  } catch {
+    return fail('Invalid view list.');
+  }
+  if (!name) return fail('Give the role a name.');
+  if (!Array.isArray(pages)) return fail('Invalid view list.');
+
+  const supabase = await supa();
+  const { error } = id
+    ? await supabase.from('sd_custom_role').update({ name, description, pages }).eq('id', id)
+    : await supabase.from('sd_custom_role').insert({ name, description, pages });
+  if (error) {
+    return fail(
+      error.message.includes('duplicate')
+        ? `A role named "${name}" already exists.`
+        : `Could not save role: ${error.message}`,
+    );
+  }
+  revalidatePath('/users');
+  return done(id ? `Updated role "${name}".` : `Created role "${name}".`);
+}
+
+/** Delete a custom role; its assignments cascade away. Admin-only. */
+export async function deleteCustomRole(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can manage roles.');
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid role.');
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_custom_role').delete().eq('id', id);
+  if (error) return fail(`Could not delete role: ${error.message}`);
+  revalidatePath('/users');
+  return done('Role deleted.');
+}
+
+/** Replace a user's custom-role set (a person can hold several). Admin-only. */
+export async function setUserRoles(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can manage roles.');
+
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  let roleIds: number[];
+  try {
+    roleIds = JSON.parse(String(formData.get('role_ids') ?? '[]'));
+  } catch {
+    return fail('Invalid role list.');
+  }
+  if (!email || !Array.isArray(roleIds)) return fail('Invalid request.');
+
+  const supabase = await supa();
+  // Full replace: delete then re-insert the set (small N, admin-gated).
+  const { error: delErr } = await supabase.from('sd_user_role').delete().eq('user_email', email);
+  if (delErr) return fail(`Could not update roles: ${delErr.message}`);
+  if (roleIds.length) {
+    const { error: insErr } = await supabase
+      .from('sd_user_role')
+      .insert(roleIds.map((role_id) => ({ user_email: email, role_id })));
+    if (insErr) return fail(`Could not update roles: ${insErr.message}`);
+  }
+  revalidatePath('/users');
+  return done(`Updated roles for ${email}.`);
+}
+
 /**
  * Create (or reset) an email+password login for a user, then provision their
  * role. Admin-only. Uses the service-role Admin API (the publishable key cannot

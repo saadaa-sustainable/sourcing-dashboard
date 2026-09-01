@@ -39,6 +39,7 @@ export default async function DiscontinuePage() {
       active="/discontinue"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <DiscontinueTabs
         requests={requests}

@@ -36,6 +36,7 @@ export default async function FabricMasterPage() {
       active="/fabric-master"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <FabricMasterClient fabrics={fabrics} editable={canEdit(user.role, 'draft')} />
     </FormLayout>

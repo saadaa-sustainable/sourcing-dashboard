@@ -35,6 +35,7 @@ export default async function ProductMasterPage() {
       active="/product-master"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <ProductMasterClient products={products} />
     </FormLayout>

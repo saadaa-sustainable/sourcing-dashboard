@@ -35,6 +35,7 @@ export default async function OosCalculationPage() {
       active="/oos-calculation"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <OosCalculationClient rows={rows} />
     </FormLayout>

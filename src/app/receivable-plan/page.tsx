@@ -46,6 +46,7 @@ export default async function ReceivablePlanPage() {
       active="/receivable-plan"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <ReceivablePlanClient
         rows={rows}

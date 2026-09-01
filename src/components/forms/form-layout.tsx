@@ -1,9 +1,10 @@
-import { LogOut } from 'lucide-react';
+import { LogOut, ShieldAlert } from 'lucide-react';
 import { SideNav } from '@/components/side-nav';
 import { FormHelp } from '@/components/forms/form-help';
 import { ApprovalsBell } from '@/components/forms/approvals-bell';
 import { signOut } from '@/lib/auth-actions';
 import { ROLE_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/forms/approval';
+import { canView } from '@/lib/views';
 import type { SdRole, SdStatus } from '@/lib/forms/types';
 
 export function FormLayout({
@@ -12,6 +13,7 @@ export function FormLayout({
   active,
   role,
   userEmail = null,
+  allowedPages = null,
   actions,
   accent,
   children,
@@ -21,15 +23,21 @@ export function FormLayout({
   active: string;
   role: SdRole;
   userEmail?: string | null;
+  /**
+   * Union of pages from the caller's custom roles (User Panel); null =
+   * unrestricted. Filters the sidebar AND gates this page's content.
+   */
+  allowedPages?: string[] | null;
   actions?: React.ReactNode;
   // A per-screen accent so distinct processes (PO vs Standard Cost vs …) read as
   // visually different pages, not the same form.
   accent?: 'blue' | 'purple' | 'teal' | 'orange';
   children: React.ReactNode;
 }) {
+  const accessible = canView(active, role, allowedPages);
   return (
     <div className="app-shell">
-      <SideNav activeWorkflow={active} userEmail={userEmail} role={role} />
+      <SideNav activeWorkflow={active} userEmail={userEmail} role={role} allowedPages={allowedPages} />
       <main>
         <div className={`wf-page${accent ? ` wf-accent wf-accent-${accent}` : ''}`}>
           <header className="wf-head">
@@ -56,7 +64,19 @@ export function FormLayout({
               )}
             </div>
           </header>
-          <div className="wf-body">{children}</div>
+          <div className="wf-body">
+            {accessible ? (
+              children
+            ) : (
+              <div className="empty-state">
+                <ShieldAlert size={28} />
+                <p>
+                  Your roles don&apos;t include this view. Ask an admin to grant it
+                  from the User Panel.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

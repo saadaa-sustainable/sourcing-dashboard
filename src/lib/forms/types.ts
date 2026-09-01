@@ -30,6 +30,23 @@ export type SdUser = {
   is_active: boolean;
   /** When this user last used the dashboard (throttled to ~5-min granularity). */
   last_seen_at?: string | null;
+  /** Custom-role ids held by this user (User Panel assignment). */
+  custom_role_ids?: number[];
+  /**
+   * Union of pages across the user's custom roles; null = unrestricted
+   * (admin, or no custom roles assigned). Computed by currentUser().
+   */
+  allowed_pages?: string[] | null;
+};
+
+/** A custom role: a named set of views, assignable to many users (sd_custom_role). */
+export type SdCustomRole = {
+  id: number;
+  name: string;
+  description: string | null;
+  pages: string[];
+  /** Emails holding this role (joined from sd_user_role). */
+  members?: string[];
 };
 
 /** One data source's freshness, for the Sync Health tab (sd_sync_status view). */

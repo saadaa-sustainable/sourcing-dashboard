@@ -35,6 +35,7 @@ export default async function DoqPage() {
       active="/doq"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <DoqClient rows={rows} />
     </FormLayout>

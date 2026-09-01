@@ -31,6 +31,7 @@ export default async function PoDetailsPage() {
       active="/po-details"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <PoDetailsClient rows={rows} />
     </FormLayout>

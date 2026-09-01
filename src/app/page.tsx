@@ -11,12 +11,14 @@ export default async function Home() {
   let userEmail: string | null = null;
   // Local fixture mode (no Supabase env) has no auth — show the full nav.
   let role: SdRole = 'admin';
+  let allowedPages: string[] | null = null;
   if (hasSupabaseEnv()) {
     const user = await currentUser();
     if (!user) redirect('/login');
     userEmail = user.email;
     if (!userEmail.endsWith('@saadaa.in')) redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
     role = user.role;
+    allowedPages = user.allowed_pages ?? null;
   }
   const dashboardData = await loadDashboardData();
   // Pending-closure panel on the Open PO Tracker (best-effort — never block the dashboard).
@@ -24,5 +26,5 @@ export default async function Home() {
   if (hasSupabaseEnv()) {
     try { closures = await loadOpenClosures(); } catch { closures = []; }
   }
-  return <DashboardShell data={dashboardData} closures={closures} userEmail={userEmail} role={role} />;
+  return <DashboardShell data={dashboardData} closures={closures} userEmail={userEmail} role={role} allowedPages={allowedPages} />;
 }

@@ -36,6 +36,7 @@ export default async function ReplenishmentPage() {
       active="/replenishment"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <ReplenishmentClient rows={rows} />
     </FormLayout>

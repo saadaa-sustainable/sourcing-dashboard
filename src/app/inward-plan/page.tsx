@@ -35,6 +35,7 @@ export default async function InwardPlanPage() {
       active="/inward-plan"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <InwardPlanClient groups={groups} />
     </FormLayout>

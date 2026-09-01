@@ -41,6 +41,7 @@ export default async function CuttingRegisterPage() {
       active="/cutting-register"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
       accent="orange"
     >
       <CuttingRegisterClient

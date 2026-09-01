@@ -36,6 +36,7 @@ export default async function GrnDetailPage() {
       active="/grn-detail"
       role={user.role}
       userEmail={user.email}
+      allowedPages={user.allowed_pages ?? null}
     >
       <GrnDetailClient rows={rows} limit={grnDetailLimit} />
     </FormLayout>
