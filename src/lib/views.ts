@@ -30,6 +30,8 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: 'tab:urgent-replenish', label: 'Urgent Replenishment', group: 'Dashboard' },
   { path: 'tab:matrix', label: 'Product Matrix View', group: 'Dashboard' },
   // Workspace — read-only analytical views.
+  // Role-specific dashboards: grant the page to that team's custom role.
+  { path: '/sourcing', label: 'Sourcing Dashboard', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },

@@ -14,6 +14,7 @@ import {
   Database,
   Factory,
   FileCheck,
+  Handshake,
   FilePen,
   FileText,
   IndianRupee,
@@ -63,6 +64,8 @@ type NavLink = {
 // Admin-only flags live in the views registry (lib/views.ts) — canView applies
 // them together with the caller's custom-role page set.
 const WORKSPACE_LINKS: NavLink[] = [
+  // Role-specific dashboards (granted via custom roles in the User Panel).
+  { href: '/sourcing', label: 'Sourcing Dashboard', Icon: Handshake },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
