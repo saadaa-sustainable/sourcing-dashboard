@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Notice } from '@/components/forms/form-layout';
+import { InfoDot } from '@/components/info-dot';
 import type { VendorRecommendationRow } from '@/lib/forms/types';
 
 // Scoring — tune these two weights (they sum to 1). On-time is scored over the
@@ -77,18 +78,18 @@ const sortVal = (v: Scored, k: SortKey): number | string =>
   : (v.last_po_date ?? '');
 
 // Column headers for the ranked table; `key` set = click-to-sort by that column.
-const HEADERS: { label: string; key?: SortKey; cls?: string }[] = [
+const HEADERS: { label: string; key?: SortKey; cls?: string; info?: string }[] = [
   { label: '#', cls: 'num' },
   { label: 'Vendor' },
-  { label: 'Score', key: 'score', cls: 'num' },
-  { label: 'Completion', key: 'completion', cls: 'num' },
-  { label: 'On-time', key: 'onTime', cls: 'num' },
-  { label: 'Delay', key: 'delay', cls: 'num' },
-  { label: 'QC-fail', key: 'qcFail', cls: 'num' },
-  { label: 'Rejection', key: 'reject', cls: 'num' },
-  { label: 'Confidence', cls: 'num' },
-  { label: 'POs', key: 'pos', cls: 'num' },
-  { label: 'Last PO', key: 'recent', cls: 'num' },
+  { label: 'Score', key: 'score', cls: 'num', info: 'Overall recommendation score (0–100) blending completion, on-time delivery, QC pass and rejection rate.' },
+  { label: 'Completion', key: 'completion', cls: 'num', info: 'Share of ordered quantity the vendor actually delivered.' },
+  { label: 'On-time', key: 'onTime', cls: 'num', info: 'Share of POs delivered on or before their expected date.' },
+  { label: 'Delay', key: 'delay', cls: 'num', info: 'Average delay in days across the vendor’s late POs.' },
+  { label: 'QC-fail', key: 'qcFail', cls: 'num', info: 'Share of received quantity that failed quality check.' },
+  { label: 'Rejection', key: 'reject', cls: 'num', info: 'Share of received quantity rejected or returned.' },
+  { label: 'Confidence', cls: 'num', info: 'How much history backs the score — more POs given means higher confidence.' },
+  { label: 'POs', key: 'pos', cls: 'num', info: 'Number of POs the score is computed from.' },
+  { label: 'Last PO', key: 'recent', cls: 'num', info: 'Days since the vendor’s most recent PO.' },
 ];
 
 export function VendorRecommendationClient({ rows }: { rows: VendorRecommendationRow[] }) {
@@ -180,6 +181,14 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
                     onClick={h.key ? () => setSortKey(h.key!) : undefined}
                   >
                     {h.label}
+                    {h.info && (
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: 'inline-flex', verticalAlign: 'middle' }}
+                      >
+                        <InfoDot text={h.info} label={`About ${h.label}`} />
+                      </span>
+                    )}
                     {h.key === sortKey ? ' ▾' : ''}
                   </th>
                 ))}

@@ -14,13 +14,15 @@ type Col = {
   kind?: 'datetime' | 'date' | 'link';
   /** Force a dropdown filter (dates filter by day, not timestamp). */
   select?: boolean;
+  /** ⓘ tooltip shown on the column header. */
+  info?: string;
 };
 
 const MANUAL_COLS: Col[] = [
-  { key: 'ingestion_date', label: 'Ingested at', kind: 'datetime', select: true },
+  { key: 'ingestion_date', label: 'Ingested at', kind: 'datetime', select: true, info: 'When this manual adjustment was pulled in from the source feed.' },
   { key: 'po_no', label: 'PO No', select: true },
   { key: 'sku_code', label: 'SKU' },
-  { key: 'manual_adjust_qty', label: 'Adjust qty', num: true },
+  { key: 'manual_adjust_qty', label: 'Adjust qty', num: true, info: 'Manual quantity correction applied to this PO/SKU (can be positive or negative).' },
   { key: 'po_type', label: 'PO type' },
   { key: 'ingestion_by', label: 'By' },
 ];
@@ -32,13 +34,13 @@ const CUTTING_COLS: Col[] = [
   { key: 'po_number', label: 'PO number', select: true },
   { key: 'item_code', label: 'Item' },
   { key: 'fabric_sku_code', label: 'Fabric SKU' },
-  { key: 'cutting_qty', label: 'Cut qty', num: true },
-  { key: 'fabric_consumed', label: 'Fabric used', num: true },
-  { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', num: true },
+  { key: 'cutting_qty', label: 'Cut qty', num: true, info: 'Pieces cut for this PO line.' },
+  { key: 'fabric_consumed', label: 'Fabric used', num: true, info: 'Actual fabric consumed in cutting.' },
+  { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', num: true, info: 'Approved average fabric consumption per piece (benchmark).' },
   { key: 'width_of_fabric', label: 'Width' },
   { key: 'type_of_po', label: 'PO type' },
   { key: 'remarks_of_cutting', label: 'Remarks' },
-  { key: 'cutting_approval_sheet', label: 'Approval', kind: 'link' },
+  { key: 'cutting_approval_sheet', label: 'Approval', kind: 'link', info: 'Link to the cutting approval sheet for this line.' },
   { key: 'ingestion_by', label: 'By' },
 ];
 
@@ -107,6 +109,7 @@ function Panel({
             : undefined,
         render: c.kind ? (r: Row) => fmt(r[c.key], c.kind) : undefined,
         filter: c.kind === 'link' ? 'none' : c.select ? 'select' : undefined,
+        info: c.info,
       })),
     [cols],
   );
