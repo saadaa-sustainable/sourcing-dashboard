@@ -926,6 +926,20 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- Buying Plan: leadership macro snapshot (§1) ---- */
+.wf-macro { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.wf-macro-card {
+  padding: 14px 16px; border-radius: 14px; border: 1px solid #e7e2d2; background: #fff;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.wf-macro-wide { grid-column: span 2; }
+.wf-macro-gap { background: #faf7ef; border-style: dashed; }
+.wf-macro-q { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #6e695e; font-weight: 700; }
+.wf-macro-val { font-size: 24px; color: #33302b; line-height: 1.1; }
+.wf-macro-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.wf-macro-chip { padding: 3px 9px; border-radius: 999px; background: #f2efe7; font-size: 11.5px; color: #33302b; }
+@media (max-width: 720px) { .wf-macro-wide { grid-column: span 1; } }
+
 /* ---- Buying Plan: PO-type lead-time coverage buckets (§7) ---- */
 .wf-buckets { margin-bottom: 14px; }
 .wf-buckets-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }

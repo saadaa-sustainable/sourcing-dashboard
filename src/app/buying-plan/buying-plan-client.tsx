@@ -307,6 +307,13 @@ export function BuyingPlanClient({
       ? Math.min(100, Math.round((plannedTotals.actualQty / plannedTotals.qty) * 100))
       : 0;
 
+  // §1 macro snapshot: total blended request broken down by category (real plan data).
+  const blendedByCategory = (() => {
+    const m = new Map<string, number>();
+    for (const v of planned) m.set(v.category, (m.get(v.category) ?? 0) + v.valueToBeBought);
+    return [...m.entries()].filter(([, val]) => val > 0).sort((a, b) => b[1] - a[1]);
+  })();
+
   const totals = view.reduce(
     (acc, item) => ({
       qty: acc.qty + item.totalQty,
@@ -456,6 +463,11 @@ export function BuyingPlanClient({
 
   return (
     <>
+      <MacroSnapshot
+        demandQty={totalPending}
+        blendedValue={plannedTotals.value}
+        byCategory={blendedByCategory}
+      />
       <div className="wf-toolbar">
         <div className="wf-toolbar-left">
           <Field label="Month">
@@ -828,6 +840,56 @@ function Progress({ pct }: { pct: number }) {
         className="wf-progress-fill"
         style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
       />
+    </div>
+  );
+}
+
+/**
+ * §1 — leadership macro snapshot: the four glance questions above the line-item
+ * table. Sales-based figures (run rate, last-3-month) are shown as "not wired"
+ * rather than faked — the Quantity-Sold→DOQ feed isn't live yet (Mahesh's flag).
+ * Demand projection (from ROP/DOQ) and the total blended request (real plan value,
+ * broken down by category) are surfaced from data that already exists.
+ */
+function MacroSnapshot({
+  demandQty,
+  blendedValue,
+  byCategory,
+}: {
+  demandQty: number;
+  blendedValue: number;
+  byCategory: [string, number][];
+}) {
+  return (
+    <div className="wf-macro">
+      <div className="wf-macro-card wf-macro-gap">
+        <span className="wf-macro-q">Run rate — revenue / qty sold</span>
+        <strong className="wf-macro-val">—</strong>
+        <span className="wf-subtle">sales feed not wired yet</span>
+      </div>
+      <div className="wf-macro-card wf-macro-gap">
+        <span className="wf-macro-q">Last-3-month average</span>
+        <strong className="wf-macro-val">—</strong>
+        <span className="wf-subtle">sales feed not wired yet</span>
+      </div>
+      <div className="wf-macro-card">
+        <span className="wf-macro-q">Demand projection</span>
+        <strong className="wf-macro-val">{fmt.format(demandQty)} pcs</strong>
+        <span className="wf-subtle">30-day, from ROP / DOQ</span>
+      </div>
+      <div className="wf-macro-card wf-macro-wide">
+        <span className="wf-macro-q">Total blended request (this plan)</span>
+        <strong className="wf-macro-val">{money.format(blendedValue)}</strong>
+        <span className="wf-macro-cats">
+          {byCategory.length ? (
+            byCategory.map(([cat, val]) => (
+              <span key={cat} className="wf-macro-chip">{cat} · {money.format(val)}</span>
+            ))
+          ) : (
+            <span className="wf-subtle">no planned value yet</span>
+          )}
+        </span>
+      </div>
     </div>
   );
 }
