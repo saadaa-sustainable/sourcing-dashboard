@@ -2,7 +2,14 @@ import { redirect } from 'next/navigation';
 import { DashboardShell } from '@/components/dashboard-shell';
 import { loadDashboardData } from '@/lib/data';
 import { hasSupabaseEnv } from '@/lib/supabase/server';
-import { currentUser, loadOpenClosures } from '@/lib/forms/queries';
+import {
+  ANALYTICS_RULE_DEFAULTS,
+  currentUser,
+  loadAnalyticsRules,
+  loadOpenClosures,
+  recordTnaSnapshot,
+} from '@/lib/forms/queries';
+import { buildTrackerRows } from '@/lib/business-logic';
 import type { PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -23,8 +30,33 @@ export default async function Home() {
   const dashboardData = await loadDashboardData();
   // Pending-closure panel on the Open PO Tracker (best-effort — never block the dashboard).
   let closures: PoClosureView[] = [];
+  let analyticsRules = ANALYTICS_RULE_DEFAULTS;
   if (hasSupabaseEnv()) {
     try { closures = await loadOpenClosures(); } catch { closures = []; }
+    analyticsRules = await loadAnalyticsRules(); // never throws
+    // Daily TNA-status snapshot for the compliance-trend card: first load of the
+    // day records the mix; later loads are DB-side no-ops. Best-effort.
+    try {
+      const rows = buildTrackerRows(
+        dashboardData.pendingPos, dashboardData.vendorTypes,
+        dashboardData.vendorMasters, dashboardData.tnaRecords,
+      );
+      await recordTnaSnapshot({
+        onTime: rows.filter((r) => r.internalStatus === 'On Track').length,
+        highRisk: rows.filter((r) => r.internalStatus === 'High Risk').length,
+        overdue: rows.filter((r) => r.internalStatus === 'Overdue').length,
+        openTotal: rows.length,
+      });
+    } catch { /* snapshot must never block the dashboard */ }
   }
-  return <DashboardShell data={dashboardData} closures={closures} userEmail={userEmail} role={role} allowedPages={allowedPages} />;
+  return (
+    <DashboardShell
+      data={dashboardData}
+      closures={closures}
+      userEmail={userEmail}
+      role={role}
+      allowedPages={allowedPages}
+      analyticsRules={analyticsRules}
+    />
+  );
 }

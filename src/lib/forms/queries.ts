@@ -157,6 +157,82 @@ export async function loadCustomRoles(): Promise<SdCustomRole[]> {
   }));
 }
 
+/* ------------------------------------------------------------------ */
+/* Main-dashboard analytics (cross-tab decision cards)                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Card thresholds from the editable Rules Master (sd_analytics_rule), with
+ * hardcoded fallbacks matching the seeded defaults so the cards degrade
+ * gracefully if the table is unreachable. Never throws.
+ */
+export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
+  capital_risk_quantile: 0.75,
+  vendor_concentration_alert: 40,
+  utilization_under_pct: 70,
+  utilization_over_pct: 100,
+  reliability_window_days: 60,
+  closure_sla_days: 15,
+};
+
+export async function loadAnalyticsRules(): Promise<Record<string, number>> {
+  const rules = { ...ANALYTICS_RULE_DEFAULTS };
+  try {
+    const supabase = await client();
+    const { data } = await supabase.from('sd_analytics_rule').select('rule_key, value');
+    ((data ?? []) as { rule_key: string; value: number }[]).forEach((r) => {
+      const v = Number(r.value);
+      if (Number.isFinite(v)) rules[r.rule_key] = v;
+    });
+  } catch {
+    /* fall back to defaults — cards must never take the dashboard down */
+  }
+  return rules;
+}
+
+/**
+ * Record today's TNA status mix for the compliance-trend card. Idempotent
+ * (first dashboard load of the IST day wins, see sd_record_tna_snapshot) and
+ * strictly best-effort.
+ */
+export async function recordTnaSnapshot(counts: {
+  onTime: number;
+  highRisk: number;
+  overdue: number;
+  openTotal: number;
+}): Promise<void> {
+  try {
+    const supabase = await client();
+    await supabase.rpc('sd_record_tna_snapshot', {
+      p_on_time: counts.onTime,
+      p_high_risk: counts.highRisk,
+      p_overdue: counts.overdue,
+      p_open_total: counts.openTotal,
+    });
+  } catch {
+    /* best-effort only */
+  }
+}
+
+/** The TNA snapshot history (oldest first), for the compliance-trend card. */
+export async function loadTnaSnapshots(): Promise<
+  { snapshot_date: string; on_time: number; high_risk: number; overdue: number; open_total: number }[]
+> {
+  try {
+    const supabase = await client();
+    const { data } = await supabase
+      .from('sd_tna_status_snapshot')
+      .select('snapshot_date, on_time, high_risk, overdue, open_total')
+      .order('snapshot_date')
+      .limit(120);
+    return (data ?? []) as {
+      snapshot_date: string; on_time: number; high_risk: number; overdue: number; open_total: number;
+    }[];
+  } catch {
+    return [];
+  }
+}
+
 /** Cash-flow forecast (payment obligations by month) + editable vendor terms. */
 export async function loadCashFlow(): Promise<{
   months: CashFlowMonth[];

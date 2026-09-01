@@ -64,6 +64,7 @@ import type {
 import { TnaBreakdown } from "./tna-breakdown";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
+import { AnalyticsCards } from "./analytics-cards";
 import { canView } from "@/lib/views";
 import type { PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
@@ -3276,12 +3277,15 @@ export function DashboardShell({
   userEmail,
   role = 'viewer',
   allowedPages = null,
+  analyticsRules = {},
 }: {
   data: DashboardData;
   closures?: PoClosureView[];
   userEmail: string | null;
   role?: SdRole;
   allowedPages?: string[] | null;
+  /** Card thresholds from the Rules Master (sd_analytics_rule). */
+  analyticsRules?: Record<string, number>;
 }) {
   const [tab, setTab] = useState<TabId>("dashboard");
   const [info, setInfo] = useState(false);
@@ -3342,13 +3346,17 @@ export function DashboardShell({
         ))}
         <div className="content">
           {tab === "dashboard" && (
-            <DashboardTab
-              data={data}
-              bucket={bucket}
-              setBucket={setBucket}
-              onHighRisk={setHighRisk}
-              onOverdue={setOverdue}
-            />
+            <>
+              {/* Cross-tab decision cards — the "so what" layer above the KPIs. */}
+              <AnalyticsCards data={data} rules={analyticsRules} onTab={setTab} />
+              <DashboardTab
+                data={data}
+                bucket={bucket}
+                setBucket={setBucket}
+                onHighRisk={setHighRisk}
+                onOverdue={setOverdue}
+              />
+            </>
           )}{" "}
           {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} />}{" "}
           {tab === "vendors" && <VendorTab data={data} />}{" "}
