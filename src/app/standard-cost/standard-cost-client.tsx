@@ -11,6 +11,7 @@ import {
   renegotiateCost,
   saveCmtpComponents,
   saveCostStandards,
+  saveEfobFabricCost,
   saveMaterialCost,
   saveStandardCost,
   saveStandardCostLines,
@@ -39,6 +40,7 @@ import { Field, Notice } from '@/components/forms/form-layout';
 import type {
   CmtpComponent,
   CostStandards,
+  EfobFabricCost,
   SdRole,
   StandardCost,
   StandardCostLine,
@@ -56,6 +58,7 @@ export function StandardCostClient({
   fabricBase = {},
   fabricCodes = [],
   standards,
+  efob = [],
   initialOpen = null,
   role,
   track = 'fg',
@@ -66,6 +69,7 @@ export function StandardCostClient({
   fabricBase?: Record<string, FabricBuildup>;
   fabricCodes?: string[];
   standards?: CostStandards;
+  efob?: EfobFabricCost[];
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -141,6 +145,7 @@ export function StandardCostClient({
       {error && <Notice tone="error">{error}</Notice>}
 
       {!isMat && standards && <StandardFieldsPanel standards={standards} editable={editable} />}
+      {!isMat && <EfobFabricCostPanel rows={efob} editable={editable} />}
 
       {editable && (
         <div className="wf-form-panel">
@@ -275,6 +280,71 @@ function StandardFieldsPanel({
           </button>
         )}
       </div>
+    </details>
+  );
+}
+
+/**
+ * EFOB Fabric Cost (spec §6) — the monthly fixed rate the company sets for carrying
+ * commodity risk on EFOB POs. Its own benchmark, separate from the fabric-cost sheet.
+ */
+function EfobFabricCostPanel({ rows, editable }: { rows: EfobFabricCost[]; editable: boolean }) {
+  const thisMonth = rows[0]?.month?.slice(0, 7) ?? '';
+  const [month, setMonth] = useState('');
+  const [rate, setRate] = useState('');
+  const [busy, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  function save() {
+    setMsg(null);
+    setErr(null);
+    if (!month) return setErr('Pick a month.');
+    if (rate === '') return setErr('Enter the rate.');
+    const fd = new FormData();
+    fd.set('month', month);
+    fd.set('rate', rate);
+    start(async () => {
+      const res = await saveEfobFabricCost(fd);
+      if (res.ok) reloadWithToast();
+      else setErr(res.error);
+    });
+  }
+
+  return (
+    <details className="wf-standards-panel">
+      <summary>
+        EFOB Fabric Cost — the monthly rate for EFOB POs
+        {rows[0]?.rate != null && (
+          <span className="wf-subtle"> · {thisMonth}: ₹{rows[0].rate}</span>
+        )}
+      </summary>
+      {msg && <Notice tone="ok">{msg}</Notice>}
+      {err && <Notice tone="error">{err}</Notice>}
+      {editable && (
+        <div className="wf-form-grid">
+          <Field label="Month"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
+          <Field label="EFOB fabric rate"><input type="number" min={0} value={rate} onChange={(e) => setRate(e.target.value)} /></Field>
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
+            <Save size={13} /> {busy ? 'Saving…' : 'Set rate'}
+          </button>
+        </div>
+      )}
+      {rows.length > 0 && (
+        <table className="wf-grid wf-cost-lines">
+          <thead><tr><th>Month</th><th className="num">Rate</th><th>Set by</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.month}>
+                <td>{r.month.slice(0, 7)}</td>
+                <td className="num">{r.rate != null ? `₹${r.rate}` : '—'}</td>
+                <td className="wf-subtle">{r.updated_by ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {!rows.length && <p className="wf-subtle">No EFOB fabric rate set yet.</p>}
     </details>
   );
 }

@@ -52,6 +52,7 @@ import type {
   CuttingRegister,
   DynamicLink,
   ProductBom,
+  EfobFabricCost,
   PoClosure,
   PoClosureView,
   VendorCapacityLog,
@@ -463,6 +464,17 @@ export async function loadDynamicLinks(): Promise<DynamicLink[]> {
     .order('created_at', { ascending: false })
     .limit(PAGE_SIZE);
   return (data ?? []) as DynamicLink[];
+}
+
+/** Monthly EFOB fabric-cost benchmarks, most recent first (spec §6). */
+export async function loadEfobFabricCost(): Promise<EfobFabricCost[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_efob_fabric_cost')
+    .select('*')
+    .order('month', { ascending: false })
+    .limit(24);
+  return (data ?? []) as EfobFabricCost[];
 }
 
 /** product_code → BOM standard, so the cutting form can show the standard by product. */

@@ -573,6 +573,14 @@ export type DynamicLink = {
 /** Product-level BOM standard, for the cutting register's read-only reference. */
 export type ProductBom = { bom_quantity: number | null; bom_uom: string | null };
 
+/** Monthly EFOB fabric-cost benchmark (sd_efob_fabric_cost) — spec §6. */
+export type EfobFabricCost = {
+  month: string; // first of month
+  rate: number | null;
+  updated_by: string | null;
+  updated_at: string;
+};
+
 /** One PO's closure workflow row — both legs + SLA timestamps (sd_po_closure). */
 export type PoClosure = {
   id: number;

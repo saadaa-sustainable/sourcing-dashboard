@@ -4,6 +4,7 @@ import {
   currentUser,
   loadCmtpComponents,
   loadCostStandards,
+  loadEfobFabricCost,
   loadFabricCostBase,
   loadMaterialStandardCosts,
   loadStandardCostLines,
@@ -40,15 +41,16 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, standards, cmtp] =
+  const [costs, lines, fabricBase, standards, cmtp, efob] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), []]
+      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], []]
       : await Promise.all([
           loadStandardCosts(),
           loadStandardCostLines(),
           loadFabricCostBase(),
           loadCostStandards(),
           loadCmtpComponents(),
+          loadEfobFabricCost(),
         ]);
 
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
@@ -85,6 +87,7 @@ export default async function StandardCostPage({
         fabricBase={fabricByCode}
         fabricCodes={fabricCodes}
         standards={standards}
+        efob={efob}
         initialOpen={openCode}
         role={user.role}
         track={track}

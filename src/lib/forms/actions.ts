@@ -1679,6 +1679,30 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
   return done('Cost rejected.');
 }
 
+/**
+ * Set the EFOB fabric-cost benchmark for a month (spec §6) — a fixed rate the
+ * company sets monthly for carrying commodity risk on EFOB POs.
+ */
+export async function saveEfobFabricCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to set the EFOB fabric cost.');
+  const raw = String(formData.get('month') ?? '').trim();
+  if (!raw) return fail('Pick a month.');
+  const month = `${raw.slice(0, 7)}-01`; // normalise 'YYYY-MM' or 'YYYY-MM-DD' → first of month
+  const rate = numOrNull(formData.get('rate'));
+  if (rate == null) return fail('Enter the EFOB fabric rate.');
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_efob_fabric_cost').upsert(
+    { month, rate, updated_by: user.email, updated_at: new Date().toISOString() },
+    { onConflict: 'month' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/standard-cost');
+  return done(`EFOB fabric cost set for ${month.slice(0, 7)}.`);
+}
+
 /** The document-once standard fields (singleton) — same across all products. */
 export async function saveCostStandards(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
@@ -1946,7 +1970,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, product_code, po_issued_at, critical_path_first_delivery')
+    .select('id, status, product_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -1955,6 +1979,30 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const alreadyIssued = Boolean(po.po_issued_at);
   // The EasyCom number is required to first issue; once issued it can be edited.
   if (!alreadyIssued && !easycom) return fail('Enter the EasyCom PO number to issue.');
+
+  // §7 issuance gate vs the approval log: a PO can't be ISSUED at an above-standard
+  // CMTP unless that exception was separately approved (logged). Confirming here with
+  // a mandatory remark records it (cm_override_* + sd_approval_log); a PO already
+  // carrying a logged exception passes. Validates against the log, not a static number.
+  let costException: { poCm: number; stdCm: number } | null = null;
+  if (!alreadyIssued && po.cm_cost != null && po.product_code && !po.cm_override_at) {
+    const { data: std } = await supabase
+      .from('sd_standard_cost')
+      .select('cm_cost')
+      .eq('product_code', po.product_code)
+      .maybeSingle();
+    const stdCm = std?.cm_cost == null ? null : Number(std.cm_cost);
+    if (stdCm != null && Number(po.cm_cost) > stdCm + 0.005) {
+      const override = formData.get('cost_override') === 'true';
+      const note = String(formData.get('cost_override_note') ?? '').trim();
+      if (!override || !note) {
+        return fail(
+          `This PO's CMTP ₹${po.cm_cost} is above the standard ₹${stdCm} and was never separately approved. Confirm the above-standard cost with a reason to issue.`,
+        );
+      }
+      costException = { poCm: Number(po.cm_cost), stdCm };
+    }
+  }
 
   // Explicit lock-in: the standard cost is frozen as the benchmark ONLY when the
   // issuer ticks "set as standard benchmark cost" — never silently on first issue.
@@ -1973,6 +2021,11 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   if (easycom) patch.easycom_po_no = easycom;
   if (!alreadyIssued) patch.po_issued_at = new Date().toISOString();
   if (setBenchmark) patch.benchmark_cost = true;
+  if (costException) {
+    patch.cm_override_note = String(formData.get('cost_override_note') ?? '').trim();
+    patch.cm_override_by = user.email;
+    patch.cm_override_at = new Date().toISOString();
+  }
 
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
@@ -2004,6 +2057,19 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
       'approved',
       user.email,
       `EasyCom PO ${easycom}`,
+    );
+  }
+
+  // Log the above-standard-cost exception so issuance validates against the log.
+  if (costException) {
+    await writeLog(
+      'po_approval',
+      String(id),
+      `PO ${easycom || `#${id}`} · above-standard cost approved at issuance`,
+      'approved',
+      'approved',
+      user.email,
+      `CMTP ₹${costException.poCm} > standard ₹${costException.stdCm}. Reason: ${String(formData.get('cost_override_note') ?? '').trim()}`,
     );
   }
 

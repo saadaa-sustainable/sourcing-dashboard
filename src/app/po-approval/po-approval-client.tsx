@@ -505,6 +505,7 @@ export function PoApprovalClient({
                       : undefined
                   }
                   role={role}
+                  stdCm={stdCm}
                 />
               ))}
               {!pos.length && (
@@ -637,12 +638,14 @@ function PoRow({
   liveLoad,
   lines,
   role,
+  stdCm = {},
 }: {
   po: PoApproval;
   cycle?: PoCycleTime;
   liveLoad?: number;
   lines: PoApprovalLine[];
   role: SdRole;
+  stdCm?: Record<string, number>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -661,6 +664,16 @@ function PoRow({
   const [benchmark, setBenchmark] = useState(false);
   const canIssue = canEdit(role, 'draft');
   const issued = Boolean(po.po_issued_at);
+
+  // §7 issuance gate: a PO whose CMTP is above the product's standard can only be
+  // issued once the above-standard cost is confirmed with a remark (logged as an
+  // approved exception). An already-logged exception (cm_override_at) clears it.
+  const stdCmForPo = po.product_code ? stdCm[po.product_code.trim()] : undefined;
+  const aboveStdCm =
+    po.cm_cost != null && stdCmForPo != null && po.cm_cost > stdCmForPo + 0.005;
+  const exceptionLogged = Boolean(po.cm_override_at);
+  const needsCostOverride = aboveStdCm && !exceptionLogged && !issued;
+  const [costOverrideNote, setCostOverrideNote] = useState('');
 
   // Timeline-change flag: actual first delivery landing past the approved
   // first-delivery date is an "extended after approval" case — surfaced, not blocked.
@@ -754,10 +767,18 @@ function PoRow({
 
   function saveIssuance() {
     setError(null);
+    if (needsCostOverride && !costOverrideNote.trim()) {
+      setError('This PO is above the standard CMTP — confirm with a reason to issue.');
+      return;
+    }
     const p = new FormData();
     p.set('id', String(po.id));
     Object.entries(iss).forEach(([k, v]) => p.set(k, v));
     p.set('set_benchmark', benchmark ? 'true' : 'false');
+    if (needsCostOverride) {
+      p.set('cost_override', 'true');
+      p.set('cost_override_note', costOverrideNote);
+    }
     start(async () => {
       const res = await issuePoApproval(p);
       if (res.ok) reloadWithToast();
@@ -1001,12 +1022,32 @@ function PoRow({
                   product’s standard cost as the fixed reference (no later drift).
                 </span>
               </label>
+              {needsCostOverride && (
+                <div className="wf-cost-gate">
+                  <p className="wf-inline-error">
+                    CMTP ₹{po.cm_cost} is above the standard ₹{stdCmForPo}. Confirm the
+                    above-standard cost with a reason — it&rsquo;s logged as an approved exception.
+                  </p>
+                  <input
+                    className="wf-mini-input"
+                    placeholder="Reason for issuing above standard"
+                    value={costOverrideNote}
+                    onChange={(e) => setCostOverrideNote(e.target.value)}
+                  />
+                </div>
+              )}
+              {exceptionLogged && (
+                <p className="wf-subtle">
+                  Above-standard cost approved{po.cm_override_by ? ` by ${po.cm_override_by}` : ''}
+                  {po.cm_override_note ? ` — ${po.cm_override_note}` : ''}.
+                </p>
+              )}
               <div className="wf-footer-actions">
                 <button
                   type="button"
                   className="wf-btn wf-btn-primary wf-btn-sm"
                   onClick={saveIssuance}
-                  disabled={pending || (!issued && !iss.easycom_po_no.trim())}
+                  disabled={pending || (!issued && !iss.easycom_po_no.trim()) || (needsCostOverride && !costOverrideNote.trim())}
                 >
                   <FileCheck size={14} />{' '}
                   {issued ? 'Save signing details' : 'Issue PO'}

@@ -926,6 +926,12 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- PO issuance gate: above-standard-cost confirm (§7) ---- */
+.wf-cost-gate {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin: 6px 0;
+  border: 1px solid rgba(193, 74, 58, 0.35); border-radius: 8px; background: rgba(193, 74, 58, 0.05);
+}
+
 /* ---- Pending-closure panel on the Open PO Tracker ---- */
 .wf-closure-panel {
   border: 1px solid #e7e2d2; border-radius: 12px; background: #fff; padding: 10px 14px; margin-bottom: 12px;

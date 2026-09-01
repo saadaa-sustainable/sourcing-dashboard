@@ -298,9 +298,16 @@ through remark + approval), the system **logs that specific approved exception**
    CMTP-vs-standard review UI done; **hard-block deferred** (added later); batch
    change-request table + last-PO delta deferred.
 3. SMV hard gate *(§2)* + persistent pre-invoice reminders *(§2b)* — build together.
-4. PO hard gate vs approval log *(§7)*
+4. PO issuance gate vs approval log *(§7)* — ✅ done: `issuePoApproval` blocks an
+   above-standard-CMTP issuance unless a logged exception exists; confirming with a
+   mandatory remark records it (`cm_override_*` + `sd_approval_log`). UI: confirm +
+   remark in the issue/signing form.
+5. EFOB Fabric Cost *(§6)* — ✅ done: monthly `sd_efob_fabric_cost` (month PK, rate),
+   managed from a panel on the Standard Cost page. (Wiring it into EFOB PO cost
+   validation is a later step.)
 
-Also outstanding: Product Trims Master *(§3)*, Fabric Cost Master population *(§4)*,
-EFOB Fabric Cost field *(§6)*.
+Also outstanding: Product Trims Master *(§3)*, Fabric Cost Master population *(§4)*.
+
+Deferred (table rework): current Standard Cost table needs re-work — later.
 
 Detail tabs (§0 v1) ✅ done — CMTP · Fabric Cost · Final Cost (FINAL PRICE).
