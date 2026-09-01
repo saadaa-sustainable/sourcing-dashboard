@@ -6,6 +6,7 @@ import {
   loadActualsByProduct,
   loadBuyingPlan,
   loadMaterialPlan,
+  loadProductCatalog,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { BuyingPlanClient } from './buying-plan-client';
@@ -71,7 +72,12 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
   const [
     { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
     actualsMap,
-  ] = await Promise.all([loadBuyingPlan(planMonth), loadActualsByProduct(planMonth)]);
+    catalog,
+  ] = await Promise.all([
+    loadBuyingPlan(planMonth),
+    loadActualsByProduct(planMonth),
+    loadProductCatalog(),
+  ]);
   return (
     <BuyingPlanClient
       planMonth={planMonth}
@@ -82,6 +88,7 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       standardCosts={standardCosts}
       pendingByCode={pendingByCode}
       actuals={Object.fromEntries(actualsMap)}
+      catalog={catalog}
       role={role}
     />
   );

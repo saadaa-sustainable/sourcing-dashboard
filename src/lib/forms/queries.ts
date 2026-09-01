@@ -53,6 +53,7 @@ import type {
   CuttingRegister,
   DynamicLink,
   ProductBom,
+  ProductCatalogItem,
   EfobFabricCost,
   PoClosure,
   PoClosureView,
@@ -497,6 +498,17 @@ export async function loadDynamicLinks(): Promise<DynamicLink[]> {
     .order('created_at', { ascending: false })
     .limit(PAGE_SIZE);
   return (data ?? []) as DynamicLink[];
+}
+
+/** product_code + product_name for the "Add Product" picker (search by either). */
+export async function loadProductCatalog(): Promise<ProductCatalogItem[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_product_catalog')
+    .select('product_code, product_name')
+    .order('product_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as ProductCatalogItem[];
 }
 
 /** Monthly EFOB fabric-cost benchmarks, most recent first (spec §6). */

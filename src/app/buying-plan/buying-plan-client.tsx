@@ -29,9 +29,11 @@ import {
 } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
+import { ProductPicker } from '@/components/forms/product-picker';
 import type {
   BuyingPlan,
   BuyingPlanLine,
+  ProductCatalogItem,
   SdRole,
   SdStatus,
 } from '@/lib/forms/types';
@@ -107,6 +109,7 @@ export function BuyingPlanClient({
   standardCosts,
   pendingByCode,
   actuals,
+  catalog = [],
   role,
 }: {
   planMonth: string;
@@ -117,6 +120,7 @@ export function BuyingPlanClient({
   standardCosts: Record<string, { job: number; fob: number; efob: number }>;
   pendingByCode: Record<string, number>;
   actuals: Record<string, { qty: number; value: number }>;
+  catalog?: ProductCatalogItem[];
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
@@ -473,23 +477,12 @@ export function BuyingPlanClient({
             >
               <Upload size={15} /> Import CSV
             </button>
-            <select
-              className="wf-add-select"
-              value=""
-              onChange={(event) => addRow(event.target.value)}
-              disabled={!available.length}
-            >
-              <option value="">
-                {available.length
-                  ? `Add product code (${available.length} left)`
-                  : 'All product codes added'}
-              </option>
-              {available.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </select>
+            <ProductPicker
+              items={catalog}
+              exclude={used}
+              onPick={(code) => addRow(code)}
+              placeholder="Add product — search code or name…"
+            />
             <button
               type="button"
               className="wf-btn wf-btn-ghost"

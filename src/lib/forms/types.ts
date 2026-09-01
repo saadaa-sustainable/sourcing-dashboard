@@ -590,6 +590,9 @@ export type DynamicLink = {
 /** Product-level BOM standard, for the cutting register's read-only reference. */
 export type ProductBom = { bom_quantity: number | null; bom_uom: string | null };
 
+/** One product in the "Add Product" picker — code + name (sd_product_catalog). */
+export type ProductCatalogItem = { product_code: string; product_name: string | null };
+
 /** Monthly EFOB fabric-cost benchmark (sd_efob_fabric_cost) — spec §6. */
 export type EfobFabricCost = {
   month: string; // first of month

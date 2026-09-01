@@ -37,10 +37,12 @@ import {
 } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
 import { Field, Notice } from '@/components/forms/form-layout';
+import { ProductPicker } from '@/components/forms/product-picker';
 import type {
   CmtpComponent,
   CostStandards,
   EfobFabricCost,
+  ProductCatalogItem,
   SdRole,
   StandardCost,
   StandardCostLine,
@@ -59,6 +61,7 @@ export function StandardCostClient({
   fabricCodes = [],
   standards,
   efob = [],
+  catalog = [],
   initialOpen = null,
   role,
   track = 'fg',
@@ -70,6 +73,7 @@ export function StandardCostClient({
   fabricCodes?: string[];
   standards?: CostStandards;
   efob?: EfobFabricCost[];
+  catalog?: ProductCatalogItem[];
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -107,14 +111,16 @@ export function StandardCostClient({
     return q ? costs.filter((c) => c.product_code.toLowerCase().includes(q)) : costs;
   }, [costs, filter]);
 
-  function addCode() {
-    if (!newCode.trim()) {
+  const existingCodes = useMemo(() => new Set(costs.map((c) => c.product_code)), [costs]);
+
+  function addCode(codeRaw: string) {
+    const code = codeRaw.trim();
+    if (!code) {
       setError(`Enter a ${codeLabel.toLowerCase()}.`);
       return;
     }
     setError(null);
     setMessage(null);
-    const code = newCode.trim();
     const fd = new FormData();
     fd.set('product_code', code);
     start(async () => {
@@ -149,18 +155,30 @@ export function StandardCostClient({
 
       {editable && (
         <div className="wf-form-panel">
-          <div className="wf-form-grid">
-            <Field label={`Add a ${codeLabel.toLowerCase()}`} hint="seeds a row you can then propose">
-              <input
-                value={newCode}
-                placeholder={isMat ? 'e.g. TRM07' : 'e.g. SDRPT'}
-                onChange={(e) => setNewCode(e.target.value)}
+          {isMat ? (
+            <div className="wf-form-grid">
+              <Field label={`Add a ${codeLabel.toLowerCase()}`} hint="seeds a row you can then propose">
+                <input
+                  value={newCode}
+                  placeholder="e.g. TRM07"
+                  onChange={(e) => setNewCode(e.target.value)}
+                />
+              </Field>
+              <button type="button" className="wf-btn wf-btn-primary" onClick={() => addCode(newCode)} disabled={pending}>
+                <Plus size={15} /> Add to sheet
+              </button>
+            </div>
+          ) : (
+            <Field label="Add a product" hint="search by code or name — from the product master">
+              <ProductPicker
+                items={catalog}
+                exclude={existingCodes}
+                onPick={(code) => addCode(code)}
+                disabled={pending}
+                placeholder="Search product code or name…"
               />
             </Field>
-            <button type="button" className="wf-btn wf-btn-primary" onClick={addCode} disabled={pending}>
-              <Plus size={15} /> Add to sheet
-            </button>
-          </div>
+          )}
         </div>
       )}
 

@@ -926,6 +926,30 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- Add-Product picker (search by code / name) ---- */
+.wf-picker { position: relative; min-width: 260px; flex: 1 1 260px; }
+.wf-picker-input {
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  border: 1px solid #e7e2d2; border-radius: 8px; background: #fff; color: #6e695e;
+}
+.wf-picker-input input {
+  border: none; outline: none; padding: 9px 0; font: inherit; font-size: 13px;
+  width: 100%; background: transparent; color: #33302b;
+}
+.wf-picker-list {
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 300px; overflow-y: auto; background: #fff; border: 1px solid #e7e2d2;
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(40, 36, 28, 0.14); padding: 4px;
+}
+.wf-picker-item {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  padding: 7px 10px; border: none; background: none; cursor: pointer; border-radius: 7px;
+}
+.wf-picker-item:hover { background: #faf7ef; }
+.wf-picker-code { font-size: 12px; font-weight: 700; color: #33302b; }
+.wf-picker-name { font-size: 11.5px; color: #6e695e; }
+.wf-picker-empty { padding: 10px; font-size: 12px; color: #6e695e; }
+
 /* ---- PO issuance gate: above-standard-cost confirm (§7) ---- */
 .wf-cost-gate {
   display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin: 6px 0;

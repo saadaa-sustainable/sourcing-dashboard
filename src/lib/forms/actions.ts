@@ -205,7 +205,21 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
     }
   }
 
+  // A product added to the Buying Plan is automatically added to Standard Cost —
+  // seed a row for each code (on conflict do nothing, so existing costs untouched).
+  const codes = [...new Set(payload.map((l) => l.product_code).filter(Boolean))];
+  if (codes.length) {
+    const costTable = planType === 'material' ? 'sd_material_standard_cost' : 'sd_standard_cost';
+    await supabase
+      .from(costTable)
+      .upsert(codes.map((product_code) => ({ product_code })), {
+        onConflict: 'product_code',
+        ignoreDuplicates: true,
+      });
+  }
+
   revalidatePath('/buying-plan');
+  revalidatePath('/standard-cost');
   return done(`Saved ${payload.length} product lines.`);
 }
 
