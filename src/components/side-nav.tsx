@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ComponentType } from 'react';
+import { Fragment, useState, type ComponentType } from 'react';
 import type { SdRole } from '@/lib/forms/types';
 import { canView } from '@/lib/views';
 import {
@@ -69,32 +69,48 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
 ];
 
-// Operational pages: each one you DO something on — build a plan, submit a form,
-// approve, ingest data, set terms (all back a server action that writes).
-const WORKFLOW_LINKS: NavLink[] = [
+// Operational pages, grouped by use case (DAM nav model: chronological
+// workflow sections, then masters, then system). Regrouping is cosmetic —
+// role gating stays per-href via canView.
+
+// Decide the buy: cost baseline, capacity check, the plan itself.
+const PLANNING_LINKS: NavLink[] = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
-  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
-  { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
-  { href: '/cutting-register', label: 'Cutting Register', Icon: Scissors },
-  { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
-  { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
-  { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
-  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
-  { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
-  { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
 ];
 
-// Masters and datasets under the Admin divider.
-const ADMIN_LINKS: NavLink[] = [
+// The PO lifecycle in order: raise/approve → document → plan receipts →
+// production (cutting) → close out → pay.
+const PO_WORKFLOW_LINKS: NavLink[] = [
+  { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
+  { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
+  { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
+  { href: '/cutting-register', label: 'Cutting Register', Icon: Scissors },
+  { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
+  { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
+];
+
+// Cross-cutting governance: the approval queue, data corrections, lifecycle exits.
+const GOVERNANCE_LINKS: NavLink[] = [
+  { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
+  { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
+  { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
+];
+
+// Reference data the workflows read from.
+const MASTERS_LINKS: NavLink[] = [
   { href: '/product-master', label: 'Product Master', Icon: Tags },
-  { href: '/grn-detail', label: 'GRN Detail', Icon: PackageCheck },
-  { href: '/doq', label: 'DOQ Dataset', Icon: Database },
   { href: '/vendor-master', label: 'Vendor Master', Icon: Factory },
   { href: '/fabric-master', label: 'Fabric Master', Icon: Layers },
   { href: '/material-master', label: 'Material Master', Icon: Boxes },
   { href: '/fabric-cost', label: 'Fabric Cost', Icon: IndianRupee },
+  { href: '/grn-detail', label: 'GRN Detail', Icon: PackageCheck },
+  { href: '/doq', label: 'DOQ Dataset', Icon: Database },
+];
+
+// System administration.
+const ADMIN_LINKS: NavLink[] = [
   { href: '/users', label: 'User Panel', Icon: UserCog },
   { href: '/sync-status', label: 'Sync Health', Icon: Activity },
 ];
@@ -127,8 +143,15 @@ export function SideNav({
   const visible = (links: NavLink[]) =>
     links.filter(({ href }) => canView(href, role, allowedPages));
   const workspace = visible(WORKSPACE_LINKS);
-  const workflows = visible(WORKFLOW_LINKS);
-  const admin = visible(ADMIN_LINKS);
+  // Use-case sections below the Workspace block; a divider renders only when
+  // the caller can see at least one page in the group.
+  const groups: { title: string; links: NavLink[] }[] = [
+    { title: 'Planning', links: visible(PLANNING_LINKS) },
+    { title: 'PO Workflow', links: visible(PO_WORKFLOW_LINKS) },
+    { title: 'Governance & Data', links: visible(GOVERNANCE_LINKS) },
+    { title: 'Masters & Datasets', links: visible(MASTERS_LINKS) },
+    { title: 'Admin', links: visible(ADMIN_LINKS) },
+  ];
   const renderLink = ({ href, label, Icon, external }: NavLink) => (
     <a
       key={href}
@@ -186,10 +209,14 @@ export function SideNav({
               ),
             )}
           {workspace.map(renderLink)}
-          {workflows.length > 0 && <div className="wf-nav-divider">Workflows</div>}
-          {workflows.map(renderLink)}
-          {admin.length > 0 && <div className="wf-nav-divider">Admin</div>}
-          {admin.map(renderLink)}
+          {groups.map(({ title, links }) =>
+            links.length > 0 ? (
+              <Fragment key={title}>
+                <div className="wf-nav-divider">{title}</div>
+                {links.map(renderLink)}
+              </Fragment>
+            ) : null,
+          )}
         </nav>
         <div className="sidebar-foot">
           <div className="status-dot">
