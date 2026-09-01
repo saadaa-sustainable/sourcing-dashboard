@@ -33,7 +33,7 @@ export function InfoDot({ text, label = 'More info' }: { text: string; label?: s
           background: 'none',
           border: 'none',
           cursor: 'help',
-          color: '#5f6368',
+          color: '#9a9384',
           display: 'inline-flex',
           verticalAlign: 'middle',
           marginLeft: 4,

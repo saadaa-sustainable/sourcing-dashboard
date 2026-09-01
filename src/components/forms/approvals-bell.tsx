@@ -39,7 +39,7 @@ export function ApprovalsBell() {
             height: 16,
             padding: '0 4px',
             borderRadius: 8,
-            background: '#c5221f',
+            background: '#c0392b',
             color: '#fff',
             fontSize: 10,
             fontWeight: 700,

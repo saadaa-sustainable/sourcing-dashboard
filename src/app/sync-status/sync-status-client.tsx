@@ -34,9 +34,9 @@ function health(row: SyncStatusRow): Health {
 }
 
 const BADGE: Record<Health, { text: string; bg: string; fg: string }> = {
-  fresh: { text: 'Fresh', bg: '#e6f4ea', fg: '#137333' },
-  stale: { text: 'Stale', bg: '#fce8e6', fg: '#c5221f' },
-  unknown: { text: 'Unknown', bg: '#f1f3f4', fg: '#5f6368' },
+  fresh: { text: 'Fresh', bg: '#ecf1e9', fg: '#4f7c4d' },
+  stale: { text: 'Stale', bg: '#fdecea', fg: '#c0392b' },
+  unknown: { text: 'Unknown', bg: '#f0ede6', fg: '#6e695e' },
 };
 
 export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {

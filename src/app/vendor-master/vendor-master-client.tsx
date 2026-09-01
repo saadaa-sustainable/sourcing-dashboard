@@ -19,8 +19,8 @@ const COLS: Column<VendorMasterRow>[] = [
       return (
         <span
           style={{
-            background: r.is_active ? '#e6f4ea' : '#fce8e6',
-            color: r.is_active ? '#137333' : '#c5221f',
+            background: r.is_active ? '#ecf1e9' : '#fdecea',
+            color: r.is_active ? '#4f7c4d' : '#c0392b',
             padding: '2px 8px',
             borderRadius: 10,
             fontSize: 12,

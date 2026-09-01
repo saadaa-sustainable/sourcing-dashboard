@@ -52,8 +52,8 @@ const COLS: Column<EeProductMaster>[] = [
       return (
         <span
           style={{
-            background: on ? '#e6f4ea' : '#fce8e6',
-            color: on ? '#137333' : '#c5221f',
+            background: on ? '#ecf1e9' : '#fdecea',
+            color: on ? '#4f7c4d' : '#c0392b',
             padding: '2px 8px',
             borderRadius: 10,
             fontSize: 12,

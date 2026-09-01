@@ -9,9 +9,9 @@ type Toast = { id: number; msg: string; tone: ToastTone };
 let counter = 0;
 
 const TONE: Record<ToastTone, { bg: string; fg: string; Icon: typeof Info }> = {
-  success: { bg: '#e6f4ea', fg: '#137333', Icon: CheckCircle2 },
-  error: { bg: '#fce8e6', fg: '#c5221f', Icon: AlertCircle },
-  info: { bg: '#e8f0fe', fg: '#1967d2', Icon: Info },
+  success: { bg: '#ecf1e9', fg: '#4f7c4d', Icon: CheckCircle2 },
+  error: { bg: '#fdecea', fg: '#c0392b', Icon: AlertCircle },
+  info: { bg: '#d6e1f5', fg: '#355c7a', Icon: Info },
 };
 
 export function ToastHost() {
