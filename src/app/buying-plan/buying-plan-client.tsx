@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { saveAnalyticsRule, saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
-import { PlanPivot } from '@/components/forms/plan-pivot';
 import { FilterTable, type Column } from '@/components/filter-table';
 import {
   addMonths,
@@ -275,12 +274,6 @@ export function BuyingPlanClient({
     { key: 'efob', label: 'E-FOB', ruleKey: 'lead_days_efob', days: leadDays.efob, qty: coverage(leadDays.efob) },
     { key: 'fob', label: 'FOB', ruleKey: 'lead_days_fob', days: leadDays.fob, qty: coverage(leadDays.fob) },
   ];
-  const pivotRows = planned.map((v) => ({
-    fabricType: v.fabricType,
-    qty: v.totalQty,
-    value: v.valueToBeBought,
-    approved: v.row.line_status === 'approved',
-  }));
   const viewRows = planned;
   const groupKey = (item: ViewItem) =>
     groupBy === 'category'
@@ -573,7 +566,6 @@ export function BuyingPlanClient({
       {mode === 'view' && (
         <>
         <TimeBuckets buckets={buckets} isAdmin={role === 'admin'} />
-        <PlanPivot rows={pivotRows} title="Woven vs Knitted — pending & approved" />
         <PlanView
           groups={groups}
           totals={plannedTotals}
