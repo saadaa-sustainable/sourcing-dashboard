@@ -7,6 +7,7 @@ import { createDiscontinueRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
+import { InfoDot } from '@/components/info-dot';
 import type { DiscontinueRequest, SdRole } from '@/lib/forms/types';
 
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
@@ -84,7 +85,10 @@ export function DiscontinueClient({
       {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
-            <h3>Raise a discontinue request</h3>
+            <h3>
+              Raise a discontinue request
+              <InfoDot text="Discontinue a size, a colour, or a whole product. The request goes to the approval queue and only takes effect once approved." />
+            </h3>
           </div>
           <div className="segment wf-segment">
             {(['size', 'colour', 'product'] as const).map((s) => (

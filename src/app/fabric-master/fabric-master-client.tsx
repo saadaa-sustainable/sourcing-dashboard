@@ -5,6 +5,7 @@ import { reloadWithToast } from '@/lib/toast';
 import { Plus, Save } from 'lucide-react';
 import { addFabric, updateFabric } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
+import { InfoDot } from '@/components/info-dot';
 import type { FabricMaster } from '@/lib/forms/types';
 
 // Composition input fields (from the fabric team's quality-report format). The code
@@ -115,7 +116,10 @@ export function FabricMasterClient({
       {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
-            <h3>Add a fabric</h3>
+            <h3>
+              Add a fabric
+              <InfoDot text="Register a new fabric with its construction (composition, counts, weave, GSM). The fabric code must be unique." />
+            </h3>
           </div>
           <div className="wf-form-grid">
             <Field label="Fabric code" hint="Unique — blocked if it already exists">

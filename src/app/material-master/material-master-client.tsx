@@ -10,6 +10,7 @@ import {
   updateMaterial,
 } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
+import { InfoDot } from '@/components/info-dot';
 import type { Colour, MaterialMaster, MaterialType } from '@/lib/forms/types';
 
 const TYPES: { key: MaterialType; label: string }[] = [
@@ -140,7 +141,10 @@ export function MaterialMasterClient({
       {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
-            <h3>Add a {TYPE_LABEL[type].toLowerCase()} code</h3>
+            <h3>
+              Add a {TYPE_LABEL[type].toLowerCase()} code
+              <InfoDot text="Register a new material code for this type. Codes are unique — duplicates are blocked." />
+            </h3>
           </div>
           <div className="wf-form-grid">
             <Field label="Material code" hint="Unique — blocked if it already exists">
@@ -252,7 +256,10 @@ export function MaterialMasterClient({
       {/* Colour list manager */}
       <div className="panel wf-form-panel">
         <div className="panel-title">
-          <h3>Colours</h3>
+          <h3>
+            Colours
+            <InfoDot text="The master colour list. Each colour combines with a greige fabric to form a dyed-fabric code." />
+          </h3>
           <span>used to build dyed-fabric codes</span>
         </div>
         {editable && (

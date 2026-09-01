@@ -14,6 +14,7 @@ import {
 } from '@/lib/forms/actions';
 import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
+import { InfoDot } from '@/components/info-dot';
 import type {
   PoApproval,
   PoApprovalLine,
@@ -203,7 +204,10 @@ export function PoApprovalClient({
       {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
-            <h3>Raise a PO for approval</h3>
+            <h3>
+              Raise a PO for approval
+              <InfoDot text="Draft a PO with its quantities, costs and TNA timeline. Submitting sends it through the approval flow before it can be issued." />
+            </h3>
           </div>
           <div className="wf-form-grid">
             <Field label="Category" hint={activeCat?.hint}>
@@ -541,8 +545,18 @@ function ReportingScreen({ pos }: { pos: PoApproval[] }) {
 
   return (
     <div className="wf-report-grid">
-      <ReportCard title="POs issued last week" rows={issued} kind="issued" />
-      <ReportCard title="POs to be issued this week" rows={toIssue} kind="toIssue" />
+      <ReportCard
+        title="POs issued last week"
+        rows={issued}
+        kind="issued"
+        info="Approved POs that were issued to vendors in the last 7 days."
+      />
+      <ReportCard
+        title="POs to be issued this week"
+        rows={toIssue}
+        kind="toIssue"
+        info="Approved POs still awaiting issuance — the queue to clear this week."
+      />
     </div>
   );
 }
@@ -551,15 +565,20 @@ function ReportCard({
   title,
   rows,
   kind,
+  info,
 }: {
   title: string;
   rows: PoApproval[];
   kind: 'issued' | 'toIssue';
+  info?: string;
 }) {
   return (
     <div className="panel wf-report-card">
       <div className="panel-title">
-        <h3>{title}</h3>
+        <h3>
+          {title}
+          {info && <InfoDot text={info} label={`About ${title}`} />}
+        </h3>
         <span className="wf-report-count">{rows.length}</span>
       </div>
       {rows.length ? (
@@ -1212,7 +1231,10 @@ function PoSubmissionTable({
   return (
     <div className="panel">
       <div className="panel-title">
-        <h3>PO submission &amp; closure</h3>
+        <h3>
+          PO submission &amp; closure
+          <InfoDot text="Every issued PO still open: mark rows submitted and close them out once delivery completes." />
+        </h3>
         <span>{submissions.length} open PO(s) · row-wise close</span>
       </div>
       <div className="wf-toolbar">

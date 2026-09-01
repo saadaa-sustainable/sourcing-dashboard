@@ -2200,7 +2200,10 @@ function VendorTab({ data }: { data: DashboardData }) {
       <VendorTypeCharts data={data} />
       <section className="panel table-panel">
         <div className="panel-title">
-          <h3>Vendor performance</h3>
+          <h3>
+            Vendor performance
+            <InfoDot text="Per-vendor rollup of open and delayed POs, quantities, value, capacity and utilisation. Search, filter and export below." />
+          </h3>
         </div>
         <VendorTable
           rows={rows}
@@ -2258,7 +2261,13 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
         return (
           <section className="panel" key={bucket}>
             <div className="panel-title">
-              <h3>{bucket === "Knit" ? "Knitted" : bucket} vendors</h3>
+              <h3>
+                {bucket === "Knit" ? "Knitted" : bucket} vendors
+                <InfoDot
+                  text={`Open vs delayed quantity for every ${bucket === "Knit" ? "knitted" : bucket.toLowerCase()} vendor with open POs.`}
+                  label={`About ${bucket} vendors`}
+                />
+              </h3>
               <span className="table-meta-actions">
                 <span>{rows.length} with open POs</span>
                 <DownloadButton
@@ -2558,7 +2567,10 @@ function MerchantTab({ data }: { data: DashboardData }) {
       </ChartCard>
       <section className="panel table-panel">
         <div className="panel-title">
-          <h3>Merchant performance</h3>
+          <h3>
+            Merchant performance
+            <InfoDot text="Vendor metrics rolled up to the merchant who manages them — open/delayed POs, quantities, value and capacity." />
+          </h3>
         </div>
         <VendorTable
           rows={rows}
@@ -2999,7 +3011,10 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
       </div>
       <section className="panel table-panel">
         <div className="panel-title">
-          <h3>In Process inventory (365 days)</h3>
+          <h3>
+            In Process inventory (365 days)
+            <InfoDot text="Every open PO line expected within the next 365 days — product, vendor, quantity, EDD and current delay." />
+          </h3>
         </div>
         {inProcess365.length ? (
           <div className="table-scroll">
