@@ -22,10 +22,20 @@ export function emitToast(msg: string, tone: ToastTone = 'success') {
   }
 }
 
-/** Flash a success toast, then reload — drop-in for `window.location.reload()`. */
+/**
+ * Show a success toast, then soft-refresh the current route — a drop-in for the old
+ * `window.location.reload()` that does NOT do a full page reload. It emits the toast
+ * immediately and dispatches `sd-refresh`, which ToastHost handles by calling the App
+ * Router's `router.refresh()`: server data re-fetches while client state (scroll,
+ * expanded rows, inputs) is preserved.
+ */
 export function reloadWithToast(msg = 'Saved.') {
-  flashToast(msg, 'success');
-  window.location.reload();
+  emitToast(msg, 'success');
+  try {
+    window.dispatchEvent(new Event('sd-refresh'));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function takeFlashToast(): { msg: string; tone: ToastTone } | null {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 import { takeFlashToast, type ToastTone } from '@/lib/toast';
@@ -17,6 +18,15 @@ const TONE: Record<ToastTone, { bg: string; fg: string; Icon: typeof Info }> = {
 export function ToastHost() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+
+  // Soft-refresh the current route when a save fires `sd-refresh` (via
+  // reloadWithToast) — re-fetches server data without a full page reload.
+  useEffect(() => {
+    const onRefresh = () => router.refresh();
+    window.addEventListener('sd-refresh', onRefresh);
+    return () => window.removeEventListener('sd-refresh', onRefresh);
+  }, [router]);
 
   useEffect(() => {
     setMounted(true);
