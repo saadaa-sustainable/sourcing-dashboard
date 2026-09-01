@@ -30,8 +30,10 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: 'tab:urgent-replenish', label: 'Urgent Replenishment', group: 'Dashboard' },
   { path: 'tab:matrix', label: 'Product Matrix View', group: 'Dashboard' },
   // Workspace — read-only analytical views.
-  // Role-specific dashboards: grant the page to that team's custom role.
-  { path: '/sourcing', label: 'Sourcing Dashboard', group: 'Workspace' },
+  // My Dashboard role views: my:<id> pseudo-paths, one per role view. Grant
+  // the view to that team's custom role; /my-dashboard itself (the landing
+  // page) is always visible and shows whichever views the user holds.
+  { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },
@@ -72,8 +74,9 @@ export function canView(
   role: string,
   allowedPages: string[] | null | undefined,
 ): boolean {
-  // The dashboard route and its first tab are the landing view — always visible.
-  if (path === '/' || path === 'tab:dashboard') return true;
+  // My Dashboard (the landing view), the main dashboard route and its first
+  // tab are always visible.
+  if (path === '/' || path === '/my-dashboard' || path === 'tab:dashboard') return true;
   const def = ALL_VIEWS.find((v) => v.path === path);
   if (def?.adminOnly && role !== 'admin') return false;
   if (role === 'admin' || allowedPages == null) return true;

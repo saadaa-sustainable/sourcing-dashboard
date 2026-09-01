@@ -3,18 +3,25 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import { currentUser, NotConfiguredError } from '@/lib/forms/queries';
 import { canView } from '@/lib/views';
 import { loadSourcingPos } from '@/lib/sourcing';
-import { SourcingClient } from './sourcing-client';
+import { MyDashboardClient, type RoleViewId } from './my-dashboard-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SourcingPage() {
+// The role-view registry for My Dashboard. Each view is granted through the
+// pseudo-path my:<id> in the views registry — a user sees the views their
+// custom roles grant; admins and unrestricted users see them all (as tabs).
+const ROLE_VIEWS: { id: RoleViewId; label: string; path: string }[] = [
+  { id: 'sourcing', label: 'Sourcing', path: 'my:sourcing' },
+];
+
+export default async function MyDashboardPage() {
   let user;
   try {
     user = await currentUser();
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Sourcing Dashboard" active="/sourcing" role="viewer">
+        <FormLayout title="My Dashboard" active="/my-dashboard" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -23,25 +30,33 @@ export default async function SourcingPage() {
   }
 
   if (!user) redirect('/login');
-  if (!canView('/sourcing', user.role, user.allowed_pages ?? null)) redirect('/');
 
-  const { rows, warnings } = await loadSourcingPos();
+  const views = ROLE_VIEWS.filter((v) =>
+    canView(v.path, user.role, user.allowed_pages ?? null),
+  );
+  const needSourcing = views.some((v) => v.id === 'sourcing');
+  const sourcing = needSourcing
+    ? await loadSourcingPos()
+    : { rows: [], warnings: [] };
 
   return (
     <FormLayout
-      title="Sourcing Dashboard"
-      subtitle="The sourcing view of the open PO book — every open PO with its vendor, merchandiser, quantity, TNA stage and delivery date."
-      active="/sourcing"
+      title="My Dashboard"
+      subtitle="Your role-specific view of the sourcing operation. Admins can scroll through every role's view."
+      active="/my-dashboard"
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      {warnings.map((w) => (
+      {sourcing.warnings.map((w) => (
         <Notice tone="warn" key={w}>
           {w}
         </Notice>
       ))}
-      <SourcingClient rows={rows} />
+      <MyDashboardClient
+        views={views.map(({ id, label }) => ({ id, label }))}
+        sourcingRows={sourcing.rows}
+      />
     </FormLayout>
   );
 }

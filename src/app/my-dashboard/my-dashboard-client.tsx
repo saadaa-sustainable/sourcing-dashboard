@@ -6,10 +6,14 @@ import { FilterTable, type Column } from '@/components/filter-table';
 import { InfoDot } from '@/components/info-dot';
 import type { SourcingPoRow } from '@/lib/sourcing';
 
+export type RoleViewId = 'sourcing';
+
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const date = (v: string | null) => (v ? String(v).slice(0, 10) : '—');
 
-const COLS: Column<SourcingPoRow>[] = [
+/* ---------------- Sourcing view: open-PO card → PO table ---------------- */
+
+const SOURCING_COLS: Column<SourcingPoRow>[] = [
   { key: 'poNumber', label: 'PO No.', kind: 'mono' },
   {
     key: 'vendorName',
@@ -51,11 +55,7 @@ const COLS: Column<SourcingPoRow>[] = [
     kind: 'text',
     filter: 'select',
     render: (r) =>
-      r.tnaMissing ? (
-        <span className="badge warn">No TNA</span>
-      ) : (
-        r.tnaStage
-      ),
+      r.tnaMissing ? <span className="badge warn">No TNA</span> : r.tnaStage,
     info: 'Current production stage — the earliest TNA stage without an actual date. "No TNA" means no timeline has been entered for this PO.',
   },
   {
@@ -77,7 +77,7 @@ const COLS: Column<SourcingPoRow>[] = [
   },
 ];
 
-export function SourcingClient({ rows }: { rows: SourcingPoRow[] }) {
+function SourcingView({ rows }: { rows: SourcingPoRow[] }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -114,7 +114,7 @@ export function SourcingClient({ rows }: { rows: SourcingPoRow[] }) {
       {open && (
         <FilterTable
           rows={rows}
-          columns={COLS}
+          columns={SOURCING_COLS}
           rowKey={(r) => r.poNumber}
           unit="POs"
           searchPlaceholder="PO, vendor, code or merchandiser"
@@ -122,6 +122,53 @@ export function SourcingClient({ rows }: { rows: SourcingPoRow[] }) {
           rowClass={(r) => (r.delayDays > 0 ? 'wf-row-over' : undefined)}
         />
       )}
+    </>
+  );
+}
+
+/* ------------------------- My Dashboard shell ------------------------- */
+
+export function MyDashboardClient({
+  views,
+  sourcingRows,
+}: {
+  views: { id: RoleViewId; label: string }[];
+  sourcingRows: SourcingPoRow[];
+}) {
+  const [active, setActive] = useState<RoleViewId | undefined>(views[0]?.id);
+
+  if (!views.length) {
+    return (
+      <div className="panel" style={{ padding: 28 }}>
+        <div className="empty-state">
+          <PackageSearch size={28} />
+          <p>
+            No role views are assigned to you yet — an admin can grant them from
+            the User Panel.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* DAM-style horizontal role tabs: plain labels, black pill for the
+          active one, horizontally scrollable when roles outgrow the row. */}
+      <div className="role-tabs" role="tablist" aria-label="Role views">
+        {views.map((v) => (
+          <button
+            key={v.id}
+            role="tab"
+            aria-selected={active === v.id}
+            className={active === v.id ? 'active' : ''}
+            onClick={() => setActive(v.id)}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      {active === 'sourcing' && <SourcingView rows={sourcingRows} />}
     </>
   );
 }

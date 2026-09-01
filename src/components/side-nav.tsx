@@ -40,7 +40,7 @@ import {
 // sidebar switches them via `onTab` on the dashboard, and links to `/?tab=<id>`
 // from anywhere else. Shared with dashboard-shell.tsx.
 export const tabs = [
-  ['dashboard', 'Dashboard', LayoutDashboard],
+  ['dashboard', 'Main Dashboard', LayoutDashboard],
   ['open-po', 'Open PO Tracker', PackageSearch],
   ['vendors', 'Vendor Performance', Factory],
   ['merchants', 'Merchant Performance', Users],
@@ -64,8 +64,6 @@ type NavLink = {
 // Admin-only flags live in the views registry (lib/views.ts) — canView applies
 // them together with the caller's custom-role page set.
 const WORKSPACE_LINKS: NavLink[] = [
-  // Role-specific dashboards (granted via custom roles in the User Panel).
-  { href: '/sourcing', label: 'Sourcing Dashboard', Icon: Handshake },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
@@ -189,6 +187,15 @@ export function SideNav({
           </button>
         </div>
         <nav>
+          {/* My Dashboard — the role-specific landing view, always first. */}
+          <a
+            href="/my-dashboard"
+            className={activeWorkflow === '/my-dashboard' ? 'active' : ''}
+            onClick={close}
+          >
+            <Handshake size={18} />
+            <span>My Dashboard</span>
+          </a>
           {tabs
             .filter(([id]) => id !== 'urgent-replenish')
             .filter(([id]) => canView(`tab:${id}`, role, allowedPages))

@@ -22,5 +22,6 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent('Only @saadaa.in accounts can access this dashboard.')}`);
   }
 
-  return NextResponse.redirect(`${origin}/`);
+  // Land on the role-specific My Dashboard; the Main Dashboard stays at '/'.
+  return NextResponse.redirect(`${origin}/my-dashboard`);
 }
