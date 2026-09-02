@@ -298,6 +298,25 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
 
   const allChecked = pendingLines.length > 0 && pendingLines.every((l) => selected.has(l.id));
 
+  // §7 pivoted summary: Woven/Knitted × (Qty, Value) × (Pending, Approved) — the
+  // at-a-glance total the approver sees before working individual lines.
+  const pivot = (() => {
+    const m = new Map<string, { pendQty: number; pendVal: number; apprQty: number; apprVal: number }>();
+    for (const l of lines) {
+      const fab = l.fabricType || 'Unspecified';
+      const cur = m.get(fab) ?? { pendQty: 0, pendVal: 0, apprQty: 0, apprVal: 0 };
+      if (l.lineStatus === 'approved') {
+        cur.apprQty += l.qty ?? 0;
+        cur.apprVal += l.value ?? 0;
+      } else {
+        cur.pendQty += l.qty ?? 0;
+        cur.pendVal += l.value ?? 0;
+      }
+      m.set(fab, cur);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  })();
+
   function toggle(id: string) {
     setSelected((cur) => {
       const next = new Set(cur);
@@ -326,6 +345,36 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
 
   return (
     <div className="wf-line-approve">
+      {pivot.length > 0 && (
+        <div className="table-scroll wf-pivot-wrap">
+          <table className="wide-table wf-pivot-table">
+            <thead>
+              <tr>
+                <th rowSpan={2}>Fabric</th>
+                <th className="num" colSpan={2}>Pending</th>
+                <th className="num" colSpan={2}>Approved</th>
+              </tr>
+              <tr>
+                <th className="num">Qty</th>
+                <th className="num">Value</th>
+                <th className="num">Qty</th>
+                <th className="num">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pivot.map(([fab, v]) => (
+                <tr key={fab}>
+                  <td className="strong">{fab}</td>
+                  <td className="num">{fmt.format(v.pendQty)}</td>
+                  <td className="num">{money.format(v.pendVal)}</td>
+                  <td className="num">{fmt.format(v.apprQty)}</td>
+                  <td className="num">{money.format(v.apprVal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="table-scroll">
         <table className="wide-table wf-line-table">
           <thead>

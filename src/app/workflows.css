@@ -926,6 +926,12 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
+/* ---- Approval screen: pivoted Woven/Knitted × Pending/Approved summary (§7) ---- */
+.wf-pivot-wrap { margin-bottom: 10px; }
+.wf-pivot-table { max-width: 560px; }
+.wf-pivot-table th, .wf-pivot-table td { padding: 6px 12px; }
+.wf-pivot-table thead th { background: #faf7ef; }
+
 /* ---- Buying Plan: leadership macro snapshot (§1) ---- */
 .wf-macro { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .wf-macro-card {
