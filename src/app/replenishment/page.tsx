@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadAnalyticsRules,
+  loadOosMeta,
   loadReplenishment,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -28,7 +29,11 @@ export default async function ReplenishmentPage() {
   if (!user) redirect('/login');
   if (user.role !== 'admin') redirect('/');
 
-  const [rows, rules] = await Promise.all([loadReplenishment(), loadAnalyticsRules()]);
+  const [rows, rules, meta] = await Promise.all([
+    loadReplenishment(),
+    loadAnalyticsRules(),
+    loadOosMeta(),
+  ]);
 
   return (
     <FormLayout
@@ -44,6 +49,8 @@ export default async function ReplenishmentPage() {
         isAdmin={user.role === 'admin'}
         oosThreshold={rules.oos_day_threshold ?? 30}
         ipdoqFloor={rules.ipdoq_floor ?? 0.25}
+        dataAsOf={meta.dataAsOf}
+        lastSynced={meta.lastSynced}
       />
     </FormLayout>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { Notice } from '@/components/forms/form-layout';
+import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
 import type { DoqInventoryRow } from '@/lib/forms/types';
 
@@ -75,13 +76,22 @@ const COLS: Column<DoqInventoryRow>[] = [
   { key: 'synced_at', label: 'Synced', kind: 'text', accessor: (r) => date(r.synced_at) },
 ];
 
-export function DoqClient({ rows }: { rows: DoqInventoryRow[] }) {
+export function DoqClient({
+  rows,
+  dataAsOf = null,
+  lastSynced = null,
+}: {
+  rows: DoqInventoryRow[];
+  dataAsOf?: string | null;
+  lastSynced?: string | null;
+}) {
   return (
     <>
       <Notice tone="info">
         The full daily DOQ snapshot (sd_inventory_planning), refreshed daily from BigQuery.
         Read-only — one row per SKU × warehouse.
       </Notice>
+      <DataAsOf dataAsOf={dataAsOf} lastSynced={lastSynced} />
       <FilterTable
         rows={rows}
         columns={COLS}

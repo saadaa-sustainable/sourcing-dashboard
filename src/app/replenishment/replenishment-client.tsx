@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { InfoDot } from '@/components/info-dot';
 import { saveAnalyticsRule } from '@/lib/forms/actions';
@@ -140,14 +141,19 @@ export function ReplenishmentClient({
   isAdmin = false,
   oosThreshold = 30,
   ipdoqFloor = 0.25,
+  dataAsOf = null,
+  lastSynced = null,
 }: {
   rows: ReplenishmentRow[];
   isAdmin?: boolean;
   oosThreshold?: number;
   ipdoqFloor?: number;
+  dataAsOf?: string | null;
+  lastSynced?: string | null;
 }) {
   return (
     <>
+      <DataAsOf dataAsOf={dataAsOf} lastSynced={lastSynced} />
       <IpdoqRules isAdmin={isAdmin} threshold={oosThreshold} floor={ipdoqFloor} />
       <FilterTable
         rows={rows}

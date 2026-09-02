@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadDoqDataset,
+  loadOosMeta,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { DoqClient } from './doq-client';
@@ -26,7 +27,7 @@ export default async function DoqPage() {
 
   if (!user) redirect('/login');
 
-  const rows = await loadDoqDataset();
+  const [rows, meta] = await Promise.all([loadDoqDataset(), loadOosMeta()]);
 
   return (
     <FormLayout
@@ -37,7 +38,7 @@ export default async function DoqPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <DoqClient rows={rows} />
+      <DoqClient rows={rows} dataAsOf={meta.dataAsOf} lastSynced={meta.lastSynced} />
     </FormLayout>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { CalendarClock, RefreshCw } from 'lucide-react';
+import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { InfoDot } from '@/components/info-dot';
 import { addOosExclusion, removeOosExclusion } from '@/lib/forms/actions';
@@ -143,30 +143,11 @@ export function OosCalculationClient({
   return (
     <>
       {/* Spec item 1: the snapshot date whose data this tab is showing. */}
-      <div className="wf-toolbar" style={{ justifyContent: 'flex-start', gap: 12 }}>
-        <span className="wf-chip">
-          <CalendarClock size={13} />
-          Data as of <strong>{dataAsOf ?? '—'}</strong>
-          <InfoDot text="The BigQuery inventory-planning snapshot date this tab's numbers come from (latest date_day)." />
-        </span>
-        <span className="wf-chip">
-          <RefreshCw size={13} />
-          Refreshed{' '}
-          <strong>
-            {lastSynced
-              ? new Date(lastSynced).toLocaleString('en-IN', {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : '—'}
-          </strong>
-        </span>
+      <DataAsOf dataAsOf={dataAsOf} lastSynced={lastSynced}>
         <span className="wf-chip">
           {money.format(visible.length)} SKUs · {money.format(exclusions.length)} excluded
         </span>
-      </div>
+      </DataAsOf>
 
       <div className="role-tabs" role="tablist" aria-label="OOS views">
         <button role="tab" aria-selected={tab === 'calc'} className={tab === 'calc' ? 'active' : ''} onClick={() => setTab('calc')}>
