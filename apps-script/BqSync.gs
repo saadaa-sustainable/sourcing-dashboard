@@ -46,6 +46,8 @@ function installBqSyncTriggers() { return BqSync_.install(); }
 // Manual: full-column inventory refresh (~6 GB scan) — use after schema changes
 // or to fill descriptive columns without waiting for Sunday.
 function bqSyncFullInventoryRefresh() { return BqSync_.doqOos(true); }
+// DOQ Dashboard window aggregates (runs in morningA too; manual run for testing).
+function bqSyncDoqWindows() { return BqSync_.doqWindows(); }
 // Manual: run only the vendor sync now (names + EasyEcom status) — use right
 // after applying the ee_status migration so the column fills without waiting for
 // the 6 AM trigger.
@@ -363,6 +365,72 @@ const BqSync_ = (function () {
     return rows;
   }
 
+  // ---- DOQ Dashboard windows (port of the sheet "DOQ 3-Table Generator") ----
+  // Per-SKU aggregates for the dashboard's windows, all from the daily history
+  // (the sheet's RAW SALES ~ daily_quantity, Inventory report ~ current_stock):
+  //   d1 latest day · l7 last 7 days · w1..w4 last 4 complete Mon-Sun weeks ·
+  //   at all time.  Cost note: the table is column-pruned, not date-pruned, so
+  //   the all-time window costs the same as the 35-day ones (4 columns read).
+  function doqWindows() {
+    const startedAt = new Date().toISOString();
+    return runTarget('sd_doq_window', () => {
+      // 1. distinct dates (small scan: date_day only) -> window boundaries + N days
+      const dates = runQuery(
+        `SELECT FORMAT_DATE('%Y-%m-%d', date_day) d FROM ${DATASET}saadaa_inventory_planning\` ` +
+        `WHERE date_day IS NOT NULL GROUP BY 1 ORDER BY 1`,
+      ).map((r) => r.d);
+      if (!dates.length) throw new Error('saadaa_inventory_planning has no dates');
+      const latest = dates[dates.length - 1];
+      const earliest = dates[0];
+
+      const parse = (s) => { const p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
+      const iso = (d) => Utilities.formatDate(d, 'Asia/Kolkata', 'yyyy-MM-dd');
+      const addD = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+      const latestD = parse(latest);
+      // last 4 COMPLETE Mon-Sun weeks (w1 most recent), same math as the sheet
+      const dow = latestD.getDay();
+      const lastSunday = dow === 0 ? latestD : addD(latestD, -((dow + 6) % 7) - 1);
+      const windows = {
+        d1: { start: latest, end: latest, label: latest },
+        l7: { start: iso(addD(latestD, -6)), end: latest, label: iso(addD(latestD, -6)) + ' → ' + latest },
+      };
+      for (let w = 1; w <= 4; w++) {
+        const end = addD(lastSunday, -7 * (w - 1));
+        const start = addD(end, -6);
+        windows['w' + w] = { start: iso(start), end: iso(end), label: iso(start) + ' → ' + iso(end) };
+      }
+      windows.at = { start: earliest, end: latest, label: earliest + ' → ' + latest };
+      for (const k in windows) {
+        windows[k].ndays = dates.filter((d) => d >= windows[k].start && d <= windows[k].end).length;
+      }
+
+      // 2. one conditional-aggregation query -> per-SKU window figures
+      const cond = (k) => `date_day BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
+      const per = (k) =>
+        `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
+        `COUNTIF(${cond(k)} AND stk > 0) ${k}_avail, ` +
+        `COUNTIF(${cond(k)} AND stk <= 0) ${k}_oos`;
+      const sql =
+        `WITH day AS ( ` +
+        `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk ` +
+        `  FROM ${DATASET}saadaa_inventory_planning\` ` +
+        `  WHERE sku IS NOT NULL AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
+        `    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$') ` +
+        `  GROUP BY sku, date_day ` +
+        `) SELECT sku, ${['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'at'].map(per).join(', ')} ` +
+        `FROM day GROUP BY sku`;
+      const raw = runQuery(sql);
+
+      const synced_at = new Date().toISOString();
+      const rows = raw.map((r) => Object.assign({}, r, { synced_at }));
+      upsert('sd_doq_window', 'sku', rows);
+      upsert('sd_doq_window_meta', 'id', [
+        { id: 1, windows: { latest, earliest, windows }, synced_at },
+      ]);
+      return { synced: rows.length };
+    });
+  }
+
   // SKU convention (validated against the sheet): <product_code><2-char colour>_<size>
   //   SDRPTBR_XS -> variant SDRPTBR, product_code SDRPT, size XS  (mirror of backfill-po.mjs)
   function deriveSku(sku) {
@@ -580,6 +648,7 @@ const BqSync_ = (function () {
     const errors = [runTarget('sd_ee_product_master', productMaster)];
     const isSunday = new Date().getDay() === 0; // script TZ = Asia/Kolkata
     errors.push(...doqOos(isSunday));
+    errors.push(doqWindows());   // DOQ Dashboard window aggregates
     throwIfErrors(errors);
   }
 
@@ -622,5 +691,5 @@ const BqSync_ = (function () {
     console.log('BqSync triggers installed: morningA + morningB (~6 AM), evening (~6 PM), script timezone.');
   }
 
-  return { morningA, morningB, evening, install, doqOos, vendorsOnce, vendorSchema };
+  return { morningA, morningB, evening, install, doqOos, doqWindows, vendorsOnce, vendorSchema };
 })();

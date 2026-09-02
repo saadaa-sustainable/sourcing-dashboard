@@ -65,6 +65,7 @@ type NavLink = {
 // them together with the caller's custom-role page set.
 const WORKSPACE_LINKS: NavLink[] = [
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
+  { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },

@@ -35,6 +35,8 @@ import type {
   VendorMasterRow,
   InwardPlanGroup,
   NpdPromotionCandidate,
+  DoqWindowMeta,
+  DoqWindowRow,
   OosCalculationRow,
   OosSkuExclusion,
   PoApproval,
@@ -698,6 +700,33 @@ export async function loadOosMeta(): Promise<{ dataAsOf: string | null; lastSync
     dataAsOf: (day?.[0] as { date_day?: string } | undefined)?.date_day ?? null,
     lastSynced: (sync?.[0] as { synced_at?: string } | undefined)?.synced_at ?? null,
   };
+}
+
+/** Per-SKU DOQ-dashboard window aggregates, keyed by SKU. Paged (12k+ rows). */
+export async function loadDoqWindows(): Promise<Record<string, DoqWindowRow>> {
+  const supabase = await client();
+  const map: Record<string, DoqWindowRow> = {};
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_doq_window')
+      .select('*')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_doq_window: ${error.message}`);
+    for (const r of (data ?? []) as DoqWindowRow[]) map[r.sku] = r;
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return map;
+}
+
+/** Window descriptors (labels, ranges, day counts) for the DOQ dashboard. */
+export async function loadDoqWindowMeta(): Promise<DoqWindowMeta | null> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_doq_window_meta')
+    .select('windows')
+    .eq('id', 1)
+    .maybeSingle();
+  return ((data as { windows?: DoqWindowMeta } | null)?.windows) ?? null;
 }
 
 /** sku → launch date + MRP from the EasyEcom product master, for OOS fallbacks. */

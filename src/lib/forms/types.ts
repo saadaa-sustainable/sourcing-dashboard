@@ -340,6 +340,26 @@ export type OosSkuExclusion = {
   added_at: string;
 };
 
+/** Per-SKU DOQ-dashboard window aggregates (sd_doq_window, from BqSync doqWindows). */
+export type DoqWindowRow = {
+  sku: string;
+  d1_qty: number | null; d1_avail: number | null; d1_oos: number | null;
+  l7_qty: number | null; l7_avail: number | null; l7_oos: number | null;
+  w1_qty: number | null; w1_avail: number | null; w1_oos: number | null;
+  w2_qty: number | null; w2_avail: number | null; w2_oos: number | null;
+  w3_qty: number | null; w3_avail: number | null; w3_oos: number | null;
+  w4_qty: number | null; w4_avail: number | null; w4_oos: number | null;
+  at_qty: number | null; at_avail: number | null; at_oos: number | null;
+  synced_at: string | null;
+};
+
+/** Window descriptors for the DOQ dashboard (sd_doq_window_meta.windows). */
+export type DoqWindowMeta = {
+  latest: string;
+  earliest: string;
+  windows: Record<string, { start: string; end: string; label: string; ndays: number }>;
+};
+
 /** Product-level master attributes the Buying Plan reads (sd_product_master). */
 export type ProductMaster = {
   product_code: string;

@@ -35,6 +35,7 @@ export const ALL_VIEWS: ViewDef[] = [
   // page) is always visible and shows whichever views the user holds.
   { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
+  { path: '/doq-dashboard', label: 'DOQ Dashboard', group: 'Workspace' },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },
   { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
