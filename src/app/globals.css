@@ -976,6 +976,36 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .wf-npd-edit-actions { display: flex; gap: 8px; }
 .wf-npd-error { flex-basis: 100%; margin: 0; font-size: 12px; color: #c0392b; }
 
+/* Rules Master editor */
+.wf-rules-master { display: flex; flex-direction: column; gap: 16px; }
+.wf-rules-intro { display: flex; align-items: flex-start; gap: 9px; padding: 12px 14px; border-radius: 10px; background: var(--color-ecru-100, #f7f1e3); color: var(--ink-2); }
+.wf-rules-intro p { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.wf-rule-group { padding: 16px 18px; }
+.wf-rule-group-head h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--ink-1); }
+.wf-rule-group-head p { margin: 2px 0 0; font-size: 12px; }
+.wf-rule-list { margin-top: 12px; display: flex; flex-direction: column; }
+.wf-rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 12px 2px;
+  border-top: 1px solid var(--color-ecru-200, #eee3cf);
+}
+.wf-rule-row:first-child { border-top: 0; }
+.wf-rule-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 320px; }
+.wf-rule-label { font-size: 13px; font-weight: 640; color: var(--ink-1); }
+.wf-rule-desc { font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+.wf-rule-key { font-size: 10.5px; color: var(--ink-3, #8a8477); }
+.wf-rule-key code { font-size: 10.5px; background: var(--color-ecru-100, #f7f1e3); padding: 1px 5px; border-radius: 5px; }
+.wf-rule-edit { display: flex; align-items: center; gap: 8px; }
+.wf-rule-input { width: 110px; padding: 7px 10px; border: 1px solid var(--color-ecru-300, #e3d6bd); border-radius: 8px; font-size: 13px; text-align: right; }
+.wf-rule-save { padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.wf-rule-save:disabled { opacity: .5; cursor: default; }
+.wf-rule-value { font-size: 16px; font-weight: 700; color: var(--ink-1); }
+.wf-rule-error { flex-basis: 100%; margin: 4px 0 0; font-size: 12px; color: #c0392b; }
+
 /* Inline TNA breakdown (Open PO Tracker) */
 .tna-stage-button {
   display: inline-flex;

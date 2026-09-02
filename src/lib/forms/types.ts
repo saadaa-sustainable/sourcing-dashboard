@@ -139,6 +139,16 @@ export type AnalyticsExtras = {
   } | null;
 };
 
+/** One editable threshold in the Rules Master (sd_analytics_rule). */
+export type AnalyticsRuleRow = {
+  rule_key: string;
+  value: number;
+  label: string;
+  description: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+};
+
 /** One data source's freshness, for the Sync Health tab (sd_sync_status view). */
 export type SyncStatusRow = {
   source: string;

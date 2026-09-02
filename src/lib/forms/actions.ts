@@ -1769,6 +1769,7 @@ export async function saveAnalyticsRule(formData: FormData): Promise<ActionResul
     .eq('rule_key', rule_key);
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/buying-plan');
+  revalidatePath('/rules-master');
   revalidatePath('/');
   return done('Rule updated.');
 }

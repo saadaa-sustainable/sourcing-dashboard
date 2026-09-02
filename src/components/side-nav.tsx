@@ -27,6 +27,7 @@ import {
   Repeat,
   Scissors,
   ShoppingCart,
+  SlidersHorizontal,
   Tags,
   Truck,
   UserCog,
@@ -114,6 +115,7 @@ const MASTERS_LINKS: NavLink[] = [
 // System administration.
 const ADMIN_LINKS: NavLink[] = [
   { href: '/users', label: 'User Panel', Icon: UserCog },
+  { href: '/rules-master', label: 'Rules Master', Icon: SlidersHorizontal },
   { href: '/sync-status', label: 'Sync Health', Icon: Activity },
 ];
 

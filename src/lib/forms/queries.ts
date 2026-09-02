@@ -13,6 +13,7 @@ import { loadDashboardData, loadMergedTnaRecords } from '@/lib/data';
 import { monthStart, addMonths, canApprove } from './approval';
 import type {
   AnalyticsExtras,
+  AnalyticsRuleRow,
   ApprovalQueueItem,
   ApprovalLogRow,
   MyDashboardData,
@@ -209,6 +210,30 @@ export async function loadAnalyticsRules(): Promise<Record<string, number>> {
     /* fall back to defaults — cards must never take the dashboard down */
   }
   return rules;
+}
+
+/**
+ * Full Rules Master rows (label + description + who/when) for the editor page.
+ * Any code-default rule with no DB row yet is surfaced too, so it stays visible
+ * and editable rather than silently missing.
+ */
+export async function loadAnalyticsRuleRows(): Promise<AnalyticsRuleRow[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_analytics_rule')
+    .select('rule_key, value, label, description, updated_by, updated_at')
+    .order('rule_key');
+  const rows = ((data ?? []) as AnalyticsRuleRow[]).map((r) => ({
+    ...r,
+    value: Number(r.value),
+  }));
+  const seen = new Set(rows.map((r) => r.rule_key));
+  for (const [key, val] of Object.entries(ANALYTICS_RULE_DEFAULTS)) {
+    if (!seen.has(key)) {
+      rows.push({ rule_key: key, value: val, label: key, description: null, updated_by: null, updated_at: null });
+    }
+  }
+  return rows;
 }
 
 /**
