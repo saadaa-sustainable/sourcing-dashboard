@@ -139,6 +139,22 @@ export type AnalyticsExtras = {
   } | null;
 };
 
+/**
+ * One row in the topbar notification bell's dropdown — a pending item the
+ * signed-in user can act on. Kept lightweight (no cost/vendor enrichment): the
+ * bell just lists what's waiting; the link takes the user to where they act.
+ */
+export type ApprovalNotification = {
+  key: string;
+  kind: 'buying_plan' | 'discontinue' | 'po_approval';
+  label: string;
+  sublabel: string;
+  status: SdStatus;
+  href: string;
+  submittedBy: string | null;
+  submittedAt: string | null;
+};
+
 /** One editable threshold in the Rules Master (sd_analytics_rule). */
 export type AnalyticsRuleRow = {
   rule_key: string;

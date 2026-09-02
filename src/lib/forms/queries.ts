@@ -14,6 +14,7 @@ import { monthStart, addMonths, canApprove } from './approval';
 import type {
   AnalyticsExtras,
   AnalyticsRuleRow,
+  ApprovalNotification,
   ApprovalQueueItem,
   ApprovalLogRow,
   MyDashboardData,
@@ -1373,6 +1374,87 @@ export async function countPendingApprovals(): Promise<number> {
     pending('sd_po_approval'),
   ]);
   return (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0);
+}
+
+/**
+ * Lightweight list behind the topbar notification bell: the pending items this
+ * user can act on (same three sources as the count), newest first. Deliberately
+ * cheap — no cost/vendor enrichment; every link points at /approvals, where the
+ * action is taken.
+ */
+export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalNotification[]> {
+  const supabase = await client();
+  const [plans, discontinues, pos] = await Promise.all([
+    supabase
+      .from('sd_buying_plan')
+      .select('id, plan_month, plan_type, status, submitted_by, submitted_at')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_discontinue_request')
+      .select('id, product_code, product_variant, status, requested_by, requested_at')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_po_approval')
+      .select('id, po_ref_num, product_code, category, status, created_by, submitted_for_approval_at')
+      .in('status', ['submitted', 'pending_l2']),
+  ]);
+
+  const items: ApprovalNotification[] = [];
+
+  for (const p of (plans.data ?? []) as Array<{
+    id: number; plan_month: string; plan_type: string | null; status: SdStatus;
+    submitted_by: string | null; submitted_at: string | null;
+  }>) {
+    if (!canApprove(role, p.status)) continue;
+    const material = p.plan_type === 'material';
+    items.push({
+      key: `bp-${p.id}`,
+      kind: 'buying_plan',
+      label: `${material ? 'Material' : 'FG'} buying plan — ${p.plan_month.slice(0, 7)}`,
+      sublabel: 'Buying plan awaiting your approval',
+      status: p.status,
+      href: '/approvals',
+      submittedBy: p.submitted_by,
+      submittedAt: p.submitted_at,
+    });
+  }
+
+  for (const d of (discontinues.data ?? []) as Array<{
+    id: number; product_code: string | null; product_variant: string | null; status: SdStatus;
+    requested_by: string | null; requested_at: string | null;
+  }>) {
+    if (!canApprove(role, d.status)) continue;
+    items.push({
+      key: `dc-${d.id}`,
+      kind: 'discontinue',
+      label: `Discontinue — ${d.product_code ?? '—'}${d.product_variant ? ` / ${d.product_variant}` : ''}`,
+      sublabel: 'Discontinuation awaiting your approval',
+      status: d.status,
+      href: '/approvals',
+      submittedBy: d.requested_by,
+      submittedAt: d.requested_at,
+    });
+  }
+
+  for (const po of (pos.data ?? []) as Array<{
+    id: number; po_ref_num: string | null; product_code: string | null; category: string | null;
+    status: SdStatus; created_by: string | null; submitted_for_approval_at: string | null;
+  }>) {
+    if (!canApprove(role, po.status)) continue;
+    items.push({
+      key: `po-${po.id}`,
+      kind: 'po_approval',
+      label: `PO — ${po.po_ref_num || po.product_code || `#${po.id}`}`,
+      sublabel: `${(po.category ?? 'PO').toUpperCase()} purchase order awaiting your approval`,
+      status: po.status,
+      href: '/approvals',
+      submittedBy: po.created_by,
+      submittedAt: po.submitted_for_approval_at,
+    });
+  }
+
+  // Newest first; items with no submission timestamp sink to the bottom.
+  return items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));
 }
 
 /** Per-source data freshness for the Sync Health tab (sd_sync_status view). */
