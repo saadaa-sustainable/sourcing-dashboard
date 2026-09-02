@@ -4,13 +4,14 @@ import { useState, useTransition } from 'react';
 import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { InfoDot } from '@/components/info-dot';
+import { isNpdFamily, productClassOf, type ClassRules } from '@/lib/doq-dashboard';
 import { saveAnalyticsRule } from '@/lib/forms/actions';
 import { reloadWithToast } from '@/lib/toast';
 import type { ReplenishmentRow } from '@/lib/forms/types';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
-const COLS: Column<ReplenishmentRow>[] = [
+const buildCols = (classRules: ClassRules): Column<ReplenishmentRow>[] => [
   {
     key: 'product_variant',
     label: 'Product / colour',
@@ -42,6 +43,15 @@ const COLS: Column<ReplenishmentRow>[] = [
     kind: 'num',
     info: 'Inventory-Planning DOQ — the demand rate that drives the reorder quantities. DOQ 45 when the product was mostly in stock; max(DOQ 365, DOQ 45) when OOS days exceed the threshold; floored at the rules-master minimum (default 0.25/day). Both knobs are editable in the IPDOQ rules above.',
     render: (r) => <strong>{r.ipdoq}</strong>,
+  },
+  {
+    key: 'product_class',
+    label: 'Class',
+    kind: 'text',
+    filter: 'select',
+    accessor: (r) =>
+      isNpdFamily(r.product_state) ? 'NPD' : productClassOf(r.ipdoq ?? 0, classRules),
+    info: 'ABC/D classification from IPDOQ (A above 10/day, B ≥ 7, C ≥ 3, else D — rules-master thresholds). NPD-family products are not classed.',
   },
   { key: 'rop_30', label: '30d', kind: 'num', info: 'Reorder quantity to cover the next 30 days at the IPDOQ rate, net of stock and in-process.', render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
   { key: 'rop_60', label: '60d', kind: 'num', info: 'Reorder quantity to cover the next 60 days at the IPDOQ rate, net of stock and in-process.' },
@@ -141,6 +151,7 @@ export function ReplenishmentClient({
   isAdmin = false,
   oosThreshold = 30,
   ipdoqFloor = 0.25,
+  classRules = { aAbove: 10, bMin: 7, cMin: 3 },
   dataAsOf = null,
   lastSynced = null,
 }: {
@@ -148,6 +159,7 @@ export function ReplenishmentClient({
   isAdmin?: boolean;
   oosThreshold?: number;
   ipdoqFloor?: number;
+  classRules?: ClassRules;
   dataAsOf?: string | null;
   lastSynced?: string | null;
 }) {
@@ -157,7 +169,7 @@ export function ReplenishmentClient({
       <IpdoqRules isAdmin={isAdmin} threshold={oosThreshold} floor={ipdoqFloor} />
       <FilterTable
         rows={rows}
-        columns={COLS}
+        columns={buildCols(classRules)}
         rowKey={(r) => r.product_variant}
         rowClass={(r) => (r.oos_flag ? 'wf-row-over' : undefined)}
         unit="colours"

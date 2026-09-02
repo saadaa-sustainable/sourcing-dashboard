@@ -62,20 +62,108 @@ function csvRows(rows: DoqCategoryRow[]) {
   ]);
 }
 
+function WindowTable({
+  kicker,
+  title,
+  info,
+  rows,
+  csvName,
+  actions,
+}: {
+  kicker: string;
+  title: string;
+  info: string;
+  rows: DoqCategoryRow[];
+  csvName: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <section className="panel table-panel">
+      <div className="panel-title">
+        <div>
+          <span className="panel-kicker">{kicker}</span>
+          <h3>
+            {title}
+            <InfoDot text={info} label={`About ${title}`} />
+          </h3>
+        </div>
+        <span className="table-meta-actions">
+          {actions}
+          <button
+            type="button"
+            className="download-button"
+            onClick={() => downloadCsv(csvName, HEADERS, csvRows(rows))}
+          >
+            <Download size={13} /> CSV
+          </button>
+        </span>
+      </div>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              {HEADERS.map((h) => (
+                <th key={h}>
+                  {h}
+                  {HEADER_INFO[h] && <InfoDot text={HEADER_INFO[h]} label={`About ${h}`} />}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.category}
+                style={r.category === 'TOTAL' ? { fontWeight: 700, background: 'var(--bg-surface)' } : undefined}
+              >
+                <td>{r.category}</td>
+                <td className="tabular">{fmt.format(r.skuCount)}</td>
+                <td className="tabular">{pct(r.pctSku)}</td>
+                <td className="tabular">{r.doq}</td>
+                <td className="tabular">{pct(r.pctDoq)}</td>
+                <td className="tabular">{fmt.format(r.dohStock)}</td>
+                <td className="tabular">{fmt.format(r.dohInProcess)}</td>
+                <td className="tabular">{fmt.format(r.oosSkuCount)}</td>
+                <td className="tabular">{pct(r.oosSkuPct)}</td>
+                <td className="tabular">{fmt.format(r.salesLeakage)}</td>
+                <td className="tabular">{fmt.format(r.oosDays)}</td>
+                <td className="tabular">{pct(r.oosPct)}</td>
+                <td className="tabular">{pct(r.inStockRate)}</td>
+                <td className="tabular">{fmt.format(r.skuDays)}</td>
+              </tr>
+            ))}
+            {!rows.length && (
+              <tr>
+                <td colSpan={HEADERS.length} className="wf-empty-cell">
+                  No window data yet — waiting for the first bqSyncDoqWindows run.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function DoqDashboardClient({
   tables,
+  comTables,
   meta,
   excludedCount,
 }: {
   tables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
+  comTables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   meta: DoqWindowMeta | null;
   excludedCount: number;
 }) {
   const [win, setWin] = useState<DoqWindowKey>('d1');
   const [weave, setWeave] = useState<DoqWeave>('All');
 
-  const rows = tables[win]?.[weave] ?? [];
   const w = meta?.windows?.[win];
+  const kicker = w
+    ? `${w.label} · ${w.ndays} day${w.ndays > 1 ? 's' : ''}`
+    : 'awaiting first sync';
 
   return (
     <>
@@ -107,86 +195,31 @@ export function DoqDashboardClient({
         ))}
       </div>
 
-      <section className="panel table-panel">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">
-              {w ? `${w.label} · ${w.ndays} day${w.ndays > 1 ? 's' : ''}` : 'awaiting first sync'}
-            </span>
-            <h3>
-              {WINDOW_TITLES[win]} — by Product State
-              <InfoDot text="COM STATUS grouping (the sheet's detail table) is pending its source from the team; Product State is the summary-level equivalent." />
-            </h3>
-          </div>
-          <span className="table-meta-actions">
-            {/* weave filter, mirroring the sheet's Woven / Knit tabs */}
-            <span className="segment" style={{ margin: 0 }}>
-              {DOQ_WEAVES.map((v) => (
-                <button key={v} className={weave === v ? 'active' : ''} onClick={() => setWeave(v)}>
-                  {v}
-                </button>
-              ))}
-            </span>
-            <button
-              type="button"
-              className="download-button"
-              onClick={() =>
-                downloadCsv(
-                  `doq-dashboard-${win}-${weave.toLowerCase()}`,
-                  HEADERS,
-                  csvRows(rows),
-                )
-              }
-            >
-              <Download size={13} /> CSV
-            </button>
+      <WindowTable
+        kicker={kicker}
+        title={`${WINDOW_TITLES[win]} — by Product Status`}
+        info="The summary breakdown: SKUs grouped by their Product State."
+        rows={tables[win]?.[weave] ?? []}
+        csvName={`doq-dashboard-${win}-${weave.toLowerCase()}-status`}
+        actions={
+          /* weave filter, mirroring the sheet's Woven / Knit tabs */
+          <span className="segment" style={{ margin: 0 }}>
+            {DOQ_WEAVES.map((v) => (
+              <button key={v} className={weave === v ? 'active' : ''} onClick={() => setWeave(v)}>
+                {v}
+              </button>
+            ))}
           </span>
-        </div>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                {HEADERS.map((h) => (
-                  <th key={h}>
-                    {h}
-                    {HEADER_INFO[h] && <InfoDot text={HEADER_INFO[h]} label={`About ${h}`} />}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr
-                  key={r.category}
-                  style={r.category === 'TOTAL' ? { fontWeight: 700, background: 'var(--bg-surface)' } : undefined}
-                >
-                  <td>{r.category}</td>
-                  <td className="tabular">{fmt.format(r.skuCount)}</td>
-                  <td className="tabular">{pct(r.pctSku)}</td>
-                  <td className="tabular">{r.doq}</td>
-                  <td className="tabular">{pct(r.pctDoq)}</td>
-                  <td className="tabular">{fmt.format(r.dohStock)}</td>
-                  <td className="tabular">{fmt.format(r.dohInProcess)}</td>
-                  <td className="tabular">{fmt.format(r.oosSkuCount)}</td>
-                  <td className="tabular">{pct(r.oosSkuPct)}</td>
-                  <td className="tabular">{fmt.format(r.salesLeakage)}</td>
-                  <td className="tabular">{fmt.format(r.oosDays)}</td>
-                  <td className="tabular">{pct(r.oosPct)}</td>
-                  <td className="tabular">{pct(r.inStockRate)}</td>
-                  <td className="tabular">{fmt.format(r.skuDays)}</td>
-                </tr>
-              ))}
-              {!rows.length && (
-                <tr>
-                  <td colSpan={HEADERS.length} className="wf-empty-cell">
-                    No window data yet — waiting for the first bqSyncDoqWindows run.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        }
+      />
+
+      <WindowTable
+        kicker={kicker}
+        title={`${WINDOW_TITLES[win]} — by COM Status (detail)`}
+        info="Product State + Product Class: launched SKUs classed A/B/C/D from IPDOQ (rules-master thresholds — A above 10/day, B ≥ 7, C ≥ 3, else D); NPD-family SKUs carry the literal NPD suffix instead of a class."
+        rows={comTables[win]?.[weave] ?? []}
+        csvName={`doq-dashboard-${win}-${weave.toLowerCase()}-com`}
+      />
     </>
   );
 }

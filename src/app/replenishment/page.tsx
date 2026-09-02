@@ -49,6 +49,11 @@ export default async function ReplenishmentPage() {
         isAdmin={user.role === 'admin'}
         oosThreshold={rules.oos_day_threshold ?? 30}
         ipdoqFloor={rules.ipdoq_floor ?? 0.25}
+        classRules={{
+          aAbove: rules.product_class_a_above ?? 10,
+          bMin: rules.product_class_b_min ?? 7,
+          cMin: rules.product_class_c_min ?? 3,
+        }}
         dataAsOf={meta.dataAsOf}
         lastSynced={meta.lastSynced}
       />

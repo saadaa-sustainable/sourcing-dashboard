@@ -33,7 +33,7 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'total_qty_sold', label: 'Total Qty Sold', kind: 'num' },
   { key: 'doq_45', label: '45 Days DOQ', kind: 'num', info: 'Average daily sales rate (units/day) over the 45-day window, counting only in-stock days.' },
   { key: 'launch_date', label: 'Launch Date', kind: 'text', info: 'From this dataset when present, otherwise from the Product Master.' },
-  { key: 'product_class', label: 'Product Class', kind: 'text', info: 'ABC-style class of the product by sales contribution.' },
+  { key: 'product_class', label: 'Product Class', kind: 'text', filter: 'select', info: 'ABC/D classification from IPDOQ (rules-master thresholds: A above 10/day, B ≥ 7, C ≥ 3, else D). NPD-family SKUs are not classed — they show NPD.' },
   { key: 'current_stock', label: 'Current Stock', kind: 'num' },
   { key: 'doh', label: 'DOH', kind: 'num', info: 'Days On Hand — how long current stock lasts at the recent sales rate.' },
   {

@@ -30,6 +30,67 @@ const STATUS_ORDER = [
   'To Be Discontinued',
 ];
 
+/* ---------------- Product Class (ABC/D) + COM STATUS ---------------- */
+
+export type ClassRules = { aAbove: number; bMin: number; cMin: number };
+
+/** NPD-family states are not ABC-classified — their COM suffix is "NPD". */
+export function isNpdFamily(state: string | null): boolean {
+  const s = (state ?? '').toLowerCase();
+  return s.includes('npd') || s.includes('not launch');
+}
+
+/** ABC/D class from the SKU's IPDOQ: >a → A, ≥b → B, ≥c → C, else D. */
+export function productClassOf(ipdoq: number, r: ClassRules): 'A' | 'B' | 'C' | 'D' {
+  if (ipdoq > r.aAbove) return 'A';
+  if (ipdoq >= r.bMin) return 'B';
+  if (ipdoq >= r.cMin) return 'C';
+  return 'D';
+}
+
+/**
+ * SKU-level IPDOQ, same rule as sd_replenishment's variant-level column:
+ * DOQ-45 unless the 45-day window was mostly OOS (above the threshold), then
+ * the higher of DOQ-365 / DOQ-45; floored.
+ */
+export function computeSkuIpdoq(
+  doq45: number,
+  doq365: number,
+  oos45: number,
+  oosThreshold: number,
+  floor: number,
+): number {
+  const raw = oos45 > oosThreshold ? Math.max(doq365, doq45) : doq45;
+  return Math.max(floor, raw || 0);
+}
+
+/** COM STATUS = "<state>-<class>"; NPD-family gets the literal "-NPD". */
+export function comStatusOf(state: string | null, cls: string): string {
+  const s = state?.trim() || 'Unknown';
+  return `${s}-${isNpdFamily(s) ? 'NPD' : cls}`;
+}
+
+/** Sheet ordering for COM rows: base state order first, then class A<B<C<D<NPD. */
+export function compareCom(a: string, b: string): number {
+  const base = (v: string) => {
+    const i = v.lastIndexOf('-');
+    return i > 0 ? v.slice(0, i) : v;
+  };
+  const suffix = (v: string) => {
+    const i = v.lastIndexOf('-');
+    return i > 0 ? v.slice(i + 1) : '';
+  };
+  const idx = (v: string) => {
+    const i = STATUS_ORDER.indexOf(base(v));
+    return i === -1 ? STATUS_ORDER.length : i;
+  };
+  return (
+    idx(a) - idx(b) ||
+    base(a).localeCompare(base(b)) ||
+    suffix(a).localeCompare(suffix(b))
+  );
+}
+
 export type DoqCategoryRow = {
   category: string;
   skuCount: number;
@@ -71,7 +132,14 @@ export function aggregateDoqWindow(
   key: DoqWindowKey,
   weave: DoqWeave,
   ndays: number,
+  opts?: {
+    /** Category resolver — defaults to Product State. */
+    categoryOf?: (m: OosCalculationRow) => string;
+    /** 'state' = fixed status order; 'com' = base-state order then class. */
+    order?: 'state' | 'com';
+  },
 ): DoqCategoryRow[] {
+  const categoryOf = opts?.categoryOf ?? ((m) => m.product_status?.trim() || 'Unknown');
   const N = Math.max(1, ndays);
   const byCat: Record<string, Acc> = {};
   const countMap: Record<string, number> = {};
@@ -80,7 +148,7 @@ export function aggregateDoqWindow(
     if (excluded.has(m.sku.toUpperCase())) continue;
     if (weave !== 'All' && weaveBucket(m.weave_type) !== weave) continue;
 
-    const cat = m.product_status?.trim() || 'Unknown';
+    const cat = categoryOf(m);
     countMap[cat] = (countMap[cat] ?? 0) + 1;
 
     const w = windowRows[m.sku];
@@ -109,12 +177,15 @@ export function aggregateDoqWindow(
     a.leak += leak;
   }
 
-  const cats = [
-    ...STATUS_ORDER.filter((s) => countMap[s] !== undefined),
-    ...Object.keys(countMap)
-      .filter((c) => !STATUS_ORDER.includes(c))
-      .sort(),
-  ];
+  const cats =
+    opts?.order === 'com'
+      ? Object.keys(countMap).sort(compareCom)
+      : [
+          ...STATUS_ORDER.filter((s) => countMap[s] !== undefined),
+          ...Object.keys(countMap)
+            .filter((c) => !STATUS_ORDER.includes(c))
+            .sort(),
+        ];
 
   const totalSku = Object.values(countMap).reduce((s, n) => s + n, 0);
   const tableTotalDoq = cats.reduce((s, c) => s + (byCat[c]?.doq ?? 0), 0);
