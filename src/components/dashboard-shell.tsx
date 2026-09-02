@@ -3351,7 +3351,7 @@ export function DashboardShell({
           {tab === "dashboard" && (
             <>
               {/* Cross-tab decision cards — the "so what" layer above the KPIs. */}
-              <AnalyticsCards data={data} rules={analyticsRules} extras={analyticsExtras} onTab={setTab} />
+              <AnalyticsCards data={data} rules={analyticsRules} extras={analyticsExtras} onTab={setTab} isAdmin={role === "admin"} />
               <DashboardTab
                 data={data}
                 bucket={bucket}

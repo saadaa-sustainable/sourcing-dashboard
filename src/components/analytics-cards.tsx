@@ -224,11 +224,14 @@ export function AnalyticsCards({
   rules,
   extras,
   onTab,
+  isAdmin = false,
 }: {
   data: DashboardData;
   rules: Record<string, number>;
   extras?: AnalyticsExtras | null;
   onTab: (id: TabId) => void;
+  /** /replenishment is admin-only; non-admins get Urgent Replenishment instead. */
+  isAdmin?: boolean;
 }) {
   const today = istToday();
   const [decisionTab, setDecisionTab] = useState<DecisionTab>("protect");
@@ -1398,9 +1401,11 @@ export function AnalyticsCards({
               icon={Repeat}
               tone={!repl ? "neutral" : repl.oosVariants > 0 ? "red" : repl.variants > 0 ? "amber" : "green"}
               status={!repl ? "WAITING" : `${fmt.format(repl.variants)} VARIANTS`}
-              cta="Open Replenishment"
+              cta={isAdmin ? "Open Replenishment" : "Open Urgent Replenishment"}
               span={6}
-              href="/replenishment"
+              {...(isAdmin
+                ? { href: "/replenishment" }
+                : { onClick: () => onTab("urgent-replenish") })}
               info="Colour variants the replenishment maths says to order now (ROP-30 above zero), the total pieces they call for, and how many of them are already out of stock."
             >
               {!repl ? (
