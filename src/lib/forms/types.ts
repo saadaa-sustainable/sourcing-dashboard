@@ -737,7 +737,13 @@ export type ReplenishmentRow = {
   in_progress: number;
   daily_demand: number;
   doq_45: number | null;
+  doq_365: number | null;
+  oos_days_45: number;
   oos_flag: boolean;
+  // IPDOQ (Inventory-Planning DOQ): doq_45, falling back to max(doq_365, doq_45)
+  // when oos_days_45 exceeds the rules-master threshold; floored at ipdoq_floor.
+  // Drives rop_30/60/90.
+  ipdoq: number;
   rop_30: number;
   rop_60: number;
   rop_90: number;

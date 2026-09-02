@@ -89,6 +89,7 @@ export function DoqClient({ rows }: { rows: DoqInventoryRow[] }) {
         unit="rows"
         searchPlaceholder="SKU, variant, product or category"
         emptyText="No rows match your filters."
+        download={{ filename: 'doq-dataset' }}
       />
     </>
   );

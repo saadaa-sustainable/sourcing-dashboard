@@ -340,6 +340,12 @@ const BqSync_ = (function () {
       const doq = g.doq_45;
       g.doh = doq ? round1(g.current_stock / doq) : null;
       g.doh_with_inprocess = doq ? round1((g.current_stock + g.inprocess_stock) / doq) : null;
+      // Availability days (45-day window): these two columns previously had NO
+      // writer anywhere in the pipeline — every row sat at NULL/0 (the
+      // "Availability days showing 0" bug). oos_days_45 is a calendar-window
+      // count (max 45), so available = window minus OOS days.
+      g.total_inventory_days = 45;
+      g.total_available_days = Math.max(0, 45 - (g.total_oos_days ?? 0));
       if (full) {
         g.category_with_gender = g._categorytype
           ? `${genderCode(g._gender)} ${g._categorytype.toUpperCase()}`.trim() : null;

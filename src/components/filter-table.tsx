@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Download } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
+import { downloadCsv } from '@/lib/download';
 
 // A reusable read-only data table with: a global search box, a per-column filter row
 // (multi-select checkbox dropdown for low-cardinality columns, text/number-operator
@@ -203,6 +205,7 @@ export function FilterTable<T>({
   emptyText = 'No rows.',
   unit = 'rows',
   toolbarExtra,
+  download,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -213,6 +216,8 @@ export function FilterTable<T>({
   emptyText?: string;
   unit?: string;
   toolbarExtra?: ReactNode;
+  /** Adds a CSV button exporting the CURRENT view — filtered + sorted rows, all columns. */
+  download?: { filename: string };
 }) {
   const [search, setSearch] = useState('');
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
@@ -340,6 +345,21 @@ export function FilterTable<T>({
             />
           </label>
           {toolbarExtra}
+          {download && (
+            <button
+              type="button"
+              className="download-button"
+              onClick={() =>
+                downloadCsv(
+                  download.filename,
+                  columns.map((c) => c.label),
+                  sorted.map((r) => columns.map((c) => asText(raw(r, c)))),
+                )
+              }
+            >
+              <Download size={13} /> CSV
+            </button>
+          )}
           {anyFilter && (
             <button
               type="button"
