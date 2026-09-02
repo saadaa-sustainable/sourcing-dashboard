@@ -146,7 +146,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'standard_cost';
   label: string;
   sublabel: string;
   status: SdStatus;

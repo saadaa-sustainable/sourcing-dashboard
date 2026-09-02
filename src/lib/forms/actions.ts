@@ -30,6 +30,7 @@ import { computeClosureCompliance } from '@/lib/business-logic';
 import { currentUser } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
 import {
+  canAcceptProposal,
   canConfirmCm,
   canConfirmFabric,
   canPropose,
@@ -1537,6 +1538,9 @@ type CostRow = {
   status: SdStatus;
   frozen: boolean;
   neg_stage: string | null;
+  job_cost: number | null;
+  fob_cost: number | null;
+  efob_cost?: number | null; // FG only — the material table has no E-FOB column
 };
 
 async function loadCostRow(track: CostTrack, id: number) {
@@ -1544,7 +1548,9 @@ async function loadCostRow(track: CostTrack, id: number) {
   const table = COST_TABLE[track];
   const { data } = await supabase
     .from(table)
-    .select('id, product_code, status, frozen, neg_stage')
+    .select(
+      `id, product_code, status, frozen, neg_stage, job_cost, fob_cost${track === 'fg' ? ', efob_cost' : ''}`,
+    )
     .eq('id', id)
     .maybeSingle();
   return { supabase, table, row: (data as CostRow | null) ?? null };
@@ -1623,6 +1629,37 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target cost ${target}`);
   revalidatePath('/standard-cost');
   return done('Target cost set.');
+}
+
+/** Admin accepts the proposal as-is — the proposed rates become the Standard Cost. */
+export async function acceptProposedCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid cost row.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (!canAcceptProposal(user.role, row.neg_stage)) return fail('This is not an open proposal.');
+  if (row.job_cost == null && row.fob_cost == null && row.efob_cost == null) {
+    return fail('The proposal names no rate — set a target instead of accepting.');
+  }
+
+  const patch: Record<string, unknown> = {
+    neg_stage: 'signed_off',
+    status: 'approved',
+    approved_by: user.email,
+    approved_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  if (track === 'fg') patch.documented = true;
+  // Guarded on the stage so a concurrent reject/target can't be overwritten.
+  const { error } = await supabase.from(table).update(patch).eq('id', id).eq('neg_stage', 'proposed');
+  if (error) return fail(error.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Proposal accepted as-is — standard cost');
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  return done('Proposal accepted. This is now the standard cost.');
 }
 
 /** Team comes back from the vendor with the actual rate(s). */

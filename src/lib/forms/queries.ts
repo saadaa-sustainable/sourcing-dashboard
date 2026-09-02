@@ -1368,12 +1368,18 @@ export async function countPendingApprovals(): Promise<number> {
   const supabase = await client();
   const pending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('status', ['submitted', 'pending_l2']);
-  const [a, b, c] = await Promise.all([
+  // Cost negotiation runs outside the status ladder: proposed / rate_submitted
+  // are the admin's turn (the bell renders for admins only).
+  const costPending = (t: string) =>
+    supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
+  const [a, b, c, d, e] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
+    costPending('sd_standard_cost'),
+    costPending('sd_material_standard_cost'),
   ]);
-  return (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0);
+  return (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0);
 }
 
 /**
@@ -1384,7 +1390,16 @@ export async function countPendingApprovals(): Promise<number> {
  */
 export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalNotification[]> {
   const supabase = await client();
-  const [plans, discontinues, pos] = await Promise.all([
+  // Cost rows live outside the status ladder — proposed / rate_submitted are the
+  // admin's turn in the negotiation, so they only surface for admins.
+  const costTurn = (t: string) =>
+    role === 'admin'
+      ? supabase
+          .from(t)
+          .select('id, product_code, status, neg_stage, updated_at')
+          .in('neg_stage', ['proposed', 'rate_submitted'])
+      : Promise.resolve({ data: [] as never[] });
+  const [plans, discontinues, pos, fgCosts, matCosts] = await Promise.all([
     supabase
       .from('sd_buying_plan')
       .select('id, plan_month, plan_type, status, submitted_by, submitted_at')
@@ -1397,6 +1412,8 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       .from('sd_po_approval')
       .select('id, po_ref_num, product_code, category, status, created_by, submitted_for_approval_at')
       .in('status', ['submitted', 'pending_l2']),
+    costTurn('sd_standard_cost'),
+    costTurn('sd_material_standard_cost'),
   ]);
 
   const items: ApprovalNotification[] = [];
@@ -1452,6 +1469,29 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       submittedAt: po.submitted_for_approval_at,
     });
   }
+
+  type CostNotifRow = { id: number; product_code: string; status: SdStatus; neg_stage: string; updated_at: string | null };
+  const costItems = (rows: CostNotifRow[] | null | undefined, material: boolean) => {
+    for (const c of (rows ?? []) as CostNotifRow[]) {
+      items.push({
+        key: `${material ? 'mc' : 'sc'}-${c.id}`,
+        kind: 'standard_cost',
+        label: `${material ? 'Material' : 'Standard'} cost — ${c.product_code}`,
+        sublabel:
+          c.neg_stage === 'proposed'
+            ? 'Cost proposed — accept, reject or set a target'
+            : 'Actual rate submitted — awaiting your sign-off',
+        status: c.status,
+        href: material
+          ? '/standard-cost?track=material'
+          : `/standard-cost?open=${encodeURIComponent(c.product_code)}`,
+        submittedBy: null,
+        submittedAt: c.updated_at,
+      });
+    }
+  };
+  costItems(fgCosts.data as CostNotifRow[] | null, false);
+  costItems(matCosts.data as CostNotifRow[] | null, true);
 
   // Newest first; items with no submission timestamp sink to the bottom.
   return items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));

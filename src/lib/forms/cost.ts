@@ -47,7 +47,7 @@ export function nextActor(stage: string | null): string {
     case '':
       return 'Team — propose';
     case 'proposed':
-      return 'Admin — set target cost';
+      return 'Admin — accept, reject or set target';
     case 'target_set':
       return 'Team — enter actual rate';
     case 'rate_submitted':
@@ -63,6 +63,14 @@ export const canPropose = (role: SdRole, stage: string | null) =>
   isTeam(role) && (!stage || stage === 'rejected');
 export const canSetTarget = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'proposed';
+/** Admin may also accept a proposal as-is — the proposed rates become the standard. */
+export const canAcceptProposal = (role: SdRole, stage: string | null) =>
+  isAdmin(role) && stage === 'proposed';
+/** Whose turn is a row waiting on? Drives the bell + the awaiting-action chip. */
+export const isAdminTurn = (stage: string | null) =>
+  stage === 'proposed' || stage === 'rate_submitted';
+export const isTeamTurn = (stage: string | null) =>
+  stage === 'target_set' || stage === 'renegotiate';
 export const canSubmitRate = (role: SdRole, stage: string | null) =>
   isTeam(role) && (stage === 'target_set' || stage === 'renegotiate');
 export const canSignOff = (role: SdRole, stage: string | null) =>

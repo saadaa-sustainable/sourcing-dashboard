@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import { ChevronDown, ChevronRight, Lock, Plus, Save, Trash2 } from 'lucide-react';
 import {
+  acceptProposedCost,
   confirmCmRate,
   confirmFabricRate,
   proposeCost,
@@ -25,6 +26,7 @@ import {
   CMTP_MANDATORY,
   COST_STAGE_LABEL,
   COST_STAGE_TONE,
+  canAcceptProposal,
   canConfirmCm,
   canConfirmFabric,
   canPropose,
@@ -33,6 +35,8 @@ import {
   canSetTarget,
   canSignOff,
   canSubmitRate,
+  isAdminTurn,
+  isTeamTurn,
   nextActor,
 } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
@@ -106,10 +110,22 @@ export function StandardCostClient({
     return m;
   }, [cmtp]);
 
+  // Rows waiting on the signed-in user's side of the negotiation.
+  const [mineOnly, setMineOnly] = useState(false);
+  const myTurn = useMemo(
+    () => (role === 'admin' ? isAdminTurn : isTeamTurn),
+    [role],
+  );
+  const awaitingCount = useMemo(
+    () => costs.filter((c) => myTurn(c.neg_stage)).length,
+    [costs, myTurn],
+  );
+
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return q ? costs.filter((c) => c.product_code.toLowerCase().includes(q)) : costs;
-  }, [costs, filter]);
+    const base = mineOnly ? costs.filter((c) => myTurn(c.neg_stage)) : costs;
+    return q ? base.filter((c) => c.product_code.toLowerCase().includes(q)) : base;
+  }, [costs, filter, mineOnly, myTurn]);
 
   const existingCodes = useMemo(() => new Set(costs.map((c) => c.product_code)), [costs]);
 
@@ -141,10 +157,10 @@ export function StandardCostClient({
       <Notice tone="info">
         Cost is <strong>negotiated</strong>, not just approved: team{' '}
         <strong>proposes</strong> (fill the {jobLabel} / {fobLabel}{isMat ? '' : ' / E-FOB'} rate that
-        applies) → Mahesh sets a <strong>target</strong> → team returns with the{' '}
-        <strong>actual vendor rate</strong> → Mahesh <strong>signs off</strong>, and that becomes the
-        Standard Cost the Buying Plan values from. {signedOff} of {costs.length}{' '}
-        {isMat ? 'materials' : 'products'} are signed off.
+        applies) → Mahesh <strong>accepts the proposal as-is</strong>, <strong>rejects</strong> it, or
+        sets a <strong>target</strong> → team returns with the <strong>actual vendor rate</strong> →
+        Mahesh <strong>signs off</strong>, and that becomes the Standard Cost the Buying Plan values
+        from. {signedOff} of {costs.length} {isMat ? 'materials' : 'products'} are signed off.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -189,6 +205,16 @@ export function StandardCostClient({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
+        {awaitingCount > 0 && (
+          <button
+            type="button"
+            className={`wf-btn wf-btn-sm ${mineOnly ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
+            onClick={() => setMineOnly((v) => !v)}
+            title="Show only rows waiting on you"
+          >
+            {awaitingCount} awaiting your action
+          </button>
+        )}
         <span className="wf-subtle">{shown.length} shown</span>
       </div>
 
@@ -499,7 +525,18 @@ function CostRow({
           )}
 
           {canSetTarget(role, stage) && (
-            <div className="wf-issue-row">
+            <div className="wf-issue-row wf-issue-row-wrap">
+              {canAcceptProposal(role, stage) && (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary wf-btn-sm"
+                  disabled={busy}
+                  title="Approve the proposed rates as-is — they become the standard cost"
+                  onClick={() => act(acceptProposedCost, {})}
+                >
+                  Accept proposal
+                </button>
+              )}
               <input
                 className="wf-mini-input"
                 type="number"
@@ -510,7 +547,7 @@ function CostRow({
               />
               <button
                 type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
                 disabled={busy}
                 onClick={() => act(setTargetCost, { target_cost: target })}
               >
