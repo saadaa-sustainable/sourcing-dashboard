@@ -109,6 +109,34 @@ export type AnalyticsExtras = {
     | null;
   /** Inward last week: planned (due) vs actual (received) quantity. */
   inwardLastWeek: { planned: number; actual: number } | null;
+  /** 04 Workspace — replenishment queue (variants with ROP-30 > 0). */
+  replenishment: { variants: number; rop30Qty: number; oosVariants: number } | null;
+  /** 04 Workspace — OOS Calculation summary (counts; the page has the detail). */
+  oosSummary: { totalSkus: number; zeroStock: number; dataAsOf: string | null } | null;
+  /** 04 Workspace — vendor recommendation extremes (≥3 completed POs). */
+  vendorRec: {
+    rated: number;
+    best: { name: string; onTimePct: number; completed: number }[];
+    risky: { name: string; delayPct: number; completed: number }[];
+  } | null;
+  /** 04 Workspace — open Approved lines still to arrive, bucketed by EDD. */
+  inwardPipeline: {
+    next7Qty: number;
+    next7Lines: number;
+    overdueQty: number;
+    overdueLines: number;
+    noEddLines: number;
+    totalQty: number;
+  } | null;
+  /** 05 Data & sync — product-master lifecycle mix (codes per state). */
+  productStateMix: { state: string; count: number }[] | null;
+  /** 05 Data & sync — feed freshness from the Sync Health view. */
+  syncHealth: {
+    feeds: number;
+    staleHours: number;
+    stale: { source: string; pipeline: string; hoursAgo: number }[];
+    oldestHours: number | null;
+  } | null;
 };
 
 /** One data source's freshness, for the Sync Health tab (sd_sync_status view). */

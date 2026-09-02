@@ -188,6 +188,12 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   // IPDOQ (Replenishment): OOS-day fallback threshold + floor on the final rate.
   oos_day_threshold: 30,
   ipdoq_floor: 0.25,
+  // Product Class (ABC/D) from IPDOQ: > a → A, ≥ b → B, ≥ c → C, else D.
+  product_class_a_above: 10,
+  product_class_b_min: 7,
+  product_class_c_min: 3,
+  // Data & sync card: a feed counts as stale after this many hours without refresh.
+  sync_stale_hours: 30,
 };
 
 export async function loadAnalyticsRules(): Promise<Record<string, number>> {
@@ -273,6 +279,12 @@ export async function loadAnalyticsExtras(
     issuedLastWeek: null,
     pendingApproval: null,
     inwardLastWeek: null,
+    replenishment: null,
+    oosSummary: null,
+    vendorRec: null,
+    inwardPipeline: null,
+    productStateMix: null,
+    syncHealth: null,
   };
 
   const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
@@ -344,10 +356,18 @@ export async function loadAnalyticsExtras(
     const { data } = await supabase
       .from('sd_ee_product_code_status')
       .select('product_code, product_status, fabric_type');
+    const stateCounts = new Map<string, number>();
     ((data ?? []) as { product_code: string; product_status: string | null; fabric_type: string | null }[]).forEach((r) => {
       if (r.fabric_type) weaveByCode[r.product_code] = r.fabric_type;
       if (r.product_status === 'Discontinued') discontinuedCodes.add(r.product_code);
+      const state = (r.product_status ?? '').trim() || 'Unmapped';
+      stateCounts.set(state, (stateCounts.get(state) ?? 0) + 1);
     });
+    if (stateCounts.size) {
+      extras.productStateMix = [...stateCounts.entries()]
+        .map(([state, count]) => ({ state, count }))
+        .sort((a, b) => b.count - a.count);
+    }
   } catch {
     weaveByCode = {};
     discontinuedCodes = new Set();
@@ -561,6 +581,137 @@ export async function loadAnalyticsExtras(
     }
   } catch { /* section stays null */ }
 
+  /* 04 Workspace — replenishment queue: variants the ROP maths says to order now. */
+  try {
+    const rows: { rop_30: number | null; oos_flag: boolean | null }[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('sd_replenishment')
+        .select('rop_30, oos_flag')
+        .gt('rop_30', 0)
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      if (!data?.length) break;
+      rows.push(...(data as { rop_30: number | null; oos_flag: boolean | null }[]));
+      if (data.length < PAGE_SIZE) break;
+    }
+    extras.replenishment = {
+      variants: rows.length,
+      rop30Qty: rows.reduce((s, r) => s + (Number(r.rop_30) || 0), 0),
+      oosVariants: rows.filter((r) => Boolean(r.oos_flag)).length,
+    };
+  } catch { /* section stays null */ }
+
+  /* 04 Workspace — OOS Calculation summary (head counts only; detail is on the page). */
+  try {
+    const [total, zero, day] = await Promise.all([
+      supabase.from('sd_oos_calculation').select('sku', { count: 'exact', head: true }),
+      supabase
+        .from('sd_oos_calculation')
+        .select('sku', { count: 'exact', head: true })
+        .lte('current_stock', 0),
+      supabase
+        .from('sd_inventory_planning')
+        .select('date_day')
+        .order('date_day', { ascending: false })
+        .limit(1),
+    ]);
+    extras.oosSummary = {
+      totalSkus: total.count ?? 0,
+      zeroStock: zero.count ?? 0,
+      dataAsOf: (day.data?.[0] as { date_day?: string } | undefined)?.date_day ?? null,
+    };
+  } catch { /* section stays null */ }
+
+  /* 04 Workspace — vendor recommendation extremes (≥3 completed POs to count). */
+  try {
+    const { data } = await supabase
+      .from('sd_vendor_recommendation')
+      .select('vendor_name, pos_completed, on_time_rate_pct, delay_rate_pct')
+      .limit(PAGE_SIZE);
+    const rated = ((data ?? []) as {
+      vendor_name: string | null; pos_completed: number | null;
+      on_time_rate_pct: number | null; delay_rate_pct: number | null;
+    }[]).filter((r) => (Number(r.pos_completed) || 0) >= 3);
+    extras.vendorRec = {
+      rated: rated.length,
+      best: rated
+        .filter((r) => r.on_time_rate_pct != null)
+        .sort((a, b) => Number(b.on_time_rate_pct) - Number(a.on_time_rate_pct))
+        .slice(0, 3)
+        .map((r) => ({
+          name: r.vendor_name ?? '—',
+          onTimePct: Math.round(Number(r.on_time_rate_pct) || 0),
+          completed: Number(r.pos_completed) || 0,
+        })),
+      risky: rated
+        .filter((r) => (Number(r.delay_rate_pct) || 0) >= 50)
+        .sort((a, b) => Number(b.delay_rate_pct) - Number(a.delay_rate_pct))
+        .slice(0, 3)
+        .map((r) => ({
+          name: r.vendor_name ?? '—',
+          delayPct: Math.round(Number(r.delay_rate_pct) || 0),
+          completed: Number(r.pos_completed) || 0,
+        })),
+    };
+  } catch { /* section stays null */ }
+
+  /* 04 Workspace — inward pipeline: open Approved lines still to arrive, by EDD. */
+  try {
+    const lines: { pending_qty: number | null; expected_delivery_date: string | null }[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('sd_po_lines_enriched')
+        .select('pending_qty, expected_delivery_date')
+        .eq('po_status_code', 3)
+        .gt('pending_qty', 0)
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw error;
+      if (!data?.length) break;
+      lines.push(...(data as { pending_qty: number | null; expected_delivery_date: string | null }[]));
+      if (data.length < PAGE_SIZE) break;
+    }
+    const in7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    const pipe = { next7Qty: 0, next7Lines: 0, overdueQty: 0, overdueLines: 0, noEddLines: 0, totalQty: 0 };
+    lines.forEach((l) => {
+      const qty = Number(l.pending_qty) || 0;
+      pipe.totalQty += qty;
+      const edd = l.expected_delivery_date;
+      if (!edd) pipe.noEddLines += 1;
+      else if (edd < todayDate) { pipe.overdueQty += qty; pipe.overdueLines += 1; }
+      else if (edd <= in7) { pipe.next7Qty += qty; pipe.next7Lines += 1; }
+    });
+    extras.inwardPipeline = pipe;
+  } catch { /* section stays null */ }
+
+  /* 05 Data & sync — feed freshness from the Sync Health view. */
+  try {
+    const staleHours = rules.sync_stale_hours ?? 30;
+    const { data } = await supabase
+      .from('sd_sync_status')
+      .select('source, pipeline, last_refreshed');
+    const rows = (data ?? []) as { source: string; pipeline: string; last_refreshed: string | null }[];
+    const now = Date.now();
+    const aged = rows.map((r) => ({
+      source: r.source,
+      pipeline: r.pipeline,
+      hoursAgo: r.last_refreshed
+        ? Math.round((now - Date.parse(r.last_refreshed)) / 3600_000)
+        : Number.POSITIVE_INFINITY,
+    }));
+    const finiteAges = aged.map((r) => r.hoursAgo).filter(Number.isFinite);
+    extras.syncHealth = {
+      feeds: rows.length,
+      staleHours,
+      stale: aged
+        .filter((r) => r.hoursAgo > staleHours)
+        .sort((a, b) => b.hoursAgo - a.hoursAgo)
+        .slice(0, 4)
+        .map((r) => ({ ...r, hoursAgo: Number.isFinite(r.hoursAgo) ? r.hoursAgo : 999 })),
+      oldestHours: finiteAges.length ? Math.max(...finiteAges) : null,
+    };
+  } catch { /* section stays null */ }
+
   return extras;
 }
 
@@ -713,6 +864,31 @@ export async function loadDoqWindows(): Promise<Record<string, DoqWindowRow>> {
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`sd_doq_window: ${error.message}`);
     for (const r of (data ?? []) as DoqWindowRow[]) map[r.sku] = r;
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return map;
+}
+
+/** Per-SKU IPDOQ inputs (doq_45 / doq_365 / oos_days_45, max across warehouses)
+ *  for Product Class computation. From the latest inventory snapshot. */
+export async function loadSkuClassInputs(): Promise<
+  Record<string, { doq45: number; doq365: number; oos45: number }>
+> {
+  const supabase = await client();
+  const map: Record<string, { doq45: number; doq365: number; oos45: number }> = {};
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_inventory_planning')
+      .select('sku, doq_45, doq_365, oos_days_45')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_inventory_planning: ${error.message}`);
+    for (const r of (data ?? []) as { sku: string | null; doq_45: number | null; doq_365: number | null; oos_days_45: number | null }[]) {
+      if (!r.sku) continue;
+      const cur = (map[r.sku] ??= { doq45: 0, doq365: 0, oos45: 0 });
+      cur.doq45 = Math.max(cur.doq45, r.doq_45 ?? 0);
+      cur.doq365 = Math.max(cur.doq365, r.doq_365 ?? 0);
+      cur.oos45 = Math.max(cur.oos45, r.oos_days_45 ?? 0);
+    }
     if (!data || data.length < PAGE_SIZE) break;
   }
   return map;

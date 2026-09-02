@@ -11,15 +11,20 @@ import type { CSSProperties } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  Award,
   Ban,
   CheckCheck,
   CircleAlert,
+  Database,
   Factory,
   IndianRupee,
   PackageX,
+  RefreshCw,
+  Repeat,
   Scale,
   Target,
   TrendingUp,
+  Truck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -103,6 +108,20 @@ const decisionTabs = [
     label: "Plan progress",
     description:
       "Track buying-plan realization, TNA progress, and PO closure compliance.",
+  },
+  {
+    id: "workspace",
+    number: "04",
+    label: "Workspace pulse",
+    description:
+      "Read the workspace views at a glance — replenishment pressure, stock-outs, vendor picks and the inward pipeline.",
+  },
+  {
+    id: "datahealth",
+    number: "05",
+    label: "Data & sync",
+    description:
+      "Watch the static datasets behind every number — product-master mix and how fresh each synced feed is.",
   },
 ] as const;
 
@@ -352,6 +371,13 @@ export function AnalyticsCards({
   const inward = extras?.inwardLastWeek ?? null;
   const inwardPct =
     inward && inward.planned > 0 ? Math.round((inward.actual / inward.planned) * 100) : null;
+  const repl = extras?.replenishment ?? null;
+  const oosSum = extras?.oosSummary ?? null;
+  const vrec = extras?.vendorRec ?? null;
+  const pipe = extras?.inwardPipeline ?? null;
+  const stateMix = extras?.productStateMix ?? null;
+  const stateTotal = (stateMix ?? []).reduce((s, m) => s + m.count, 0);
+  const sync = extras?.syncHealth ?? null;
 
   const planTotals = curMonth?.buckets.reduce(
     (acc, bucket) => ({
@@ -1360,6 +1386,197 @@ export function AnalyticsCards({
                     </small>
                   </div>
                 </div>
+              )}
+            </AnaCard>
+          </div>
+        )}
+
+        {decisionTab === "workspace" && (
+          <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Replenishment Queue"
+              icon={Repeat}
+              tone={!repl ? "neutral" : repl.oosVariants > 0 ? "red" : repl.variants > 0 ? "amber" : "green"}
+              status={!repl ? "WAITING" : `${fmt.format(repl.variants)} VARIANTS`}
+              cta="Open Replenishment"
+              span={6}
+              href="/replenishment"
+              info="Colour variants the replenishment maths says to order now (ROP-30 above zero), the total pieces they call for, and how many of them are already out of stock."
+            >
+              {!repl ? (
+                <NoData text="Replenishment data is not available." />
+              ) : repl.variants === 0 ? (
+                <ZeroState title="Queue clear" text="No variant currently trips its 30-day reorder point." compact />
+              ) : (
+                <div className="ana-plan-hero">
+                  <div>
+                    <strong className="ana-value ana-value-xl">{fmt.format(repl.rop30Qty)}</strong>
+                    <span className="ana-value-label">pieces to order · ROP 30</span>
+                  </div>
+                  <div className="ana-plan-values">
+                    <span><small>Variants</small><b>{fmt.format(repl.variants)}</b></span>
+                    <span><small>Already OOS</small><b>{fmt.format(repl.oosVariants)}</b></span>
+                  </div>
+                </div>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Out of Stock"
+              icon={PackageX}
+              tone={!oosSum ? "neutral" : oosSum.zeroStock > 0 ? "amber" : "green"}
+              status={!oosSum ? "WAITING" : `${fmt.format(oosSum.zeroStock)} SKUS`}
+              cta="Open OOS Calculation"
+              span={6}
+              href="/oos-calculation"
+              info={`SKUs in the OOS Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
+            >
+              {!oosSum ? (
+                <NoData text="OOS Calculation data is not available." />
+              ) : (
+                <div className="ana-plan-hero">
+                  <div>
+                    <strong className="ana-value ana-value-xl">
+                      {oosSum.totalSkus ? Math.round((oosSum.zeroStock / oosSum.totalSkus) * 100) : 0}%
+                    </strong>
+                    <span className="ana-value-label">of tracked SKUs at zero stock</span>
+                  </div>
+                  <div className="ana-plan-values">
+                    <span><small>Zero stock</small><b>{fmt.format(oosSum.zeroStock)}</b></span>
+                    <span><small>Tracked</small><b>{fmt.format(oosSum.totalSkus)}</b></span>
+                  </div>
+                </div>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Inward Pipeline"
+              icon={Truck}
+              tone={!pipe ? "neutral" : pipe.overdueQty > 0 ? "amber" : "green"}
+              status={!pipe ? "WAITING" : `${fmt.format(pipe.next7Qty)} PCS · 7D`}
+              cta="Open Inward Plan"
+              span={7}
+              href="/inward-plan"
+              info="Open (Approved) PO quantity still to arrive: due in the next 7 days, already past its expected date, and lines with no EDD set at all."
+            >
+              {!pipe ? (
+                <NoData text="Inward-plan data is not available." />
+              ) : (
+                <>
+                  <div className="ana-plan-hero">
+                    <div>
+                      <strong className="ana-value ana-value-xl">{fmt.format(pipe.next7Qty)}</strong>
+                      <span className="ana-value-label">pieces due in the next 7 days · {fmt.format(pipe.next7Lines)} lines</span>
+                    </div>
+                    <div className="ana-plan-values">
+                      <span><small>Overdue to arrive</small><b>{fmt.format(pipe.overdueQty)}</b></span>
+                      <span><small>Total in pipeline</small><b>{fmt.format(pipe.totalQty)}</b></span>
+                    </div>
+                  </div>
+                  <ul className="ana-list">
+                    <li>
+                      <span className="ana-list-stack"><span>Overdue lines</span><small>EDD already past, stock not in</small></span>
+                      <span className="ana-list-val">{fmt.format(pipe.overdueLines)}</span>
+                    </li>
+                    <li>
+                      <span className="ana-list-stack"><span>No EDD</span><small>lines with no delivery date in EasyCom</small></span>
+                      <span className="ana-list-val">{fmt.format(pipe.noEddLines)}</span>
+                    </li>
+                  </ul>
+                </>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Vendor Recommendation"
+              icon={Award}
+              tone={!vrec ? "neutral" : vrec.risky.length ? "amber" : "green"}
+              status={!vrec ? "WAITING" : `${fmt.format(vrec.rated)} RATED`}
+              cta="Open Vendor Recommendation"
+              span={5}
+              href="/vendor-recommendation"
+              info="From completed-PO history (vendors with at least 3 completed POs): the best on-time performers and any vendor whose recent delay rate is 50% or worse."
+            >
+              {!vrec ? (
+                <NoData text="Vendor recommendation data is not available." />
+              ) : !vrec.rated ? (
+                <NoData text="No vendor has 3+ completed POs to rate yet." />
+              ) : (
+                <ul className="ana-list">
+                  {vrec.best.map((v) => (
+                    <li key={`best-${v.name}`}>
+                      <span className="ana-list-stack"><span>{v.name}</span><small>{v.completed} completed POs</small></span>
+                      <span className="ana-list-val is-green">{v.onTimePct}% on time</span>
+                    </li>
+                  ))}
+                  {vrec.risky.map((v) => (
+                    <li key={`risk-${v.name}`}>
+                      <span className="ana-list-stack"><span>{v.name}</span><small>{v.completed} completed POs</small></span>
+                      <span className="ana-list-val is-red">{v.delayPct}% delayed</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AnaCard>
+          </div>
+        )}
+
+        {decisionTab === "datahealth" && (
+          <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Product Master Mix"
+              icon={Database}
+              tone="neutral"
+              status={stateMix ? `${fmt.format(stateTotal)} CODES` : "WAITING"}
+              cta="Open Product Master"
+              span={7}
+              href="/product-master"
+              info="Every product code in the master, counted by its lifecycle state. Watch Discontinued and SKU-Create shares — they should shrink, not grow."
+            >
+              {!stateMix ? (
+                <NoData text="Product master data is not available." />
+              ) : (
+                <ul className="ana-list">
+                  {stateMix.slice(0, 6).map((m) => (
+                    <li key={m.state}>
+                      <span className="ana-list-stack">
+                        <span>{m.state}</span>
+                        <small>{stateTotal ? Math.round((m.count / stateTotal) * 100) : 0}% of codes</small>
+                      </span>
+                      <span className="ana-list-val">{fmt.format(m.count)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Sync Freshness"
+              icon={RefreshCw}
+              tone={!sync ? "neutral" : sync.stale.length ? "red" : "green"}
+              status={!sync ? "WAITING" : sync.stale.length ? `${sync.stale.length} STALE` : "ALL FRESH"}
+              cta="Open Sync Health"
+              span={5}
+              href="/sync-status"
+              info={`Every synced feed and when it last refreshed. A feed is flagged stale after ${sync?.staleHours ?? 30}h without a refresh (threshold editable in Rules Master).`}
+            >
+              {!sync ? (
+                <NoData text="Sync status data is not available." />
+              ) : sync.stale.length === 0 ? (
+                <ZeroState
+                  title="All feeds fresh"
+                  text={`${fmt.format(sync.feeds)} feeds; oldest refreshed ${sync.oldestHours ?? 0}h ago.`}
+                  compact
+                />
+              ) : (
+                <ul className="ana-list">
+                  {sync.stale.map((s) => (
+                    <li key={`${s.pipeline}-${s.source}`}>
+                      <span className="ana-list-stack"><span>{s.source}</span><small>{s.pipeline}</small></span>
+                      <span className="ana-list-val is-red">{s.hoursAgo >= 999 ? "never" : `${s.hoursAgo}h ago`}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </AnaCard>
           </div>

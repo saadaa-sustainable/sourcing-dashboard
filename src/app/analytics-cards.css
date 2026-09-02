@@ -313,6 +313,13 @@
   color: var(--success-text);
   background: var(--success-bg);
 }
+/* Coloured verdicts in ana-list rows (04/05 workspace + data cards). */
+.ana-list-val.is-red {
+  color: var(--danger-text);
+}
+.ana-list-val.is-green {
+  color: var(--success-text);
+}
 .ana-decision-line {
   margin: 12px 0 5px;
   color: var(--ink-3, #6e695e);
