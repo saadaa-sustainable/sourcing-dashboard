@@ -54,7 +54,7 @@ export function ApprovalsClient({
   // Buying-plan pivot: full scale (Total Qty/Value) + Woven-vs-Knitted split
   // across every plan in the queue, so the approver sees the shape before drilling.
   const pivotRows = items
-    .filter((item) => item.entityType === 'buying_plan')
+    .filter((item) => item.entityType === 'buying_plan' && item.track !== 'material')
     .flatMap((item) =>
       (item.lines ?? []).map((l) => ({
         fabricType: l.fabricType ?? null,
@@ -350,7 +350,7 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
           <table className="wide-table wf-pivot-table">
             <thead>
               <tr>
-                <th rowSpan={2}>Fabric</th>
+                <th rowSpan={2}>{item.track === 'material' ? 'Type' : 'Fabric'}</th>
                 <th className="num" colSpan={2}>Pending</th>
                 <th className="num" colSpan={2}>Approved</th>
               </tr>
@@ -388,10 +388,10 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
                   aria-label="Select all pending lines"
                 />
               </th>
-              <th>Product</th>
+              <th>{item.track === 'material' ? 'Material' : 'Product'}</th>
               <th className="num">Qty</th>
               <th className="num">Value</th>
-              <th>Fabric</th>
+              <th>{item.track === 'material' ? 'Type' : 'Fabric'}</th>
               <th>State</th>
             </tr>
           </thead>

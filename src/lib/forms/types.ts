@@ -967,6 +967,8 @@ export type PoCycleTime = {
 export type ApprovalQueueItem = {
   entityType: ApprovalEntity;
   entityId: string;
+  /** Buying plan only: which track this plan belongs to (FG vs Material). */
+  track?: 'fg' | 'material';
   label: string;
   sublabel: string;
   status: SdStatus;
