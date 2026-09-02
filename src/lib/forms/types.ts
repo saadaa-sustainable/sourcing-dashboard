@@ -1001,6 +1001,27 @@ export type MyDashboardData = {
   approvals: ApprovalQueueItem[];
 };
 
+/**
+ * NPD monthly budget: the flat cap Sourcing (admin) sets, against live
+ * consumption computed from NPD purchase orders. `cap` is null when no cap has
+ * been set for the month (shown as such — never a fake zero).
+ */
+export type NpdBudget = {
+  month: string;
+  cap: number | null;
+  note: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  /** Committed spend: value of approved NPD POs whose approval landed this month. */
+  spent: number;
+  spentCount: number;
+  /** In-flight: value of NPD POs still awaiting approval this month. */
+  pending: number;
+  pendingCount: number;
+  /** Approved NPD POs with no rate — their value is understated (flag it). */
+  missingRate: number;
+};
+
 /** A SKU line under an open PO, for the submission/closure table. */
 export type PoSubmissionLine = {
   sku: string | null;

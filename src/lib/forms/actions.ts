@@ -310,6 +310,41 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
 }
 
 /**
+ * Set (or update) the flat NPD monthly budget cap for a month. Admin only —
+ * Sourcing leadership owns the figure; NPD sees consumption against it read-only.
+ * No default is invented: an empty month simply has no cap until set here.
+ */
+export async function setNpdBudget(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role !== 'admin') return fail('Only an admin can set the NPD budget.');
+
+  const month = String(formData.get('month') ?? '');
+  if (!/^\d{4}-\d{2}-01$/.test(month)) return fail('Invalid month.');
+
+  const raw = String(formData.get('cap') ?? '').replace(/[,\s₹]/g, '').trim();
+  const cap = Number(raw);
+  if (!Number.isFinite(cap) || cap < 0) return fail('Enter a valid cap amount (₹).');
+  const note = String(formData.get('note') ?? '').trim() || null;
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_npd_budget').upsert(
+    {
+      plan_month: month,
+      cap_amount: cap,
+      note,
+      updated_by: user.email,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'plan_month' },
+  );
+  if (error) return fail(error.message);
+
+  revalidatePath('/buying-plan');
+  return done('NPD budget saved.');
+}
+
+/**
  * Line-item approval for a Buying Plan: the approver ticks the lines they're
  * happy with and approves them in one action (multi-select). The header stays
  * "Approval Pending" until EVERY non-zero line is approved, then flips to

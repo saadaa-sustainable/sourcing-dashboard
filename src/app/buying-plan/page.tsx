@@ -7,11 +7,13 @@ import {
   loadAnalyticsRules,
   loadBuyingPlan,
   loadMaterialPlan,
+  loadNpdBudget,
   loadProductCatalog,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { BuyingPlanClient } from './buying-plan-client';
 import { MaterialPlanClient } from './material-plan-client';
+import { NpdBudgetCard } from './npd-budget-card';
 import { PlanTypeTabs } from './plan-type-tabs';
 
 export const dynamic = 'force-dynamic';
@@ -75,13 +77,17 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
     actualsMap,
     catalog,
     rules,
+    npdBudget,
   ] = await Promise.all([
     loadBuyingPlan(planMonth),
     loadActualsByProduct(planMonth),
     loadProductCatalog(),
     loadAnalyticsRules(),
+    loadNpdBudget(planMonth),
   ]);
   return (
+    <>
+    <NpdBudgetCard budget={npdBudget} role={role} />
     <BuyingPlanClient
       planMonth={planMonth}
       plan={plan}
@@ -95,6 +101,7 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
       role={role}
     />
+    </>
   );
 }
 
