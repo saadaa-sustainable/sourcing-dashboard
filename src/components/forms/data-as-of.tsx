@@ -19,7 +19,7 @@ export function DataAsOf({
   children?: ReactNode;
 }) {
   return (
-    <div className="wf-toolbar" style={{ justifyContent: 'flex-start', gap: 12 }}>
+    <div className="chip-row">
       <span className="wf-chip">
         <CalendarClock size={13} />
         Data as of <strong>{dataAsOf ?? '—'}</strong>

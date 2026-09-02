@@ -167,7 +167,7 @@ export function DoqDashboardClient({
 
   return (
     <>
-      <div className="wf-toolbar" style={{ justifyContent: 'flex-start', gap: 12 }}>
+      <div className="chip-row">
         <span className="wf-chip">
           Data through <strong>{meta?.latest ?? '—'}</strong>
           <InfoDot text="Latest snapshot date in the daily inventory history the windows are computed from." />

@@ -94,8 +94,8 @@ function IpdoqRules({
   ];
 
   return (
-    <div className="wf-toolbar" style={{ justifyContent: 'flex-start', gap: 18 }}>
-      <span className="wf-subtle" style={{ fontWeight: 650 }}>
+    <div className="chip-row">
+      <span className="chip-row-label">
         IPDOQ rules
         <InfoDot text="The two judgement numbers behind IPDOQ, from the editable Rules Master (sd_analytics_rule). The replenishment view reads them live — a change here affects the next computation, no redeploy." />
       </span>

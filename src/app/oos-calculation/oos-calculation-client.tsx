@@ -171,7 +171,7 @@ export function OosCalculationClient({
       ) : (
         <>
           {canManage && (
-            <div className="wf-toolbar" style={{ justifyContent: 'flex-start', gap: 10 }}>
+            <div className="chip-row">
               <input
                 className="wf-search"
                 placeholder="SKU to exclude"
