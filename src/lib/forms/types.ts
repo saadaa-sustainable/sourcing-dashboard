@@ -332,6 +332,14 @@ export type OosCalculationRow = {
   weave_type: string | null;
 };
 
+/** A SKU the team has excluded from the OOS Calculation view (sd_oos_sku_exclusion). */
+export type OosSkuExclusion = {
+  sku: string;
+  reason: string | null;
+  added_by: string | null;
+  added_at: string;
+};
+
 /** Product-level master attributes the Buying Plan reads (sd_product_master). */
 export type ProductMaster = {
   product_code: string;
@@ -965,6 +973,32 @@ export type ApprovalQueueItem = {
   vendorCapacityUpdatedAt?: string | null;
   // PO Approval only: the inline "4 things Mahesh verifies" detail.
   poDetail?: PoApprovalDetail;
+};
+
+/**
+ * My Dashboard — a record the current user submitted that is still moving
+ * through (or was bounced from) the approval flow. `rework` items are also
+ * surfaced separately as the persistent, un-dismissable Rework notice.
+ */
+export type MySubmission = {
+  entityType: 'buying_plan';
+  entityId: string;
+  track: 'fg' | 'material';
+  label: string;
+  planMonth: string;
+  status: SdStatus;
+  submittedAt: string | null;
+  reworkNotes: string | null;
+  reworkedBy: string | null;
+  reworkedAt: string | null;
+  href: string;
+};
+
+/** My Dashboard payload: my in-flight submissions + the queue awaiting me. */
+export type MyDashboardData = {
+  submissions: MySubmission[];
+  rework: MySubmission[];
+  approvals: ApprovalQueueItem[];
 };
 
 /** A SKU line under an open PO, for the submission/closure table. */

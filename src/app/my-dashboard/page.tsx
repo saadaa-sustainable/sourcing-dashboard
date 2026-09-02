@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, NotConfiguredError } from '@/lib/forms/queries';
+import { currentUser, loadMyDashboard, NotConfiguredError } from '@/lib/forms/queries';
 import { canView } from '@/lib/views';
 import { loadSourcingPos } from '@/lib/sourcing';
 import { MyDashboardClient, type RoleViewId } from './my-dashboard-client';
@@ -35,9 +35,10 @@ export default async function MyDashboardPage() {
     canView(v.path, user.role, user.allowed_pages ?? null),
   );
   const needSourcing = views.some((v) => v.id === 'sourcing');
-  const sourcing = needSourcing
-    ? await loadSourcingPos()
-    : { rows: [], warnings: [] };
+  const [sourcing, my] = await Promise.all([
+    needSourcing ? loadSourcingPos() : Promise.resolve({ rows: [], warnings: [] }),
+    loadMyDashboard(user.email, user.role),
+  ]);
 
   return (
     <FormLayout
@@ -56,6 +57,7 @@ export default async function MyDashboardPage() {
       <MyDashboardClient
         views={views.map(({ id, label }) => ({ id, label }))}
         sourcingRows={sourcing.rows}
+        my={my}
       />
     </FormLayout>
   );

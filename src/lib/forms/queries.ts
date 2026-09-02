@@ -10,11 +10,13 @@ import {
   parseIsoDate,
 } from '@/lib/business-logic';
 import { loadDashboardData, loadMergedTnaRecords } from '@/lib/data';
-import { monthStart } from './approval';
+import { monthStart, canApprove } from './approval';
 import type {
   AnalyticsExtras,
   ApprovalQueueItem,
   ApprovalLogRow,
+  MyDashboardData,
+  MySubmission,
   BuyingPlan,
   BuyingPlanLine,
   BuyingPlanLineView,
@@ -33,6 +35,7 @@ import type {
   InwardPlanGroup,
   NpdPromotionCandidate,
   OosCalculationRow,
+  OosSkuExclusion,
   PoApproval,
   PoApprovalLine,
   PoCycleTime,
@@ -43,6 +46,7 @@ import type {
   ReceivablePlanRow,
   ReplenishmentRow,
   VendorRecommendationRow,
+  SdRole,
   SdStatus,
   SdCustomRole,
   SdUser,
@@ -660,6 +664,64 @@ export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
     if (!data || data.length < PAGE_SIZE) break;
   }
   return rows;
+}
+
+/** Team-managed SKU exclusion list for the OOS Calculation view. */
+export async function loadOosExclusions(): Promise<OosSkuExclusion[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from('sd_oos_sku_exclusion')
+    .select('*')
+    .order('added_at', { ascending: false })
+    .limit(PAGE_SIZE);
+  if (error) throw new Error(`sd_oos_sku_exclusion: ${error.message}`);
+  return (data ?? []) as OosSkuExclusion[];
+}
+
+/** The snapshot date whose data the OOS/DOQ tabs are showing, + last refresh. */
+export async function loadOosMeta(): Promise<{ dataAsOf: string | null; lastSynced: string | null }> {
+  const supabase = await client();
+  const [{ data: day }, { data: sync }] = await Promise.all([
+    supabase
+      .from('sd_inventory_planning')
+      .select('date_day')
+      .order('date_day', { ascending: false })
+      .limit(1),
+    supabase
+      .from('sd_oos_calculation')
+      .select('synced_at')
+      .order('synced_at', { ascending: false })
+      .limit(1),
+  ]);
+  return {
+    dataAsOf: (day?.[0] as { date_day?: string } | undefined)?.date_day ?? null,
+    lastSynced: (sync?.[0] as { synced_at?: string } | undefined)?.synced_at ?? null,
+  };
+}
+
+/** sku → launch date + MRP from the EasyEcom product master, for OOS fallbacks. */
+export async function loadPmLaunchPrice(): Promise<
+  Record<string, { launch: string | null; mrp: number | null }>
+> {
+  const supabase = await client();
+  const map: Record<string, { launch: string | null; mrp: number | null }> = {};
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_ee_product_master')
+      .select('sku, product_launch_date, mrp')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_ee_product_master: ${error.message}`);
+    for (const r of (data ?? []) as { sku: string; product_launch_date: string | null; mrp: string | null }[]) {
+      if (!r.sku) continue;
+      const mrp = Number(r.mrp);
+      map[r.sku] = {
+        launch: r.product_launch_date || null,
+        mrp: Number.isFinite(mrp) && mrp > 0 ? mrp : null,
+      };
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return map;
 }
 
 /** The EasyEcom product master — one row per SKU, read-only. Paged (exceeds 1000). */
@@ -1729,6 +1791,70 @@ export async function loadTnaLeadtimes(): Promise<TnaLeadtimes> {
       updated_at: '',
     }
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* My Dashboard — own-scope pipeline + approvals awaiting me           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Everything the signed-in user personally needs to act on:
+ *   • submissions — buying plans they submitted that are still in flight
+ *     (submitted / pending_l2 / rework / rejected), newest first;
+ *   • rework — the subset bounced back to them, surfaced as the persistent
+ *     (un-dismissable) Rework notice with the approver's remark inline;
+ *   • approvals — items from the shared queue this user is allowed to sign off,
+ *     so approvers see their own to-do without visiting /approvals.
+ */
+export async function loadMyDashboard(
+  email: string,
+  role: SdRole,
+): Promise<MyDashboardData> {
+  const supabase = await client();
+
+  const { data: plans } = await supabase
+    .from('sd_buying_plan')
+    .select(
+      'id, plan_month, plan_type, status, submitted_by, submitted_at, rework_notes, reworked_by, reworked_at',
+    )
+    .eq('submitted_by', email)
+    .in('status', ['submitted', 'pending_l2', 'rework', 'rejected'])
+    .order('submitted_at', { ascending: false, nullsFirst: false })
+    .limit(PAGE_SIZE);
+
+  const submissions: MySubmission[] = (
+    (plans ?? []) as Array<
+      Pick<BuyingPlan, 'id' | 'plan_month' | 'plan_type' | 'status' | 'submitted_at'> & {
+        rework_notes: string | null;
+        reworked_by: string | null;
+        reworked_at: string | null;
+      }
+    >
+  ).map((p) => {
+    const track = p.plan_type === 'material' ? 'material' : 'fg';
+    return {
+      entityType: 'buying_plan' as const,
+      entityId: String(p.id),
+      track,
+      label: `${track === 'material' ? 'Material' : 'FG'} buying plan — ${p.plan_month.slice(0, 7)}`,
+      planMonth: p.plan_month,
+      status: p.status,
+      submittedAt: p.submitted_at,
+      reworkNotes: p.rework_notes,
+      reworkedBy: p.reworked_by,
+      reworkedAt: p.reworked_at,
+      href: `/buying-plan?month=${p.plan_month}${track === 'material' ? '&track=material' : ''}`,
+    };
+  });
+
+  const rework = submissions.filter((s) => s.status === 'rework');
+
+  // Approvals awaiting this user: reuse the shared queue, keep only what this
+  // role can act on right now (team → submitted, admin → +pending_l2).
+  const { items } = await loadApprovalQueue();
+  const approvals = items.filter((i) => canApprove(role, i.status));
+
+  return { submissions, rework, approvals };
 }
 
 /* ------------------------------------------------------------------ */

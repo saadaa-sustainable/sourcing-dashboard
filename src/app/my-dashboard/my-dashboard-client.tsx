@@ -1,15 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowUpRight, PackageSearch } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowUpRight, PackageSearch, AlertTriangle, Inbox, Send } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { InfoDot } from '@/components/info-dot';
+import { StatusBadge } from '@/components/forms/form-layout';
 import type { SourcingPoRow } from '@/lib/sourcing';
+import type { MyDashboardData, MySubmission, ApprovalQueueItem } from '@/lib/forms/types';
 
 export type RoleViewId = 'sourcing';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const date = (v: string | null) => (v ? String(v).slice(0, 10) : '—');
+const when = (v: string | null) =>
+  v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
 /* ---------------- Sourcing view: open-PO card → PO table ---------------- */
 
@@ -126,37 +131,138 @@ function SourcingView({ rows }: { rows: SourcingPoRow[] }) {
   );
 }
 
+/* -------- Persistent Rework notice: my submissions bounced back -------- */
+
+/**
+ * Un-dismissable list of the current user's own records sent back for rework.
+ * Stays put — above the tabs — until the submitter fixes and re-submits them,
+ * so a bounced plan can't be silently missed.
+ */
+function ReworkNotice({ items }: { items: MySubmission[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="wf-rework-notice" role="alert">
+      <div className="wf-rework-head">
+        <AlertTriangle size={15} strokeWidth={2.2} />
+        <strong>
+          {items.length} of your submission{items.length > 1 ? 's were' : ' was'} sent back for
+          rework
+        </strong>
+      </div>
+      <ul className="wf-rework-list">
+        {items.map((r) => (
+          <li key={`${r.entityType}-${r.entityId}`}>
+            <div className="wf-rework-row">
+              <Link href={r.href} className="wf-rework-link">
+                {r.label}
+              </Link>
+              <span className="wf-subtle">
+                {r.reworkedBy ? `by ${r.reworkedBy}` : ''}
+                {r.reworkedAt ? ` · ${when(r.reworkedAt)}` : ''}
+              </span>
+            </div>
+            {r.reworkNotes && <p className="wf-rework-remark">“{r.reworkNotes}”</p>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ------------------- Approvals view: my personal queue ------------------- */
+
+function ApprovalsView({
+  approvals,
+  submissions,
+}: {
+  approvals: ApprovalQueueItem[];
+  submissions: MySubmission[];
+}) {
+  return (
+    <div className="wf-my-approvals">
+      <section>
+        <h3 className="wf-section-title">
+          <Inbox size={14} strokeWidth={2} /> Awaiting your approval ({approvals.length})
+        </h3>
+        {approvals.length ? (
+          <ul className="wf-mini-queue">
+            {approvals.map((item) => (
+              <li key={`${item.entityType}-${item.entityId}`}>
+                <div className="wf-mini-main">
+                  <Link href="/approvals" className="wf-rework-link">
+                    {item.label}
+                  </Link>
+                  <span className="wf-subtle">{item.sublabel}</span>
+                </div>
+                <div className="wf-mini-meta">
+                  <StatusBadge status={item.status} />
+                  <span className="wf-subtle">
+                    {item.submittedBy ? `from ${item.submittedBy}` : ''}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="wf-subtle wf-empty-line">Nothing is waiting on you right now.</p>
+        )}
+      </section>
+
+      <section>
+        <h3 className="wf-section-title">
+          <Send size={14} strokeWidth={2} /> Your submissions ({submissions.length})
+        </h3>
+        {submissions.length ? (
+          <ul className="wf-mini-queue">
+            {submissions.map((s) => (
+              <li key={`${s.entityType}-${s.entityId}`}>
+                <div className="wf-mini-main">
+                  <Link href={s.href} className="wf-rework-link">
+                    {s.label}
+                  </Link>
+                  <span className="wf-subtle">Submitted {when(s.submittedAt)}</span>
+                </div>
+                <div className="wf-mini-meta">
+                  <StatusBadge status={s.status} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="wf-subtle wf-empty-line">You have no submissions in flight.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 /* ------------------------- My Dashboard shell ------------------------- */
+
+type TabId = 'approvals' | RoleViewId;
 
 export function MyDashboardClient({
   views,
   sourcingRows,
+  my,
 }: {
   views: { id: RoleViewId; label: string }[];
   sourcingRows: SourcingPoRow[];
+  my: MyDashboardData;
 }) {
-  const [active, setActive] = useState<RoleViewId | undefined>(views[0]?.id);
-
-  if (!views.length) {
-    return (
-      <div className="panel" style={{ padding: 28 }}>
-        <div className="empty-state">
-          <PackageSearch size={28} />
-          <p>
-            No role views are assigned to you yet — an admin can grant them from
-            the User Panel.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // The Approvals tab is personal and always present; role views follow it.
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'approvals', label: 'Approvals' },
+    ...views,
+  ];
+  const [active, setActive] = useState<TabId>('approvals');
 
   return (
     <>
-      {/* DAM-style horizontal role tabs: plain labels, black pill for the
-          active one, horizontally scrollable when roles outgrow the row. */}
-      <div className="role-tabs" role="tablist" aria-label="Role views">
-        {views.map((v) => (
+      {/* Persistent, un-dismissable — visible on every tab. */}
+      <ReworkNotice items={my.rework} />
+
+      <div className="role-tabs" role="tablist" aria-label="My Dashboard views">
+        {tabs.map((v) => (
           <button
             key={v.id}
             role="tab"
@@ -165,9 +271,16 @@ export function MyDashboardClient({
             onClick={() => setActive(v.id)}
           >
             {v.label}
+            {v.id === 'approvals' && my.approvals.length > 0 && (
+              <span className="role-tab-count">{my.approvals.length}</span>
+            )}
           </button>
         ))}
       </div>
+
+      {active === 'approvals' && (
+        <ApprovalsView approvals={my.approvals} submissions={my.submissions} />
+      )}
       {active === 'sourcing' && <SourcingView rows={sourcingRows} />}
     </>
   );

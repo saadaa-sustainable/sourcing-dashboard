@@ -2733,3 +2733,40 @@ async function findAuthUserByEmail(email: string) {
     if (users.length < 1000) return null;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* OOS Calculation — team-managed SKU exclusion list                   */
+/* ------------------------------------------------------------------ */
+
+/** Team/admin: exclude a SKU from the OOS Calculation view. */
+export async function addOosExclusion(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role === 'viewer') return fail('Only team or admin can manage OOS exclusions.');
+  const sku = String(formData.get('sku') ?? '').trim().toUpperCase();
+  const reason = String(formData.get('reason') ?? '').trim() || null;
+  if (!sku) return fail('Enter a SKU.');
+
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_oos_sku_exclusion')
+    .upsert({ sku, reason, added_by: user.email, added_at: new Date().toISOString() });
+  if (error) return fail(`Could not exclude: ${error.message}`);
+  revalidatePath('/oos-calculation');
+  return done(`${sku} excluded from the OOS calculation.`);
+}
+
+/** Team/admin: bring a SKU back into the OOS Calculation view. */
+export async function removeOosExclusion(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role === 'viewer') return fail('Only team or admin can manage OOS exclusions.');
+  const sku = String(formData.get('sku') ?? '').trim();
+  if (!sku) return fail('Missing SKU.');
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_oos_sku_exclusion').delete().eq('sku', sku);
+  if (error) return fail(`Could not remove: ${error.message}`);
+  revalidatePath('/oos-calculation');
+  return done(`${sku} restored to the OOS calculation.`);
+}

@@ -306,7 +306,7 @@ const BqSync_ = (function () {
       let g = groups.get(r.sku);
       if (!g) {
         g = { sku: r.sku, product_status: null, total_oos_days: null, total_qty_sold: null,
-              doq_45: null, current_stock: 0, inprocess_stock: 0 };
+              doq_45: null, current_stock: 0, inprocess_stock: 0, sales_value: null };
         if (full) {
           Object.assign(g, { product_code: null, category_with_gender: null, rm_code: null,
             dyed_fabric_sku: null, product_variant: null, product_name: null, color: null,
@@ -320,6 +320,11 @@ const BqSync_ = (function () {
         g.total_qty_sold = Math.max(g.total_qty_sold ?? -Infinity, r.total_sales_in_last_45_inventory_days);
       }
       if (r.doq_45 != null) g.doq_45 = Math.max(g.doq_45 ?? -Infinity, r.doq_45);
+      // sales_value holds the per-unit Selling Price (Shopify SP) — the UI's
+      // "Selling Price" column, feeding Sales Leakage = SP × DOQ × OOS days.
+      if (r.shopify_sp != null && r.shopify_sp > 0) {
+        g.sales_value = Math.max(g.sales_value ?? -Infinity, r.shopify_sp);
+      }
       g.current_stock += r.current_stock || 0;
       g.inprocess_stock += r.total_inprogress || 0;
       if (full) {
