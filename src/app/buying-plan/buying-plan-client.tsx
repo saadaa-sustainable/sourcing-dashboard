@@ -186,7 +186,7 @@ export function BuyingPlanClient({
         ? Number(row.pending_quantity)
         : null;
     const pending = storedPending ?? pendingByCode[row.product_code] ?? null;
-    const actual = actuals[row.product_code] ?? { qty: 0, value: 0 };
+    const actual = actuals[row.product_code.trim().toUpperCase()] ?? { qty: 0, value: 0 };
     const remaining = Math.max(0, totalQty - actual.qty);
     return {
       row,

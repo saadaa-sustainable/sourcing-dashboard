@@ -1255,6 +1255,9 @@ export async function loadActualsByProduct(planMonth: string) {
     .select('product_code, issued_qty, issued_value')
     .eq('plan_month', planMonth);
 
+  // Key by normalized (trim + upper) product_code so the Buying Plan's per-line
+  // lookup matches regardless of case/whitespace drift between the plan lines and
+  // the issued-PO feed (item 4 — issued POs weren't "filling" the plan).
   const map = new Map<string, { qty: number; value: number }>();
   (
     (data ?? []) as {
@@ -1263,11 +1266,12 @@ export async function loadActualsByProduct(planMonth: string) {
       issued_value: number | null;
     }[]
   ).forEach((row) => {
-    const code = (row.product_code ?? '').trim();
+    const code = (row.product_code ?? '').trim().toUpperCase();
     if (!code) return;
+    const prev = map.get(code) ?? { qty: 0, value: 0 };
     map.set(code, {
-      qty: Number(row.issued_qty) || 0,
-      value: Number(row.issued_value) || 0,
+      qty: prev.qty + (Number(row.issued_qty) || 0),
+      value: prev.value + (Number(row.issued_value) || 0),
     });
   });
   return map;
