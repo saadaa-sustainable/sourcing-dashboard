@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Download, Save, Trash2 } from 'lucide-react';
+import { Download, Save, Search, Trash2, X } from 'lucide-react';
 import {
   deleteInwardPlanEntry,
   reviewInwardPlanEntry,
@@ -51,9 +51,43 @@ export function InwardPlanIiClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // Navigation: free-text search + status chips + vendor dropdown, all combine (AND).
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [vendorFilter, setVendorFilter] = useState<string>('');
+
+  const vendors = useMemo(
+    () => [...new Set(entries.map((e) => (e.vendor_name ?? '').trim()).filter(Boolean))].sort(),
+    [entries],
+  );
+
+  const statusCounts = useMemo(() => {
+    const c: Record<string, number> = { All: entries.length };
+    for (const s of INWARD_PLAN_STATUSES) c[s] = 0;
+    for (const e of entries) c[e.approval_status] = (c[e.approval_status] ?? 0) + 1;
+    return c;
+  }, [entries]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return entries.filter((e) => {
+      if (statusFilter !== 'All' && e.approval_status !== statusFilter) return false;
+      if (vendorFilter && (e.vendor_name ?? '').trim() !== vendorFilter) return false;
+      if (
+        q &&
+        ![e.product_code, e.po_no, e.vendor_name, e.remarks, e.mt_comments]
+          .some((v) => (v ?? '').toLowerCase().includes(q))
+      )
+        return false;
+      return true;
+    });
+  }, [entries, search, statusFilter, vendorFilter]);
+
+  const hasFilter = Boolean(search || vendorFilter || statusFilter !== 'All');
+
   const totals = useMemo(() => {
     let qty = 0, value = 0, actual = 0, variation = 0;
-    for (const e of entries) {
+    for (const e of filtered) {
       const q = Number(e.inward_qty) || 0;
       qty += q;
       value += q * (Number(e.cost_per_piece) || 0);
@@ -61,7 +95,7 @@ export function InwardPlanIiClient({
       variation += (Number(e.actual_inward_qty) || 0) - q;
     }
     return { qty, value, actual, variation };
-  }, [entries]);
+  }, [filtered]);
 
   function run(action: (fd: FormData) => Promise<ActionResult>, fields: Record<string, string>) {
     setError(null);
@@ -78,7 +112,7 @@ export function InwardPlanIiClient({
     downloadCsv(
       `inward-plan-ii-${planMonth.slice(0, 7)}`,
       ['Product code', 'PO no.', 'Vendor', 'Inward qty', 'Cost/piece', 'Total value', 'Remarks', 'MT comments', 'Approval status', 'Actual inward qty', 'Variation'],
-      entries.map((e) => {
+      filtered.map((e) => {
         const q = Number(e.inward_qty) || 0;
         return [
           e.product_code, e.po_no ?? '', e.vendor_name ?? '', q,
@@ -118,11 +152,62 @@ export function InwardPlanIiClient({
               onPick={(code) => run(saveInwardPlanEntry, { plan_month: planMonth, product_code: code })}
             />
           )}
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportCsv} disabled={!entries.length}>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportCsv} disabled={!filtered.length}>
             <Download size={13} /> CSV
           </button>
         </div>
       </div>
+
+      {entries.length > 0 && (
+        <div className="wf-toolbar">
+          <div className="wf-toolbar-left">
+            <label className="search-field">
+              <Search size={15} />
+              <input
+                placeholder="Search product, PO, vendor or remarks…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {search && (
+                <button type="button" className="icon-button" aria-label="Clear search" onClick={() => setSearch('')}>
+                  <X size={14} />
+                </button>
+              )}
+            </label>
+            <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
+              <option value="">All vendors</option>
+              {vendors.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            {hasFilter && (
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                onClick={() => { setSearch(''); setVendorFilter(''); setStatusFilter('All'); }}
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+          <span className="wf-chip">{fmt.format(filtered.length)} of {fmt.format(entries.length)} rows</span>
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div className="segment tracker-status-tabs">
+          {['All', ...INWARD_PLAN_STATUSES].map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={statusFilter === s ? 'active' : ''}
+              onClick={() => setStatusFilter(s)}
+            >
+              {s} ({fmt.format(statusCounts[s] ?? 0)})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
@@ -159,7 +244,7 @@ export function InwardPlanIiClient({
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => (
+              {filtered.map((e) => (
                 <EntryRow key={e.id} entry={e} planMonth={planMonth} editable={editable} isAdmin={isAdmin} run={run} busy={pending} />
               ))}
               {!entries.length && (
@@ -169,11 +254,18 @@ export function InwardPlanIiClient({
                   </td>
                 </tr>
               )}
+              {entries.length > 0 && !filtered.length && (
+                <tr>
+                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
+                    No rows match your search or filters.
+                  </td>
+                </tr>
+              )}
             </tbody>
-            {entries.length > 0 && (
+            {filtered.length > 0 && (
               <tfoot>
                 <tr>
-                  <td><strong>TOTAL</strong></td>
+                  <td><strong>{hasFilter ? 'FILTERED TOTAL' : 'TOTAL'}</strong></td>
                   <td colSpan={2} />
                   <td className="num"><strong>{fmt.format(totals.qty)}</strong></td>
                   <td />
