@@ -986,7 +986,9 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   width: 100%; background: transparent; color: #33302b;
 }
 .wf-picker-list {
-  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  /* position/top/left/width are set inline (fixed overlay anchored to the input);
+     a high z-index keeps it above tables, sticky headers and toolbars below. */
+  z-index: 200;
   max-height: 300px; overflow-y: auto; background: #fff; border: 1px solid #e7e2d2;
   border-radius: 10px; box-shadow: 0 8px 24px rgba(40, 36, 28, 0.14); padding: 4px;
 }
