@@ -1512,38 +1512,25 @@ export async function loadSyncStatus(): Promise<SyncStatusRow[]> {
 
 /**
  * Inward Plan II — the team-filled monthly inward sheet (Buying Plan tab).
- * Returns the month's rows plus the product codes on that month's buying
- * plans (FG + material) — the sheet's product column is fed from the plan.
+ * Returns the month's rows plus the product-master catalog (same source as the
+ * Buying Plan's Add-Product picker) so the team types a code straight from the
+ * master rather than from the plan.
  */
 export async function loadInwardPlanSheet(planMonth: string): Promise<{
   entries: InwardPlanEntry[];
-  planCodes: string[];
+  catalog: ProductCatalogItem[];
 }> {
   const supabase = await client();
-  const [{ data: entries, error }, { data: plans }] = await Promise.all([
+  const [{ data: entries, error }, catalog] = await Promise.all([
     supabase
       .from('sd_inward_plan_entry')
       .select('*')
       .eq('plan_month', planMonth)
       .order('id'),
-    supabase.from('sd_buying_plan').select('id').eq('plan_month', planMonth),
+    loadProductCatalog(),
   ]);
   if (error) throw new Error(`sd_inward_plan_entry: ${error.message}`);
-
-  let planCodes: string[] = [];
-  const planIds = ((plans ?? []) as { id: number }[]).map((p) => p.id);
-  if (planIds.length) {
-    const { data: lines } = await supabase
-      .from('sd_buying_plan_line')
-      .select('product_code')
-      .in('plan_id', planIds);
-    planCodes = [...new Set(
-      ((lines ?? []) as { product_code: string | null }[])
-        .map((l) => (l.product_code ?? '').trim())
-        .filter(Boolean),
-    )].sort();
-  }
-  return { entries: (entries ?? []) as InwardPlanEntry[], planCodes };
+  return { entries: (entries ?? []) as InwardPlanEntry[], catalog };
 }
 
 /* ------------------------------------------------------------------ */

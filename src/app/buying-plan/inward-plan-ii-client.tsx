@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Download, Plus, Save, Trash2 } from 'lucide-react';
+import { Download, Save, Trash2 } from 'lucide-react';
 import {
   deleteInwardPlanEntry,
   reviewInwardPlanEntry,
@@ -13,7 +13,13 @@ import { addMonths, monthLabel } from '@/lib/forms/approval';
 import { downloadCsv } from '@/lib/download';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
-import { INWARD_PLAN_STATUSES, type InwardPlanEntry, type SdRole } from '@/lib/forms/types';
+import { ProductPicker } from '@/components/forms/product-picker';
+import {
+  INWARD_PLAN_STATUSES,
+  type InwardPlanEntry,
+  type ProductCatalogItem,
+  type SdRole,
+} from '@/lib/forms/types';
 
 const money = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -32,18 +38,17 @@ const STATUS_TONE: Record<string, string> = {
 export function InwardPlanIiClient({
   planMonth,
   entries,
-  planCodes,
+  catalog,
   role,
 }: {
   planMonth: string;
   entries: InwardPlanEntry[];
-  planCodes: string[];
+  catalog: ProductCatalogItem[];
   role: SdRole;
 }) {
   const editable = role !== 'viewer';
   const isAdmin = role === 'admin';
   const [error, setError] = useState<string | null>(null);
-  const [addCode, setAddCode] = useState('');
   const [pending, start] = useTransition();
 
   const totals = useMemo(() => {
@@ -87,9 +92,9 @@ export function InwardPlanIiClient({
   return (
     <>
       <Notice tone="info">
-        The monthly inward sheet: <strong>product code comes from the buying plan</strong>; the team
-        fills PO, vendor, quantity, cost and remarks; management adds <strong>MT comments</strong> and
-        the <strong>approval status</strong>. Total Value and Variation (actual − planned) are computed.
+        The monthly inward sheet: pick a <strong>product code from the product master</strong>, then
+        the team fills PO, vendor, quantity, cost and remarks; management adds <strong>MT comments</strong>{' '}
+        and the <strong>approval status</strong>. Total Value and Variation (actual − planned) are computed.
       </Notice>
 
       {error && <Notice tone="error">{error}</Notice>}
@@ -106,31 +111,12 @@ export function InwardPlanIiClient({
         </div>
         <div className="wf-toolbar-left">
           {editable && (
-            <>
-              <input
-                className="wf-search"
-                list="inward-plan-codes"
-                placeholder="Product / material code…"
-                value={addCode}
-                onChange={(e) => setAddCode(e.target.value)}
-              />
-              <datalist id="inward-plan-codes">
-                {planCodes.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-              <button
-                type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                disabled={pending || !addCode.trim()}
-                onClick={() => {
-                  run(saveInwardPlanEntry, { plan_month: planMonth, product_code: addCode });
-                  setAddCode('');
-                }}
-              >
-                <Plus size={14} /> Add row
-              </button>
-            </>
+            <ProductPicker
+              items={catalog}
+              placeholder="Add a product — search code or name…"
+              disabled={pending}
+              onPick={(code) => run(saveInwardPlanEntry, { plan_month: planMonth, product_code: code })}
+            />
           )}
           <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportCsv} disabled={!entries.length}>
             <Download size={13} /> CSV
@@ -145,7 +131,7 @@ export function InwardPlanIiClient({
               <tr>
                 <th>
                   Product code
-                  <InfoDot text="From the buying plan — pick a code the month's plan carries (free entry allowed for unplanned/RM codes)." label="About Product code" />
+                  <InfoDot text="Picked from the product master via the Add-a-product search above." label="About Product code" />
                 </th>
                 <th>PO no.</th>
                 <th>Vendor</th>

@@ -129,8 +129,8 @@ async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'vi
 }
 
 async function InwardTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
-  const { entries, planCodes } = await loadInwardPlanSheet(planMonth);
+  const { entries, catalog } = await loadInwardPlanSheet(planMonth);
   return (
-    <InwardPlanIiClient planMonth={planMonth} entries={entries} planCodes={planCodes} role={role} />
+    <InwardPlanIiClient planMonth={planMonth} entries={entries} catalog={catalog} role={role} />
   );
 }
