@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { Fragment, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
@@ -10,6 +10,8 @@ import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { LineRework } from '@/components/forms/line-rework';
 import { PlanPivot } from '@/components/forms/plan-pivot';
+import { ApprovalContextPanel } from '@/components/forms/approval-context-panel';
+import { productCodeFromLineLabel, type ApprovalContext } from '@/lib/approval-context';
 import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
 
 const money = new Intl.NumberFormat('en-IN', {
@@ -36,11 +38,14 @@ export function ApprovalsClient({
   log,
   role,
   stats,
+  context = {},
 }: {
   items: ApprovalQueueItem[];
   log: ApprovalLogRow[];
   role: SdRole;
   stats: { approved: number; edited: number; pct: number };
+  /** Item 1: per-product inline approval context, keyed by product_code. */
+  context?: Record<string, ApprovalContext>;
 }) {
   const [filter, setFilter] = useState<'all' | 'mine'>('mine');
   const [typeFilter, setTypeFilter] = useState<ApprovalEntity | 'all'>('all');
@@ -191,7 +196,7 @@ export function ApprovalsClient({
             )}
             {item.entityType === 'buying_plan' &&
               canApprove(role, item.status) &&
-              !!item.lines?.length && <BuyingPlanApprovalLines item={item} />}
+              !!item.lines?.length && <BuyingPlanApprovalLines item={item} context={context} />}
             <div className="wf-queue-foot">
               {item.entityType === 'standard_cost' ? (
                 // Cost is negotiated on its own screen — accept / reject / set
@@ -306,8 +311,16 @@ export function ApprovalsClient({
  * the header only flips to Approved once every non-zero line is approved. Lines
  * that need re-evaluation go back via the separate LineRework modal.
  */
-function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
+function BuyingPlanApprovalLines({
+  item,
+  context = {},
+}: {
+  item: ApprovalQueueItem;
+  context?: Record<string, ApprovalContext>;
+}) {
   const lines = item.lines ?? [];
+  // Item 1's inline context only applies to FG products (garment stock/DOQ).
+  const showContext = item.track !== 'material';
   const pendingLines = lines.filter((l) => l.lineStatus !== 'approved');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<null | 'rework'>(null);
@@ -441,30 +454,41 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
           <tbody>
             {lines.map((l) => {
               const approved = l.lineStatus === 'approved';
+              const ctx = showContext ? context[productCodeFromLineLabel(l.label)] : undefined;
               return (
-                <tr key={l.id} className={approved ? 'wf-line-approved' : ''}>
-                  <td className="wf-line-check">
-                    {!approved && (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(l.id)}
-                        onChange={() => toggle(l.id)}
-                        aria-label={`Select ${l.label}`}
-                      />
-                    )}
-                  </td>
-                  <td className="mono">{l.label}</td>
-                  <td className="num">{fmt.format(l.qty ?? 0)}</td>
-                  <td className="num">{money.format(l.value ?? 0)}</td>
-                  <td>{l.fabricType || '—'}</td>
-                  <td>
-                    {approved ? (
-                      <span className="wf-tag-approved">approved</span>
-                    ) : (
-                      <span className="wf-subtle">pending</span>
-                    )}
-                  </td>
-                </tr>
+                <Fragment key={l.id}>
+                  <tr className={approved ? 'wf-line-approved' : ''}>
+                    <td className="wf-line-check">
+                      {!approved && (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(l.id)}
+                          onChange={() => toggle(l.id)}
+                          aria-label={`Select ${l.label}`}
+                        />
+                      )}
+                    </td>
+                    <td className="mono">{l.label}</td>
+                    <td className="num">{fmt.format(l.qty ?? 0)}</td>
+                    <td className="num">{money.format(l.value ?? 0)}</td>
+                    <td>{l.fabricType || '—'}</td>
+                    <td>
+                      {approved ? (
+                        <span className="wf-tag-approved">approved</span>
+                      ) : (
+                        <span className="wf-subtle">pending</span>
+                      )}
+                    </td>
+                  </tr>
+                  {showContext && !approved && (
+                    <tr className="wf-line-context-row">
+                      <td />
+                      <td colSpan={5}>
+                        <ApprovalContextPanel ctx={ctx} pendingQty={l.qty} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>

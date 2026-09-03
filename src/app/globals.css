@@ -1308,3 +1308,10 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .chip-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .chip-row .wf-chip { margin: 0; }
 .chip-row-label { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-3); font-size: 12px; font-weight: 650; }
+
+/* Approval-time context strip (spec item 1): compact inline metric cells under
+   each buying-plan line, so the approver sees DOQ/DOH/in-stock without leaving. */
+.approval-context { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; padding: 8px 2px 4px; }
+.approval-context .ac-cell { display: inline-flex; flex-direction: column; gap: 1px; min-width: 0; }
+.approval-context .ac-label { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-4); font-size: 9px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.approval-context .ac-cell strong { font-size: 13px; font-weight: 700; color: var(--ink-1); }

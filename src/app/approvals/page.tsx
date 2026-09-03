@@ -6,6 +6,8 @@ import {
   loadApprovalStats,
   NotConfiguredError,
 } from '@/lib/forms/queries';
+import { loadApprovalContext } from '@/lib/approval-context.server';
+import { productCodeFromLineLabel } from '@/lib/approval-context';
 import { ApprovalsClient } from './approvals-client';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +35,13 @@ export default async function ApprovalsPage() {
     loadApprovalStats(),
   ]);
 
+  // Item 1: inline approval context for FG buying-plan lines. Material lines
+  // (raw/dyed/trims) have no garment stock/DOQ, so they're excluded.
+  const fgCodes = items
+    .filter((i) => i.entityType === 'buying_plan' && i.track !== 'material')
+    .flatMap((i) => (i.lines ?? []).map((l) => productCodeFromLineLabel(l.label)));
+  const context = await loadApprovalContext(fgCodes);
+
   return (
     <FormLayout
       title="Approvals"
@@ -42,7 +51,7 @@ export default async function ApprovalsPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <ApprovalsClient items={items} log={log} role={user.role} stats={stats} />
+      <ApprovalsClient items={items} log={log} role={user.role} stats={stats} context={context} />
     </FormLayout>
   );
 }
