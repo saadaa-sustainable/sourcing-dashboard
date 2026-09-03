@@ -20,12 +20,15 @@ export function ProductPicker({
   exclude,
   placeholder = 'Search product code or name…',
   disabled = false,
+  allowFreeText = true,
 }: {
   items: ProductCatalogItem[];
   onPick: (code: string) => void;
   exclude?: Set<string>;
   placeholder?: string;
   disabled?: boolean;
+  /** Let the user add a typed code that isn't in the catalog yet (new/unsynced products). */
+  allowFreeText?: boolean;
 }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -78,10 +81,16 @@ export function ProductPicker({
   }, [open]);
 
   function pick(code: string) {
-    onPick(code);
+    onPick(code.trim().toUpperCase());
     setQ('');
     setOpen(false);
   }
+
+  // A typed code that exactly matches nothing in the catalog can still be added
+  // (a brand-new product not yet in EasyEcom). Offered as the last row.
+  const typed = q.trim().toUpperCase();
+  const exactExists = typed !== '' && items.some((i) => i.product_code.toUpperCase() === typed);
+  const canAddTyped = allowFreeText && typed.length >= 3 && !exactExists;
 
   return (
     <div className="wf-picker" ref={rootRef}>
@@ -120,7 +129,20 @@ export function ProductPicker({
               <span className="wf-picker-name">{i.product_name ?? '—'}</span>
             </button>
           ))}
-          {!matches.length && <div className="wf-picker-empty">No products match.</div>}
+          {canAddTyped && (
+            <button
+              type="button"
+              className="wf-picker-item wf-picker-add"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                pick(typed);
+              }}
+            >
+              <span className="mono wf-picker-code">＋ Add “{typed}”</span>
+              <span className="wf-picker-name">not in the catalog — add as a new product code</span>
+            </button>
+          )}
+          {!matches.length && !canAddTyped && <div className="wf-picker-empty">No products match.</div>}
         </div>
       )}
     </div>
