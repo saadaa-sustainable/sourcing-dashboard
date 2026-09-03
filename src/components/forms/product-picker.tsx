@@ -64,18 +64,20 @@ export function ProductPicker({
         />
       </div>
       {open && !disabled && (
-        <div
-          className="wf-picker-list"
-          onMouseDown={() => {
-            if (blurTimer.current) clearTimeout(blurTimer.current);
-          }}
-        >
+        <div className="wf-picker-list">
           {matches.map((i) => (
             <button
               type="button"
               key={i.product_code}
               className="wf-picker-item"
-              onClick={() => pick(i.product_code)}
+              // Pick on mousedown + preventDefault so the input never blurs and
+              // the dropdown can't close out from under the click (which would
+              // drop the selection). Fires anywhere on the row, code or name.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (blurTimer.current) clearTimeout(blurTimer.current);
+                pick(i.product_code);
+              }}
             >
               <span className="mono wf-picker-code">{i.product_code}</span>
               <span className="wf-picker-name">{i.product_name ?? '—'}</span>
