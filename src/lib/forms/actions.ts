@@ -27,6 +27,7 @@ import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
+import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
 import {
@@ -2210,6 +2211,43 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     }
   }
 
+  // §4 live recompute (audit trail): stamp the expected FINAL price computed at
+  // the CURRENT fabric rate — the basis a vendor submission is validated against,
+  // not the frozen standard. Best-effort: silently skipped if cost inputs are
+  // missing (today they mostly are), and never blocks issuance.
+  const recomputePatch: Record<string, unknown> = {};
+  if (!alreadyIssued && po.product_code) {
+    try {
+      const [{ data: sc }, { data: lines }] = await Promise.all([
+        supabase.from('sd_standard_cost').select('fabric_code, cm_cost').eq('product_code', po.product_code).maybeSingle(),
+        supabase.from('sd_standard_cost_line').select('consumption, fabric_cost').eq('product_code', po.product_code),
+      ]);
+      const cons = (lines ?? []).map((l) => Number(l.consumption)).filter((n) => n > 0);
+      const avgCons = cons.length ? cons.reduce((s, n) => s + n, 0) / cons.length : 0;
+      const baked = (lines ?? [])
+        .map((l) => (Number(l.consumption) > 0 ? Number(l.fabric_cost) / Number(l.consumption) : 0))
+        .filter((n) => n > 0);
+      const rateAtStd = baked.length ? baked.reduce((s, n) => s + n, 0) / baked.length : null;
+      let rateNow: number | null = null;
+      if (sc?.fabric_code) {
+        const { data: fb } = await supabase
+          .from('sd_fabric_cost_base')
+          .select('finished_fabric_cost')
+          .eq('fabric_code', sc.fabric_code)
+          .maybeSingle();
+        rateNow = fb?.finished_fabric_cost == null ? null : Number(fb.finished_fabric_cost);
+      }
+      if (rateNow != null && avgCons > 0 && sc?.cm_cost != null) {
+        const rc = recomputeExpectedCost({ consumption: avgCons, fabricRateNow: rateNow, cmtp: Number(sc.cm_cost), fabricRateAtStd: rateAtStd });
+        recomputePatch.expected_cost_recomputed = rc.expected.final;
+        recomputePatch.expected_fabric_rate_now = rc.fabricRateNow;
+        recomputePatch.expected_recomputed_at = new Date().toISOString();
+      }
+    } catch {
+      /* audit-only — never block issuance on a missing-input recompute */
+    }
+  }
+
   // Explicit lock-in: the standard cost is frozen as the benchmark ONLY when the
   // issuer ticks "set as standard benchmark cost" — never silently on first issue.
   const setBenchmark = formData.get('set_benchmark') === 'true';
@@ -2232,6 +2270,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     patch.cm_override_by = user.email;
     patch.cm_override_at = new Date().toISOString();
   }
+  Object.assign(patch, recomputePatch);
 
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
