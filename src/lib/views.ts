@@ -39,6 +39,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },
   { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
+  { path: '/cost-analytics', label: 'Cost Analytics', group: 'Workspace' },
   // Workflows — operational pages.
   { path: '/buying-plan', label: 'Buying Plan', group: 'Workflows' },
   { path: '/standard-cost', label: 'Standard Cost', group: 'Workflows' },

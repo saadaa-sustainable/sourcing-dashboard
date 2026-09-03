@@ -1338,3 +1338,27 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .wf-sub-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 10px 4px; }
 .wf-sub-form .wf-field { min-width: 140px; }
 .wf-sub-form-actions { display: inline-flex; gap: 8px; }
+
+/* Items 3 & 4 — Cost Analytics (std vs actual + EFOB lens). */
+.ca-lens-tabs, .ca-dim-tabs { display: inline-flex; align-items: center; gap: 4px; margin: 4px 0 12px; }
+.ca-dim-tabs { gap: 6px; }
+.ca-lens-tabs button, .ca-dim-tabs button { appearance: none; border: 1px solid var(--line-2, #e4e0d5);
+  background: var(--surface-1, #fff); cursor: pointer; padding: 5px 14px; border-radius: 7px;
+  font-size: 12px; font-weight: 700; color: var(--ink-3, #6b6559); }
+.ca-lens-tabs button.active, .ca-dim-tabs button.active { background: var(--accent-ink, #1a1a1a);
+  color: #fff; border-color: var(--accent-ink, #1a1a1a); }
+.ca-empty { padding: 18px 4px; }
+.ca-group-row { cursor: pointer; }
+.ca-group-row:hover > td { background: var(--surface-2, #f7f4ec); }
+.ca-drill-row > td { background: var(--surface-2, #faf8f2); padding: 6px 10px; }
+.ca-po-table { font-size: 12px; }
+.ca-over { color: #c0392b; font-weight: 700; }
+.ca-under { color: #1f7a34; font-weight: 700; }
+.ca-flat { color: var(--ink-3, #6b6559); }
+.ca-tendency { font-size: 11px; font-weight: 700; }
+.ca-kpi-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.ca-kpi { display: flex; flex-direction: column; gap: 1px; min-width: 150px; padding: 10px 14px;
+  border: 1px solid var(--line-2, #e4e0d5); border-radius: 10px; background: var(--surface-1, #fff); }
+.ca-kpi-label { font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-4, #8a8578); }
+.ca-kpi strong { font-size: 20px; font-weight: 750; }
+.ca-kpi small { color: var(--ink-3, #6b6559); font-size: 11px; }
