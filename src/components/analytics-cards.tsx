@@ -238,6 +238,11 @@ export function AnalyticsCards({
   const [decisionTab, setDecisionTab] = useState<DecisionTab>("protect");
   const activeDecisionTab =
     decisionTabs.find((tab) => tab.id === decisionTab) ?? decisionTabs[0];
+  // Item 7 — Vendor Concentration is measured within a fabric pool. Woven and Knit
+  // are managed as separate vendor pools, so a vendor who dominates Knit shouldn't
+  // distort Woven's top-3 share. Default All (blended); Woven/Knit slice by the
+  // tracker's vendorBucket (resolved from Product Master fabric_type).
+  const [concWeave, setConcWeave] = useState<"All" | "Woven" | "Knit">("All");
   const tracker = useMemo(
     () =>
       buildTrackerRows(
@@ -286,8 +291,13 @@ export function AnalyticsCards({
     (1 - (rules.capital_risk_quantile ?? 0.75)) * 100,
   );
 
+  // Item 7 — compute concentration WITHIN the selected fabric pool, not blended.
+  const concTracker =
+    concWeave === "All"
+      ? tracker
+      : tracker.filter((row) => row.vendorBucket === concWeave);
   const byVendor = new Map<string, { name: string; value: number }>();
-  tracker.forEach((row) => {
+  concTracker.forEach((row) => {
     const vendorKey = key(row.vendorCode || row.vendorName);
     const current = byVendor.get(vendorKey) ?? {
       name: row.vendorName,
@@ -899,10 +909,32 @@ export function AnalyticsCards({
               cta="Review vendor allocation"
               span={5}
               onClick={() => onTab("vendors")}
-              info={`Share of open buying value held by the top 3 vendors. The alert line is ${concentrationAlert}% and is editable in Rules Master.`}
+              info={`Share of open buying value held by the top 3 vendors, measured within the selected fabric pool (Woven and Knit are managed separately, so they're never blended). The alert line is ${concentrationAlert}% and is editable in Rules Master.`}
             >
+              <div className="ana-weave-seg" role="group" aria-label="Fabric pool">
+                {(["All", "Woven", "Knit"] as const).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    className={`ana-weave-seg-btn${concWeave === w ? " is-active" : ""}`}
+                    aria-pressed={concWeave === w}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConcWeave(w);
+                    }}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
               {totalOpenValue === 0 ? (
-                <NoData text="There is no open PO value to measure." />
+                <NoData
+                  text={
+                    concWeave === "All"
+                      ? "There is no open PO value to measure."
+                      : `No open ${concWeave} PO value to measure.`
+                  }
+                />
               ) : (
                 <>
                   <div className="ana-metric-row">

@@ -1315,3 +1315,14 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .approval-context .ac-cell { display: inline-flex; flex-direction: column; gap: 1px; min-width: 0; }
 .approval-context .ac-label { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-4); font-size: 9px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 .approval-context .ac-cell strong { font-size: 13px; font-weight: 700; color: var(--ink-1); }
+
+/* Item 7 — Vendor Concentration fabric-pool (Woven/Knit) segment. Lives here, not
+   in the (concurrently-held) analytics-cards.css. */
+.ana-weave-seg { display: inline-flex; gap: 2px; padding: 2px; margin-bottom: 10px;
+  background: var(--surface-2, #f2efe6); border-radius: 8px; }
+.ana-weave-seg-btn { appearance: none; border: 0; cursor: pointer; padding: 3px 10px;
+  border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+  color: var(--ink-3, #6b6559); background: transparent; transition: background .12s, color .12s; }
+.ana-weave-seg-btn:hover { color: var(--ink-1, #1a1a1a); }
+.ana-weave-seg-btn.is-active { background: var(--surface-1, #fff); color: var(--ink-1, #1a1a1a);
+  box-shadow: 0 1px 2px rgba(0,0,0,.08); }
