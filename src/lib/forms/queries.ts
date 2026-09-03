@@ -2364,12 +2364,14 @@ export async function loadApprovalQueue(): Promise<{
 }> {
   const supabase = await client();
 
-  // Cost approvals are a SEPARATE process on /standard-cost (negotiation flow) —
-  // deliberately NOT listed in this shared queue.
+  // Cost negotiation runs outside the status ladder (neg_stage), but the admin's
+  // turns — a fresh proposal (proposed) and an actual rate awaiting sign-off
+  // (rate_submitted) — surface here too, as link-outs to /standard-cost.
   const [
     { data: plans },
     { data: discontinues },
     { data: pos },
+    { data: fgCostReqs },
     { data: log },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
@@ -2378,6 +2380,10 @@ export async function loadApprovalQueue(): Promise<{
       .select('*')
       .in('status', ['submitted', 'pending_l2']),
     supabase.from('sd_po_approval').select('*').in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_standard_cost')
+      .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, updated_at')
+      .in('neg_stage', ['proposed', 'rate_submitted']),
     supabase
       .from('sd_approval_log')
       .select('*')
@@ -2485,6 +2491,37 @@ export async function loadApprovalQueue(): Promise<{
       submittedBy: req.requested_by,
       submittedAt: req.requested_at,
       href: '/discontinue',
+    });
+  }
+
+  // Standard-cost negotiation items awaiting the admin. Actioned on /standard-cost
+  // (accept / reject / set target / sign off) — surfaced here as a link-out. Status
+  // is set to pending_l2 so the shared "awaiting me" (admin) filter picks them up.
+  for (const c of (fgCostReqs ?? []) as {
+    id: number; product_code: string; neg_stage: string;
+    job_cost: number | null; fob_cost: number | null; efob_cost: number | null;
+    proposed_cost: number | null; updated_at: string | null;
+  }[]) {
+    const rates = [
+      c.job_cost != null ? `Job ${c.job_cost}` : null,
+      c.fob_cost != null ? `FOB ${c.fob_cost}` : null,
+      c.efob_cost != null ? `E-FOB ${c.efob_cost}` : null,
+      c.proposed_cost != null ? `expected ${c.proposed_cost}` : null,
+    ].filter(Boolean).join(' · ');
+    const proposed = c.neg_stage === 'proposed';
+    items.push({
+      entityType: 'standard_cost',
+      entityId: String(c.id),
+      label: `Standard cost — ${c.product_code}`,
+      sublabel:
+        (proposed ? 'Rate proposed — accept, reject or set a target' : 'Actual rate submitted — sign off') +
+        (rates ? ` · ${rates}` : ''),
+      status: 'pending_l2', // cost always needs admin (routeApproval)
+      quantity: 0,
+      requiredRole: 'admin',
+      submittedBy: null,
+      submittedAt: c.updated_at,
+      href: `/standard-cost?open=${encodeURIComponent(c.product_code)}`,
     });
   }
 

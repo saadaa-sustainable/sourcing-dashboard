@@ -26,6 +26,7 @@ const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'buying_plan', label: 'Buying Plans' },
   { key: 'po_approval', label: 'PO Approvals' },
+  { key: 'standard_cost', label: 'Standard Cost' },
   { key: 'discontinue', label: 'Discontinue' },
   { key: 'receivable_plan', label: 'Receivable Plan' },
 ];
@@ -192,29 +193,39 @@ export function ApprovalsClient({
               canApprove(role, item.status) &&
               !!item.lines?.length && <BuyingPlanApprovalLines item={item} />}
             <div className="wf-queue-foot">
-              <Link href={item.href} className="wf-btn wf-btn-ghost">
-                Open record
-              </Link>
-              {canApprove(role, item.status) && !!item.lines?.length && (
-                <LineRework
-                  entityType={item.entityType}
-                  entityId={item.entityId}
-                  entityLabel={item.label}
-                  lines={item.lines}
-                  onDone={(result) => {
-                    if (result.ok) reloadWithToast();
-                  }}
-                />
-              )}
-              {canApprove(role, item.status) && (
-                <ApprovalBar
-                  entityType={item.entityType}
-                  entityId={item.entityId}
-                  entityLabel={item.label}
-                  onDone={(result) => {
-                    if (result.ok) reloadWithToast();
-                  }}
-                />
+              {item.entityType === 'standard_cost' ? (
+                // Cost is negotiated on its own screen — accept / reject / set
+                // target / sign off all live there. Link out rather than duplicate.
+                <Link href={item.href} className="wf-btn wf-btn-primary">
+                  Review on Standard Cost →
+                </Link>
+              ) : (
+                <>
+                  <Link href={item.href} className="wf-btn wf-btn-ghost">
+                    Open record
+                  </Link>
+                  {canApprove(role, item.status) && !!item.lines?.length && (
+                    <LineRework
+                      entityType={item.entityType}
+                      entityId={item.entityId}
+                      entityLabel={item.label}
+                      lines={item.lines}
+                      onDone={(result) => {
+                        if (result.ok) reloadWithToast();
+                      }}
+                    />
+                  )}
+                  {canApprove(role, item.status) && (
+                    <ApprovalBar
+                      entityType={item.entityType}
+                      entityId={item.entityId}
+                      entityLabel={item.label}
+                      onDone={(result) => {
+                        if (result.ok) reloadWithToast();
+                      }}
+                    />
+                  )}
+                </>
               )}
             </div>
           </article>
