@@ -2688,6 +2688,80 @@ export async function saveFabricCostBase(formData: FormData): Promise<ActionResu
   return done(`Saved ${fabric_code}.`);
 }
 
+/**
+ * Item 5 — the mandatory monthly fabric-rate submission. Each fabric must be
+ * reviewed every month: either an updated grey/finished rate, or an explicit
+ * "no change". Both are valid submissions; a missing month is what the pending
+ * reminder surfaces. A real change writes through to sd_fabric_cost_base (the live
+ * rate feeding the recompute); "no change" just records the month was reviewed,
+ * carrying the current rates forward for the audit.
+ */
+export async function submitFabricRate(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to submit fabric rates.');
+  }
+  const fabric_code = String(formData.get('fabric_code') ?? '').trim().toUpperCase();
+  if (!fabric_code) return fail('Fabric code is required.');
+  const noChange = formData.get('no_change') === 'true';
+
+  // The month this submission covers: first of the current month (UTC).
+  const now = new Date();
+  const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+
+  const supabase = await supa();
+  const { data: base } = await supabase
+    .from('sd_fabric_cost_base')
+    .select('grey_rate, finished_fabric_cost')
+    .eq('fabric_code', fabric_code)
+    .maybeSingle();
+
+  let greyRate: number | null;
+  let finishedRate: number | null;
+  if (noChange) {
+    // Carry the live rates forward — nothing to write through.
+    greyRate = base?.grey_rate == null ? null : Number(base.grey_rate);
+    finishedRate = base?.finished_fabric_cost == null ? null : Number(base.finished_fabric_cost);
+  } else {
+    greyRate = numOrNull(formData.get('grey_rate'));
+    finishedRate = numOrNull(formData.get('finished_rate'));
+    if (greyRate == null && finishedRate == null) {
+      return fail('Enter the new grey and/or finished rate, or choose “No change”.');
+    }
+    // Write the changed rate through to the live fabric cost base.
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (greyRate != null) patch.grey_rate = greyRate;
+    if (finishedRate != null) patch.finished_fabric_cost = finishedRate;
+    const { error: upErr } = await supabase
+      .from('sd_fabric_cost_base')
+      .upsert({ fabric_code, ...patch }, { onConflict: 'fabric_code' });
+    if (upErr) return fail(`Could not update the live rate: ${upErr.message}`);
+  }
+
+  const { error } = await supabase.from('sd_fabric_rate_submission').upsert(
+    {
+      fabric_code,
+      month,
+      grey_rate: greyRate,
+      finished_rate: finishedRate,
+      no_change: noChange,
+      submitted_by: user.email,
+      submitted_at: new Date().toISOString(),
+    },
+    { onConflict: 'fabric_code,month' },
+  );
+  if (error) return fail(`Could not record the submission: ${error.message}`);
+
+  revalidatePath('/fabric-cost');
+  revalidatePath('/standard-cost');
+  return done(
+    noChange
+      ? `${fabric_code}: no change recorded for this month.`
+      : `${fabric_code}: rate updated and submitted for this month.`,
+  );
+}
+
 /* ================================================================== */
 /* Material master — one code list for raw / dyed / trim + colours     */
 /* ================================================================== */

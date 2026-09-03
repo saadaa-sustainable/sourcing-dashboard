@@ -7,6 +7,8 @@ import {
 } from '@/lib/forms/queries';
 import { canEdit } from '@/lib/forms/approval';
 import { FabricCostClient } from './fabric-cost-client';
+import { FabricRateSubmissionPanel } from '@/components/forms/fabric-rate-submission-panel';
+import { loadFabricRateSubmissionState } from '@/lib/fabric-rate-submission.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +29,11 @@ export default async function FabricCostPage() {
 
   if (!user) redirect('/login');
 
-  const rows = await loadFabricCostBase();
+  const [rows, submissionState] = await Promise.all([
+    loadFabricCostBase(),
+    loadFabricRateSubmissionState(),
+  ]);
+  const editable = canEdit(user.role, 'draft');
 
   return (
     <FormLayout
@@ -39,7 +45,17 @@ export default async function FabricCostPage() {
       allowedPages={user.allowed_pages ?? null}
       accent="teal"
     >
-      <FabricCostClient rows={rows} editable={canEdit(user.role, 'draft')} />
+      {/* Item 5 — mandatory monthly rate submission (per fabric). */}
+      <section style={{ marginBottom: 24 }}>
+        <h2 className="wf-section-title">Monthly rate submission</h2>
+        <FabricRateSubmissionPanel
+          month={submissionState.month}
+          rows={submissionState.rows}
+          pendingCount={submissionState.pendingCount}
+          editable={editable}
+        />
+      </section>
+      <FabricCostClient rows={rows} editable={editable} />
     </FormLayout>
   );
 }
