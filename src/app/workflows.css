@@ -909,6 +909,18 @@
 th.wf-yarn-col { color: #2f6bbf; }
 .wf-row-dirty > td { background: rgba(240, 198, 30, 0.12); }
 
+/* ---- Unsaved-changes bar (Inward Plan II and any editable grid) ---- */
+.wf-unsaved-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 12px; padding: 8px 14px;
+  background: rgba(240, 198, 30, 0.12);
+  border: 1px solid rgba(181, 117, 20, 0.35); border-radius: 10px;
+}
+.wf-unsaved-msg {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 650; color: #8a5a10;
+}
+
 /* ---- CM cost matrix: black (input) / green (computed) cells + document view ---- */
 .wf-cost-matrix { max-width: 520px; }
 /* computed = green, input = dark/neutral — his "black & green" separation */

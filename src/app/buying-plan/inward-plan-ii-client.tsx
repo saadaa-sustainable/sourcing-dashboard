@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Download, Save, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Download, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import {
   deleteInwardPlanEntry,
   reviewInwardPlanEntry,
@@ -35,6 +35,37 @@ const STATUS_TONE: Record<string, string> = {
   Rejected: 'red',
 };
 
+// The editable fields of a row, held as strings in a per-row draft. Edit state
+// lives in the PARENT (keyed by row id) so a row's unsaved edits survive being
+// filtered out of view — a child component would unmount and lose them.
+type Draft = {
+  po_no: string;
+  vendor_name: string;
+  inward_qty: string;
+  cost_per_piece: string;
+  remarks: string;
+  actual_inward_qty: string;
+  mt_comments: string;
+  approval_status: string;
+};
+const TEAM_FIELDS: (keyof Draft)[] = [
+  'po_no', 'vendor_name', 'inward_qty', 'cost_per_piece', 'remarks', 'actual_inward_qty',
+];
+const REVIEW_FIELDS: (keyof Draft)[] = ['mt_comments', 'approval_status'];
+
+function draftFrom(e: InwardPlanEntry): Draft {
+  return {
+    po_no: e.po_no ?? '',
+    vendor_name: e.vendor_name ?? '',
+    inward_qty: e.inward_qty?.toString() ?? '',
+    cost_per_piece: e.cost_per_piece?.toString() ?? '',
+    remarks: e.remarks ?? '',
+    actual_inward_qty: e.actual_inward_qty?.toString() ?? '',
+    mt_comments: e.mt_comments ?? '',
+    approval_status: e.approval_status,
+  };
+}
+
 export function InwardPlanIiClient({
   planMonth,
   entries,
@@ -50,6 +81,34 @@ export function InwardPlanIiClient({
   const isAdmin = role === 'admin';
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  // Edit buffer, keyed by row id. A row with no entry here shows its saved
+  // values; the original for dirty-detection is always re-derived from `entries`
+  // (which refreshes after a save), so drafts stay clean once persisted.
+  const [drafts, setDrafts] = useState<Record<number, Draft>>({});
+  const entriesById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+  const draftOf = useCallback(
+    (e: InwardPlanEntry): Draft => drafts[e.id] ?? draftFrom(e),
+    [drafts],
+  );
+  const setField = (e: InwardPlanEntry, field: keyof Draft, value: string) => {
+    setDrafts((d) => ({ ...d, [e.id]: { ...(d[e.id] ?? draftFrom(e)), [field]: value } }));
+  };
+
+  const rowState = (e: InwardPlanEntry) => {
+    const d = draftOf(e);
+    const o = draftFrom(e);
+    const teamDirty = TEAM_FIELDS.some((k) => d[k] !== o[k]);
+    const reviewDirty = REVIEW_FIELDS.some((k) => d[k] !== o[k]);
+    return { d, teamDirty, reviewDirty, dirty: teamDirty || reviewDirty };
+  };
+
+  const dirtyRows = useMemo(
+    () => entries.filter((e) => rowState(e).dirty),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries, drafts],
+  );
+  const hasUnsaved = dirtyRows.length > 0;
 
   // Navigation: free-text search + status chips + vendor dropdown, all combine (AND).
   const [search, setSearch] = useState('');
@@ -88,16 +147,85 @@ export function InwardPlanIiClient({
   const totals = useMemo(() => {
     let qty = 0, value = 0, actual = 0, variation = 0;
     for (const e of filtered) {
-      const q = Number(e.inward_qty) || 0;
+      const d = draftOf(e);
+      const q = Number(d.inward_qty) || 0;
       qty += q;
-      value += q * (Number(e.cost_per_piece) || 0);
-      actual += Number(e.actual_inward_qty) || 0;
-      variation += (Number(e.actual_inward_qty) || 0) - q;
+      value += q * (Number(d.cost_per_piece) || 0);
+      actual += Number(d.actual_inward_qty) || 0;
+      variation += (Number(d.actual_inward_qty) || 0) - q;
     }
     return { qty, value, actual, variation };
-  }, [filtered]);
+  }, [filtered, draftOf]);
 
-  function run(action: (fd: FormData) => Promise<ActionResult>, fields: Record<string, string>) {
+  // Guard against losing unsaved edits on tab close / hard reload.
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasUnsaved]);
+
+  const navGuard = (e: React.MouseEvent) => {
+    if (hasUnsaved && !window.confirm('You have unsaved changes. Leave without saving?')) {
+      e.preventDefault();
+    }
+  };
+
+  // Persist one row (team fields and/or review fields, whichever changed).
+  const persistRow = async (e: InwardPlanEntry): Promise<ActionResult> => {
+    const { d, teamDirty, reviewDirty } = rowState(e);
+    if (teamDirty) {
+      const fd = new FormData();
+      fd.set('id', String(e.id));
+      fd.set('plan_month', planMonth);
+      fd.set('product_code', e.product_code);
+      fd.set('po_no', d.po_no);
+      fd.set('vendor_name', d.vendor_name);
+      fd.set('inward_qty', d.inward_qty);
+      fd.set('cost_per_piece', d.cost_per_piece);
+      fd.set('remarks', d.remarks);
+      fd.set('actual_inward_qty', d.actual_inward_qty);
+      const res = await saveInwardPlanEntry(fd);
+      if (!res.ok) return res;
+    }
+    if (reviewDirty) {
+      const fd = new FormData();
+      fd.set('id', String(e.id));
+      fd.set('mt_comments', d.mt_comments);
+      fd.set('approval_status', d.approval_status);
+      const res = await reviewInwardPlanEntry(fd);
+      if (!res.ok) return res;
+    }
+    return { ok: true };
+  };
+
+  const saveRows = (rows: InwardPlanEntry[]) => {
+    if (!rows.length) return;
+    setError(null);
+    start(async () => {
+      for (const e of rows) {
+        const res = await persistRow(e);
+        if (!res.ok) {
+          setError(`${e.product_code}: ${res.error}`);
+          return;
+        }
+      }
+      reloadWithToast(rows.length > 1 ? `${rows.length} rows saved.` : 'Saved.');
+    });
+  };
+
+  const discard = () => {
+    if (window.confirm(`Discard unsaved changes on ${dirtyRows.length} row(s)?`)) {
+      setDrafts({});
+      setError(null);
+    }
+  };
+
+  // Add / delete go straight through (a plain server action + soft refresh).
+  const run = (action: (fd: FormData) => Promise<ActionResult>, fields: Record<string, string>) => {
     setError(null);
     const fd = new FormData();
     Object.entries(fields).forEach(([k, v]) => fd.set(k, v));
@@ -106,19 +234,21 @@ export function InwardPlanIiClient({
       if (res.ok) reloadWithToast();
       else setError(res.error);
     });
-  }
+  };
 
   const exportCsv = () =>
     downloadCsv(
       `inward-plan-ii-${planMonth.slice(0, 7)}`,
       ['Product code', 'PO no.', 'Vendor', 'Inward qty', 'Cost/piece', 'Total value', 'Remarks', 'MT comments', 'Approval status', 'Actual inward qty', 'Variation'],
       filtered.map((e) => {
-        const q = Number(e.inward_qty) || 0;
+        const d = draftOf(e);
+        const q = Number(d.inward_qty) || 0;
         return [
-          e.product_code, e.po_no ?? '', e.vendor_name ?? '', q,
-          Number(e.cost_per_piece) || 0, q * (Number(e.cost_per_piece) || 0),
-          e.remarks ?? '', e.mt_comments ?? '', e.approval_status,
-          e.actual_inward_qty ?? '', (Number(e.actual_inward_qty) || 0) - q,
+          e.product_code, d.po_no, d.vendor_name, q,
+          Number(d.cost_per_piece) || 0, q * (Number(d.cost_per_piece) || 0),
+          d.remarks, d.mt_comments, d.approval_status,
+          d.actual_inward_qty === '' ? '' : Number(d.actual_inward_qty),
+          d.actual_inward_qty === '' && !q ? '' : (Number(d.actual_inward_qty) || 0) - q,
         ];
       }),
     );
@@ -129,17 +259,18 @@ export function InwardPlanIiClient({
         The monthly inward sheet: pick a <strong>product code from the product master</strong>, then
         the team fills PO, vendor, quantity, cost and remarks; management adds <strong>MT comments</strong>{' '}
         and the <strong>approval status</strong>. Total Value and Variation (actual − planned) are computed.
+        Edit any cell and press <strong>Save</strong> (per row) or <strong>Save all</strong>.
       </Notice>
 
       {error && <Notice tone="error">{error}</Notice>}
 
       <div className="wf-toolbar">
         <div className="wf-toolbar-left">
-          <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/buying-plan?month=${addMonths(planMonth, -1)}&type=inward`}>
+          <a className="wf-btn wf-btn-ghost wf-btn-sm" onClick={navGuard} href={`/buying-plan?month=${addMonths(planMonth, -1)}&type=inward`}>
             ← {monthLabel(addMonths(planMonth, -1))}
           </a>
           <strong>{monthLabel(planMonth)}</strong>
-          <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/buying-plan?month=${addMonths(planMonth, 1)}&type=inward`}>
+          <a className="wf-btn wf-btn-ghost wf-btn-sm" onClick={navGuard} href={`/buying-plan?month=${addMonths(planMonth, 1)}&type=inward`}>
             {monthLabel(addMonths(planMonth, 1))} →
           </a>
         </div>
@@ -157,6 +288,24 @@ export function InwardPlanIiClient({
           </button>
         </div>
       </div>
+
+      {/* Unsaved-changes bar — the safety net against navigating away with edits. */}
+      {editable && hasUnsaved && (
+        <div className="wf-unsaved-bar">
+          <span className="wf-unsaved-msg">
+            <AlertTriangle size={15} />
+            {dirtyRows.length} unsaved change{dirtyRows.length === 1 ? '' : 's'}
+          </span>
+          <div className="wf-issue-row">
+            <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={() => saveRows(dirtyRows)}>
+              <Save size={13} /> Save all
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={discard}>
+              <RotateCcw size={13} /> Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {entries.length > 0 && (
         <div className="wf-toolbar">
@@ -244,9 +393,23 @@ export function InwardPlanIiClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
-                <EntryRow key={e.id} entry={e} planMonth={planMonth} editable={editable} isAdmin={isAdmin} run={run} busy={pending} />
-              ))}
+              {filtered.map((e) => {
+                const st = rowState(e);
+                return (
+                  <EntryRow
+                    key={e.id}
+                    entry={e}
+                    draft={st.d}
+                    dirty={st.dirty}
+                    editable={editable}
+                    isAdmin={isAdmin}
+                    busy={pending}
+                    onField={setField}
+                    onSave={() => saveRows([e])}
+                    onDelete={() => run(deleteInwardPlanEntry, { id: String(e.id) })}
+                  />
+                );
+              })}
               {!entries.length && (
                 <tr>
                   <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
@@ -286,92 +449,64 @@ export function InwardPlanIiClient({
 
 function EntryRow({
   entry,
-  planMonth,
+  draft,
+  dirty,
   editable,
   isAdmin,
-  run,
   busy,
+  onField,
+  onSave,
+  onDelete,
 }: {
   entry: InwardPlanEntry;
-  planMonth: string;
+  draft: Draft;
+  dirty: boolean;
   editable: boolean;
   isAdmin: boolean;
-  run: (action: (fd: FormData) => Promise<ActionResult>, fields: Record<string, string>) => void;
   busy: boolean;
+  onField: (e: InwardPlanEntry, field: keyof Draft, value: string) => void;
+  onSave: () => void;
+  onDelete: () => void;
 }) {
-  const [po, setPo] = useState(entry.po_no ?? '');
-  const [vendor, setVendor] = useState(entry.vendor_name ?? '');
-  const [qty, setQty] = useState(entry.inward_qty?.toString() ?? '');
-  const [cost, setCost] = useState(entry.cost_per_piece?.toString() ?? '');
-  const [remarks, setRemarks] = useState(entry.remarks ?? '');
-  const [actual, setActual] = useState(entry.actual_inward_qty?.toString() ?? '');
-  const [mt, setMt] = useState(entry.mt_comments ?? '');
-  const [status, setStatus] = useState(entry.approval_status);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const teamDirty =
-    po !== (entry.po_no ?? '') ||
-    vendor !== (entry.vendor_name ?? '') ||
-    qty !== (entry.inward_qty?.toString() ?? '') ||
-    cost !== (entry.cost_per_piece?.toString() ?? '') ||
-    remarks !== (entry.remarks ?? '') ||
-    actual !== (entry.actual_inward_qty?.toString() ?? '');
-  const reviewDirty = mt !== (entry.mt_comments ?? '') || status !== entry.approval_status;
+  const q = Number(draft.inward_qty) || 0;
+  const totalValue = q * (Number(draft.cost_per_piece) || 0);
+  const variation = (draft.actual_inward_qty === '' ? 0 : Number(draft.actual_inward_qty) || 0) - q;
 
-  const q = Number(qty) || 0;
-  const totalValue = q * (Number(cost) || 0);
-  const variation = (actual === '' ? 0 : Number(actual) || 0) - q;
-
-  const save = () => {
-    if (teamDirty) {
-      run(saveInwardPlanEntry, {
-        id: String(entry.id),
-        plan_month: planMonth,
-        product_code: entry.product_code,
-        po_no: po,
-        vendor_name: vendor,
-        inward_qty: qty,
-        cost_per_piece: cost,
-        remarks,
-        actual_inward_qty: actual,
-      });
-    }
-    if (reviewDirty) {
-      run(reviewInwardPlanEntry, { id: String(entry.id), mt_comments: mt, approval_status: status });
-    }
-  };
-
-  const cell = (value: string, set: (v: string) => void, kind: 'text' | 'num' = 'text', width?: number) =>
+  const cell = (field: keyof Draft, kind: 'text' | 'num' = 'text', width?: number) =>
     editable ? (
       <input
         type={kind === 'num' ? 'number' : 'text'}
         min={kind === 'num' ? 0 : undefined}
-        value={value}
+        value={draft[field]}
         style={width ? { width } : undefined}
-        onChange={(e) => set(e.target.value)}
+        onChange={(ev) => onField(entry, field, ev.target.value)}
+        onKeyDown={(ev) => { if (ev.key === 'Enter' && dirty) onSave(); }}
       />
     ) : (
-      <span>{value || '—'}</span>
+      <span>{draft[field] || '—'}</span>
     );
 
   return (
-    <tr>
+    <tr className={dirty ? 'wf-row-dirty' : undefined}>
       <td className="mono">{entry.product_code}</td>
-      <td>{cell(po, setPo, 'text', 210)}</td>
-      <td>{cell(vendor, setVendor, 'text', 90)}</td>
-      <td className="num">{cell(qty, setQty, 'num', 80)}</td>
-      <td className="num">{cell(cost, setCost, 'num', 80)}</td>
+      <td>{cell('po_no', 'text', 210)}</td>
+      <td>{cell('vendor_name', 'text', 90)}</td>
+      <td className="num">{cell('inward_qty', 'num', 80)}</td>
+      <td className="num">{cell('cost_per_piece', 'num', 80)}</td>
       <td className="num">{totalValue ? money.format(totalValue) : '—'}</td>
-      <td>{cell(remarks, setRemarks, 'text', 150)}</td>
+      <td>{cell('remarks', 'text', 150)}</td>
       <td>
         {isAdmin ? (
-          <input value={mt} style={{ width: 200 }} onChange={(e) => setMt(e.target.value)} />
+          <input value={draft.mt_comments} style={{ width: 200 }} onChange={(ev) => onField(entry, 'mt_comments', ev.target.value)} />
         ) : (
           <span>{entry.mt_comments || '—'}</span>
         )}
       </td>
       <td>
         {isAdmin ? (
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select value={draft.approval_status} onChange={(ev) => onField(entry, 'approval_status', ev.target.value)}>
             {INWARD_PLAN_STATUSES.map((s) => (
               <option key={s}>{s}</option>
             ))}
@@ -382,27 +517,32 @@ function EntryRow({
           </span>
         )}
       </td>
-      <td className="num">{cell(actual, setActual, 'num', 80)}</td>
+      <td className="num">{cell('actual_inward_qty', 'num', 80)}</td>
       <td className="num" style={{ color: variation < 0 ? 'var(--danger-text, #c0392b)' : 'var(--success-text, #3d9e6b)' }}>
-        {actual === '' && !q ? '—' : fmt.format(variation)}
+        {draft.actual_inward_qty === '' && !q ? '—' : fmt.format(variation)}
       </td>
       {editable && (
         <td>
           <div className="wf-issue-row">
-            {(teamDirty || reviewDirty) && (
-              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={save} title="Save row">
+            {dirty && (
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={onSave} title="Save this row">
                 <Save size={13} />
               </button>
             )}
-            <button
-              type="button"
-              className="icon-button"
-              disabled={busy}
-              title="Remove row"
-              onClick={() => run(deleteInwardPlanEntry, { id: String(entry.id) })}
-            >
-              <Trash2 size={14} />
-            </button>
+            {confirmDelete ? (
+              <>
+                <button type="button" className="wf-btn wf-btn-sm wf-btn-danger" disabled={busy} onClick={onDelete} title="Confirm delete">
+                  Delete?
+                </button>
+                <button type="button" className="icon-button" onClick={() => setConfirmDelete(false)} title="Cancel">
+                  <X size={14} />
+                </button>
+              </>
+            ) : (
+              <button type="button" className="icon-button" disabled={busy} title="Remove row" onClick={() => setConfirmDelete(true)}>
+                <Trash2 size={14} />
+              </button>
+            )}
           </div>
         </td>
       )}
