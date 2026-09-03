@@ -6,6 +6,7 @@ import {
   loadActualsByProduct,
   loadAnalyticsRules,
   loadBuyingPlan,
+  loadInwardPlanSheet,
   loadMaterialPlan,
   loadNpdBudget,
   loadProductCatalog,
@@ -13,8 +14,9 @@ import {
 } from '@/lib/forms/queries';
 import { BuyingPlanClient } from './buying-plan-client';
 import { MaterialPlanClient } from './material-plan-client';
+import { InwardPlanIiClient } from './inward-plan-ii-client';
 import { NpdBudgetCard } from './npd-budget-card';
-import { PlanTypeTabs } from './plan-type-tabs';
+import { PlanTypeTabs, type PlanType } from './plan-type-tabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +29,8 @@ export default async function BuyingPlanPage({
   const planMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '')
     ? params.month!
     : monthStart();
-  const planType = params.type === 'material' ? 'material' : 'fg';
+  const planType: PlanType =
+    params.type === 'material' ? 'material' : params.type === 'inward' ? 'inward' : 'fg';
 
   let user;
   try {
@@ -48,9 +51,12 @@ export default async function BuyingPlanPage({
     redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
 
-  const subtitle = `Monthly buying budget — ${monthLabel(planMonth)}. ${
-    planType === 'material' ? 'Fabric / material track.' : 'Finished-goods track.'
-  } Submitted for approval before POs are issued.`;
+  const subtitle =
+    planType === 'inward'
+      ? `Inward Plan II — ${monthLabel(planMonth)}. The team's monthly inward sheet: what to inward against which PO, with management review.`
+      : `Monthly buying budget — ${monthLabel(planMonth)}. ${
+          planType === 'material' ? 'Fabric / material track.' : 'Finished-goods track.'
+        } Submitted for approval before POs are issued.`;
 
   return (
     <FormLayout
@@ -64,6 +70,8 @@ export default async function BuyingPlanPage({
       <PlanTypeTabs planMonth={planMonth} planType={planType} />
       {planType === 'material' ? (
         <MaterialTrack planMonth={planMonth} role={user.role} />
+      ) : planType === 'inward' ? (
+        <InwardTrack planMonth={planMonth} role={user.role} />
       ) : (
         <FgTrack planMonth={planMonth} role={user.role} />
       )}
@@ -117,5 +125,12 @@ async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'vi
       materialCosts={materialCosts}
       role={role}
     />
+  );
+}
+
+async function InwardTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+  const { entries, planCodes } = await loadInwardPlanSheet(planMonth);
+  return (
+    <InwardPlanIiClient planMonth={planMonth} entries={entries} planCodes={planCodes} role={role} />
   );
 }

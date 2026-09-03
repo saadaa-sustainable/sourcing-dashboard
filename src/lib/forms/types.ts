@@ -618,7 +618,31 @@ export type ApprovalEntity =
   | 'po_approval'
   | 'standard_cost'
   | 'material_cost'
-  | 'receivable_plan';
+  | 'receivable_plan'
+  | 'inward_plan';
+
+/** Review vocabulary of the Inward Plan II sheet (matches the team's Google Sheet). */
+export const INWARD_PLAN_STATUSES = ['Pending', 'Approved', 'RE-WORK', 'Rejected'];
+
+/**
+ * One row of the team-filled Inward Plan II sheet (Buying Plan tab).
+ * Total Value (qty × cost) and Variation (actual − planned) are computed
+ * in the UI, never stored.
+ */
+export type InwardPlanEntry = {
+  id: number;
+  plan_month: string;
+  product_code: string;
+  po_no: string | null;
+  vendor_name: string | null;
+  inward_qty: number | null;
+  cost_per_piece: number | null;
+  remarks: string | null;
+  mt_comments: string | null;
+  approval_status: string; // Pending / Approved / RE-WORK / Rejected
+  actual_inward_qty: number | null;
+  updated_by: string | null;
+};
 
 /** Standard cost sheet row — final job/FOB/EFOB rates per product (sd_standard_cost). */
 export type StandardCost = {

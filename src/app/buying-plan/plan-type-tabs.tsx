@@ -1,11 +1,13 @@
+export type PlanType = 'fg' | 'material' | 'inward';
+
 export function PlanTypeTabs({
   planMonth,
   planType,
 }: {
   planMonth: string;
-  planType: 'fg' | 'material';
+  planType: PlanType;
 }) {
-  const tab = (type: 'fg' | 'material', label: string) => (
+  const tab = (type: PlanType, label: string) => (
     <a
       href={`/buying-plan?month=${planMonth}&type=${type}`}
       className={`wf-plan-tab${planType === type ? ' active' : ''}`}
@@ -17,6 +19,7 @@ export function PlanTypeTabs({
     <div className="wf-plan-tabs">
       {tab('fg', 'Finished Goods')}
       {tab('material', 'Fabric / Material')}
+      {tab('inward', 'Inward Plan II')}
     </div>
   );
 }
