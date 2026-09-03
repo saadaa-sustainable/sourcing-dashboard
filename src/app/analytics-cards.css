@@ -313,6 +313,57 @@
   color: var(--success-text);
   background: var(--success-bg);
 }
+/* Stockout Risk: CSV button + ABC/D segmentation chips. */
+.ana-csv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border, #e3d6bd);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink-2, #5a5347);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ana-csv-btn:hover { background: var(--bg-tint, #f7f1e3); color: var(--ink-1, #2a2620); }
+.ana-abcd-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.ana-abcd-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--bg-tint, #f0eadb);
+  color: var(--ink-2, #5a5347);
+}
+.ana-abcd-chip.cls-A { background: #fdecea; color: #c0392b; }
+.ana-abcd-chip.cls-B { background: #fdf0dc; color: #b57514; }
+.ana-abcd-chip.cls-C { background: #eef3ea; color: #4f7c4d; }
+.ana-abcd-chip.cls-D { background: #eef0f3; color: #566173; }
+.ana-abcd-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  background: var(--bg-tint, #f0eadb);
+  color: var(--ink-2, #5a5347);
+}
+.ana-abcd-tag.cls-A { background: #fdecea; color: #c0392b; }
+.ana-abcd-tag.cls-B { background: #fdf0dc; color: #b57514; }
+.ana-abcd-tag.cls-C { background: #eef3ea; color: #4f7c4d; }
+.ana-abcd-tag.cls-D { background: #eef0f3; color: #566173; }
+.ana-more-note { margin: 6px 0 0; font-size: 10.5px; color: var(--ink-3, #8a8477); }
+
 /* Coloured verdicts in ana-list rows (04/05 workspace + data cards). */
 .ana-list-val.is-red {
   color: var(--danger-text);

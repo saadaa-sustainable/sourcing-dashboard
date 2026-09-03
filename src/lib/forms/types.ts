@@ -56,7 +56,11 @@ export type SdCustomRole = {
  * fake zero.
  */
 export type AnalyticsExtras = {
-  /** 1.4 — variant-level demand with no stock and no open PO covering it. */
+  /**
+   * 1.4 — every variant with no stock and no open PO covering it (NO demand
+   * threshold: a stockout is a stockout). Each carries its ABC/D class so the
+   * card can segment the full list by priority instead of hiding low-DOQ items.
+   */
   stockoutGaps:
     | {
         product_variant: string;
@@ -65,6 +69,7 @@ export type AnalyticsExtras = {
         doq_45: number;
         current_stock: number;
         oos: boolean;
+        abc_class: 'A' | 'B' | 'C' | 'D';
       }[]
     | null;
   /** 1.5 — planned vs issued value per month (current + 2 prior) split by weave. */
@@ -109,6 +114,25 @@ export type AnalyticsExtras = {
     | null;
   /** Inward last week: planned (due) vs actual (received) quantity. */
   inwardLastWeek: { planned: number; actual: number } | null;
+  /**
+   * 1.9 — Delivery reliability over a Rules-Master window (default 2 quarters),
+   * combining completed POs (final delivered status) + open POs (in-flight),
+   * per vendor. Computed by sd_vendor_reliability().
+   */
+  reliability:
+    | {
+        windowDays: number;
+        vendors: {
+          vendorCode: string | null;
+          vendorName: string;
+          total: number;
+          delayed: number;
+          completed: number;
+          open: number;
+          pct: number;
+        }[];
+      }
+    | null;
   /** 04 Workspace — replenishment queue (variants with ROP-30 > 0). */
   replenishment: { variants: number; rop30Qty: number; oosVariants: number } | null;
   /** 04 Workspace — OOS Calculation summary (counts; the page has the detail). */

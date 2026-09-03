@@ -44,6 +44,7 @@ import {
 } from "@/lib/business-logic";
 import type { DashboardData } from "@/lib/types";
 import type { AnalyticsExtras } from "@/lib/forms/types";
+import { downloadCsv } from "@/lib/download";
 import { InfoDot } from "./info-dot";
 import type { TabId } from "./side-nav";
 
@@ -317,35 +318,13 @@ export function AnalyticsCards({
         b.capacityPerMonth - b.openQty - (a.capacityPerMonth - a.openQty),
     );
 
-  const windowDays = rules.reliability_window_days ?? 60;
-  const cutoff = new Date(today.getTime() - windowDays * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-  const recent = tracker.filter((row) => {
-    const poDate = row.skuRows[0]?.po_date ?? row.skuRows[0]?.po_created_date;
-    return poDate != null && poDate >= cutoff;
-  });
-  const reliabilityByVendor = new Map<
-    string,
-    { name: string; total: number; delayed: number }
-  >();
-  recent.forEach((row) => {
-    const vendorKey = key(row.vendorCode || row.vendorName);
-    const current = reliabilityByVendor.get(vendorKey) ?? {
-      name: row.vendorName,
-      total: 0,
-      delayed: 0,
-    };
-    current.total += 1;
-    if (row.delayDays > 0) current.delayed += 1;
-    reliabilityByVendor.set(vendorKey, current);
-  });
-  const struggling = [...reliabilityByVendor.values()]
-    .filter((vendor) => vendor.total >= 2 && vendor.delayed > 0)
-    .map((vendor) => ({
-      ...vendor,
-      pct: Math.round((vendor.delayed / vendor.total) * 100),
-    }))
+  // Delivery reliability is now computed server-side over a Rules-Master window
+  // (default 2 quarters), combining completed POs (final delivered status) and
+  // open POs (in-flight), deduped by PO number — see sd_vendor_reliability().
+  const reliability = extras?.reliability ?? null;
+  const windowDays = reliability?.windowDays ?? rules.reliability_window_days ?? 180;
+  const struggling = (reliability?.vendors ?? [])
+    .filter((v) => v.total >= 2 && v.delayed > 0)
     .sort((a, b) => b.pct - a.pct || b.delayed - a.delayed)
     .slice(0, 4);
 
@@ -369,6 +348,28 @@ export function AnalyticsCards({
   const cost = extras?.costVariance ?? null;
   const disc = extras?.discontinued ?? null;
   const gaps = extras?.stockoutGaps ?? null;
+  // Stockout list segmented by ABC/D (priority shown, nothing hidden).
+  const gapsByClass = gaps
+    ? (["A", "B", "C", "D"] as const).map((c) => ({
+        cls: c,
+        n: gaps.filter((g) => g.abc_class === c).length,
+      }))
+    : null;
+  const exportStockoutCsv = () => {
+    if (!gaps?.length) return;
+    downloadCsv(
+      "stockout-risk-variants.csv",
+      ["product_variant", "product_code", "product_name", "current_stock", "doq_45", "abc_class"],
+      gaps.map((g) => [
+        g.product_variant,
+        g.product_code ?? "",
+        g.product_name ?? "",
+        g.current_stock,
+        g.doq_45,
+        g.abc_class,
+      ]),
+    );
+  };
   const issued = extras?.issuedLastWeek ?? null;
   const pending = extras?.pendingApproval ?? null;
   const inward = extras?.inwardLastWeek ?? null;
@@ -568,24 +569,38 @@ export function AnalyticsCards({
               cta="Open urgent replenishment"
               span={5}
               onClick={() => onTab("urgent-replenish")}
-              info="High-demand variants with zero sellable stock and no open PO covering them, ranked by DOQ 45."
+              info="Every variant with no sellable stock and no open PO covering it — no demand threshold, so nothing is hidden. Segmented by ABC/D class (A/B = higher velocity) so priority shows without excluding anything. Download the full variant-level list as CSV."
             >
               {gaps == null ? (
-                <NoData text="Replenishment data is not available, so uncovered demand cannot be checked." />
+                <NoData text="Replenishment data is not available, so uncovered stockouts cannot be checked." />
               ) : gaps.length ? (
                 <>
                   <div className="ana-metric-row">
                     <div>
                       <strong className="ana-value ana-value-xl">
-                        {gaps.length === 8 ? "8+" : gaps.length}
+                        {fmt.format(gaps.length)}
                       </strong>
                       <span className="ana-value-label">
                         uncovered variants
                       </span>
                     </div>
-                    <span className="ana-count-chip is-red">
-                      No stock · No PO
-                    </span>
+                    <button
+                      type="button"
+                      className="ana-csv-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        exportStockoutCsv();
+                      }}
+                    >
+                      Download CSV
+                    </button>
+                  </div>
+                  <div className="ana-abcd-row">
+                    {gapsByClass!.map(({ cls, n }) => (
+                      <span key={cls} className={`ana-abcd-chip cls-${cls}`}>
+                        {cls} · {fmt.format(n)}
+                      </span>
+                    ))}
                   </div>
                   <ul className="ana-list ana-demand-list">
                     {gaps.slice(0, 5).map((gap, index) => (
@@ -600,16 +615,24 @@ export function AnalyticsCards({
                           <small className="mono">{gap.product_variant}</small>
                         </span>
                         <span className="ana-list-val">
+                          <span className={`ana-abcd-tag cls-${gap.abc_class}`}>
+                            {gap.abc_class}
+                          </span>
                           DOQ {fmt.format(gap.doq_45)}
                         </span>
                       </li>
                     ))}
                   </ul>
+                  {gaps.length > 5 && (
+                    <p className="ana-more-note">
+                      +{fmt.format(gaps.length - 5)} more — download the CSV for the full list.
+                    </p>
+                  )}
                 </>
               ) : (
                 <ZeroState
-                  title="No uncovered high-demand item"
-                  text="Every high-demand variant has stock or an open PO in flight."
+                  title="No uncovered stockout"
+                  text="Every out-of-stock variant has an open PO in flight."
                 />
               )}
             </AnaCard>
@@ -933,17 +956,17 @@ export function AnalyticsCards({
             </AnaCard>
 
             <AnaCard
-              title={`Delivery Reliability · ${windowDays}d`}
+              title={`Delivery Reliability · ${Math.round(windowDays / 90)}q`}
               icon={Factory}
               tone={
-                recent.length === 0
+                reliability == null
                   ? "neutral"
                   : struggling.length
                     ? "amber"
                     : "green"
               }
               status={
-                recent.length === 0
+                reliability == null
                   ? "WAITING"
                   : struggling.length
                     ? "WATCH"
@@ -952,12 +975,10 @@ export function AnalyticsCards({
               cta="Review vendor performance"
               span={5}
               onClick={() => onTab("vendors")}
-              info={`Delay rate for POs raised in the last ${windowDays} days. Vendors with fewer than 2 recent POs are excluded; the rolling window is editable in Rules Master.`}
+              info={`Delay rate over the last ${windowDays} days (≈${Math.round(windowDays / 90)} quarters), combining completed POs (final delivered status) and open POs still in flight — per vendor, deduped by PO number. Vendors with fewer than 2 POs in window are excluded; the window is editable in Rules Master. Click a vendor to open the PO tracker.`}
             >
-              {recent.length === 0 ? (
-                <NoData
-                  text={`No PO was raised in the last ${windowDays} days.`}
-                />
+              {reliability == null ? (
+                <NoData text="PO data is not available, so vendor reliability cannot be computed." />
               ) : struggling.length ? (
                 <>
                   <p className="ana-decision-line">
@@ -966,26 +987,36 @@ export function AnalyticsCards({
                   </p>
                   <div className="ana-reliability-list">
                     {struggling.map((vendor) => (
-                      <div className="ana-reliability-row" key={vendor.name}>
+                      <button
+                        type="button"
+                        className="ana-reliability-row is-clickable"
+                        key={vendor.vendorCode ?? vendor.vendorName}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onTab("open-po");
+                        }}
+                        title={`Open the PO tracker to review ${vendor.vendorName}`}
+                      >
                         <div>
-                          <span>{vendor.name}</span>
+                          <span>{vendor.vendorName}</span>
                           <b>{vendor.pct}% late</b>
                         </div>
                         <div>
                           <i style={{ width: `${clampPct(vendor.pct)}%` }} />
                         </div>
                         <small>
-                          {vendor.delayed} of {vendor.total} recent POs late
+                          {vendor.delayed} of {vendor.total} POs late ·{" "}
+                          {vendor.completed} completed, {vendor.open} open
                         </small>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </>
               ) : (
                 <ZeroState
                   compact
-                  title="No repeated recent delay pattern"
-                  text={`${recent.length} recent POs measured.`}
+                  title="No repeated delay pattern"
+                  text={`${reliability.vendors.length} vendors measured in window.`}
                 />
               )}
             </AnaCard>

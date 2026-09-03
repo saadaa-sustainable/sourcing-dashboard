@@ -10,6 +10,7 @@ import {
   parseIsoDate,
 } from '@/lib/business-logic';
 import { loadDashboardData, loadMergedTnaRecords } from '@/lib/data';
+import { productClassOf } from '@/lib/doq-dashboard';
 import { monthStart, addMonths, canApprove } from './approval';
 import type {
   AnalyticsExtras,
@@ -183,7 +184,7 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   vendor_concentration_alert: 40,
   utilization_under_pct: 70,
   utilization_over_pct: 100,
-  reliability_window_days: 60,
+  reliability_window_days: 180, // 2 quarters — a 60-day window rarely holds enough resolved PO cycles
   closure_sla_days: 15,
   // PO-type lead times (days) — Buying Plan time-buckets (spec §7).
   lead_days_job: 30,
@@ -307,6 +308,7 @@ export async function loadAnalyticsExtras(
     issuedLastWeek: null,
     pendingApproval: null,
     inwardLastWeek: null,
+    reliability: null,
     replenishment: null,
     oosSummary: null,
     vendorRec: null,
@@ -401,24 +403,28 @@ export async function loadAnalyticsExtras(
     discontinuedCodes = new Set();
   }
 
-  /* 1.4 Stockout Risk — sustained demand, no stock, and no open PO covering the variant. */
+  /* 1.4 Stockout Risk — EVERY variant with no stock and no open PO covering it.
+     No demand/DOQ threshold (a stockout is a stockout); the full list is instead
+     segmented by ABC/D class so priority is shown, not used to hide items. */
   try {
+    const classRules = {
+      aAbove: rules.product_class_a_above ?? 10,
+      bMin: rules.product_class_b_min ?? 7,
+      cMin: rules.product_class_c_min ?? 3,
+    };
     const { data } = await supabase
       .from('sd_replenishment')
-      .select('product_variant, product_code, product_name, current_stock, doq_45, oos_flag')
-      .gt('doq_45', 0)
-      .order('doq_45', { ascending: false })
-      .limit(500);
+      .select('product_variant, product_code, product_name, current_stock, doq_45, ipdoq, oos_flag')
+      .limit(2000);
     extras.stockoutGaps = ((data ?? []) as {
       product_variant: string; product_code: string | null; product_name: string | null;
-      current_stock: number | null; doq_45: number | null; oos_flag: boolean | null;
+      current_stock: number | null; doq_45: number | null; ipdoq: number | null; oos_flag: boolean | null;
     }[])
       .filter(
         (r) =>
           (Number(r.current_stock) || 0) <= 0 &&
           !openVariants.has(norm(r.product_variant)),
       )
-      .slice(0, 8)
       .map((r) => ({
         product_variant: r.product_variant,
         product_code: r.product_code,
@@ -426,7 +432,35 @@ export async function loadAnalyticsExtras(
         doq_45: Number(r.doq_45) || 0,
         current_stock: Number(r.current_stock) || 0,
         oos: Boolean(r.oos_flag),
-      }));
+        // ABC/D from the DOQ-based velocity (ipdoq), same classifier used elsewhere.
+        abc_class: productClassOf(Number(r.ipdoq ?? r.doq_45) || 0, classRules),
+      }))
+      // Highest-velocity first so A/B surface at the top of the list + CSV.
+      .sort((a, b) => b.doq_45 - a.doq_45);
+  } catch { /* section stays null */ }
+
+  /* 1.9 Delivery reliability — per-vendor delay rate over the Rules-Master window
+     (default 2 quarters), combining COMPLETED POs (final delivered status) and
+     OPEN POs (in-flight), deduped by PO number. See sd_vendor_reliability(). */
+  try {
+    const windowDays = Math.round(rules.reliability_window_days ?? 180);
+    const { data } = await supabase.rpc('sd_vendor_reliability', { p_window_days: windowDays });
+    extras.reliability = {
+      windowDays,
+      vendors: ((data ?? []) as {
+        vendor_code: string | null; vendor_name: string | null;
+        total_pos: number | null; delayed_pos: number | null;
+        completed_pos: number | null; open_pos: number | null; delay_pct: number | null;
+      }[]).map((r) => ({
+        vendorCode: r.vendor_code,
+        vendorName: r.vendor_name ?? '—',
+        total: Number(r.total_pos) || 0,
+        delayed: Number(r.delayed_pos) || 0,
+        completed: Number(r.completed_pos) || 0,
+        open: Number(r.open_pos) || 0,
+        pct: Number(r.delay_pct) || 0,
+      })),
+    };
   } catch { /* section stays null */ }
 
   /* Months for 1.5 / 1.8 / 1.10 — current + two prior (IST). */
