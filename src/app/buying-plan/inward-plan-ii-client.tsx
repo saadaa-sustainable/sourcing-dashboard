@@ -27,6 +27,10 @@ const money = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 0,
 });
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+const fmtDate = (v: string | null) =>
+  v
+    ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
+    : '—';
 
 const STATUS_TONE: Record<string, string> = {
   Pending: 'purple',
@@ -368,6 +372,14 @@ export function InwardPlanIiClient({
                   <InfoDot text="Picked from the product master via the Add-a-product search above." label="About Product code" />
                 </th>
                 <th>PO no.</th>
+                <th>
+                  EDD
+                  <InfoDot text="Expected delivery date from the PO itself (not entered here) — shows what's due this month." label="About EDD" />
+                </th>
+                <th>
+                  PO closure
+                  <InfoDot text="Date the PO was closed/completed, from the PO's own data. Blank until the PO completes." label="About PO closure date" />
+                </th>
                 <th>Vendor</th>
                 <th className="num">Inward qty</th>
                 <th className="num">Cost/piece</th>
@@ -412,14 +424,14 @@ export function InwardPlanIiClient({
               })}
               {!entries.length && (
                 <tr>
-                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
+                  <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
                     No rows yet for {monthLabel(planMonth)} — add the first product above.
                   </td>
                 </tr>
               )}
               {entries.length > 0 && !filtered.length && (
                 <tr>
-                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
+                  <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
                     No rows match your search or filters.
                   </td>
                 </tr>
@@ -492,6 +504,8 @@ function EntryRow({
     <tr className={dirty ? 'wf-row-dirty' : undefined}>
       <td className="mono">{entry.product_code}</td>
       <td>{cell('po_no', 'text', 210)}</td>
+      <td className="wf-subtle">{fmtDate(entry.expected_delivery_date)}</td>
+      <td className="wf-subtle">{fmtDate(entry.po_closure_date)}</td>
       <td>{cell('vendor_name', 'text', 90)}</td>
       <td className="num">{cell('inward_qty', 'num', 80)}</td>
       <td className="num">{cell('cost_per_piece', 'num', 80)}</td>

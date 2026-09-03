@@ -666,6 +666,11 @@ export type InwardPlanEntry = {
   approval_status: string; // Pending / Approved / RE-WORK / Rejected
   actual_inward_qty: number | null;
   updated_by: string | null;
+  // Item 4: pulled from the PO's own data (via po_no), never entered by hand —
+  // so "what's arriving this month" is readable without another screen. Read-time
+  // derived; null when the PO isn't found in the open or completed PO feeds.
+  expected_delivery_date: string | null;
+  po_closure_date: string | null;
 };
 
 /** One accepted-rate snapshot in a product's cost history (sd_standard_cost_rate_history). */

@@ -1629,7 +1629,44 @@ export async function loadInwardPlanSheet(planMonth: string): Promise<{
     loadProductCatalog(),
   ]);
   if (error) throw new Error(`sd_inward_plan_entry: ${error.message}`);
-  return { entries: (entries ?? []) as InwardPlanEntry[], catalog };
+
+  // Item 4: enrich each entry with its PO's own EDD + closure date (never
+  // re-entered). EDD comes from whichever feed holds the PO (open or completed);
+  // closure date only exists once the PO is completed (sd_po_completed).
+  const rows = (entries ?? []) as InwardPlanEntry[];
+  const poNos = [...new Set(rows.map((e) => (e.po_no ?? '').trim()).filter(Boolean))];
+  const poDates = new Map<string, { edd: string | null; closure: string | null }>();
+  if (poNos.length) {
+    const [openPo, compPo] = await Promise.all([
+      supabase.from('pending_po_master').select('po_number, expected_delivery_date').in('po_number', poNos),
+      supabase.from('sd_po_completed').select('po_number, expected_delivery_date, po_updated_date').in('po_number', poNos),
+    ]);
+    for (const r of (openPo.data ?? []) as { po_number: string; expected_delivery_date: string | null }[]) {
+      const cur = poDates.get(r.po_number) ?? { edd: null, closure: null };
+      cur.edd = cur.edd ?? r.expected_delivery_date ?? null;
+      poDates.set(r.po_number, cur);
+    }
+    // Completed feed wins for EDD (final) and is the only source of a closure date.
+    for (const r of (compPo.data ?? []) as {
+      po_number: string; expected_delivery_date: string | null; po_updated_date: string | null;
+    }[]) {
+      const cur = poDates.get(r.po_number) ?? { edd: null, closure: null };
+      cur.edd = r.expected_delivery_date ?? cur.edd;
+      cur.closure = r.po_updated_date ?? cur.closure;
+      poDates.set(r.po_number, cur);
+    }
+  }
+
+  const enriched = rows.map((e) => {
+    const d = e.po_no ? poDates.get(e.po_no.trim()) : undefined;
+    return {
+      ...e,
+      expected_delivery_date: d?.edd ?? null,
+      po_closure_date: d?.closure ?? null,
+    };
+  });
+
+  return { entries: enriched, catalog };
 }
 
 /* ------------------------------------------------------------------ */
