@@ -667,7 +667,7 @@ export function AnalyticsCards({
             </AnaCard>
 
             <AnaCard
-              title="Discontinued but Active"
+              title="Open POs of Discontinued Products"
               icon={Ban}
               tone={
                 disc == null ? "neutral" : discontinuedCount ? "red" : "green"
@@ -682,7 +682,7 @@ export function AnalyticsCards({
               cta="Review affected PO lines"
               span={6}
               onClick={() => onTab("open-po")}
-              info="Open POs or current buying-plan lines referencing a product marked Discontinued in Product Master. This should always be zero."
+              info="Products marked Discontinued in Product Master that still have an open PO (or a current buying-plan line) with pending quantity against them — i.e. buying is still happening on a discontinued product. This should always be zero."
             >
               {disc == null ? (
                 <NoData text="Product Master data is not available, so lifecycle integrity cannot be checked." />
@@ -694,7 +694,7 @@ export function AnalyticsCards({
                         {discontinuedCount}
                       </strong>
                       <span className="ana-value-label">
-                        invalid active lines
+                        discontinued products still being bought
                       </span>
                     </div>
                     <div className="ana-mini-split">

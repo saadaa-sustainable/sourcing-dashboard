@@ -3,9 +3,9 @@
 import { useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import Link from 'next/link';
-import { CheckCheck, ShieldCheck } from 'lucide-react';
+import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
 import { canApprove, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
-import { approveBuyingPlanLines } from '@/lib/forms/actions';
+import { approveBuyingPlanLines, reworkLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { LineRework } from '@/components/forms/line-rework';
@@ -204,18 +204,24 @@ export function ApprovalsClient({
                   <Link href={item.href} className="wf-btn wf-btn-ghost">
                     Open record
                   </Link>
-                  {canApprove(role, item.status) && !!item.lines?.length && (
-                    <LineRework
-                      entityType={item.entityType}
-                      entityId={item.entityId}
-                      entityLabel={item.label}
-                      lines={item.lines}
-                      onDone={(result) => {
-                        if (result.ok) reloadWithToast();
-                      }}
-                    />
-                  )}
-                  {canApprove(role, item.status) && (
+                  {/* Buying plans are actioned entirely inside BuyingPlanApprovalLines
+                      (Approve/Rework scoped to the ticked rows). The whole-record
+                      LineRework modal + ApprovalBar are only for the other types, so a
+                      buying-plan approver can't accidentally act on all lines at once. */}
+                  {item.entityType !== 'buying_plan' &&
+                    canApprove(role, item.status) &&
+                    !!item.lines?.length && (
+                      <LineRework
+                        entityType={item.entityType}
+                        entityId={item.entityId}
+                        entityLabel={item.label}
+                        lines={item.lines}
+                        onDone={(result) => {
+                          if (result.ok) reloadWithToast();
+                        }}
+                      />
+                    )}
+                  {item.entityType !== 'buying_plan' && canApprove(role, item.status) && (
                     <ApprovalBar
                       entityType={item.entityType}
                       entityId={item.entityId}
@@ -304,10 +310,15 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
   const lines = item.lines ?? [];
   const pendingLines = lines.filter((l) => l.lineStatus !== 'approved');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<null | 'rework'>(null);
+  const [remark, setRemark] = useState('');
   const [isBusy, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   const allChecked = pendingLines.length > 0 && pendingLines.every((l) => selected.has(l.id));
+  // Only pending lines can be acted on — an already-approved row's checkbox is
+  // never rendered, but guard anyway so a stale id can't slip into an action.
+  const actionable = [...selected].filter((id) => pendingLines.some((l) => l.id === id));
 
   // §7 pivoted summary: Woven/Knitted × (Qty, Value) × (Pending, Approved) — the
   // at-a-glance total the approver sees before working individual lines.
@@ -342,13 +353,34 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
   }
 
   function approve() {
-    if (!selected.size) return;
+    if (!actionable.length) return;
     setError(null);
     const payload = new FormData();
     payload.set('plan_id', item.entityId);
-    payload.set('line_ids', JSON.stringify([...selected]));
+    payload.set('line_ids', JSON.stringify(actionable));
     start(async () => {
       const result = await approveBuyingPlanLines(payload);
+      if (result.ok) reloadWithToast();
+      else setError(result.error);
+    });
+  }
+
+  function rework() {
+    if (!actionable.length) return;
+    if (!remark.trim()) {
+      setError('Add a remark so the submitter knows what to change.');
+      return;
+    }
+    setError(null);
+    // The same remark is recorded against each checked line sent back.
+    const decisions = actionable.map((lineId) => ({ lineId, note: remark.trim() }));
+    const payload = new FormData();
+    payload.set('entity_type', item.entityType);
+    payload.set('entity_id', item.entityId);
+    payload.set('entity_label', item.label);
+    payload.set('line_decisions', JSON.stringify(decisions));
+    start(async () => {
+      const result = await reworkLines(payload);
       if (result.ok) reloadWithToast();
       else setError(result.error);
     });
@@ -439,18 +471,71 @@ function BuyingPlanApprovalLines({ item }: { item: ApprovalQueueItem }) {
         </table>
       </div>
       {error && <p className="wf-line-error">{error}</p>}
+
+      {/* Rework remark appears inline, at the point of action — required, and it
+          applies to exactly the checked rows (never the whole plan). */}
+      {mode === 'rework' && (
+        <div className="wf-line-rework-inline">
+          <label className="wf-subtle" htmlFor={`rework-${item.entityId}`}>
+            Remark for the {actionable.length} checked line(s) — sent to the submitter
+          </label>
+          <textarea
+            id={`rework-${item.entityId}`}
+            className="wf-textarea"
+            rows={2}
+            placeholder="What needs to change on these lines?"
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            autoFocus
+          />
+          <div className="wf-line-rework-actions">
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              onClick={rework}
+              disabled={isBusy || !actionable.length}
+            >
+              <RotateCcw size={14} /> {isBusy ? 'Working…' : `Send ${actionable.length} line(s) for rework`}
+            </button>
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost wf-btn-sm"
+              onClick={() => { setMode(null); setRemark(''); setError(null); }}
+              disabled={isBusy}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="wf-line-approve-foot">
         <span className="wf-subtle">
           {pendingLines.length} line(s) pending · {lines.length - pendingLines.length} approved
+          {actionable.length > 0 && (
+            <> · <strong>{actionable.length} checked</strong> — actions apply to these only</>
+          )}
         </span>
-        <button
-          type="button"
-          className="wf-btn wf-btn-primary wf-btn-sm"
-          onClick={approve}
-          disabled={isBusy || !selected.size}
-        >
-          <CheckCheck size={14} /> {isBusy ? 'Approving…' : `Approve selected (${selected.size})`}
-        </button>
+        {mode !== 'rework' && (
+          <div className="wf-line-action-btns">
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost wf-btn-sm"
+              onClick={() => { setMode('rework'); setError(null); }}
+              disabled={isBusy || !actionable.length}
+            >
+              <RotateCcw size={14} /> Rework selected ({actionable.length})
+            </button>
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              onClick={approve}
+              disabled={isBusy || !actionable.length}
+            >
+              <CheckCheck size={14} /> {isBusy ? 'Approving…' : `Approve selected (${actionable.length})`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

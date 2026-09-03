@@ -1421,6 +1421,35 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
   return done(`Saved CMTP breakdown for ${product_code} — CM ${total}.`);
 }
 
+/**
+ * Add a new standardized sub-item to the CMTP master under a head. Managed +
+ * addable (team/admin) rather than a hardcoded enum, so a genuinely new sub-item
+ * can be introduced without a code change — recorded with who added it. A name
+ * that already exists in the head is a no-op (keeps the list de-duplicated).
+ */
+export async function addCmtpSubitem(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to add CMTP sub-items.');
+  }
+  const category = String(formData.get('category') ?? '').trim();
+  const name = String(formData.get('name') ?? '').trim();
+  if (!category || !name) return fail('Both a head and a sub-item name are required.');
+
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_cmtp_subitem')
+    .upsert(
+      { category, name, created_by: user.email },
+      { onConflict: 'category,name', ignoreDuplicates: true },
+    );
+  if (error) return fail(`Could not add sub-item: ${error.message}`);
+
+  revalidatePath('/standard-cost');
+  return done(`Added “${name}” under ${category}.`);
+}
+
 export async function submitStandardCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');

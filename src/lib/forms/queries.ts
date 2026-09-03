@@ -1244,6 +1244,27 @@ export async function loadCmtpComponents(): Promise<CmtpComponent[]> {
   return (data ?? []) as CmtpComponent[];
 }
 
+/**
+ * The managed CMTP sub-item master, grouped by head (category → sub-item names).
+ * Feeds the sub-item dropdown on the Standard Cost CMTP breakdown so people pick
+ * a standardized name instead of free-typing near-duplicates.
+ */
+export async function loadCmtpSubitems(): Promise<Record<string, string[]>> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_cmtp_subitem')
+    .select('category, name, is_active')
+    .eq('is_active', true)
+    .order('category')
+    .order('name')
+    .limit(PAGE_SIZE);
+  const map: Record<string, string[]> = {};
+  ((data ?? []) as { category: string; name: string }[]).forEach((r) => {
+    (map[r.category] ??= []).push(r.name);
+  });
+  return map;
+}
+
 /** Every material-cost row, for the Material tab of the Standard Cost page. */
 export async function loadMaterialStandardCosts(): Promise<StandardCost[]> {
   const supabase = await client();

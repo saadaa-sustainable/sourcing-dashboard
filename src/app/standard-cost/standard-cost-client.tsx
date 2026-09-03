@@ -8,6 +8,7 @@ import {
   confirmCmRate,
   confirmFabricRate,
   proposeCost,
+  addCmtpSubitem,
   rejectCost,
   renegotiateCost,
   saveCmtpComponents,
@@ -62,6 +63,7 @@ export function StandardCostClient({
   costs,
   lines = [],
   cmtp = [],
+  cmtpSubitems = {},
   fabricBase = {},
   fabricCodes = [],
   standards,
@@ -75,6 +77,7 @@ export function StandardCostClient({
   costs: StandardCost[];
   lines?: StandardCostLine[];
   cmtp?: CmtpComponent[];
+  cmtpSubitems?: Record<string, string[]>;
   fabricBase?: Record<string, FabricBuildup>;
   fabricCodes?: string[];
   standards?: CostStandards;
@@ -257,6 +260,7 @@ export function StandardCostClient({
                           cost={cost}
                           lines={linesByCode.get(cost.product_code) ?? []}
                           cmtp={cmtpByCode.get(cost.product_code) ?? []}
+                          cmtpSubitems={cmtpSubitems}
                           fabricBase={fabricBase}
                           fabricCodes={fabricCodes}
                           history={rateHistory[cost.product_code] ?? []}
@@ -690,6 +694,7 @@ function CostDetail({
   cost,
   lines,
   cmtp,
+  cmtpSubitems,
   fabricBase,
   fabricCodes,
   history,
@@ -698,6 +703,7 @@ function CostDetail({
   cost: StandardCost;
   lines: StandardCostLine[];
   cmtp: CmtpComponent[];
+  cmtpSubitems: Record<string, string[]>;
   fabricBase: Record<string, FabricBuildup>;
   fabricCodes: string[];
   history: StandardCostRateHistory[];
@@ -805,7 +811,7 @@ function CostDetail({
       </div>
 
       {view === 'cmtp' ? (
-        <CmtpBreakdown cost={cost} cmtp={cmtp} editable={editable} />
+        <CmtpBreakdown cost={cost} cmtp={cmtp} subitems={cmtpSubitems} editable={editable} />
       ) : view === 'fabric' ? (
         <div className="wf-fabric-view">
           <div className="wf-form-grid">
@@ -1003,12 +1009,46 @@ const nextCmtpUid = () => (cmtpUidSeq += 1);
 function CmtpBreakdown({
   cost,
   cmtp,
+  subitems,
   editable,
 }: {
   cost: StandardCost;
   cmtp: CmtpComponent[];
+  subitems: Record<string, string[]>;
   editable: boolean;
 }) {
+  // Local, extendable copy of the sub-item master so a newly-added name appears
+  // in every dropdown for its head immediately (the server revalidates too).
+  const [subs, setSubs] = useState<Record<string, string[]>>(subitems);
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [newSub, setNewSub] = useState('');
+  const [subBusy, startSub] = useTransition();
+
+  // Options for a head's dropdown: the master list, plus the row's own legacy
+  // free-typed value if it predates the master (so it still shows and can be kept).
+  const optionsFor = (cat: string, current: string) => {
+    const list = subs[cat] ?? [];
+    return current && !list.includes(current) ? [current, ...list] : list;
+  };
+
+  function addSubitem(cat: string) {
+    const name = newSub.trim();
+    if (!name) return;
+    const fd = new FormData();
+    fd.set('category', cat);
+    fd.set('name', name);
+    startSub(async () => {
+      const res = await addCmtpSubitem(fd);
+      if (res.ok) {
+        setSubs((cur) => {
+          const list = cur[cat] ?? [];
+          return list.includes(name) ? cur : { ...cur, [cat]: [...list, name].sort() };
+        });
+        setNewSub('');
+        setAddingFor(null);
+      }
+    });
+  }
   const [rows, setRows] = useState<CmtpRow[]>(() =>
     cmtp.length
       ? cmtp.map((c) => ({
@@ -1085,13 +1125,21 @@ function CmtpBreakdown({
             </div>
             {catRows.map((r) => (
               <div key={r.uid} className="wf-cmtp-line">
-                <input
+                {/* Sub-item is picked from the managed master (per head), not
+                    free-typed — so the same sub-item can't get two spellings. */}
+                <select
                   className="wf-cmtp-label"
-                  placeholder="sub-item (optional)"
                   value={r.label}
                   disabled={!editable}
                   onChange={(e) => patchRow(r.uid, 'label', e.target.value)}
-                />
+                >
+                  <option value="">— sub-item —</option>
+                  {optionsFor(cat, r.label).map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
                 <input
                   className="wf-cmtp-amt"
                   type="number"
@@ -1118,17 +1166,45 @@ function CmtpBreakdown({
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => addRow(cat)}>
                   <Plus size={12} /> Add line
                 </button>
-                {head?.suggest?.map((s) => (
+                {addingFor === cat ? (
+                  <span className="wf-cmtp-newsub">
+                    <input
+                      placeholder="New sub-item name"
+                      value={newSub}
+                      disabled={subBusy}
+                      autoFocus
+                      onChange={(e) => setNewSub(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); addSubitem(cat); }
+                        if (e.key === 'Escape') { setAddingFor(null); setNewSub(''); }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn-primary wf-btn-sm"
+                      disabled={subBusy || !newSub.trim()}
+                      onClick={() => addSubitem(cat)}
+                    >
+                      {subBusy ? 'Adding…' : 'Add to master'}
+                    </button>
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn-ghost wf-btn-sm"
+                      disabled={subBusy}
+                      onClick={() => { setAddingFor(null); setNewSub(''); }}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
                   <button
-                    key={s}
                     type="button"
                     className="wf-chip-btn"
-                    disabled={catRows.some((r) => r.label === s)}
-                    onClick={() => addRow(cat, s)}
+                    onClick={() => { setAddingFor(cat); setNewSub(''); }}
                   >
-                    + {s}
+                    <Plus size={12} /> New sub-item
                   </button>
-                ))}
+                )}
               </div>
             )}
           </div>

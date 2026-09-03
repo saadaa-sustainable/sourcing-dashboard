@@ -767,7 +767,18 @@
   padding: 9px 12px;
   border-top: 1px solid #ece7d9;
   background: #fff;
+  flex-wrap: wrap;
 }
+.wf-line-action-btns { display: flex; gap: 8px; }
+.wf-line-rework-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #ece7d9;
+  background: #fdf6ec;
+}
+.wf-line-rework-actions { display: flex; gap: 8px; }
 
 /* ---- Material Master: colour chips + segment counts ---- */
 .wf-chip-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
@@ -1115,6 +1126,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-cmtp-label { flex: 1 1 auto; min-width: 0; }
 .wf-cmtp-amt { flex: 0 0 96px; text-align: right; }
 .wf-cmtp-add { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wf-cmtp-newsub { display: inline-flex; align-items: center; gap: 6px; }
+.wf-cmtp-newsub input { min-width: 160px; }
 .wf-cmtp-newhead { display: flex; align-items: center; gap: 6px; }
 .wf-cmtp-newhead input { flex: 1 1 auto; min-width: 0; }
 .wf-cmtp-total {

@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadCmtpComponents,
+  loadCmtpSubitems,
   loadCostStandards,
   loadEfobFabricCost,
   loadFabricCostBase,
@@ -44,9 +45,9 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, standards, cmtp, efob, catalog, rateHistory] =
+  const [costs, lines, fabricBase, standards, cmtp, efob, catalog, rateHistory, cmtpSubitems] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], [], [], {}]
+      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], [], [], {}, {}]
       : await Promise.all([
           loadStandardCosts(),
           loadStandardCostLines(),
@@ -56,6 +57,7 @@ export default async function StandardCostPage({
           loadEfobFabricCost(),
           loadProductCatalog(),
           loadStandardCostRateHistory(),
+          loadCmtpSubitems(),
         ]);
 
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
@@ -90,6 +92,7 @@ export default async function StandardCostPage({
         costs={costs}
         lines={lines}
         cmtp={cmtp}
+        cmtpSubitems={cmtpSubitems as Record<string, string[]>}
         fabricBase={fabricByCode}
         fabricCodes={fabricCodes}
         standards={standards}
