@@ -53,6 +53,7 @@ import type {
   StandardCostLine,
   StandardCostRateHistory,
 } from '@/lib/forms/types';
+import type { CmtpRevision } from '@/lib/standard-cost-revisions.server';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
 
@@ -70,6 +71,7 @@ export function StandardCostClient({
   efob = [],
   catalog = [],
   rateHistory = {},
+  cmtpRevisions = {},
   initialOpen = null,
   role,
   track = 'fg',
@@ -84,6 +86,7 @@ export function StandardCostClient({
   efob?: EfobFabricCost[];
   catalog?: ProductCatalogItem[];
   rateHistory?: Record<string, StandardCostRateHistory[]>;
+  cmtpRevisions?: Record<string, CmtpRevision[]>;
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -264,6 +267,7 @@ export function StandardCostClient({
                           fabricBase={fabricBase}
                           fabricCodes={fabricCodes}
                           history={rateHistory[cost.product_code] ?? []}
+                          revisions={cmtpRevisions[cost.product_code] ?? []}
                           editable={!cost.frozen && canEdit(role, cost.status)}
                         />
                       </td>
@@ -698,6 +702,7 @@ function CostDetail({
   fabricBase,
   fabricCodes,
   history,
+  revisions,
   editable,
 }: {
   cost: StandardCost;
@@ -707,6 +712,7 @@ function CostDetail({
   fabricBase: Record<string, FabricBuildup>;
   fabricCodes: string[];
   history: StandardCostRateHistory[];
+  revisions: CmtpRevision[];
   editable: boolean;
 }) {
   const [view, setView] = useState<'cmtp' | 'fabric' | 'final' | 'history'>('cmtp');
@@ -933,7 +939,7 @@ function CostDetail({
           )}
         </div>
       ) : (
-        <RateHistoryPanel history={history} />
+        <RateHistoryPanel history={history} revisions={revisions} />
       )}
     </div>
   );
@@ -944,11 +950,18 @@ function CostDetail({
  * signed off, newest first, with the date and who accepted it. The top row is
  * the LIVE rate the Buying Plan values from (until a new proposal is accepted).
  */
-function RateHistoryPanel({ history }: { history: StandardCostRateHistory[] }) {
+function RateHistoryPanel({
+  history,
+  revisions = [],
+}: {
+  history: StandardCostRateHistory[];
+  revisions?: CmtpRevision[];
+}) {
   const when = (iso: string) =>
     new Date(iso).toLocaleString('en-IN', {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
+  const amt = (v: number | null) => (v == null ? '—' : String(v));
   return (
     <div className="wf-history-view">
       <p className="wf-subtle">
@@ -985,6 +998,45 @@ function RateHistoryPanel({ history }: { history: StandardCostRateHistory[] }) {
               ))}
               {!history.length && (
                 <tr><td colSpan={6} className="wf-empty-cell">No accepted rate yet — this product has not been signed off.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Item 2 — line-item CMTP revision log: every single-line change with its
+          mandatory reason (old → new), so a karigar-rate or trim-rate move is
+          auditable without a whole-sheet re-approval. */}
+      <p className="wf-subtle" style={{ marginTop: 18 }}>
+        <strong>CMTP line revisions</strong> — individual cost-line changes, newest first, each
+        with the reason it was revised.
+      </p>
+      <div className="table-panel wf-grid-panel">
+        <div className="table-scroll">
+          <table className="wf-grid">
+            <thead>
+              <tr>
+                <th>Revised on</th>
+                <th>Line</th>
+                <th className="num">Old</th>
+                <th className="num">New</th>
+                <th>By</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revisions.map((rv) => (
+                <tr key={rv.id}>
+                  <td>{when(rv.revised_at)}</td>
+                  <td>{rv.category}{rv.label ? ` · ${rv.label}` : ''}</td>
+                  <td className="num">{amt(rv.old_amount)}</td>
+                  <td className="num">{amt(rv.new_amount)}</td>
+                  <td className="wf-subtle">{rv.revised_by ?? '—'}</td>
+                  <td className="wf-subtle">{rv.reason}</td>
+                </tr>
+              ))}
+              {!revisions.length && (
+                <tr><td colSpan={6} className="wf-empty-cell">No line revisions yet — the CMTP breakdown has not been changed since it was first entered.</td></tr>
               )}
             </tbody>
           </table>
@@ -1063,6 +1115,30 @@ function CmtpBreakdown({
   const [newHead, setNewHead] = useState('');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  // Item 2 — a revision reason is mandatory when an EXISTING breakdown's amounts
+  // change (not on first entry). Snapshot the amounts as loaded, keyed by head+sub.
+  const [reason, setReason] = useState('');
+  const hadData = cmtp.length > 0;
+  const initialAmts = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of cmtp) m.set(`${c.category} :: ${c.label ?? ''}`, c.amount != null ? String(c.amount) : '');
+    return m;
+  }, [cmtp]);
+  const isRevision = useMemo(() => {
+    if (!hadData) return false;
+    const now = new Map<string, string>();
+    for (const r of rows) {
+      if (!r.category || (!r.label && !r.amount)) continue;
+      now.set(`${r.category} :: ${r.label}`, r.amount);
+    }
+    if (now.size !== initialAmts.size) return true;
+    for (const [k, v] of now) {
+      const old = initialAmts.get(k);
+      if (old === undefined) return true;
+      if (Math.abs((numv(v) || 0) - (numv(old) || 0)) >= 0.005) return true;
+    }
+    return false;
+  }, [rows, initialAmts, hadData]);
 
   // Head order: the 6 mandatory heads first, then any custom heads present.
   const categories = useMemo(() => {
@@ -1087,16 +1163,23 @@ function CmtpBreakdown({
 
   function save() {
     setErr(null);
+    if (isRevision && !reason.trim()) {
+      setErr('Enter a reason for this revision — it is logged against the changed line(s) in the rate history.');
+      return;
+    }
     const fd = new FormData();
     fd.set('product_code', cost.product_code);
     fd.set(
       'components',
       JSON.stringify(rows.map((r) => ({ category: r.category, label: r.label, amount: r.amount }))),
     );
+    if (isRevision) fd.set('revision_reason', reason.trim());
     start(async () => {
       const res = await saveCmtpComponents(fd);
-      if (res.ok) reloadWithToast();
-      else setErr(res.error);
+      if (res.ok) {
+        setReason('');
+        reloadWithToast();
+      } else setErr(res.error);
     });
   }
 
@@ -1233,6 +1316,20 @@ function CmtpBreakdown({
         <span>FINAL CMTP cost</span>
         <strong className="wf-cell-calc">{total || '—'}</strong>
       </div>
+
+      {editable && isRevision && (
+        <label className="field wf-field wf-cmtp-reason">
+          <span>
+            Reason for this revision <small>required — a line amount changed; logged to the rate history</small>
+          </span>
+          <input
+            type="text"
+            placeholder="e.g. karigar rate increased; XYZ dyeing rate revised"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </label>
+      )}
 
       {editable && (
         <div className="wf-cost-detail-foot">

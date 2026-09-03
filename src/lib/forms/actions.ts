@@ -1381,7 +1381,7 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
   const supabase = await supa();
   const { data: parent } = await supabase
     .from('sd_standard_cost')
-    .select('id, frozen')
+    .select('id, frozen, cm_cost')
     .eq('product_code', product_code)
     .maybeSingle();
   if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
@@ -1399,11 +1399,71 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
 
   const total = clean.reduce((s, r) => s + (r.amount ?? 0), 0);
 
+  // Item 2 — line-item revision with mandatory reason. Diff the incoming lines
+  // against what's on file (keyed by head + sub-item). If this is a REVISION of an
+  // existing breakdown (rows already existed) and any line's amount moved / a line
+  // was added or removed, the reviser must say why — that reason is logged per
+  // changed line to sd_cmtp_revision (old → new, who, when), the audit trail shown
+  // in Rate History. First-time entry needs no reason.
+  const { data: existing } = await supabase
+    .from('sd_cmtp_component')
+    .select('category, label, amount')
+    .eq('product_code', product_code);
+  const lineKey = (cat: string, label: string | null) => cat + ' :: ' + (label ?? '');
+  const oldByKey = new Map<string, number | null>(
+    (existing ?? []).map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
+  );
+  const amtEq = (a: number | null, b: number | null) =>
+    (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < 0.005);
+  type LineChange = { category: string; label: string | null; old: number | null; next: number | null };
+  const changes: LineChange[] = [];
+  const seen = new Set<string>();
+  for (const r of clean) {
+    const k = lineKey(r.category, r.label);
+    seen.add(k);
+    const old = oldByKey.has(k) ? oldByKey.get(k) ?? null : null;
+    if (!oldByKey.has(k) || !amtEq(old, r.amount)) {
+      changes.push({ category: r.category, label: r.label, old, next: r.amount });
+    }
+  }
+  for (const r of existing ?? []) {
+    const k = lineKey(String(r.category), textOrNull(r.label));
+    if (!seen.has(k)) {
+      changes.push({ category: String(r.category), label: textOrNull(r.label), old: numOrNull(r.amount), next: null });
+    }
+  }
+  const isRevision = (existing?.length ?? 0) > 0 && changes.length > 0;
+  const reason = String(formData.get('revision_reason') ?? '').trim();
+  if (isRevision && !reason) {
+    return fail(
+      'This changes an existing CMTP breakdown — enter a reason for the revision (e.g. "karigar rate increased"). It is logged in the rate history.',
+    );
+  }
+
   // Replace strategy: clear the product's CMTP rows, then insert the current set.
   await supabase.from('sd_cmtp_component').delete().eq('product_code', product_code);
   if (clean.length) {
     const { error } = await supabase.from('sd_cmtp_component').insert(clean);
     if (error) return fail(`Could not save CMTP breakdown: ${error.message}`);
+  }
+
+  // Append the line-level revision audit (best-effort — never blocks the save).
+  if (isRevision) {
+    const cmBefore = parent?.cm_cost == null ? null : Number(parent.cm_cost);
+    const cmAfter = clean.length ? total : null;
+    await supabase.from('sd_cmtp_revision').insert(
+      changes.map((c) => ({
+        product_code,
+        category: c.category,
+        label: c.label,
+        old_amount: c.old,
+        new_amount: c.next,
+        cm_before: cmBefore,
+        cm_after: cmAfter,
+        reason,
+        revised_by: user.email,
+      })),
+    );
   }
 
   // CMTP total is the CM cost. Saving is documenting — clears the data-gap flag.

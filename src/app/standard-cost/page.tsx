@@ -17,6 +17,7 @@ import {
 import { StandardCostClient } from './standard-cost-client';
 import { CostTrackTabs } from './cost-track-tabs';
 import type { StandardCostRateHistory } from '@/lib/forms/types';
+import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,11 @@ export default async function StandardCostPage({
           loadCmtpSubitems(),
         ]);
 
+  // Item 2 — line-item CMTP revision audit (FG track only; material CMTP isn't a
+  // thing). Keyed by product_code, shown in the Rate History view.
+  const cmtpRevisions =
+    track === 'material' ? {} : await loadCmtpRevisions(costs.map((c) => c.product_code));
+
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
   // Cost tab references these read-only from the Fabric Cost master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -99,6 +105,7 @@ export default async function StandardCostPage({
         efob={efob}
         catalog={catalog}
         rateHistory={rateHistory as Record<string, StandardCostRateHistory[]>}
+        cmtpRevisions={cmtpRevisions}
         initialOpen={openCode}
         role={user.role}
         track={track}
