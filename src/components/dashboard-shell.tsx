@@ -525,12 +525,14 @@ function DashboardTab({
   setBucket,
   onHighRisk,
   onOverdue,
+  onVendorSelect,
 }: {
   data: DashboardData;
   bucket: string;
   setBucket: (v: string) => void;
   onHighRisk: (rows: PendingPo[]) => void;
   onOverdue: (rows: PendingPo[]) => void;
+  onVendorSelect?: (vendorCode: string) => void;
 }) {
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
@@ -1107,7 +1109,7 @@ function DashboardTab({
       <div className="chart-grid">
         <ChartCard
           title="Vendor PO status and delay percentage"
-          info="Per vendor: open PO count, how many are past EDD, and the delay percentage line on the right axis."
+          info="Per vendor: open PO count, how many are past EDD, and the delay percentage line on the right axis. Click a vendor to open its POs in the tracker."
           wide
           download={{
             filename: "vendor-po-status-and-delay-percentage",
@@ -1120,6 +1122,13 @@ function DashboardTab({
               <ComposedChart
                 data={vendor}
                 margin={{ top: 20, right: 16, left: -8, bottom: 42 }}
+                style={onVendorSelect ? { cursor: "pointer" } : undefined}
+                onClick={(state) => {
+                  // Recharts hands the clicked category via activeLabel (the X-axis
+                  // vendorCode). Jump to the Open PO tracker filtered to that vendor.
+                  const code = (state as { activeLabel?: string } | null)?.activeLabel;
+                  if (code && onVendorSelect) onVendorSelect(String(code));
+                }}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
@@ -1324,10 +1333,13 @@ function TrackerTab({
   data,
   closures = [],
   onView,
+  initialVendorCode = "",
 }: {
   data: DashboardData;
   closures?: PoClosureView[];
   onView: (row: TrackerRow) => void;
+  /** Item 6 — seed the vendor filter when arrived-at from a vendor-chart click. */
+  initialVendorCode?: string;
 }) {
   const all = useMemo(
     () =>
@@ -1344,7 +1356,7 @@ function TrackerTab({
   );
   const [filters, set] = useState({
     vendor: "",
-    vendorCode: "",
+    vendorCode: initialVendorCode,
     vendorType: "",
     type: "",
     product: "",
@@ -3296,6 +3308,14 @@ export function DashboardShell({
   const [highRisk, setHighRisk] = useState<PendingPo[] | null>(null);
   const [overdue, setOverdue] = useState<PendingPo[] | null>(null);
   const [bucket, setBucket] = useState("All");
+  // Item 6 — clicking a vendor on the "Vendor PO status" chart jumps to the Open PO
+  // tracker pre-filtered to that vendor. Held here (above both tabs) so the click on
+  // the Dashboard tab seeds the tracker's vendor filter when it mounts.
+  const [vendorFilter, setVendorFilter] = useState("");
+  const openVendorPos = (code: string) => {
+    setVendorFilter(code);
+    setTab("open-po");
+  };
   // Let /?tab=<id> deep-link a specific tab (used by the sidebar on other pages).
   // Tabs are individually grantable views (tab:<id>) — a deep-link to a tab the
   // caller's roles don't include stays on the Dashboard tab.
@@ -3358,10 +3378,11 @@ export function DashboardShell({
                 setBucket={setBucket}
                 onHighRisk={setHighRisk}
                 onOverdue={setOverdue}
+                onVendorSelect={openVendorPos}
               />
             </>
           )}{" "}
-          {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} />}{" "}
+          {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} initialVendorCode={vendorFilter} />}{" "}
           {tab === "vendors" && <VendorTab data={data} />}{" "}
           {tab === "merchants" && <MerchantTab data={data} />}{" "}
           {tab === "products" && <ProductTab data={data} />}{" "}
