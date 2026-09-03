@@ -27,7 +27,7 @@ import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
-import { currentUser } from './queries';
+import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from './queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from './approval';
 import {
   canAcceptProposal,
@@ -235,7 +235,7 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
   const supabase = await supa();
   const { data: plan } = await supabase
     .from('sd_buying_plan')
-    .select('id, plan_month, status')
+    .select('id, plan_month, status, plan_type')
     .eq('id', planId)
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
@@ -245,13 +245,15 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
 
   const { data: lines } = await supabase
     .from('sd_buying_plan_line')
-    .select('id, job_work_qty, fob_qty, efob_qty, line_status')
+    .select('id, product_code, job_work_qty, fob_qty, efob_qty, standard_value, line_status')
     .eq('plan_id', planId);
   const lineRows = (lines ?? []) as {
     id: number;
+    product_code: string;
     job_work_qty: number;
     fob_qty: number;
     efob_qty: number;
+    standard_value: number | null;
     line_status: SdStatus | null;
   }[];
   const qty = lineRows.reduce(
@@ -280,6 +282,32 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
+
+  // Freeze the standard value per line at submission — from the CURRENT accepted
+  // rates. After this, later rate changes never rewrite an in-flight/approved
+  // plan; before submission the plan reflected the live latest-accepted rate.
+  const isMaterial = (plan as { plan_type?: string }).plan_type === 'material';
+  const fgCosts = isMaterial ? {} : await loadApprovedStandardCosts();
+  const matCosts = isMaterial ? await loadApprovedMaterialCosts() : {};
+  for (const l of lineRows) {
+    const job = Number(l.job_work_qty || 0);
+    const fob = Number(l.fob_qty || 0);
+    const efob = Number(l.efob_qty || 0);
+    if (job + fob + efob <= 0) continue;
+    let value = 0;
+    if (isMaterial) {
+      const c = matCosts[l.product_code];
+      if (!c) continue; // no accepted rate to freeze — leave as-is (still values live)
+      value = job * c.job + fob * c.fob;
+    } else {
+      const c = fgCosts[l.product_code];
+      if (!c) continue;
+      value = job * c.job + fob * c.fob + efob * c.efob;
+    }
+    if (value > 0) {
+      await supabase.from('sd_buying_plan_line').update({ standard_value: value }).eq('id', l.id);
+    }
+  }
 
   // Per-line approval set: only non-zero lines need a decision, and any line
   // already approved (preserved across a rework) stays approved. Zero-qty lines
@@ -465,6 +493,33 @@ function numOrNull(value: unknown) {
   if (value === '' || value == null) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Append an accepted FG rate to the history (sd_standard_cost_rate_history).
+ * The latest history row per product is what the Buying Plan values from, so
+ * every acceptance/sign-off records one. Best-effort: never fails the sign-off.
+ */
+async function recordAcceptedRate(
+  supabase: Awaited<ReturnType<typeof supa>>,
+  productCode: string,
+  rates: { job: number | null; fob: number | null; efob: number | null },
+  acceptedBy: string,
+  note: string,
+) {
+  try {
+    await supabase.from('sd_standard_cost_rate_history').insert({
+      product_code: productCode,
+      job_cost: rates.job,
+      fob_cost: rates.fob,
+      efob_cost: rates.efob,
+      accepted_by: acceptedBy,
+      accepted_at: new Date().toISOString(),
+      note,
+    });
+  } catch {
+    /* history is additive audit — a hiccup must not block the acceptance */
+  }
 }
 
 /* ================================================================== */
@@ -1658,6 +1713,13 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
   // Guarded on the stage so a concurrent reject/target can't be overwritten.
   const { error } = await supabase.from(table).update(patch).eq('id', id).eq('neg_stage', 'proposed');
   if (error) return fail(error.message);
+  if (track === 'fg') {
+    await recordAcceptedRate(
+      supabase, row.product_code,
+      { job: row.job_cost, fob: row.fob_cost, efob: row.efob_cost ?? null },
+      user.email, 'Proposal accepted as-is',
+    );
+  }
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Proposal accepted as-is — standard cost');
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
@@ -1873,7 +1935,7 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
   const supabase = await supa();
   const { data: row } = await supabase
     .from('sd_standard_cost')
-    .select('id, product_code, status, neg_stage, fabric_confirmed_at, cm_confirmed_at')
+    .select('id, product_code, status, neg_stage, fabric_confirmed_at, cm_confirmed_at, job_cost, fob_cost, efob_cost')
     .eq('id', id)
     .maybeSingle();
   if (!row) return fail('Cost not found.');
@@ -1898,6 +1960,11 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already processed.');
+  await recordAcceptedRate(
+    supabase, row.product_code as string,
+    { job: row.job_cost as number | null, fob: row.fob_cost as number | null, efob: row.efob_cost as number | null },
+    user.email, 'Signed off — CM confirmed',
+  );
   await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — signed off');
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');

@@ -54,13 +54,17 @@ export function nextActor(stage: string | null): string {
       return 'Admin — sign off';
     case 'renegotiate':
       return 'Team — re-enter rate';
+    case 'signed_off':
+      return 'Accepted — team may re-propose to revise';
     default:
       return '—';
   }
 }
 
+// A signed-off cost can be re-proposed to start a fresh negotiation round — the
+// current accepted rate stays live (from history) until the new one is accepted.
 export const canPropose = (role: SdRole, stage: string | null) =>
-  isTeam(role) && (!stage || stage === 'rejected');
+  isTeam(role) && (!stage || stage === 'rejected' || stage === 'signed_off');
 export const canSetTarget = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'proposed';
 /** Admin may also accept a proposal as-is — the proposed rates become the standard. */

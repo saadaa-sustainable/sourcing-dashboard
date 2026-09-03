@@ -60,6 +60,7 @@ import type {
   VendorTerm,
   StandardCost,
   StandardCostLine,
+  StandardCostRateHistory,
   CmtpComponent,
   CuttingRegister,
   DynamicLink,
@@ -1274,25 +1275,48 @@ export async function loadApprovedMaterialCosts(): Promise<
 }
 
 /** Approved standard rates per product, for the Buying Plan value calc. */
+/**
+ * The live standard rate per product = the LATEST ACCEPTED rate, read from the
+ * rate-history table (sd_standard_cost_rate_history) so a product being
+ * re-negotiated keeps its current rate until a new proposal is accepted. Falls
+ * back to any approved working row that predates the history (defensive; the
+ * migration backfills all approved rows, so this should be empty).
+ */
 export async function loadApprovedStandardCosts(): Promise<
   Record<string, { job: number; fob: number; efob: number }>
 > {
   const supabase = await client();
-  const { data } = await supabase
+  const map: Record<string, { job: number; fob: number; efob: number }> = {};
+
+  // History rows, newest first — first seen per code wins (its latest accepted rate).
+  const hist: { product_code: string; job_cost: number | null; fob_cost: number | null; efob_cost: number | null }[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await supabase
+      .from('sd_standard_cost_rate_history')
+      .select('product_code, job_cost, fob_cost, efob_cost')
+      .order('accepted_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (!data?.length) break;
+    hist.push(...(data as typeof hist));
+    if (data.length < PAGE_SIZE) break;
+  }
+  for (const r of hist) {
+    if (map[r.product_code]) continue; // already have the latest for this code
+    map[r.product_code] = {
+      job: Number(r.job_cost) || 0,
+      fob: Number(r.fob_cost) || 0,
+      efob: Number(r.efob_cost) || 0,
+    };
+  }
+
+  // Fallback for any approved row not yet represented in history.
+  const { data: approved } = await supabase
     .from('sd_standard_cost')
-    .select('product_code, job_cost, fob_cost, efob_cost, status')
+    .select('product_code, job_cost, fob_cost, efob_cost')
     .eq('status', 'approved')
     .limit(PAGE_SIZE);
-
-  const map: Record<string, { job: number; fob: number; efob: number }> = {};
-  (
-    (data ?? []) as {
-      product_code: string;
-      job_cost: number | null;
-      fob_cost: number | null;
-      efob_cost: number | null;
-    }[]
-  ).forEach((r) => {
+  ((approved ?? []) as { product_code: string; job_cost: number | null; fob_cost: number | null; efob_cost: number | null }[]).forEach((r) => {
+    if (map[r.product_code]) return;
     map[r.product_code] = {
       job: Number(r.job_cost) || 0,
       fob: Number(r.fob_cost) || 0,
@@ -1300,6 +1324,26 @@ export async function loadApprovedStandardCosts(): Promise<
     };
   });
   return map;
+}
+
+/** Full accepted-rate history per product, newest first — for the Rate History tab. */
+export async function loadStandardCostRateHistory(): Promise<Record<string, StandardCostRateHistory[]>> {
+  const supabase = await client();
+  const rows: StandardCostRateHistory[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_standard_cost_rate_history')
+      .select('*')
+      .order('accepted_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_standard_cost_rate_history: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as StandardCostRateHistory[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  const byCode: Record<string, StandardCostRateHistory[]> = {};
+  for (const r of rows) (byCode[r.product_code] ??= []).push(r);
+  return byCode;
 }
 
 /**

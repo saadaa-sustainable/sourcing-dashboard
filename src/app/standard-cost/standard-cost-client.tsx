@@ -50,6 +50,7 @@ import type {
   SdRole,
   StandardCost,
   StandardCostLine,
+  StandardCostRateHistory,
 } from '@/lib/forms/types';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
@@ -66,6 +67,7 @@ export function StandardCostClient({
   standards,
   efob = [],
   catalog = [],
+  rateHistory = {},
   initialOpen = null,
   role,
   track = 'fg',
@@ -78,6 +80,7 @@ export function StandardCostClient({
   standards?: CostStandards;
   efob?: EfobFabricCost[];
   catalog?: ProductCatalogItem[];
+  rateHistory?: Record<string, StandardCostRateHistory[]>;
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -256,6 +259,7 @@ export function StandardCostClient({
                           cmtp={cmtpByCode.get(cost.product_code) ?? []}
                           fabricBase={fabricBase}
                           fabricCodes={fabricCodes}
+                          history={rateHistory[cost.product_code] ?? []}
                           editable={!cost.frozen && canEdit(role, cost.status)}
                         />
                       </td>
@@ -688,6 +692,7 @@ function CostDetail({
   cmtp,
   fabricBase,
   fabricCodes,
+  history,
   editable,
 }: {
   cost: StandardCost;
@@ -695,9 +700,10 @@ function CostDetail({
   cmtp: CmtpComponent[];
   fabricBase: Record<string, FabricBuildup>;
   fabricCodes: string[];
+  history: StandardCostRateHistory[];
   editable: boolean;
 }) {
-  const [view, setView] = useState<'cmtp' | 'fabric' | 'final'>('cmtp');
+  const [view, setView] = useState<'cmtp' | 'fabric' | 'final' | 'history'>('cmtp');
   const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? '');
   const [consBySize, setConsBySize] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
@@ -789,6 +795,9 @@ function CostDetail({
           <button type="button" className={view === 'cmtp' ? 'active' : ''} onClick={() => setView('cmtp')}>CMTP</button>
           <button type="button" className={view === 'fabric' ? 'active' : ''} onClick={() => setView('fabric')}>Fabric Cost</button>
           <button type="button" className={view === 'final' ? 'active' : ''} onClick={() => setView('final')}>Final Cost</button>
+          <button type="button" className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>
+            Rate History{history.length > 0 ? ` (${history.length})` : ''}
+          </button>
         </div>
         <span className="wf-subtle wf-two-entity-note">
           Final = Fabric + CMTP (computed). Two owners: Fabric — Vikram ji · CMTP — Nimisha / Durganshu.
@@ -861,7 +870,7 @@ function CostDetail({
             </div>
           )}
         </div>
-      ) : (
+      ) : view === 'final' ? (
         <div className="wf-final-view">
           <div className="table-scroll">
             <table className="wf-grid wf-cost-lines">
@@ -917,7 +926,64 @@ function CostDetail({
             </div>
           )}
         </div>
+      ) : (
+        <RateHistoryPanel history={history} />
       )}
+    </div>
+  );
+}
+
+/**
+ * Accepted-rate history for a product: every job / FOB / E-FOB rate that was
+ * signed off, newest first, with the date and who accepted it. The top row is
+ * the LIVE rate the Buying Plan values from (until a new proposal is accepted).
+ */
+function RateHistoryPanel({ history }: { history: StandardCostRateHistory[] }) {
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  return (
+    <div className="wf-history-view">
+      <p className="wf-subtle">
+        Every accepted rate over time — a cost can be re-proposed and re-accepted. The
+        top (latest) row is the <strong>live standard cost</strong> the Buying Plan values
+        from; a plan freezes its rate when submitted for approval.
+      </p>
+      <div className="table-panel wf-grid-panel">
+        <div className="table-scroll">
+          <table className="wf-grid">
+            <thead>
+              <tr>
+                <th>Accepted on</th>
+                <th className="num">Job</th>
+                <th className="num">FOB</th>
+                <th className="num">E-FOB</th>
+                <th>By</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h, i) => (
+                <tr key={h.id} className={i === 0 ? 'wf-row-current' : undefined}>
+                  <td>
+                    {when(h.accepted_at)}
+                    {i === 0 && <span className="wf-tag-approved" style={{ marginLeft: 6 }}>current</span>}
+                  </td>
+                  <td className="num">{disp(h.job_cost)}</td>
+                  <td className="num">{disp(h.fob_cost)}</td>
+                  <td className="num">{disp(h.efob_cost)}</td>
+                  <td className="wf-subtle">{h.accepted_by ?? '—'}</td>
+                  <td className="wf-subtle">{h.note ?? '—'}</td>
+                </tr>
+              ))}
+              {!history.length && (
+                <tr><td colSpan={6} className="wf-empty-cell">No accepted rate yet — this product has not been signed off.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

@@ -9,11 +9,13 @@ import {
   loadMaterialStandardCosts,
   loadProductCatalog,
   loadStandardCostLines,
+  loadStandardCostRateHistory,
   loadStandardCosts,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostClient } from './standard-cost-client';
 import { CostTrackTabs } from './cost-track-tabs';
+import type { StandardCostRateHistory } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,9 +44,9 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, standards, cmtp, efob, catalog] =
+  const [costs, lines, fabricBase, standards, cmtp, efob, catalog, rateHistory] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], [], []]
+      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], [], [], {}]
       : await Promise.all([
           loadStandardCosts(),
           loadStandardCostLines(),
@@ -53,6 +55,7 @@ export default async function StandardCostPage({
           loadCmtpComponents(),
           loadEfobFabricCost(),
           loadProductCatalog(),
+          loadStandardCostRateHistory(),
         ]);
 
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
@@ -92,6 +95,7 @@ export default async function StandardCostPage({
         standards={standards}
         efob={efob}
         catalog={catalog}
+        rateHistory={rateHistory as Record<string, StandardCostRateHistory[]>}
         initialOpen={openCode}
         role={user.role}
         track={track}

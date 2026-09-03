@@ -644,6 +644,18 @@ export type InwardPlanEntry = {
   updated_by: string | null;
 };
 
+/** One accepted-rate snapshot in a product's cost history (sd_standard_cost_rate_history). */
+export type StandardCostRateHistory = {
+  id: number;
+  product_code: string;
+  job_cost: number | null;
+  fob_cost: number | null;
+  efob_cost: number | null;
+  accepted_by: string | null;
+  accepted_at: string;
+  note: string | null;
+};
+
 /** Standard cost sheet row — final job/FOB/EFOB rates per product (sd_standard_cost). */
 export type StandardCost = {
   id: number;
