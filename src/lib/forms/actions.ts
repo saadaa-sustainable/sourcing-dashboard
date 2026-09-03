@@ -2095,6 +2095,47 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   return { ok: true, message: `Saved PO #${data.id}.`, id: data.id as number };
 }
 
+/**
+ * Item 1 — sequencing gate. Returns a failing ActionResult if the reverse-sequencing
+ * rule is ON and no APPROVED Standard Cost exists for the product; returns null to
+ * pass. Read straight from sd_analytics_rule (default 0/off) so it never touches the
+ * held queries.ts rule map. Material POs check sd_material_standard_cost; FG/NPD
+ * check sd_standard_cost. A frozen cost was necessarily approved, so it also passes.
+ */
+async function assertApprovedStandardCost(
+  supabase: Awaited<ReturnType<typeof supa>>,
+  category: string,
+  productCode: string | null,
+): Promise<ActionResult | null> {
+  const { data: rule } = await supabase
+    .from('sd_analytics_rule')
+    .select('value')
+    .eq('rule_key', 'enforce_standard_cost_before_po')
+    .maybeSingle();
+  const enforce = Number(rule?.value ?? 0) >= 1;
+  if (!enforce) return null;
+
+  const code = (productCode ?? '').trim();
+  if (!code) {
+    return fail('Set the product before submitting — an approved Standard Cost is required first.');
+  }
+  const isMaterial = category === 'mat';
+  const table = isMaterial ? 'sd_material_standard_cost' : 'sd_standard_cost';
+  const { data: sc } = await supabase
+    .from(table)
+    .select('status, frozen')
+    .eq('product_code', code)
+    .maybeSingle();
+  const approved = sc?.status === 'approved' || sc?.frozen === true;
+  if (!approved) {
+    const where = isMaterial ? 'Material Standard Cost' : 'Standard Cost';
+    return fail(
+      `No approved ${where} exists for ${code}. Propose and get the cost approved (freeze it) first — the PO issues against that approved cost, not a number typed here.`,
+    );
+  }
+  return null;
+}
+
 export async function submitPoApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -2115,6 +2156,19 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   const qty = Number(po.po_qty || 0);
   if (qty <= 0) return fail('Add the size lines — PO quantity is the sum of those.');
   if (po.rate == null) return fail('Fill the rate (alongside the cost sheet) before submitting.');
+
+  // Item 1 — reverse sequencing gate: the Standard Cost must be proposed, reviewed
+  // and APPROVED before a PO can be submitted against it (not typed ad hoc here and
+  // backfilled afterward). Rules-Master toggle `enforce_standard_cost_before_po`
+  // (default 0/off — see migration; PO Approval is live and costs aren't populated
+  // yet, so this stays staged until the team turns it on). When on, block unless an
+  // approved cost record exists: FG/NPD → sd_standard_cost, Material → sd_material_standard_cost.
+  const gateResult = await assertApprovedStandardCost(
+    supabase,
+    po.category as string,
+    po.product_code as string | null,
+  );
+  if (gateResult) return gateResult;
 
   const now = new Date();
   // Total days as REQUESTED at submission: requested first-delivery minus today.
