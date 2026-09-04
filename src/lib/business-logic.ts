@@ -386,13 +386,16 @@ export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent
   return events.sort((a, b) => b.overdueDays - a.overdueDays);
 }
 
-// Vendor-type capacity model (single source of truth). PO capacity = machines ×
-// karigar × multiplier; stockDays = day-coverage (multiplier × 30). E-FOB corrected
-// to 45 days (was 41). Only Machines & Karigar are ever hand-entered; the rest derive.
+// Vendor-type capacity model. PO capacity = machines × karigar × multiplier
+// (kept as the confirmed INTERIM approximation — do NOT recompute it from the
+// day-count). stockDays is a display-only day-coverage label. FOB day-count was
+// confirmed 2026-09-04 at 90 (was 75), matching the Rules Master
+// (sd_analytics_rule.lead_days_fob = 90), which is the authoritative day-count
+// source for lead-time/coverage everywhere. Only Machines & Karigar are hand-entered.
 export const VENDOR_TYPE_MULTIPLIER: Record<string, { label: string; multiplier: number; stockDays: number }> = {
   job_work: { label: 'Job work', multiplier: 1.0, stockDays: 30 },
   efob: { label: 'E-FOB', multiplier: 1.5, stockDays: 45 },
-  fob: { label: 'FOB', multiplier: 2.5, stockDays: 75 },
+  fob: { label: 'FOB', multiplier: 2.5, stockDays: 90 },
   efob_fob: { label: 'E-FOB/FOB', multiplier: 2.0, stockDays: 60 },
 };
 
