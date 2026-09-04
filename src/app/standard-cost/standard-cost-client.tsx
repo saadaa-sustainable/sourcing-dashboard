@@ -72,6 +72,7 @@ export function StandardCostClient({
   catalog = [],
   rateHistory = {},
   cmtpRevisions = {},
+  productFabric = {},
   initialOpen = null,
   role,
   track = 'fg',
@@ -87,6 +88,7 @@ export function StandardCostClient({
   catalog?: ProductCatalogItem[];
   rateHistory?: Record<string, StandardCostRateHistory[]>;
   cmtpRevisions?: Record<string, CmtpRevision[]>;
+  productFabric?: Record<string, { fabricCode: string | null; multi: boolean }>;
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -268,6 +270,7 @@ export function StandardCostClient({
                           fabricCodes={fabricCodes}
                           history={rateHistory[cost.product_code] ?? []}
                           revisions={cmtpRevisions[cost.product_code] ?? []}
+                          masterFabric={productFabric[cost.product_code] ?? null}
                           editable={!cost.frozen && canEdit(role, cost.status)}
                         />
                       </td>
@@ -731,6 +734,7 @@ function CostDetail({
   fabricCodes,
   history,
   revisions,
+  masterFabric,
   editable,
 }: {
   cost: StandardCost;
@@ -741,10 +745,15 @@ function CostDetail({
   fabricCodes: string[];
   history: StandardCostRateHistory[];
   revisions: CmtpRevision[];
+  masterFabric: { fabricCode: string | null; multi: boolean } | null;
   editable: boolean;
 }) {
   const [view, setView] = useState<'cmtp' | 'fabric' | 'final' | 'history'>('cmtp');
-  const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? '');
+  // Default the fabric from Product Master when the sheet hasn't set one and the
+  // product maps to a single fabric; multi-fabric products stay blank for manual pick.
+  const autoFabric = masterFabric && !masterFabric.multi ? masterFabric.fabricCode ?? '' : '';
+  const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? autoFabric);
+  const fabricFromMaster = !cost.fabric_code && !!autoFabric && fabricCode === autoFabric;
   const [consBySize, setConsBySize] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
     for (const l of lines) {
@@ -850,10 +859,23 @@ function CostDetail({
         <div className="wf-fabric-view">
           <div className="wf-form-grid">
             <label className="field wf-field">
-              <span>Fabric<small>the fabric this product uses</small></span>
+              <span>
+                Fabric
+                <small>
+                  {fabricFromMaster
+                    ? 'defaulted from Product Master — change if needed'
+                    : masterFabric?.multi
+                      ? 'multi-fabric product — pick the fabric manually'
+                      : 'the fabric this product uses'}
+                </small>
+              </span>
               <select value={fabricCode} disabled={!editable} onChange={(e) => setFabricCode(e.target.value)}>
                 <option value="">—</option>
-                {fabricCodes.map((f) => (<option key={f} value={f}>{f}</option>))}
+                {/* Ensure the current value (e.g. a Product-Master fabric not in the
+                    costed list yet) is always a selectable option. */}
+                {(fabricCode && !fabricCodes.includes(fabricCode) ? [fabricCode, ...fabricCodes] : fabricCodes).map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
               </select>
             </label>
           </div>

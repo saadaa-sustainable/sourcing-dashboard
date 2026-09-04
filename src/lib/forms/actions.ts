@@ -539,6 +539,43 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   return done(`Saved capacity for ${vendor_code}.`);
 }
 
+/** Vendor Capacity item 1 — upsert one vendor+product capacity allocation (pieces/month). */
+export async function saveVendorProductAllocation(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to allocate capacity.');
+  }
+  const vendor_code = String(formData.get('vendor_code') ?? '').trim();
+  const product_code = String(formData.get('product_code') ?? '').trim().toUpperCase();
+  if (!vendor_code || !product_code) return fail('Vendor and product are required.');
+  const allocated_qty = numOrNull(formData.get('allocated_qty'));
+  if (allocated_qty == null || allocated_qty < 0) return fail('Enter a valid allocation (pieces/month).');
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_vendor_product_capacity_allocation').upsert(
+    { vendor_code, product_code, allocated_qty, entry_date: new Date().toISOString(), entered_by: user.email },
+    { onConflict: 'vendor_code,product_code' },
+  );
+  if (error) return fail(`Could not save allocation: ${error.message}`);
+  revalidatePath('/vendor-capacity');
+  return done(`Allocated ${allocated_qty} pcs of ${product_code} to ${vendor_code}.`);
+}
+
+/** Vendor Capacity item 1 — remove a vendor+product allocation. */
+export async function deleteVendorProductAllocation(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to edit allocations.');
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid allocation.');
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_vendor_product_capacity_allocation').delete().eq('id', id);
+  if (error) return fail(error.message);
+  revalidatePath('/vendor-capacity');
+  return done('Allocation removed.');
+}
+
 function numOrNull(value: unknown) {
   if (value === '' || value == null) return null;
   const n = Number(value);
@@ -2342,7 +2379,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, product_code, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at')
+    .select('id, status, product_code, po_type, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -2393,14 +2430,41 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
         .map((l) => (Number(l.consumption) > 0 ? Number(l.fabric_cost) / Number(l.consumption) : 0))
         .filter((n) => n > 0);
       const rateAtStd = baked.length ? baked.reduce((s, n) => s + n, 0) / baked.length : null;
-      let rateNow: number | null = null;
-      if (sc?.fabric_code) {
-        const { data: fb } = await supabase
-          .from('sd_fabric_cost_base')
-          .select('finished_fabric_cost')
-          .eq('fabric_code', sc.fabric_code)
+      // Resolve the product's fabric: the Standard Cost sheet's fabric first, else the
+      // Product Master relation (product → rm_fabric_sku), so it works without manual entry.
+      let fabricCode: string | null = sc?.fabric_code ?? null;
+      if (!fabricCode) {
+        const { data: pf } = await supabase
+          .from('sd_product_fabric')
+          .select('fabric_code')
+          .eq('product_code', po.product_code)
           .maybeSingle();
-        rateNow = fb?.finished_fabric_cost == null ? null : Number(fb.finished_fabric_cost);
+        fabricCode = (pf?.fabric_code as string | null) ?? null;
+      }
+      let rateNow: number | null = null;
+      if (fabricCode) {
+        // An EFOB PO is validated against the EFOB monthly rate the company set for
+        // this fabric (carrying the commodity risk), for the current month — falling
+        // back to the fabric's finished rate when no EFOB rate is set yet.
+        if (String(po.po_type ?? '').toLowerCase().includes('efob')) {
+          const now = new Date();
+          const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+          const { data: ef } = await supabase
+            .from('sd_efob_fabric_cost')
+            .select('rate')
+            .eq('fabric_code', fabricCode)
+            .eq('month', month)
+            .maybeSingle();
+          rateNow = ef?.rate == null ? null : Number(ef.rate);
+        }
+        if (rateNow == null) {
+          const { data: fb } = await supabase
+            .from('sd_fabric_cost_base')
+            .select('finished_fabric_cost')
+            .eq('fabric_code', fabricCode)
+            .maybeSingle();
+          rateNow = fb?.finished_fabric_cost == null ? null : Number(fb.finished_fabric_cost);
+        }
       }
       if (rateNow != null && avgCons > 0 && sc?.cm_cost != null) {
         const rc = recomputeExpectedCost({ consumption: avgCons, fabricRateNow: rateNow, cmtp: Number(sc.cm_cost), fabricRateAtStd: rateAtStd });
