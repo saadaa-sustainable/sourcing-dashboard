@@ -58,6 +58,7 @@ import type {
   SdCustomRole,
   SdUser,
   SyncStatusRow,
+  VendorOtifRow,
   VendorTerm,
   StandardCost,
   StandardCostLine,
@@ -1663,6 +1664,34 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
 
   // Newest first; items with no submission timestamp sink to the bottom.
   return items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));
+}
+
+/**
+ * Per-vendor OTIF scorecard (item 2) — On-Time + In-Full + joint OTIF from
+ * sd_vendor_otif(). On-Time uses the vendor commitment log where present, else
+ * the historical PO EDD; it becomes fully meaningful as the log accumulates.
+ */
+export async function loadVendorOtif(
+  windowDays = 180,
+): Promise<{ windowDays: number; vendors: VendorOtifRow[] }> {
+  const supabase = await client();
+  const { data } = await supabase.rpc('sd_vendor_otif', { p_window_days: windowDays });
+  const vendors: VendorOtifRow[] = ((data ?? []) as Array<{
+    vendor_code: string | null; vendor_name: string | null;
+    pos: number | null; on_time_pos: number | null; in_full_pos: number | null; otif_pos: number | null;
+    on_time_pct: number | null; fill_pct: number | null; otif_pct: number | null;
+  }>).map((r) => ({
+    vendorCode: r.vendor_code,
+    vendorName: r.vendor_name ?? '—',
+    pos: Number(r.pos) || 0,
+    onTimePos: Number(r.on_time_pos) || 0,
+    inFullPos: Number(r.in_full_pos) || 0,
+    otifPos: Number(r.otif_pos) || 0,
+    onTimePct: Number(r.on_time_pct) || 0,
+    fillPct: Number(r.fill_pct) || 0,
+    otifPct: Number(r.otif_pct) || 0,
+  }));
+  return { windowDays, vendors };
 }
 
 /** Per-source data freshness for the Sync Health tab (sd_sync_status view). */

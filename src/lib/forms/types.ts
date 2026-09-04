@@ -194,6 +194,23 @@ export type ApprovalNotification = {
   submittedAt: string | null;
 };
 
+/**
+ * Per-vendor OTIF scorecard (On Time In Full) over a window — item 2. On-Time
+ * and OTIF are assessed only over POs that have a committed date; fill rate over
+ * all received POs. Joint pass/fail per PO, then aggregated.
+ */
+export type VendorOtifRow = {
+  vendorCode: string | null;
+  vendorName: string;
+  pos: number;
+  onTimePos: number;
+  inFullPos: number;
+  otifPos: number;
+  onTimePct: number;
+  fillPct: number;
+  otifPct: number;
+};
+
 /** One editable threshold in the Rules Master (sd_analytics_rule). */
 export type AnalyticsRuleRow = {
   rule_key: string;
