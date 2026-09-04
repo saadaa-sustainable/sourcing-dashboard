@@ -313,6 +313,22 @@ export function BuyingPlanClient({
     return [...m.entries()].filter(([, val]) => val > 0).sort((a, b) => b[1] - a[1]);
   })();
 
+  // Item 3 — planned value (₹) broken down by PO type: sum(qty × standard cost) per
+  // type. Its own dimension, alongside the qty-level time buckets. Only lines with an
+  // approved cost contribute (a stored blended value can't be split across types).
+  const valueByPoType = planned.reduce(
+    (acc, v) => {
+      if (v.cost) {
+        acc.job += Number(v.row.job_work_qty) * v.cost.job;
+        acc.fob += Number(v.row.fob_qty) * v.cost.fob;
+        acc.efob += Number(v.row.efob_qty) * v.cost.efob;
+      }
+      return acc;
+    },
+    { job: 0, fob: 0, efob: 0 },
+  );
+  const valueByPoTypeTotal = valueByPoType.job + valueByPoType.fob + valueByPoType.efob;
+
   const totals = view.reduce(
     (acc, item) => ({
       qty: acc.qty + item.totalQty,
@@ -576,6 +592,7 @@ export function BuyingPlanClient({
       {mode === 'view' && (
         <>
         <TimeBuckets buckets={buckets} isAdmin={role === 'admin'} />
+        <ValueByPoType value={valueByPoType} total={valueByPoTypeTotal} />
         <PlanView
           groups={groups}
           totals={plannedTotals}
@@ -898,6 +915,48 @@ function MacroSnapshot({
  * Day-counts come from the editable Rules Master (sd_analytics_rule); admins edit
  * them inline.
  */
+/**
+ * Item 3 — planned value (₹) by PO type. Its own dimension alongside the qty-level
+ * coverage buckets: sum(qty × standard cost) for Job Work / E-FOB / FOB, plus the total.
+ */
+function ValueByPoType({
+  value,
+  total,
+}: {
+  value: { job: number; fob: number; efob: number };
+  total: number;
+}) {
+  const rows = [
+    { key: 'job', label: 'Job Work', amount: value.job },
+    { key: 'efob', label: 'E-FOB', amount: value.efob },
+    { key: 'fob', label: 'FOB', amount: value.fob },
+  ];
+  return (
+    <div className="wf-buckets">
+      <div className="wf-buckets-head">
+        <h3>Planned value by PO type</h3>
+        <span className="wf-subtle">₹ to be bought per type · qty × approved standard cost</span>
+      </div>
+      <div className="wf-buckets-row">
+        {rows.map((r) => (
+          <div className="wf-bucket-card" key={r.key}>
+            <span className="wf-bucket-type">{r.label}</span>
+            <strong className="wf-bucket-qty">{r.amount ? money.format(r.amount) : '—'}</strong>
+            <span className="wf-bucket-days">
+              {total > 0 ? `${Math.round((r.amount / total) * 100)}% of plan value` : 'no priced lines'}
+            </span>
+          </div>
+        ))}
+        <div className="wf-bucket-card" key="total">
+          <span className="wf-bucket-type">Total</span>
+          <strong className="wf-bucket-qty">{total ? money.format(total) : '—'}</strong>
+          <span className="wf-bucket-days">all PO types</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TimeBuckets({
   buckets,
   isAdmin,
