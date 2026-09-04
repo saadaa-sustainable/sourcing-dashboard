@@ -18,6 +18,44 @@ const BLANK = '—';
 const statusTone = (s: string | null) =>
   s === 'Overdue' ? 'danger' : s === 'High Risk' ? 'warn' : 'success';
 
+/* ---- Week helpers: the team plans by receiving WEEK (Mon–Sun), not a single
+   date. We store the Monday of the chosen week in delivery_date_this_week. ---- */
+function mondayOf(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const dow = d.getUTCDay(); // 0 Sun … 6 Sat
+  d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  return d.toISOString().slice(0, 10);
+}
+function weekRangeLabel(mondayIso: string): string {
+  const m = new Date(`${mondayIso}T00:00:00Z`);
+  const e = new Date(m);
+  e.setUTCDate(e.getUTCDate() + 6);
+  const d = (x: Date) => x.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return `${d(m)} – ${d(e)}`;
+}
+function monthLabelOf(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+function buildWeekOptions(thisMonday: string, back = 6, ahead = 20): { value: string; label: string }[] {
+  const base = new Date(`${thisMonday}T00:00:00Z`);
+  const out: { value: string; label: string }[] = [];
+  for (let i = -back; i <= ahead; i++) {
+    const d = new Date(base);
+    d.setUTCDate(d.getUTCDate() + i * 7);
+    const value = d.toISOString().slice(0, 10);
+    out.push({ value, label: weekRangeLabel(value) + (i === 0 ? ' · this week' : '') });
+  }
+  return out;
+}
+
+type ViewMode = 'lines' | 'product' | 'variant' | 'month';
+const VIEW_TABS: { key: ViewMode; label: string }[] = [
+  { key: 'lines', label: 'PO lines' },
+  { key: 'product', label: 'By product' },
+  { key: 'variant', label: 'By variant' },
+  { key: 'month', label: 'By receiving month' },
+];
+
 export function ReceivablePlanClient({
   rows,
   editable,
@@ -35,8 +73,11 @@ export function ReceivablePlanClient({
   const [oosOnly, setOosOnly] = useState(false);
   const [risk, setRisk] = useState('');
   const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
+  const [view, setView] = useState<ViewMode>('lines');
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
+
+  const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
 
   function submitAll() {
     startSubmit(async () => {
@@ -86,14 +127,11 @@ export function ReceivablePlanClient({
   return (
     <>
       <Notice tone="info">
-        Each row is one colour on an open PO, split by size — each size cell shows{' '}
-        <strong>arriving</strong> (top) over <strong>in stock</strong> (below, muted). DOQ,
-        stock and OOS come from the inventory-planning snapshot. <strong>Status</strong> is the
-        live TNA risk — <em>Overdue</em> (EDD passed), <em>High Risk</em> (a critical-path stage
-        past its planned date with no actual), or <em>On Track</em> — with the ERP status beneath.
-        Fill{' '}
-        <strong>delivery date</strong> and <strong>qty expected this week</strong> — the only
-        two editable fields — for the receiving plan.
+        Each row is one colour on an open PO, split by size. Pick the{' '}
+        <strong>receiving week</strong> (Mon–Sun) and the <strong>qty expected</strong> for the
+        plan — the two editable fields. DOQ, stock and OOS come from the inventory-planning
+        snapshot; <strong>Status</strong> is the live TNA risk. Use <strong>View</strong> to see
+        the plan by product, variant or receiving month.
         {lastUpdated && (
           <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
         )}
@@ -141,7 +179,7 @@ export function ReceivablePlanClient({
           {shown.length} rows
           {oosCount > 0 && <em className="wf-chip-warn">{oosCount} OOS</em>}
         </span>
-        {editable && (
+        {editable && view === 'lines' && (
           <button
             type="button"
             className="wf-btn wf-btn-primary wf-btn-sm"
@@ -153,84 +191,237 @@ export function ReceivablePlanClient({
         )}
       </div>
 
-      <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wide-table wf-grid">
-            <thead>
-              <tr>
-                <th>PO</th>
-                <th>Product / colour</th>
-                <th>Vendor</th>
-                <th>Status</th>
-                <th className="num">Arriving</th>
-                {SIZE_KEYS.map(([, label]) => (
-                  <th key={label} className="num">{label}</th>
-                ))}
-                <th className="num">DOQ</th>
-                <th className="num">Stock</th>
-                <th className="num">Sizes in stock</th>
-                <th>OOS</th>
-                <th className="num">EDD</th>
-                <th className="num input-col">Deliver this wk</th>
-                <th className="num input-col">Qty this wk</th>
-                {editable && <th aria-label="Save" />}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row) => (
-                <ReceivableRow
-                  key={row.row_key}
-                  row={row}
-                  editable={editable}
-                  onSaved={() => setMessage('Saved.')}
-                />
-              ))}
-              {!shown.length && (
-                <tr>
-                  <td colSpan={editable ? 22 : 21} className="wf-empty-cell">
-                    No open receivables match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="segment tracker-status-tabs">
+        {VIEW_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={view === t.key ? 'active' : ''}
+            onClick={() => setView(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      {view === 'lines' ? (
+        <div className="table-panel wf-grid-panel">
+          <div className="table-scroll">
+            <table className="wide-table wf-grid">
+              <thead>
+                <tr>
+                  <th>PO</th>
+                  <th>Product / colour</th>
+                  <th>Vendor</th>
+                  <th>Status</th>
+                  <th className="num">Arriving</th>
+                  {SIZE_KEYS.map(([, label]) => (
+                    <th key={label} className="num">{label}</th>
+                  ))}
+                  <th className="num">DOQ</th>
+                  <th className="num">Stock</th>
+                  <th className="num">Sizes in stock</th>
+                  <th>OOS</th>
+                  <th className="num">EDD</th>
+                  <th className="input-col">Receiving week</th>
+                  <th className="num input-col">Qty expected</th>
+                  {editable && <th aria-label="Save" />}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((row) => (
+                  <ReceivableRow
+                    key={row.row_key}
+                    row={row}
+                    editable={editable}
+                    weekOptions={weekOptions}
+                    onSaved={() => setMessage('Saved.')}
+                  />
+                ))}
+                {!shown.length && (
+                  <tr>
+                    <td colSpan={editable ? 22 : 21} className="wf-empty-cell">
+                      No open receivables match.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <GroupedView rows={shown} mode={view} />
+      )}
     </>
+  );
+}
+
+/* ---- Read-only rollups: by product / variant / receiving month ---- */
+function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<ViewMode, 'lines'> }) {
+  const groups = useMemo(() => {
+    type G = {
+      key: string;
+      label: string;
+      sub: string;
+      pos: Set<string>;
+      variants: Set<string>;
+      arriving: number;
+      planned: number;
+      oos: number;
+      rows: number;
+    };
+    const map = new Map<string, G>();
+    for (const r of rows) {
+      let key: string;
+      let label: string;
+      let sub: string;
+      if (mode === 'product') {
+        key = (r.product_code ?? '—').toUpperCase();
+        label = r.product_code ?? '—';
+        sub = r.product_state ?? '';
+      } else if (mode === 'variant') {
+        key = r.product_variant;
+        label = r.product_variant;
+        sub = r.product_code ?? '';
+      } else {
+        // by receiving month — month of the planned receiving week; else unscheduled.
+        const d = r.delivery_date_this_week;
+        key = d ? monthLabelOf(d) : 'Unscheduled';
+        label = key;
+        sub = d ? '' : 'no receiving week set';
+      }
+      let g = map.get(key);
+      if (!g) {
+        g = { key, label, sub, pos: new Set(), variants: new Set(), arriving: 0, planned: 0, oos: 0, rows: 0 };
+        map.set(key, g);
+      }
+      g.pos.add(r.po_number);
+      g.variants.add(r.product_variant);
+      g.arriving += r.arriving_qty || 0;
+      g.planned += Number(r.qty_expected_this_week) || 0;
+      if (r.oos_flag) g.oos += 1;
+      g.rows += 1;
+    }
+    const arr = [...map.values()];
+    // Month view sorts chronologically (Unscheduled last); others by arriving qty.
+    if (mode === 'month') {
+      arr.sort((a, b) => {
+        if (a.key === 'Unscheduled') return 1;
+        if (b.key === 'Unscheduled') return -1;
+        return new Date(`1 ${a.key}`).getTime() - new Date(`1 ${b.key}`).getTime();
+      });
+    } else {
+      arr.sort((a, b) => b.arriving - a.arriving);
+    }
+    return arr;
+  }, [rows, mode]);
+
+  const totals = groups.reduce(
+    (t, g) => ({ arriving: t.arriving + g.arriving, planned: t.planned + g.planned, oos: t.oos + g.oos }),
+    { arriving: 0, planned: 0, oos: 0 },
+  );
+
+  const head =
+    mode === 'product' ? 'Product' : mode === 'variant' ? 'Variant' : 'Receiving month';
+
+  return (
+    <div className="table-panel wf-grid-panel">
+      <div className="table-scroll">
+        <table className="wf-grid">
+          <thead>
+            <tr>
+              <th>{head}</th>
+              <th className="num">POs</th>
+              {mode === 'product' && <th className="num">Variants</th>}
+              <th className="num">Arriving qty</th>
+              <th className="num">Planned qty</th>
+              <th className="num">% planned</th>
+              <th className="num">OOS lines</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <tr key={g.key}>
+                <td>
+                  <span className={mode === 'month' ? undefined : 'mono'}>{g.label}</span>
+                  {g.sub && <small className="wf-subtle">{g.sub}</small>}
+                </td>
+                <td className="num">{fmt.format(g.pos.size)}</td>
+                {mode === 'product' && <td className="num">{fmt.format(g.variants.size)}</td>}
+                <td className="num strong">{fmt.format(g.arriving)}</td>
+                <td className="num">{g.planned ? fmt.format(g.planned) : '—'}</td>
+                <td className="num">
+                  {g.arriving > 0 ? `${Math.round((g.planned / g.arriving) * 100)}%` : '—'}
+                </td>
+                <td className="num">{g.oos ? <span className="wf-over-tag">{g.oos}</span> : '—'}</td>
+              </tr>
+            ))}
+            {!groups.length && (
+              <tr>
+                <td colSpan={mode === 'product' ? 7 : 6} className="wf-empty-cell">No rows match.</td>
+              </tr>
+            )}
+          </tbody>
+          {groups.length > 0 && (
+            <tfoot>
+              <tr>
+                <td><strong>TOTAL</strong></td>
+                <td className="num" />
+                {mode === 'product' && <td className="num" />}
+                <td className="num"><strong>{fmt.format(totals.arriving)}</strong></td>
+                <td className="num"><strong>{totals.planned ? fmt.format(totals.planned) : '—'}</strong></td>
+                <td className="num">
+                  <strong>{totals.arriving > 0 ? `${Math.round((totals.planned / totals.arriving) * 100)}%` : '—'}</strong>
+                </td>
+                <td className="num"><strong>{totals.oos || '—'}</strong></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
   );
 }
 
 function ReceivableRow({
   row,
   editable,
+  weekOptions,
   onSaved,
 }: {
   row: ReceivablePlanRow;
   editable: boolean;
+  weekOptions: { value: string; label: string }[];
   onSaved: () => void;
 }) {
-  const [deliver, setDeliver] = useState(row.delivery_date_this_week ?? '');
+  // Stored value is a date; snap to its Monday so it matches a week option.
+  const initialWeek = row.delivery_date_this_week ? mondayOf(row.delivery_date_this_week) : '';
+  const [week, setWeek] = useState(initialWeek);
   const [qty, setQty] = useState(row.qty_expected_this_week?.toString() ?? '');
   const [pending, start] = useTransition();
 
-  const dirty =
-    deliver !== (row.delivery_date_this_week ?? '') ||
-    qty !== (row.qty_expected_this_week?.toString() ?? '');
+  const dirty = week !== initialWeek || qty !== (row.qty_expected_this_week?.toString() ?? '');
 
-  // % of the arriving qty covered by what's planned to land this week.
+  // Week options plus the row's own week if it falls outside the generated range.
+  const options = useMemo(() => {
+    if (week && !weekOptions.some((o) => o.value === week)) {
+      return [{ value: week, label: weekRangeLabel(week) }, ...weekOptions];
+    }
+    return weekOptions;
+  }, [week, weekOptions]);
+
+  // % of the arriving qty covered by what's planned to land.
   const arriving = row.arriving_qty || 0;
   const qtyNum = Number(qty) || 0;
   const pctComplete = arriving > 0 ? Math.round((qtyNum / arriving) * 100) : null;
 
-  // Sizes in stock now vs. total sizes on this arriving line (SKU-level, so the
-  // aggregate OOS count is broken down to "which sizes are actually covered").
   const totalSizes = SIZE_KEYS.filter(([k]) => row[k]).length;
   const inStockSizes = SIZE_KEYS.filter(([k]) => (row.stock_by_size?.[k] ?? 0) > 0).length;
 
   function save() {
     const fd = new FormData();
     fd.set('row_key', row.row_key);
-    fd.set('delivery_date_this_week', deliver);
+    fd.set('delivery_date_this_week', week); // Monday of the chosen receiving week
     fd.set('qty_expected_this_week', qty);
     start(async () => {
       const res = await saveReceivableInput(fd);
@@ -278,13 +469,13 @@ function ReceivableRow({
       </td>
       <td>{row.oos_flag ? <span className="wf-over-tag">OOS</span> : ''}</td>
       <td className="num wf-subtle">{row.expected_delivery_date ?? '—'}</td>
-      <td className="num input-col">
-        <input
-          type="date"
-          value={deliver}
-          disabled={!editable}
-          onChange={(e) => setDeliver(e.target.value)}
-        />
+      <td className="input-col">
+        <select value={week} disabled={!editable} onChange={(e) => setWeek(e.target.value)}>
+          <option value="">— pick week —</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </td>
       <td className="num input-col">
         <input
