@@ -63,6 +63,8 @@ export default async function VendorCapacityPage() {
         vendor_name: master.vendor_name ?? master.vendor_code,
         // Vendor type is frozen at onboarding — from the master, not editable.
         vendor_type: master.primary_type || typeByCode.get(code) || '',
+        // Merchandiser who manages this vendor (for the item-2 filter).
+        merchant: master.merchant_name ?? '',
         // Onboarding constants, ingested (not weekly inputs).
         machinesAtOnboarding: master.machines_for_saadaa ?? 0,
         capacitySigned: master.capacity_per_month ?? 0,

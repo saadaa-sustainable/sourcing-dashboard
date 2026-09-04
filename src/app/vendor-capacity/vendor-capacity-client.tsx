@@ -12,6 +12,7 @@ type Vendor = {
   vendor_code: string;
   vendor_name: string;
   vendor_type: string;
+  merchant: string;
   machinesAtOnboarding: number;
   capacitySigned: number;
   inProcessQty: number;
@@ -46,6 +47,18 @@ export function VendorCapacityClient({
   const editable = canEdit(role, 'draft');
   const [search, setSearch] = useState('');
   const [staleOnly, setStaleOnly] = useState(false);
+  // Item 2 — merchandiser + vendor-type filters (same dimensions as Open PO Tracker),
+  // so it's easy to spot which merchant hasn't filled their vendors' capacity yet.
+  const [merchant, setMerchant] = useState('');
+  const [vType, setVType] = useState('');
+  const merchants = useMemo(
+    () => [...new Set(vendors.map((v) => v.merchant.trim()).filter(Boolean))].sort(),
+    [vendors],
+  );
+  const vTypes = useMemo(
+    () => [...new Set(vendors.map((v) => v.vendor_type.trim()).filter(Boolean))].sort(),
+    [vendors],
+  );
   // Set after mount so server render never disagrees on staleness (avoids hydration
   // mismatch); until then nothing is treated as stale.
   const [now, setNow] = useState<number | null>(null);
@@ -77,6 +90,8 @@ export function VendorCapacityClient({
     .filter(({ vendor }) =>
       q ? `${vendor.vendor_code} ${vendor.vendor_name}`.toLowerCase().includes(q) : true,
     )
+    .filter(({ vendor }) => (merchant ? vendor.merchant.trim() === merchant : true))
+    .filter(({ vendor }) => (vType ? vendor.vendor_type.trim() === vType : true))
     .filter((d) => (staleOnly ? d.isStale : true))
     // Oldest / never-updated first so stale vendors surface at the top.
     .sort((a, b) => {
@@ -96,6 +111,20 @@ export function VendorCapacityClient({
               onChange={(event) => setSearch(event.target.value)}
             />
           </Field>
+          <select className="meta-select" value={merchant} onChange={(e) => setMerchant(e.target.value)}>
+            <option value="">All merchandisers</option>
+            {merchants.map((m) => (
+              <option key={m}>{m}</option>
+            ))}
+          </select>
+          <select className="meta-select" value={vType} onChange={(e) => setVType(e.target.value)}>
+            <option value="">All vendor types</option>
+            {vTypes.map((t) => (
+              <option key={t} value={t}>
+                {typeConfig(t)?.label ?? t}
+              </option>
+            ))}
+          </select>
           <label className="wf-check-field">
             <input
               type="checkbox"
