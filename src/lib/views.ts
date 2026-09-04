@@ -41,6 +41,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/doq-dashboard', label: 'DOQ Dashboard', group: 'Workspace' },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
   { path: '/vendor-360', label: 'Vendor 360', group: 'Workspace' },
+  { path: '/po-360', label: 'PO 360', group: 'Workspace' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },
   { path: '/vendor-otif', label: 'Vendor OTIF', group: 'Workspace' },
   { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },

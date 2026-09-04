@@ -71,6 +71,7 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/vendor-360', label: 'Vendor 360', Icon: Factory },
+  { href: '/po-360', label: 'PO 360', Icon: FileCheck },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Handshake },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
