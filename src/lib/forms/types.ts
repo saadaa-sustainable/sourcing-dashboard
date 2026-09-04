@@ -115,6 +115,14 @@ export type AnalyticsExtras = {
   /** Inward last week: planned (due) vs actual (received) quantity. */
   inwardLastWeek: { planned: number; actual: number } | null;
   /**
+   * Expected vs actual delivery volume by week (item 3) — from completed POs:
+   * expected = qty due that week (by EDD), actual = qty that actually completed
+   * that week (by completion date). The gap is the delivery slippage.
+   */
+  expectedVsActual:
+    | { week: string; expected: number; actual: number }[]
+    | null;
+  /**
    * 1.9 — Delivery reliability over a Rules-Master window (default 2 quarters),
    * combining completed POs (final delivered status) + open POs (in-flight),
    * per vendor. Computed by sd_vendor_reliability().

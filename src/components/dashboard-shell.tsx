@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import {
   Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -36,9 +35,12 @@ import {
   PieChart,
   ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 import {
   TNA_STAGES,
@@ -136,6 +138,15 @@ const money = new Intl.NumberFormat("en-IN", {
 const today = istToday();
 const norm = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
+// Stable colour per product code (hashed hue) — the EDD scatter's colour
+// dimension, so the same code is always the same colour without a huge legend.
+const productColor = (code: string) => {
+  let h = 0;
+  for (let i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) % 360;
+  return `hsl(${h}, 60%, 50%)`;
+};
+const eddTick = (ms: number) =>
+  new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const unique = (values: string[]) =>
   [...new Set(values.filter(Boolean))].sort();
 const metricIcons: Record<string, LucideIcon> = {
@@ -526,6 +537,7 @@ function DashboardTab({
   onHighRisk,
   onOverdue,
   onVendorSelect,
+  expectedVsActual = null,
 }: {
   data: DashboardData;
   bucket: string;
@@ -533,6 +545,7 @@ function DashboardTab({
   onHighRisk: (rows: PendingPo[]) => void;
   onOverdue: (rows: PendingPo[]) => void;
   onVendorSelect?: (vendorCode: string) => void;
+  expectedVsActual?: AnalyticsExtras["expectedVsActual"];
 }) {
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
@@ -565,33 +578,39 @@ function DashboardTab({
     data.tnaRecords,
     today,
   );
-  // EDD schedule (±30 days, weekly buckets — daily was too spiky to read):
-  // pending qty due per week, split by vendor bucket. Weeks left of the
-  // This-week line are overdue backlog.
   const dayMs = 86_400_000;
-  const eddWeeks = Array.from({ length: 9 }, (_, w) => {
-    const start = new Date(today.getTime() + (w * 7 - 30) * dayMs);
-    return {
-      label: start.toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-      }),
-      Woven: 0,
-      Knit: 0,
-      Other: 0,
-    };
-  });
-  tracker.forEach((row) => {
-    const edd = row.edd ? parseIsoDate(row.edd) : null;
-    if (!edd) return;
-    const offset = Math.round((edd.getTime() - today.getTime()) / dayMs);
-    if (offset < -30 || offset > 30) return;
-    eddWeeks[Math.min(8, Math.floor((offset + 30) / 7))][row.vendorBucket] +=
-      row.pendingQty;
-  });
-  const thisWeekLabel = eddWeeks[4].label;
-  const hasEddData = eddWeeks.some((d) => d.Woven || d.Knit || d.Other);
+  // EDD scatter (item 2): one point per open PO line with an EDD, X = EDD date,
+  // Y = vendor, coloured by product code, sized by pending qty — so what's
+  // arriving (and what's overdue, left of the This-week line) reads at a glance.
+  const eddScatter = tracker
+    .map((row) => {
+      const edd = row.edd ? parseIsoDate(row.edd) : null;
+      return edd
+        ? {
+            x: edd.getTime(),
+            vendor: row.vendorName || "Unknown",
+            z: Math.max(1, row.pendingQty),
+            productCode: row.productCode || "Unmapped",
+            poRef: row.poRef,
+            edd: row.edd as string,
+          }
+        : null;
+    })
+    .filter(
+      (p): p is NonNullable<typeof p> =>
+        p != null && p.x >= today.getTime() - 45 * dayMs && p.x <= today.getTime() + 90 * dayMs,
+    );
+  const hasEddScatter = eddScatter.length > 0;
+  // Item 3 — expected vs actual delivery volume by week, with the gap between the
+  // two shaded (base = the lower line, band = |expected−actual| stacked on top).
+  const eva = (expectedVsActual ?? []).map((d) => ({
+    week: eddTick(new Date(`${d.week}T00:00:00Z`).getTime()),
+    expected: d.expected,
+    actual: d.actual,
+    base: Math.min(d.expected, d.actual),
+    band: Math.abs(d.expected - d.actual),
+  }));
+  const hasEva = eva.some((d) => d.expected || d.actual);
   // Production pipeline donut: distinct open POs at each TNA stage.
   const stageMeta: [stage: string, label: string, color: string][] = [
     ["Not in TNA Tracker", "No TNA", "#c9c2ae"],
@@ -822,78 +841,120 @@ function DashboardTab({
       </div>
       <div className="bento-grid">
         <ChartCard
-          title="Deliveries due — ±30 days"
+          title="EDD schedule — by vendor & product"
           kicker="EDD schedule"
-          info="Pending quantity summed into weekly buckets by expected delivery date, split by vendor type. Weeks left of the dashed line are overdue backlog; right of it is the upcoming load."
+          info="One dot per open PO line at its expected delivery date (X), grouped by vendor (Y) and coloured by product code; dot size is pending quantity. Dots left of the dashed This-week line are overdue. Shows the −45 to +90 day window."
           actions={
             <span className="legend-pills">
-              <span className="legend-pill" style={{ "--pill-color": "#7b4fbf" } as CSSProperties}>
-                <i /> Woven
-              </span>
-              <span className="legend-pill" style={{ "--pill-color": "#3d9e6b" } as CSSProperties}>
-                <i /> Knitted
-              </span>
-              <span className="legend-pill" style={{ "--pill-color": "#e68950" } as CSSProperties}>
-                <i /> Other
+              <span className="legend-pill" style={{ "--pill-color": "#8a8477" } as CSSProperties}>
+                <i /> colour = product code · size = qty
               </span>
             </span>
           }
         >
-          {hasEddData ? (
+          {hasEddScatter ? (
             <ResponsiveContainer>
-              <AreaChart data={eddWeeks} margin={{ left: -8, right: 26, top: 14 }}>
-                <defs>
-                  <linearGradient id="gWoven" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#7b4fbf" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#7b4fbf" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="gKnit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3d9e6b" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#3d9e6b" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="gOther" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#e68950" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="#e68950" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" interval={0} tickLine={false} />
-                <YAxis allowDecimals={false} tickLine={false} />
-                <Tooltip />
+              <ScatterChart margin={{ left: 8, right: 26, top: 14, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  domain={["dataMin", "dataMax"]}
+                  tickFormatter={eddTick}
+                  tickLine={false}
+                  fontSize={10}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="vendor"
+                  width={110}
+                  tickLine={false}
+                  fontSize={9}
+                  interval={0}
+                />
+                <ZAxis type="number" dataKey="z" range={[30, 340]} />
                 <ReferenceLine
-                  x={thisWeekLabel}
+                  x={today.getTime()}
                   stroke="#161513"
                   strokeDasharray="4 3"
                   label={{ value: "This week", position: "top", fontSize: 9, fill: "#6e695e" }}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="Woven"
-                  name="Woven"
-                  stroke="#7b4fbf"
-                  strokeWidth={2.2}
-                  fill="url(#gWoven)"
+                <Tooltip
+                  cursor={{ strokeDasharray: "3 3" }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const p = payload[0].payload as {
+                      productCode: string; vendor: string; poRef: string; z: number; edd: string;
+                    };
+                    return (
+                      <div
+                        style={{
+                          background: "#fff",
+                          border: "1px solid #e3d6bd",
+                          borderRadius: 8,
+                          padding: "7px 10px",
+                          fontSize: 11,
+                          boxShadow: "0 6px 18px rgba(22,21,19,.12)",
+                        }}
+                      >
+                        <strong>{p.productCode}</strong>
+                        <div>{p.vendor}</div>
+                        <div>PO {p.poRef}</div>
+                        <div>{fmt.format(p.z)} pcs · EDD {p.edd}</div>
+                      </div>
+                    );
+                  }}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="Knit"
-                  name="Knitted"
-                  stroke="#3d9e6b"
-                  strokeWidth={2.2}
-                  fill="url(#gKnit)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="Other"
-                  name="Other"
-                  stroke="#e68950"
-                  strokeWidth={2.2}
-                  fill="url(#gOther)"
-                />
-              </AreaChart>
+                <Scatter data={eddScatter} fillOpacity={0.78}>
+                  {eddScatter.map((p, i) => (
+                    <Cell key={i} fill={productColor(p.productCode)} />
+                  ))}
+                </Scatter>
+              </ScatterChart>
             </ResponsiveContainer>
           ) : (
-            <Empty text="No EDDs inside the ±30 day window" />
+            <Empty text="No EDDs inside the −45 to +90 day window" />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Expected vs actual delivery"
+          kicker="Delivery slippage"
+          info="Weekly delivery volume from completed POs: Expected = quantity due that week (by EDD), Actual = quantity that actually completed that week. The shaded band is the gap between them — the delivery slippage. Last 12 weeks."
+          actions={
+            <span className="legend-pills">
+              <span className="legend-pill" style={{ "--pill-color": "#3b6fd4" } as CSSProperties}>
+                <i /> Expected
+              </span>
+              <span className="legend-pill" style={{ "--pill-color": "#3d9e6b" } as CSSProperties}>
+                <i /> Actual
+              </span>
+              <span className="legend-pill" style={{ "--pill-color": "#e0a13c" } as CSSProperties}>
+                <i /> Gap
+              </span>
+            </span>
+          }
+        >
+          {hasEva ? (
+            <ResponsiveContainer>
+              <ComposedChart data={eva} margin={{ left: -8, right: 26, top: 14 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="week" interval="preserveStartEnd" tickLine={false} fontSize={10} />
+                <YAxis allowDecimals={false} tickLine={false} fontSize={10} />
+                <Tooltip
+                  formatter={(value, name) => [
+                    fmt.format(Number(value)),
+                    name === "band" ? "Gap" : name,
+                  ]}
+                />
+                {/* Shaded gap band: invisible base to the lower line, then the |Δ| on top. */}
+                <Area dataKey="base" stackId="band" stroke="none" fill="transparent" isAnimationActive={false} legendType="none" />
+                <Area dataKey="band" stackId="band" stroke="none" fill="#e0a13c" fillOpacity={0.28} isAnimationActive={false} name="Gap" />
+                <Line type="monotone" dataKey="expected" name="Expected" stroke="#3b6fd4" strokeWidth={2.2} dot={false} />
+                <Line type="monotone" dataKey="actual" name="Actual" stroke="#3d9e6b" strokeWidth={2.2} dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty text="No completed-PO delivery data in the last 12 weeks" />
           )}
         </ChartCard>
         <section className="panel chart-panel">
@@ -3379,6 +3440,7 @@ export function DashboardShell({
                 onHighRisk={setHighRisk}
                 onOverdue={setOverdue}
                 onVendorSelect={openVendorPos}
+                expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
               />
             </>
           )}{" "}

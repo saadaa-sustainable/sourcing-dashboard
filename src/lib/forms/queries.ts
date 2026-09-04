@@ -309,6 +309,7 @@ export async function loadAnalyticsExtras(
     pendingApproval: null,
     inwardLastWeek: null,
     reliability: null,
+    expectedVsActual: null,
     replenishment: null,
     oosSummary: null,
     vendorRec: null,
@@ -461,6 +462,55 @@ export async function loadAnalyticsExtras(
         pct: Number(r.delay_pct) || 0,
       })),
     };
+  } catch { /* section stays null */ }
+
+  /* Item 3 — Expected vs actual delivery volume, last 12 ISO weeks. From completed
+     POs: expected = qty due that week (by EDD), actual = qty that completed that
+     week (by po_updated_date). The gap between them is the delivery slippage. */
+  try {
+    const from12w = new Date(Date.now() - 12 * 7 * 86_400_000).toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from('sd_po_completed')
+      .select('original_qty, expected_delivery_date, po_updated_date')
+      .or(`expected_delivery_date.gte.${from12w},po_updated_date.gte.${from12w}`)
+      .limit(PAGE_SIZE);
+    // Monday-anchored week key for a date string (YYYY-MM-DD).
+    const weekKey = (d: string) => {
+      const dt = new Date(`${d.slice(0, 10)}T00:00:00Z`);
+      const dow = dt.getUTCDay(); // 0 = Sun
+      const back = dow === 0 ? 6 : dow - 1;
+      return new Date(dt.getTime() - back * 86_400_000).toISOString().slice(0, 10);
+    };
+    const weeks = new Map<string, { expected: number; actual: number }>();
+    // Seed the last 12 weeks so gaps render as zero, not missing points.
+    const monday = (() => {
+      const t = new Date();
+      const dow = t.getUTCDay();
+      const back = dow === 0 ? 6 : dow - 1;
+      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - back));
+    })();
+    for (let i = 11; i >= 0; i--) {
+      const wk = new Date(monday.getTime() - i * 7 * 86_400_000).toISOString().slice(0, 10);
+      weeks.set(wk, { expected: 0, actual: 0 });
+    }
+    for (const r of (data ?? []) as {
+      original_qty: number | null; expected_delivery_date: string | null; po_updated_date: string | null;
+    }[]) {
+      const qty = Number(r.original_qty) || 0;
+      if (r.expected_delivery_date) {
+        const wk = weekKey(r.expected_delivery_date);
+        if (weeks.has(wk)) weeks.get(wk)!.expected += qty;
+      }
+      if (r.po_updated_date) {
+        const wk = weekKey(r.po_updated_date);
+        if (weeks.has(wk)) weeks.get(wk)!.actual += qty;
+      }
+    }
+    extras.expectedVsActual = [...weeks.entries()].map(([week, v]) => ({
+      week,
+      expected: v.expected,
+      actual: v.actual,
+    }));
   } catch { /* section stays null */ }
 
   /* Months for 1.5 / 1.8 / 1.10 — current + two prior (IST). */
