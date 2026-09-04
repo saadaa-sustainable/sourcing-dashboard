@@ -209,6 +209,9 @@ export type VendorOtifRow = {
   onTimePct: number;
   fillPct: number;
   otifPct: number;
+  /** 3rd TNA variable — on-track % of this vendor's OPEN POs (null = no open POs). */
+  criticalPathPct: number | null;
+  openPos: number;
 };
 
 /** PPM Prep rollup (item 3) — everything manually compiled before the PPM, in one view. */

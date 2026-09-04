@@ -34,6 +34,15 @@ export function VendorOtifClient({
     { key: 'vendorName', label: 'Vendor', kind: 'text', filter: 'text' },
     { key: 'pos', label: 'POs', kind: 'num', accessor: (r) => r.pos },
     {
+      key: 'criticalPathPct',
+      label: 'Critical Path %',
+      kind: 'num',
+      accessor: (r) => r.criticalPathPct ?? -1,
+      render: (r) =>
+        r.criticalPathPct == null ? '—' : `${pct(r.criticalPathPct)}`,
+      info: 'On-track share of this vendor’s OPEN POs (TNA stages not overdue) — the third OTIF variable, from the Open PO Tracker logic. Blank if the vendor has no open POs.',
+    },
+    {
       key: 'onTimePct',
       label: 'On-Time %',
       kind: 'num',

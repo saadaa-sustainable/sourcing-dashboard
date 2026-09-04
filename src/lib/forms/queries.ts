@@ -1677,22 +1677,47 @@ export async function loadVendorOtif(
   windowDays = 180,
 ): Promise<{ windowDays: number; vendors: VendorOtifRow[] }> {
   const supabase = await client();
-  const { data } = await supabase.rpc('sd_vendor_otif', { p_window_days: windowDays });
+  const vkey = (code: string | null | undefined, name: string | null | undefined) =>
+    code && code.trim() ? code.trim().toUpperCase() : (name ?? '').trim().toUpperCase();
+
+  const [{ data }, dash] = await Promise.all([
+    supabase.rpc('sd_vendor_otif', { p_window_days: windowDays }),
+    loadDashboardData(),
+  ]);
+
+  // Critical Path (3rd TNA variable) — on-track % of each vendor's OPEN POs,
+  // from the same tracker/high-risk logic the Open PO Tracker uses.
+  const tracker = buildTrackerRows(dash.pendingPos, dash.vendorTypes, dash.vendorMasters, dash.tnaRecords);
+  const cp = new Map<string, { open: number; onTrack: number }>();
+  for (const r of tracker) {
+    const k = vkey(r.vendorCode, r.vendorName);
+    if (!k) continue;
+    const c = cp.get(k) ?? { open: 0, onTrack: 0 };
+    c.open += 1;
+    if (r.internalStatus === 'On Track') c.onTrack += 1;
+    cp.set(k, c);
+  }
+
   const vendors: VendorOtifRow[] = ((data ?? []) as Array<{
     vendor_code: string | null; vendor_name: string | null;
     pos: number | null; on_time_pos: number | null; in_full_pos: number | null; otif_pos: number | null;
     on_time_pct: number | null; fill_pct: number | null; otif_pct: number | null;
-  }>).map((r) => ({
-    vendorCode: r.vendor_code,
-    vendorName: r.vendor_name ?? '—',
-    pos: Number(r.pos) || 0,
-    onTimePos: Number(r.on_time_pos) || 0,
-    inFullPos: Number(r.in_full_pos) || 0,
-    otifPos: Number(r.otif_pos) || 0,
-    onTimePct: Number(r.on_time_pct) || 0,
-    fillPct: Number(r.fill_pct) || 0,
-    otifPct: Number(r.otif_pct) || 0,
-  }));
+  }>).map((r) => {
+    const c = cp.get(vkey(r.vendor_code, r.vendor_name));
+    return {
+      vendorCode: r.vendor_code,
+      vendorName: r.vendor_name ?? '—',
+      pos: Number(r.pos) || 0,
+      onTimePos: Number(r.on_time_pos) || 0,
+      inFullPos: Number(r.in_full_pos) || 0,
+      otifPos: Number(r.otif_pos) || 0,
+      onTimePct: Number(r.on_time_pct) || 0,
+      fillPct: Number(r.fill_pct) || 0,
+      otifPct: Number(r.otif_pct) || 0,
+      openPos: c?.open ?? 0,
+      criticalPathPct: c && c.open > 0 ? Math.round((c.onTrack / c.open) * 100) : null,
+    };
+  });
   return { windowDays, vendors };
 }
 
