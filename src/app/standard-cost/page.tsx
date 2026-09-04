@@ -12,6 +12,7 @@ import {
   loadStandardCostLines,
   loadStandardCostRateHistory,
   loadStandardCosts,
+  loadHiddenStandardCostCodes,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostClient } from './standard-cost-client';
@@ -71,6 +72,9 @@ export default async function StandardCostPage({
   // fabric can be figured out from the master, no manual entry for the clean cases).
   const productFabric = track === 'material' ? {} : await loadProductFabricMap();
 
+  // Soft-deleted codes for this track — re-adding one restores it (un-hide) with data intact.
+  const hiddenCodes = await loadHiddenStandardCostCodes(track === 'material');
+
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
   // Cost tab references these read-only from the Fabric Cost master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -112,6 +116,7 @@ export default async function StandardCostPage({
         rateHistory={rateHistory as Record<string, StandardCostRateHistory[]>}
         cmtpRevisions={cmtpRevisions}
         productFabric={productFabric}
+        hiddenCodes={hiddenCodes}
         initialOpen={openCode}
         role={user.role}
         track={track}

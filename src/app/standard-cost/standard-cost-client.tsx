@@ -17,6 +17,7 @@ import {
   saveMaterialCost,
   saveStandardCost,
   saveStandardCostLines,
+  setStandardCostHidden,
   setTargetCost,
   signOffCost,
   submitActualRate,
@@ -73,6 +74,7 @@ export function StandardCostClient({
   rateHistory = {},
   cmtpRevisions = {},
   productFabric = {},
+  hiddenCodes = [],
   initialOpen = null,
   role,
   track = 'fg',
@@ -89,6 +91,8 @@ export function StandardCostClient({
   rateHistory?: Record<string, StandardCostRateHistory[]>;
   cmtpRevisions?: Record<string, CmtpRevision[]>;
   productFabric?: Record<string, { fabricCode: string | null; multi: boolean }>;
+  /** Product codes soft-deleted from this track — re-adding one restores it intact. */
+  hiddenCodes?: string[];
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -139,6 +143,8 @@ export function StandardCostClient({
   }, [costs, filter, mineOnly, myTurn]);
 
   const existingCodes = useMemo(() => new Set(costs.map((c) => c.product_code)), [costs]);
+  // Codes soft-deleted from this track (upper-cased) — re-adding restores them intact.
+  const hiddenSet = useMemo(() => new Set(hiddenCodes.map((c) => c.toUpperCase())), [hiddenCodes]);
 
   function addCode(codeRaw: string) {
     const code = codeRaw.trim();
@@ -150,9 +156,20 @@ export function StandardCostClient({
     setMessage(null);
     const fd = new FormData();
     fd.set('product_code', code);
+    // A previously-removed (hidden) product is RESTORED, not re-created — flip the
+    // hidden flag so all its kept fields + history come back untouched. A genuinely
+    // new code seeds a fresh row.
+    const isRestore = hiddenSet.has(code.toUpperCase());
     start(async () => {
-      // upsert by code — seeds a row; then open straight into its cost format.
-      const result = await (isMat ? saveMaterialCost : saveStandardCost)(fd);
+      let result: ActionResult;
+      if (isRestore) {
+        fd.set('hidden', 'false');
+        fd.set('track', track);
+        result = await setStandardCostHidden(fd);
+      } else {
+        // upsert by code — seeds a row; then open straight into its cost format.
+        result = await (isMat ? saveMaterialCost : saveStandardCost)(fd);
+      }
       if (result.ok) {
         window.location.href = isMat
           ? '/standard-cost?track=material'
@@ -462,8 +479,28 @@ function CostRow({
   const [target, setTarget] = useState('');
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
   const [note, setNote] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const canManageList = canEdit(role, 'draft');
+
+  // Soft-delete: remove from the list but keep every field + the history; re-adding
+  // the code restores it. Never edits the cost itself, so allowed even when frozen.
+  function remove() {
+    setErr(null);
+    const fd = new FormData();
+    fd.set('product_code', cost.product_code);
+    fd.set('track', track);
+    fd.set('hidden', 'true');
+    start(async () => {
+      const res = await setStandardCostHidden(fd);
+      if (res.ok) reloadWithToast();
+      else {
+        setErr(res.error);
+        setConfirmRemove(false);
+      }
+    });
+  }
 
   // Rates are fillable both when the team proposes (so a proposal can name its PO
   // type) and when it later submits the actual vendor rate.
@@ -535,6 +572,30 @@ function CostRow({
       <td>
         <div className="wf-cost-actions">
           {err && <small className="wf-line-error">{err}</small>}
+
+          {canManageList && (
+            confirmRemove ? (
+              <span className="wf-issue-row">
+                <small className="wf-subtle">Remove from list? Data &amp; history are kept.</small>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove}>
+                  {busy ? 'Removing…' : 'Remove'}
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setConfirmRemove(false)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="wf-icon-btn"
+                aria-label="Remove from list (data kept — search and add again to restore)"
+                title="Remove from list — data & history kept; add it again to restore"
+                onClick={() => setConfirmRemove(true)}
+              >
+                <Trash2 size={13} />
+              </button>
+            )
+          )}
 
           {canPropose(role, stage) && !cost.frozen && (
             <div className="wf-issue-row wf-issue-row-wrap">

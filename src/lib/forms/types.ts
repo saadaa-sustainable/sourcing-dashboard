@@ -780,6 +780,8 @@ export type StandardCost = {
   fabric_confirmed_by: string | null;
   cm_confirmed_at: string | null;
   cm_confirmed_by: string | null;
+  /** Soft-delete: hidden from the Standard Cost worklist; data kept intact, restored on re-add. */
+  hidden?: boolean;
 };
 
 /** The document-once standard cost fields, same across all products (singleton). */

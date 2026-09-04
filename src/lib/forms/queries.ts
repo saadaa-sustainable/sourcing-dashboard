@@ -1183,9 +1183,21 @@ export async function loadStandardCosts(): Promise<StandardCost[]> {
   const { data } = await supabase
     .from('sd_standard_cost')
     .select('*')
+    .eq('hidden', false) // soft-deleted (hidden) rows are kept but not listed
     .order('product_code')
     .limit(PAGE_SIZE);
   return (data ?? []) as StandardCost[];
+}
+
+/** Product codes soft-deleted from the Standard Cost worklist (fg or material) — so
+ *  re-adding one RESTORES it (un-hide) instead of overwriting its kept data. */
+export async function loadHiddenStandardCostCodes(material = false): Promise<string[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from(material ? 'sd_material_standard_cost' : 'sd_standard_cost')
+    .select('product_code')
+    .eq('hidden', true);
+  return ((data ?? []) as { product_code: string }[]).map((r) => r.product_code);
 }
 
 /** The document-once standard cost fields (singleton). */
@@ -1378,6 +1390,7 @@ export async function loadMaterialStandardCosts(): Promise<StandardCost[]> {
   const { data } = await supabase
     .from('sd_material_standard_cost')
     .select('*')
+    .eq('hidden', false) // soft-deleted (hidden) rows are kept but not listed
     .order('product_code')
     .limit(PAGE_SIZE);
   return (data ?? []) as StandardCost[];

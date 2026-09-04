@@ -1371,6 +1371,38 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
 }
 
 /**
+ * Soft-delete / restore a Standard Cost product. Hiding removes it from the worklist
+ * but keeps EVERYTHING — the cost row, lines, CMTP, rate history — untouched; only the
+ * `hidden` flag flips. Restoring (re-adding via search) un-hides it, fully intact. This
+ * is why re-adding routes here, NOT through saveStandardCost (which would overwrite).
+ */
+export async function setStandardCostHidden(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to change the Standard Cost list.');
+  }
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+  const hidden = formData.get('hidden') === 'true';
+  const table = formData.get('track') === 'material' ? 'sd_material_standard_cost' : 'sd_standard_cost';
+
+  const supabase = await supa();
+  const { error } = await supabase
+    .from(table)
+    .update({ hidden, updated_at: new Date().toISOString() })
+    .eq('product_code', product_code);
+  if (error) return fail(`Could not ${hidden ? 'remove' : 'restore'}: ${error.message}`);
+
+  revalidatePath('/standard-cost');
+  return done(
+    hidden
+      ? `${product_code} removed from the list (its data is kept — add it again to restore).`
+      : `${product_code} restored — all fields and history intact.`,
+  );
+}
+
+/**
  * Replace the colour/size cost detail lines for one product (the expandable
  * "actual standard cost" the approver reviews). Marks the product documented.
  */
