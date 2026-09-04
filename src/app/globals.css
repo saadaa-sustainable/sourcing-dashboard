@@ -1373,3 +1373,11 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .ana-wow-delta.is-up { color: #1f7a34; }
 .ana-wow-delta.is-down { color: #c0392b; }
 .ana-wow small { color: var(--ink-3, #6b6559); font-size: 10px; }
+
+/* Item 1 — sprint-phase feature badge. */
+.wf-title-row { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.feature-badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 750; letter-spacing: .03em; text-transform: uppercase; line-height: 1.5; }
+.feature-badge.is-testing { background: #fdf1e3; color: #9a5b13; }
+.feature-badge.is-soon { background: #eef0f4; color: #55607a; }
+.feature-badge.is-live { background: #eaf6ec; color: #1f7a34; }
