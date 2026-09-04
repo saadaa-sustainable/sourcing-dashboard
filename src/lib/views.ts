@@ -36,6 +36,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
   // Company-wide arrival view — visible to every signed-in SAADAA user (see canView).
   { path: '/arrivals', label: 'Arrivals', group: 'Workspace' },
+  { path: '/ppm-prep', label: 'PPM Prep', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/doq-dashboard', label: 'DOQ Dashboard', group: 'Workspace' },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },

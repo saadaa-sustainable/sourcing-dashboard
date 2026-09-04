@@ -211,6 +211,22 @@ export type VendorOtifRow = {
   otifPct: number;
 };
 
+/** PPM Prep rollup (item 3) — everything manually compiled before the PPM, in one view. */
+export type PpmPrep = {
+  weekStart: string;
+  planMonth: string;
+  oos: { total: number; oos: number; pct: number } | null;
+  pendingApproval: number;
+  pendingIssuance: { count: number; qty: number };
+  approvalsThisWeek: number;
+  inward: { planned: number; actual: number };
+  highRisk: {
+    count: number;
+    overdue: number;
+    top: { poRef: string; vendor: string; stage: string; status: string }[];
+  };
+};
+
 /** One editable threshold in the Rules Master (sd_analytics_rule). */
 export type AnalyticsRuleRow = {
   rule_key: string;

@@ -3,6 +3,7 @@ import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import {
   buildVendorRollups,
   computeClosureCompliance,
+  buildTrackerRows,
   computeInternalStatus,
   daysBetween,
   isTnaHighRisk,
@@ -11,7 +12,7 @@ import {
 } from '@/lib/business-logic';
 import { loadDashboardData, loadMergedTnaRecords } from '@/lib/data';
 import { productClassOf } from '@/lib/doq-dashboard';
-import { monthStart, addMonths, canApprove } from './approval';
+import { monthStart, addMonths, canApprove, weekStart } from './approval';
 import type {
   AnalyticsExtras,
   AnalyticsRuleRow,
@@ -57,6 +58,7 @@ import type {
   SdStatus,
   SdCustomRole,
   SdUser,
+  PpmPrep,
   SyncStatusRow,
   VendorOtifRow,
   VendorTerm,
@@ -1692,6 +1694,98 @@ export async function loadVendorOtif(
     otifPct: Number(r.otif_pct) || 0,
   }));
   return { windowDays, vendors };
+}
+
+/**
+ * PPM Prep rollup (item 3) — assembles the numbers manually compiled before the
+ * Production Planning Meeting from their existing sources, so it's a consolidation
+ * not a recomputation. Each section links out to its detailed page in the UI.
+ */
+export async function loadPpmPrep(): Promise<PpmPrep> {
+  const supabase = await client();
+  const wkStart = weekStart();
+  const planMonth = monthStart();
+
+  const [rep, pending, issuance, approvalsWk, inward, dash] = await Promise.all([
+    // OOS / OS % — sd_replenishment (the existing OOS source; no DOQ rebuild needed).
+    supabase.from('sd_replenishment').select('oos_flag', { count: 'exact' }).limit(1),
+    countPendingApprovals(),
+    // POs approved but not yet issued.
+    supabase
+      .from('sd_po_approval')
+      .select('po_qty', { count: 'exact' })
+      .eq('status', 'approved')
+      .is('po_issued_at', null)
+      .limit(PAGE_SIZE),
+    // Cost/standard approvals this week (issued or approved since Monday).
+    supabase
+      .from('sd_po_approval')
+      .select('id', { count: 'exact', head: true })
+      .gte('approved_at', wkStart),
+    // Inward plan status (this month) — planned vs actual.
+    supabase
+      .from('sd_inward_plan_entry')
+      .select('inward_qty, actual_inward_qty')
+      .eq('plan_month', planMonth)
+      .limit(PAGE_SIZE),
+    loadDashboardData(),
+  ]);
+
+  // OOS %: count of oos_flag over total replenishment SKUs.
+  let oos: PpmPrep['oos'] = null;
+  try {
+    const { count: total } = await supabase
+      .from('sd_replenishment')
+      .select('*', { count: 'exact', head: true });
+    const { count: oosCount } = await supabase
+      .from('sd_replenishment')
+      .select('*', { count: 'exact', head: true })
+      .eq('oos_flag', true);
+    if (total != null) {
+      oos = {
+        total,
+        oos: oosCount ?? 0,
+        pct: total > 0 ? Math.round(((oosCount ?? 0) / total) * 100) : 0,
+      };
+    }
+  } catch {
+    oos = null;
+  }
+  void rep;
+
+  const issuanceRows = (issuance.data ?? []) as { po_qty: number | null }[];
+  const pendingIssuance = {
+    count: issuance.count ?? issuanceRows.length,
+    qty: issuanceRows.reduce((s, r) => s + (Number(r.po_qty) || 0), 0),
+  };
+
+  const inwardRows = (inward.data ?? []) as { inward_qty: number | null; actual_inward_qty: number | null }[];
+  const inwardTotals = inwardRows.reduce(
+    (a, r) => ({ planned: a.planned + (Number(r.inward_qty) || 0), actual: a.actual + (Number(r.actual_inward_qty) || 0) }),
+    { planned: 0, actual: 0 },
+  );
+
+  // PO audit — High Risk / Overdue open POs, with the offending stage as the "why".
+  const tracker = buildTrackerRows(dash.pendingPos, dash.vendorTypes, dash.vendorMasters, dash.tnaRecords);
+  const risky = tracker.filter((r) => r.internalStatus === 'High Risk' || r.internalStatus === 'Overdue');
+  const highRisk = {
+    count: risky.filter((r) => r.internalStatus === 'High Risk').length,
+    overdue: risky.filter((r) => r.internalStatus === 'Overdue').length,
+    top: risky
+      .slice(0, 12)
+      .map((r) => ({ poRef: r.poRef, vendor: r.vendorName, stage: r.stage, status: r.internalStatus })),
+  };
+
+  return {
+    weekStart: wkStart,
+    planMonth,
+    oos,
+    pendingApproval: pending,
+    pendingIssuance,
+    approvalsThisWeek: approvalsWk.count ?? 0,
+    inward: inwardTotals,
+    highRisk,
+  };
 }
 
 /** Per-source data freshness for the Sync Health tab (sd_sync_status view). */
