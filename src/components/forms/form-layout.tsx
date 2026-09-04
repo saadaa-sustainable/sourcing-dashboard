@@ -5,11 +5,10 @@ import { ApprovalsBell } from '@/components/forms/approvals-bell';
 import { signOut } from '@/lib/auth-actions';
 import { ROLE_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/forms/approval';
 import { canView } from '@/lib/views';
-import { loadFeatureStatuses } from '@/lib/feature-status.server';
-import { FeatureBadge } from '@/components/feature-badge';
+import { FeatureBadgeLive } from '@/components/feature-badge-live';
 import type { SdRole, SdStatus } from '@/lib/forms/types';
 
-export async function FormLayout({
+export function FormLayout({
   title,
   subtitle,
   active,
@@ -37,9 +36,6 @@ export async function FormLayout({
   children: React.ReactNode;
 }) {
   const accessible = canView(active, role, allowedPages);
-  // Item 1 — sprint-phase badge for this feature (no row / 'live' = no badge).
-  const featureStatuses = await loadFeatureStatuses();
-  const featureStatus = featureStatuses[active];
   return (
     <div className="app-shell">
       <SideNav activeWorkflow={active} userEmail={userEmail} role={role} allowedPages={allowedPages} />
@@ -49,7 +45,7 @@ export async function FormLayout({
             <div>
               <h1 className="wf-title-row">
                 {title}
-                <FeatureBadge status={featureStatus?.status} title={featureStatus?.note} />
+                <FeatureBadgeLive path={active} />
               </h1>
               {subtitle && <p className="wf-sub">{subtitle}</p>}
             </div>

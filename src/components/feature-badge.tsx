@@ -1,4 +1,4 @@
-import { FEATURE_STATUS_LABEL, type FeatureStatusValue } from '@/lib/feature-status.server';
+import { FEATURE_STATUS_LABEL, type FeatureStatusValue } from '@/lib/feature-status';
 
 /**
  * Item 1 — sprint-phase badge. Live features are unlabelled (returns null), so only

@@ -1,21 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
+import type { FeatureStatusRow } from './feature-status';
 
-/** Sprint-phase status of a feature. No row = 'live' (unlabelled/normal). */
-export type FeatureStatusValue = 'live' | 'testing' | 'soon';
-
-export type FeatureStatusRow = {
-  feature_key: string;
-  status: FeatureStatusValue;
-  note: string | null;
-  updated_by: string | null;
-  updated_at: string | null;
-};
-
-export const FEATURE_STATUS_LABEL: Record<FeatureStatusValue, string> = {
-  live: 'Live',
-  testing: 'In Testing',
-  soon: 'Coming Soon',
-};
+// The type + label constants moved to the client-safe ./feature-status so client
+// components (FeatureBadge, FormLayout) don't pull this server-only module (and
+// next/headers) into the client bundle. Re-exported here for server importers.
+export { FEATURE_STATUS_LABEL } from './feature-status';
+export type { FeatureStatusValue, FeatureStatusRow } from './feature-status';
 
 /**
  * Item 1 — all feature statuses keyed by feature_key (a lib/views.ts path). Small

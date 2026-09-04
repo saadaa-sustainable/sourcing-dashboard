@@ -6,7 +6,7 @@ import { setFeatureStatus } from '@/lib/feature-status-actions';
 import { FeatureBadge } from '@/components/feature-badge';
 import { Notice } from '@/components/forms/form-layout';
 import { VIEW_GROUPS } from '@/lib/views';
-import type { FeatureStatusValue } from '@/lib/feature-status.server';
+import type { FeatureStatusValue } from '@/lib/feature-status';
 
 export type FeatureRow = {
   key: string;
