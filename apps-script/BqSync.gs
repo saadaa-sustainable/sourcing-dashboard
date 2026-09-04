@@ -55,6 +55,9 @@ function bqSyncVendors() { return BqSync_.vendorsOnce(); }
 // Manual: print the Easyecom_Saadaa_vendors columns + a few sample rows, so you
 // can confirm which column carries the active/inactive status and how it's coded.
 function bqVendorSchema() { return BqSync_.vendorSchema(); }
+// Manual: pull the EasyEcom vendor master RAW (as-is) into sd_ee_vendor_master now,
+// without waiting for the 6 AM trigger. Runs automatically in morningB too.
+function bqEeVendorMaster() { return BqSync_.eeVendorMaster(); }
 
 const BqSync_ = (function () {
   const PROJECT = 'saadaa-wh';
@@ -636,6 +639,21 @@ const BqSync_ = (function () {
     return { synced: manual.length + cutting.length, deleted: manual.length + cutting.length };
   }
 
+  // EasyEcom vendor master — RAW landing, exactly as EasyEcom/BigQuery holds it (no
+  // transformation, no added business columns). Separate from the hybrid
+  // vendor_master_data (which keeps the Sheet-owned capacity model). Full refresh:
+  // replace all rows each run so sd_ee_vendor_master mirrors the source, same
+  // delete+insert pattern as adjustments(). SELECT * lands whatever columns exist;
+  // sd_ee_vendor_master's columns match runQuery()'s lowercased field names.
+  function eeVendorMaster() {
+    const rows = runQuery(`SELECT * FROM ${DATASET}Easyecom_Saadaa_vendors\``);
+    const synced_at = new Date().toISOString();
+    for (const r of rows) r.synced_at = synced_at;
+    supa('delete', 'sd_ee_vendor_master?synced_at=gte.1970-01-01T00:00:00Z');
+    for (let i = 0; i < rows.length; i += BATCH) supa('post', 'sd_ee_vendor_master', rows.slice(i, i + BATCH));
+    return { synced: rows.length, deleted: rows.length };
+  }
+
   // ---------------- Trigger bodies ----------------
 
   function throwIfErrors(errors) {
@@ -667,6 +685,7 @@ const BqSync_ = (function () {
       runTarget('sd_po_grn_mapping', grn),
       runTarget('sd_ee_grn', grnQc),
       runTarget('vendor_master_data', vendors),
+      runTarget('sd_ee_vendor_master', eeVendorMaster),
       runTarget('sd_po_qty_manual_adjustment', adjustments),
     ]);
     syncPoClosures_();
@@ -691,5 +710,5 @@ const BqSync_ = (function () {
     console.log('BqSync triggers installed: morningA + morningB (~6 AM), evening (~6 PM), script timezone.');
   }
 
-  return { morningA, morningB, evening, install, doqOos, doqWindows, vendorsOnce, vendorSchema };
+  return { morningA, morningB, evening, install, doqOos, doqWindows, vendorsOnce, vendorSchema, eeVendorMaster };
 })();
