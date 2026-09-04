@@ -82,6 +82,55 @@ async function writeLog(
   }
 }
 
+/**
+ * Record a vendor's committed delivery date into sd_vendor_commitment_log (item
+ * 1). Append-only: the first commitment for a PO is the initial event; a later,
+ * different date is logged as a REVISION (keeping the original `committed_date`),
+ * so revision frequency is provable. A no-op when the date is unchanged or blank.
+ * Best-effort — never rolls back the PO transition that triggered it.
+ */
+async function recordCommitment(
+  poRefNum: string | null | undefined,
+  vendorCode: string | null | undefined,
+  newDate: string | null | undefined,
+  actorEmail: string,
+) {
+  if (!poRefNum || !newDate) return;
+  try {
+    const supabase = await supa();
+    const { data: rows } = await supabase
+      .from('sd_vendor_commitment_log')
+      .select('committed_date, revised_date')
+      .eq('po_ref_num', poRefNum)
+      .order('id', { ascending: true });
+    const events = (rows ?? []) as { committed_date: string; revised_date: string | null }[];
+    const now = new Date().toISOString();
+    if (!events.length) {
+      await supabase.from('sd_vendor_commitment_log').insert({
+        po_ref_num: poRefNum,
+        vendor_code: vendorCode ?? null,
+        committed_date: newDate,
+        committed_at: now,
+        logged_by: actorEmail,
+      });
+      return;
+    }
+    const latest = events[events.length - 1];
+    const latestDate = latest.revised_date ?? latest.committed_date;
+    if (latestDate === newDate) return; // unchanged — don't log a duplicate
+    await supabase.from('sd_vendor_commitment_log').insert({
+      po_ref_num: poRefNum,
+      vendor_code: vendorCode ?? null,
+      committed_date: events[0].committed_date, // keep the original
+      revised_date: newDate,
+      revised_at: now,
+      logged_by: actorEmail,
+    });
+  } catch (error) {
+    console.error('sd_vendor_commitment_log insert failed', error);
+  }
+}
+
 /* ================================================================== */
 /* Buying plan                                                         */
 /* ================================================================== */
@@ -2291,7 +2340,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, product_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at')
+    .select('id, status, product_code, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -2417,6 +2466,13 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
       user.email,
       `EasyCom PO ${easycom}`,
     );
+    // Item 1: log the vendor's initial committed delivery date at issuance.
+    await recordCommitment(
+      po.po_ref_num as string | null,
+      po.vendor_code as string | null,
+      po.critical_path_first_delivery as string | null,
+      user.email,
+    );
   }
 
   // Log the above-standard-cost exception so issuance validates against the log.
@@ -2479,7 +2535,7 @@ export async function confirmTna(formData: FormData): Promise<ActionResult> {
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, po_ref_num')
+    .select('id, status, po_ref_num, vendor_code')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -2517,6 +2573,14 @@ export async function confirmTna(formData: FormData): Promise<ActionResult> {
     status,
     user.email,
     'TNA dates confirmed',
+  );
+  // Item 1: log the committed first-delivery date (a change vs the last logged
+  // date is recorded as a revision, keeping the original).
+  await recordCommitment(
+    po.po_ref_num as string | null,
+    po.vendor_code as string | null,
+    dateOrNull(formData.get('critical_path_first_delivery')),
+    user.email,
   );
   revalidatePath('/po-approval');
   return done('TNA dates confirmed — cost approval is now unblocked.');
