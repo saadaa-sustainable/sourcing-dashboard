@@ -57,6 +57,7 @@ import {
   stageDelay,
 } from "@/lib/business-logic";
 import { downloadCsv, downloadPdf, type CsvValue } from "@/lib/download";
+import { MATRIX_DEFAULT_MODE } from "@/lib/matrix-defaults";
 import type {
   DashboardData,
   PendingPo,
@@ -3138,7 +3139,10 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
 }
 
 function MatrixTab({ data }: { data: DashboardData }) {
-  const [mode, setMode] = useState<"variant" | "product">("variant");
+  // Item 4 — default MUST be product code (see MATRIX_DEFAULT_MODE + matrix-defaults.test.ts).
+  const [mode, setMode] = useState<"variant" | "product">(MATRIX_DEFAULT_MODE);
+  // Item 5 — collapse vendor columns that are all-zero in the current view; on by default.
+  const [hideEmptyVendors, setHideEmptyVendors] = useState(true);
   const [filters, set] = useState({
     product: "",
     vendor: "",
@@ -3184,18 +3188,27 @@ function MatrixTab({ data }: { data: DashboardData }) {
     }),
   );
   const rowNames = unique([...cells.keys()].map((k) => k.split(SEP)[0]));
+  // Item 5 — a vendor column is "empty" when every cell in the current filtered view
+  // is zero. Hide those (default) so category-level views aren't padded with blank
+  // columns; the toggle reveals them if you want to confirm a vendor has zero activity.
+  const vendorTotal = (v: string) =>
+    rowNames.reduce((s, r) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0);
+  const displayVendors = hideEmptyVendors
+    ? vendors.filter((v) => vendorTotal(v) > 0)
+    : vendors;
+  const hiddenVendorCount = vendors.length - displayVendors.length;
   const matrixRows: CsvValue[][] = [
     ...rowNames.map((r) => [
       r,
-      ...vendors.map((v) => cells.get(`${r}${SEP}${v}`) ?? 0),
-      vendors.reduce((s, v) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0),
+      ...displayVendors.map((v) => cells.get(`${r}${SEP}${v}`) ?? 0),
+      displayVendors.reduce((s, v) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0),
     ]),
     [
       "Total",
-      ...vendors.map((v) =>
+      ...displayVendors.map((v) =>
         rowNames.reduce((s, r) => s + (cells.get(`${r}${SEP}${v}`) ?? 0), 0),
       ),
-      [...cells.values()].reduce((s, v) => s + v, 0),
+      displayVendors.reduce((s, v) => s + vendorTotal(v), 0),
     ],
   ];
   const allProducts = unique(tracker.map((r) => r.productCode));
@@ -3245,13 +3258,24 @@ function MatrixTab({ data }: { data: DashboardData }) {
           options={allVendorCodes}
           onChange={(v) => set({ ...filters, vendorCode: v })}
         />
+        <label className="matrix-empty-toggle">
+          <input
+            type="checkbox"
+            checked={hideEmptyVendors}
+            onChange={(e) => setHideEmptyVendors(e.target.checked)}
+          />
+          Hide empty vendor columns
+        </label>
       </div>
       <section className="panel table-panel">
         <div className="table-meta">
           <span>
             {fmt.format(rowNames.length)}{" "}
             {mode === "variant" ? "product · variant" : "product"} rows ×{" "}
-            {vendors.length} vendors
+            {displayVendors.length} vendors
+            {hiddenVendorCount > 0 && (
+              <span className="wf-subtle"> · {hiddenVendorCount} empty hidden</span>
+            )}
           </span>
           <InfoDot
             text="Open pending quantity for each product (or product · variant) split across the vendors producing it. Use the toggle above to group by variant or by product code."
@@ -3263,7 +3287,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
             }
             headers={[
               mode === "variant" ? "Product · variant" : "Product code",
-              ...vendors,
+              ...displayVendors,
               "Total",
             ]}
             rows={matrixRows}
@@ -3277,7 +3301,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
                   <th>
                     {mode === "variant" ? "Product · variant" : "Product code"}
                   </th>
-                  {vendors.map((v) => (
+                  {displayVendors.map((v) => (
                     <th key={v}>{v}</th>
                   ))}
                   <th>Total</th>
@@ -3287,7 +3311,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
                 {pagedRowNames.pageRows.map((r) => (
                   <tr key={r}>
                     <td>{r}</td>
-                    {vendors.map((v) => (
+                    {displayVendors.map((v) => (
                       <td key={v}>
                         {fmt.format(cells.get(`${r}${SEP}${v}`) ?? 0)}
                       </td>
@@ -3295,7 +3319,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
                     <td>
                       <strong>
                         {fmt.format(
-                          vendors.reduce(
+                          displayVendors.reduce(
                             (s, v) => s + (cells.get(`${r}${SEP}${v}`) ?? 0),
                             0,
                           ),
@@ -3308,7 +3332,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
                   <td>
                     <strong>Total</strong>
                   </td>
-                  {vendors.map((v) => (
+                  {displayVendors.map((v) => (
                     <td key={v}>
                       <strong>
                         {fmt.format(

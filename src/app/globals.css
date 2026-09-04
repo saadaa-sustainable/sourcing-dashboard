@@ -1362,3 +1362,7 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .ca-kpi-label { font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-4, #8a8578); }
 .ca-kpi strong { font-size: 20px; font-weight: 750; }
 .ca-kpi small { color: var(--ink-3, #6b6559); font-size: 11px; }
+
+/* Item 5 — Product Matrix "hide empty vendor columns" toggle. */
+.matrix-empty-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  font-weight: 650; color: var(--ink-3, #6b6559); white-space: nowrap; }
