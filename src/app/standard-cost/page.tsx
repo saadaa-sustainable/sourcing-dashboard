@@ -50,7 +50,7 @@ export default async function StandardCostPage({
 
   const [costs, lines, fabricBase, standards, cmtp, efob, catalog, rateHistory, cmtpSubitems] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], [], [], {}, {}]
+      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], await loadEfobFabricCost(), [], {}, {}]
       : await Promise.all([
           loadStandardCosts(),
           loadStandardCostLines(),

@@ -195,7 +195,15 @@ export function StandardCostClient({
       {error && <Notice tone="error">{error}</Notice>}
 
       {!isMat && standards && <StandardFieldsPanel standards={standards} editable={editable} />}
-      {!isMat && <EfobFabricCostPanel rows={efob} fabricCodes={fabricCodes} editable={editable} />}
+      {/* EFOB rate lives on the Material track — fabrics are the materials there (the
+          /RM codes). Its fabric options are the material codes themselves. */}
+      {isMat && (
+        <EfobFabricCostPanel
+          rows={efob}
+          fabricCodes={costs.map((c) => c.product_code)}
+          editable={editable}
+        />
+      )}
 
       {editable && (
         <div className="wf-form-panel">
