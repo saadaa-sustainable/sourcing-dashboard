@@ -1976,6 +1976,8 @@ export async function saveEfobFabricCost(formData: FormData): Promise<ActionResu
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   if (!canEdit(user.role, 'draft')) return fail('You do not have permission to set the EFOB fabric cost.');
+  const fabric_code = String(formData.get('fabric_code') ?? '').trim();
+  if (!fabric_code) return fail('Pick a fabric — the EFOB rate is set per fabric.');
   const raw = String(formData.get('month') ?? '').trim();
   if (!raw) return fail('Pick a month.');
   const month = `${raw.slice(0, 7)}-01`; // normalise 'YYYY-MM' or 'YYYY-MM-DD' → first of month
@@ -1984,12 +1986,12 @@ export async function saveEfobFabricCost(formData: FormData): Promise<ActionResu
 
   const supabase = await supa();
   const { error } = await supabase.from('sd_efob_fabric_cost').upsert(
-    { month, rate, updated_by: user.email, updated_at: new Date().toISOString() },
-    { onConflict: 'month' },
+    { fabric_code, month, rate, updated_by: user.email, updated_at: new Date().toISOString() },
+    { onConflict: 'fabric_code,month' },
   );
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/standard-cost');
-  return done(`EFOB fabric cost set for ${month.slice(0, 7)}.`);
+  return done(`EFOB rate set for ${fabric_code} · ${month.slice(0, 7)}.`);
 }
 
 /** Admin: set a Rules Master value (sd_analytics_rule) — e.g. PO-type lead times (§7). */

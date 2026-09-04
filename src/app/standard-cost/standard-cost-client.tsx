@@ -176,7 +176,7 @@ export function StandardCostClient({
       {error && <Notice tone="error">{error}</Notice>}
 
       {!isMat && standards && <StandardFieldsPanel standards={standards} editable={editable} />}
-      {!isMat && <EfobFabricCostPanel rows={efob} editable={editable} />}
+      {!isMat && <EfobFabricCostPanel rows={efob} fabricCodes={fabricCodes} editable={editable} />}
 
       {editable && (
         <div className="wf-form-panel">
@@ -344,20 +344,37 @@ function StandardFieldsPanel({
  * EFOB Fabric Cost (spec §6) — the monthly fixed rate the company sets for carrying
  * commodity risk on EFOB POs. Its own benchmark, separate from the fabric-cost sheet.
  */
-function EfobFabricCostPanel({ rows, editable }: { rows: EfobFabricCost[]; editable: boolean }) {
-  const thisMonth = rows[0]?.month?.slice(0, 7) ?? '';
+function EfobFabricCostPanel({
+  rows,
+  fabricCodes,
+  editable,
+}: {
+  rows: EfobFabricCost[];
+  fabricCodes: string[];
+  editable: boolean;
+}) {
+  const [fabricCode, setFabricCode] = useState('');
   const [month, setMonth] = useState('');
   const [rate, setRate] = useState('');
   const [busy, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Legacy free-typed fabric codes on existing rows still show in the picker.
+  const options = useMemo(() => {
+    const set = new Set(fabricCodes);
+    for (const r of rows) if (r.fabric_code) set.add(r.fabric_code);
+    return [...set].sort();
+  }, [fabricCodes, rows]);
+
   function save() {
     setMsg(null);
     setErr(null);
+    if (!fabricCode) return setErr('Pick a fabric — the EFOB rate is per fabric.');
     if (!month) return setErr('Pick a month.');
     if (rate === '') return setErr('Enter the rate.');
     const fd = new FormData();
+    fd.set('fabric_code', fabricCode);
     fd.set('month', month);
     fd.set('rate', rate);
     start(async () => {
@@ -370,15 +387,25 @@ function EfobFabricCostPanel({ rows, editable }: { rows: EfobFabricCost[]; edita
   return (
     <details className="wf-standards-panel">
       <summary>
-        EFOB Fabric Cost — the monthly rate for EFOB POs
-        {rows[0]?.rate != null && (
-          <span className="wf-subtle"> · {thisMonth}: ₹{rows[0].rate}</span>
+        EFOB Fabric Cost — the monthly rate per fabric for EFOB POs
+        {rows.length > 0 && (
+          <span className="wf-subtle"> · {rows.length} fabric-month rate{rows.length === 1 ? '' : 's'} set</span>
         )}
       </summary>
+      <p className="wf-subtle">
+        Set the EFOB fabric rate for <strong>each individual fabric</strong>, per month — it is not
+        one blended rate for all fabrics.
+      </p>
       {msg && <Notice tone="ok">{msg}</Notice>}
       {err && <Notice tone="error">{err}</Notice>}
       {editable && (
         <div className="wf-form-grid">
+          <Field label="Fabric">
+            <select value={fabricCode} onChange={(e) => setFabricCode(e.target.value)}>
+              <option value="">— fabric —</option>
+              {options.map((f) => (<option key={f} value={f}>{f}</option>))}
+            </select>
+          </Field>
           <Field label="Month"><input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></Field>
           <Field label="EFOB fabric rate"><input type="number" min={0} value={rate} onChange={(e) => setRate(e.target.value)} /></Field>
           <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
@@ -388,10 +415,11 @@ function EfobFabricCostPanel({ rows, editable }: { rows: EfobFabricCost[]; edita
       )}
       {rows.length > 0 && (
         <table className="wf-grid wf-cost-lines">
-          <thead><tr><th>Month</th><th className="num">Rate</th><th>Set by</th></tr></thead>
+          <thead><tr><th>Fabric</th><th>Month</th><th className="num">Rate</th><th>Set by</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.month}>
+              <tr key={`${r.fabric_code}-${r.month}`}>
+                <td className="mono">{r.fabric_code}</td>
                 <td>{r.month.slice(0, 7)}</td>
                 <td className="num">{r.rate != null ? `₹${r.rate}` : '—'}</td>
                 <td className="wf-subtle">{r.updated_by ?? '—'}</td>

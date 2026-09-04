@@ -1319,7 +1319,8 @@ export async function loadEfobFabricCost(): Promise<EfobFabricCost[]> {
     .from('sd_efob_fabric_cost')
     .select('*')
     .order('month', { ascending: false })
-    .limit(24);
+    .order('fabric_code')
+    .limit(500);
   return (data ?? []) as EfobFabricCost[];
 }
 

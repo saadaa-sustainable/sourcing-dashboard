@@ -858,8 +858,10 @@ export type ProductCatalogItem = {
   sub_category: string | null; // Shirt / Pant / Kurta / …
 };
 
-/** Monthly EFOB fabric-cost benchmark (sd_efob_fabric_cost) — spec §6. */
+/** Per-fabric monthly EFOB fabric rate (sd_efob_fabric_cost) — set per individual
+ *  fabric, not one blended rate for all fabrics. Keyed (fabric_code, month). */
 export type EfobFabricCost = {
+  fabric_code: string;
   month: string; // first of month
   rate: number | null;
   updated_by: string | null;
