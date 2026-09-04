@@ -319,25 +319,43 @@ export async function loadAnalyticsExtras(
   };
 
   const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const twoWeeksAgoIso = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const weekAgoDate = weekAgoIso.slice(0, 10);
   const todayDate = new Date().toISOString().slice(0, 10);
 
-  /* POs issued in the last 7 days. */
+  /* POs issued this week vs the immediately preceding week (item 1: week-over-week,
+     not a flat rolling count). Fetch a 14-day window and partition on po_issued_at. */
   try {
     const { data } = await supabase
       .from('sd_po_approval')
       .select('po_ref_num, po_qty, vendor_name, po_issued_at')
-      .gte('po_issued_at', weekAgoIso)
+      .gte('po_issued_at', twoWeeksAgoIso)
       .order('po_issued_at', { ascending: false });
-    const rows = (data ?? []) as { po_ref_num: string | null; po_qty: number | null; vendor_name: string | null }[];
+    const rows = (data ?? []) as {
+      po_ref_num: string | null; po_qty: number | null; vendor_name: string | null; po_issued_at: string | null;
+    }[];
+    const thisWeek = rows.filter((r) => (r.po_issued_at ?? '') >= weekAgoIso);
+    const priorWeek = rows.filter((r) => (r.po_issued_at ?? '') < weekAgoIso);
+    const qtyOf = (rs: typeof rows) => rs.reduce((s, r) => s + (Number(r.po_qty) || 0), 0);
+    const pctChange = (now: number, prev: number) =>
+      prev > 0 ? Math.round(((now - prev) / prev) * 100) : now > 0 ? null : 0;
+    const thisQty = qtyOf(thisWeek);
+    const priorQty = qtyOf(priorWeek);
     extras.issuedLastWeek = {
-      count: rows.length,
-      qty: rows.reduce((s, r) => s + (Number(r.po_qty) || 0), 0),
-      top: rows.slice(0, 5).map((r) => ({
+      count: thisWeek.length,
+      qty: thisQty,
+      top: thisWeek.slice(0, 5).map((r) => ({
         poRef: r.po_ref_num ?? '—',
         qty: Number(r.po_qty) || 0,
         vendor: r.vendor_name ?? '—',
       })),
+      prior: { count: priorWeek.length, qty: priorQty },
+      delta: {
+        count: thisWeek.length - priorWeek.length,
+        qty: thisQty - priorQty,
+        countPct: pctChange(thisWeek.length, priorWeek.length),
+        qtyPct: pctChange(thisQty, priorQty),
+      },
     };
   } catch { /* stays null */ }
 

@@ -1366,3 +1366,10 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 /* Item 5 — Product Matrix "hide empty vendor columns" toggle. */
 .matrix-empty-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
   font-weight: 650; color: var(--ink-3, #6b6559); white-space: nowrap; }
+
+/* Item 1 — PO Issued week-over-week delta. */
+.ana-wow { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.ana-wow-delta { font-size: 14px; font-weight: 750; }
+.ana-wow-delta.is-up { color: #1f7a34; }
+.ana-wow-delta.is-down { color: #c0392b; }
+.ana-wow small { color: var(--ink-3, #6b6559); font-size: 10px; }

@@ -104,9 +104,16 @@ export type AnalyticsExtras = {
         codes: string[];
       }
     | null;
-  /** POs issued in the last 7 days (from sd_po_approval.po_issued_at). */
+  /** POs issued THIS week vs the preceding week (from sd_po_approval.po_issued_at).
+   *  count/qty/top are this week; prior + delta drive the week-over-week comparison. */
   issuedLastWeek:
-    | { count: number; qty: number; top: { poRef: string; qty: number; vendor: string }[] }
+    | {
+        count: number;
+        qty: number;
+        top: { poRef: string; qty: number; vendor: string }[];
+        prior: { count: number; qty: number };
+        delta: { count: number; qty: number; countPct: number | null; qtyPct: number | null };
+      }
     | null;
   /** POs pending approval right now (submitted / pending_l2). */
   pendingApproval:

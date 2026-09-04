@@ -1058,25 +1058,40 @@ export function AnalyticsCards({
         {decisionTab === "execution" && (
           <div className="ana-grid ana-tab-grid">
             <AnaCard
-              title="POs issued — last 7 days"
+              title="POs issued — this week vs last"
               icon={CheckCheck}
-              tone={issued && issued.count > 0 ? "green" : "neutral"}
-              status={issued ? `${issued.count} ISSUED` : "WAITING"}
+              tone={
+                issued && issued.count > 0
+                  ? issued.delta.count >= 0
+                    ? "green"
+                    : "amber"
+                  : "neutral"
+              }
+              status={issued ? `${issued.count} THIS WK` : "WAITING"}
               cta="Open PO Approval"
               span={4}
               href="/po-approval"
-              info="Purchase orders issued to EasyCom in the last 7 days — count, total quantity, and the most recent."
+              info="POs issued to EasyCom this week vs the immediately preceding week — the delta shows whether issuance pace is up or down, not just a flat rolling count."
             >
               {!issued ? (
                 <NoData text="PO issuance data is not available." />
-              ) : issued.count === 0 ? (
-                <ZeroState title="None issued" text="No POs were issued in the last 7 days." compact />
+              ) : issued.count === 0 && issued.prior.count === 0 ? (
+                <ZeroState title="None issued" text="No POs issued this week or last." compact />
               ) : (
                 <>
                   <div className="ana-plan-hero">
                     <div>
                       <strong className="ana-value ana-value-xl">{fmt.format(issued.count)}</strong>
-                      <span className="ana-value-label">POs · {fmt.format(issued.qty)} pcs</span>
+                      <span className="ana-value-label">POs this week · {fmt.format(issued.qty)} pcs</span>
+                    </div>
+                    <div className="ana-wow">
+                      <span className={`ana-wow-delta ${issued.delta.count >= 0 ? "is-up" : "is-down"}`}>
+                        {issued.delta.count >= 0 ? "▲" : "▼"} {fmt.format(Math.abs(issued.delta.count))}
+                        {issued.delta.countPct != null
+                          ? ` (${issued.delta.countPct > 0 ? "+" : ""}${issued.delta.countPct}%)`
+                          : ""}
+                      </span>
+                      <small>vs {fmt.format(issued.prior.count)} last week · {fmt.format(issued.prior.qty)} pcs</small>
                     </div>
                   </div>
                   <ul className="ana-list">
