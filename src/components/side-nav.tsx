@@ -70,9 +70,11 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
+  { href: '/vendor-360', label: 'Vendor 360', Icon: Factory },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Handshake },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
+  { href: '/cost-analytics', label: 'Cost Analytics', Icon: IndianRupee },
 ];
 
 // Operational pages, grouped by use case (DAM nav model: chronological
@@ -107,6 +109,7 @@ const GOVERNANCE_LINKS: NavLink[] = [
 // Reference data the workflows read from.
 const MASTERS_LINKS: NavLink[] = [
   { href: '/product-master', label: 'Product Master', Icon: Tags },
+  { href: '/category-mapping', label: 'Category Mapping', Icon: Tags },
   { href: '/vendor-master', label: 'Vendor Master', Icon: Factory },
   { href: '/fabric-master', label: 'Fabric Master', Icon: Layers },
   { href: '/material-master', label: 'Material Master', Icon: Boxes },
@@ -119,6 +122,7 @@ const MASTERS_LINKS: NavLink[] = [
 const ADMIN_LINKS: NavLink[] = [
   { href: '/users', label: 'User Panel', Icon: UserCog },
   { href: '/rules-master', label: 'Rules Master', Icon: SlidersHorizontal },
+  { href: '/feature-status', label: 'Feature Status', Icon: Activity },
   { href: '/sync-status', label: 'Sync Health', Icon: Activity },
 ];
 
