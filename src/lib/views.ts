@@ -57,6 +57,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/approvals', label: 'Approvals', group: 'Workflows', adminOnly: true },
   // Data & Admin — masters and datasets.
   { path: '/product-master', label: 'Product Master', group: 'Data & Admin' },
+  { path: '/category-mapping', label: 'Category Mapping', group: 'Data & Admin' },
   { path: '/grn-detail', label: 'GRN Detail', group: 'Data & Admin' },
   { path: '/doq', label: 'DOQ Dataset', group: 'Data & Admin' },
   { path: '/vendor-master', label: 'Vendor Master', group: 'Data & Admin' },

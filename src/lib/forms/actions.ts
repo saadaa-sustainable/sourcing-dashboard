@@ -2565,6 +2565,40 @@ export async function saveProductMaster(formData: FormData): Promise<ActionResul
   return done(`Saved ${product_code}.`);
 }
 
+/**
+ * Item 2 — set the authoritative category / sub-category override for a product code
+ * on sd_product_master. Both are mandatory (this IS the "mandatory at product level"
+ * enforcement point). Upserts only these two columns, so an existing row's status /
+ * fabric_type are preserved. Everything reads the coalesced sd_product_catalog view,
+ * so this one field flows to the Buying Plan snapshot, Group By, Cost Analytics, etc.
+ */
+export async function saveProductCategory(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) {
+    return fail('You do not have permission to edit the product master.');
+  }
+  const product_code = String(formData.get('product_code') ?? '').trim();
+  if (!product_code) return fail('Product code is required.');
+  const category = String(formData.get('category') ?? '').trim();
+  const sub_category = String(formData.get('sub_category') ?? '').trim();
+  if (!category || !sub_category) {
+    return fail('Both category and sub-category are required — they are mandatory at product level.');
+  }
+
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_product_master').upsert(
+    { product_code, category, sub_category, updated_at: new Date().toISOString() },
+    { onConflict: 'product_code' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+
+  revalidatePath('/category-mapping');
+  revalidatePath('/buying-plan');
+  revalidatePath('/cost-analytics');
+  return done(`Saved category for ${product_code}.`);
+}
+
 /** FG-master auto-rule action: promote an NPD-not-launched product to NPD. */
 export async function promoteToNpd(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
