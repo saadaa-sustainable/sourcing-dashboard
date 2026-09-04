@@ -8,6 +8,7 @@ import {
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { ReplenishmentClient } from './replenishment-client';
+import { loadProductLaunchDates } from '@/lib/product-launch.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,10 +30,11 @@ export default async function ReplenishmentPage() {
   if (!user) redirect('/login');
   if (user.role !== 'admin') redirect('/');
 
-  const [rows, rules, meta] = await Promise.all([
+  const [rows, rules, meta, launchByCode] = await Promise.all([
     loadReplenishment(),
     loadAnalyticsRules(),
     loadOosMeta(),
+    loadProductLaunchDates(),
   ]);
 
   return (
@@ -46,6 +48,7 @@ export default async function ReplenishmentPage() {
     >
       <ReplenishmentClient
         rows={rows}
+        launchByCode={launchByCode}
         isAdmin={user.role === 'admin'}
         oosThreshold={rules.oos_day_threshold ?? 30}
         ipdoqFloor={rules.ipdoq_floor ?? 0.25}

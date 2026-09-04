@@ -8,10 +8,17 @@ import { isNpdFamily, productClassOf, type ClassRules } from '@/lib/doq-dashboar
 import { saveAnalyticsRule } from '@/lib/forms/actions';
 import { reloadWithToast } from '@/lib/toast';
 import type { ReplenishmentRow } from '@/lib/forms/types';
+import type { ProductLaunch } from '@/lib/product-launch.server';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
-const buildCols = (classRules: ClassRules): Column<ReplenishmentRow>[] => [
+// Effective-launch reference: a product with < 45 days of history has a DOQ still being
+// built on a short window, so its numbers are read with caution; a product with no
+// launch signal at all is surfaced as "no data", never treated as a real zero.
+const buildCols = (
+  classRules: ClassRules,
+  launchByCode: Record<string, ProductLaunch>,
+): Column<ReplenishmentRow>[] => [
   {
     key: 'product_variant',
     label: 'Product / colour',
@@ -29,6 +36,29 @@ const buildCols = (classRules: ClassRules): Column<ReplenishmentRow>[] => [
   { key: 'in_progress', label: 'In process', kind: 'num', info: 'Quantity already on order or in production, not yet received.' },
   { key: 'doq_45', label: 'DOQ 45', kind: 'num', info: 'Average daily sales rate (units/day) over the last 45-day window, counting only in-stock days.' },
   { key: 'doq_365', label: 'DOQ 365', kind: 'num', info: 'The same daily rate measured over the last 365 days — the stable long-window signal.' },
+  {
+    key: 'launch',
+    label: 'History',
+    kind: 'text',
+    filter: 'select',
+    accessor: (r) => {
+      const l = launchByCode[r.product_code ?? ''];
+      if (!l || l.daysSinceLaunch == null) return 'No launch data';
+      return l.daysSinceLaunch < 45 ? 'New (<45d)' : 'Established';
+    },
+    info: 'Days of real inventory history since the effective launch date (first sale if it is not before first goods-received, else first GRN). Under 45 days the DOQ is built on a short window — read it with caution. "No launch data" means neither a sale nor a GRN is on record yet (not a real zero).',
+    render: (r) => {
+      const l = launchByCode[r.product_code ?? ''];
+      if (!l || l.daysSinceLaunch == null) return <span className="wf-subtle">no launch data</span>;
+      const d = l.daysSinceLaunch;
+      const title = `Effective launch ${l.effectiveLaunchDate ?? '—'}`;
+      return d < 45 ? (
+        <span className="wf-over-tag" title={title}>{fmt.format(d)}d · new</span>
+      ) : (
+        <span title={title}>{fmt.format(d)}d</span>
+      );
+    },
+  },
   {
     key: 'oos_days_45',
     label: 'OOS days',
@@ -148,6 +178,7 @@ function IpdoqRules({
 
 export function ReplenishmentClient({
   rows,
+  launchByCode = {},
   isAdmin = false,
   oosThreshold = 30,
   ipdoqFloor = 0.25,
@@ -156,6 +187,7 @@ export function ReplenishmentClient({
   lastSynced = null,
 }: {
   rows: ReplenishmentRow[];
+  launchByCode?: Record<string, ProductLaunch>;
   isAdmin?: boolean;
   oosThreshold?: number;
   ipdoqFloor?: number;
@@ -169,7 +201,7 @@ export function ReplenishmentClient({
       <IpdoqRules isAdmin={isAdmin} threshold={oosThreshold} floor={ipdoqFloor} />
       <FilterTable
         rows={rows}
-        columns={buildCols(classRules)}
+        columns={buildCols(classRules, launchByCode)}
         rowKey={(r) => r.product_variant}
         rowClass={(r) => (r.oos_flag ? 'wf-row-over' : undefined)}
         unit="colours"
