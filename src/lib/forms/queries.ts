@@ -1679,11 +1679,18 @@ export async function loadInwardPlanSheet(planMonth: string): Promise<{
     loadProductCatalog(),
   ]);
   if (error) throw new Error(`sd_inward_plan_entry: ${error.message}`);
+  const enriched = await enrichInwardWithPoDates((entries ?? []) as InwardPlanEntry[]);
+  return { entries: enriched, catalog };
+}
 
-  // Item 4: enrich each entry with its PO's own EDD + closure date (never
-  // re-entered). EDD comes from whichever feed holds the PO (open or completed);
-  // closure date only exists once the PO is completed (sd_po_completed).
-  const rows = (entries ?? []) as InwardPlanEntry[];
+/**
+ * Item 4: fill each inward entry's EDD + closure date from the PO's own feeds
+ * (never re-entered). EDD comes from whichever feed holds the PO (open or
+ * completed); the closure date only exists once the PO has completed.
+ */
+async function enrichInwardWithPoDates(rows: InwardPlanEntry[]): Promise<InwardPlanEntry[]> {
+  if (!rows.length) return rows;
+  const supabase = await client();
   const poNos = [...new Set(rows.map((e) => (e.po_no ?? '').trim()).filter(Boolean))];
   const poDates = new Map<string, { edd: string | null; closure: string | null }>();
   if (poNos.length) {
@@ -1706,17 +1713,37 @@ export async function loadInwardPlanSheet(planMonth: string): Promise<{
       poDates.set(r.po_number, cur);
     }
   }
-
-  const enriched = rows.map((e) => {
+  return rows.map((e) => {
     const d = e.po_no ? poDates.get(e.po_no.trim()) : undefined;
-    return {
-      ...e,
-      expected_delivery_date: d?.edd ?? null,
-      po_closure_date: d?.closure ?? null,
-    };
+    return { ...e, expected_delivery_date: d?.edd ?? null, po_closure_date: d?.closure ?? null };
   });
+}
 
-  return { entries: enriched, catalog };
+/**
+ * Item 5: company-wide "what's arriving when". The monthly approved inward plan
+ * across recent + upcoming months (sd_inward_plan_entry), enriched with each PO's
+ * EDD + closure (item 4) and the product's category, for a read-only, filterable
+ * cross-department view. Planned = inward_qty, actual = actual_inward_qty.
+ */
+export async function loadArrivalPlan(): Promise<{
+  rows: (InwardPlanEntry & { category: string | null })[];
+}> {
+  const supabase = await client();
+  const [{ data: entries }, catalog] = await Promise.all([
+    supabase
+      .from('sd_inward_plan_entry')
+      .select('*')
+      .order('plan_month', { ascending: false })
+      .limit(PAGE_SIZE),
+    loadProductCatalog(),
+  ]);
+  const enriched = await enrichInwardWithPoDates((entries ?? []) as InwardPlanEntry[]);
+  const catByCode = new Map(catalog.map((c) => [c.product_code, c.category] as const));
+  const rows = enriched.map((e) => ({
+    ...e,
+    category: catByCode.get(e.product_code) ?? null,
+  }));
+  return { rows };
 }
 
 /* ------------------------------------------------------------------ */

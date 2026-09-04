@@ -65,6 +65,7 @@ type NavLink = {
 // Admin-only flags live in the views registry (lib/views.ts) — canView applies
 // them together with the caller's custom-role page set.
 const WORKSPACE_LINKS: NavLink[] = [
+  { href: '/arrivals', label: 'Arrivals', Icon: PackageCheck },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },

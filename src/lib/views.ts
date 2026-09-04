@@ -34,6 +34,8 @@ export const ALL_VIEWS: ViewDef[] = [
   // the view to that team's custom role; /my-dashboard itself (the landing
   // page) is always visible and shows whichever views the user holds.
   { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
+  // Company-wide arrival view — visible to every signed-in SAADAA user (see canView).
+  { path: '/arrivals', label: 'Arrivals', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/doq-dashboard', label: 'DOQ Dashboard', group: 'Workspace' },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
@@ -78,8 +80,15 @@ export function canView(
   allowedPages: string[] | null | undefined,
 ): boolean {
   // My Dashboard (the landing view), the main dashboard route and its first
-  // tab are always visible.
-  if (path === '/' || path === '/my-dashboard' || path === 'tab:dashboard') return true;
+  // tab are always visible. /arrivals is deliberately company-wide (item 5):
+  // every signed-in SAADAA user sees when goods are arriving, not just sourcing.
+  if (
+    path === '/' ||
+    path === '/my-dashboard' ||
+    path === '/arrivals' ||
+    path === 'tab:dashboard'
+  )
+    return true;
   const def = ALL_VIEWS.find((v) => v.path === path);
   if (def?.adminOnly && role !== 'admin') return false;
   if (role === 'admin' || allowedPages == null) return true;
