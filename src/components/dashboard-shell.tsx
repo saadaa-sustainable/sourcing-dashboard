@@ -370,11 +370,13 @@ function PdfButton({
   title,
   headers,
   rows,
+  note,
 }: {
   filename: string;
   title: string;
   headers: string[];
   rows: CsvValue[][];
+  note?: string;
 }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -390,7 +392,7 @@ function PdfButton({
       onClick={async () => {
         setBusy(true);
         try {
-          await downloadPdf(filename, title, headers, rows);
+          await downloadPdf(filename, title, headers, rows, note);
         } finally {
           setBusy(false);
         }
@@ -1830,12 +1832,15 @@ function VendorTable({
   exportTitle = "Vendor performance",
   searchPlaceholder = "Filter by vendor name or code",
   withFilters = false,
+  reportNote,
 }: {
   rows: VendorRollup[];
   filename?: string;
   exportTitle?: string;
   searchPlaceholder?: string;
   withFilters?: boolean;
+  /** Item 5 — free-text remark included in the exported PDF. */
+  reportNote?: string;
 }) {
   const [query, setQuery] = useState("");
   const [merchant, setMerchant] = useState("");
@@ -1966,6 +1971,7 @@ function VendorTable({
               }
               headers={vendorCsvHeaders}
               rows={vendorCsvRows(rows)}
+              note={reportNote}
             />
           </div>
         </div>
@@ -2041,6 +2047,33 @@ function VendorTable({
 }
 
 function VendorTab({ data }: { data: DashboardData }) {
+  // Item 4 — period for the PDF export: All time / YTD / a specific quarter.
+  // Filters the underlying POs by po_date before the rollups the report exports.
+  const [period, setPeriod] = useState<'all' | 'ytd' | 'q1' | 'q2' | 'q3' | 'q4'>('all');
+  // Item 5 — a remark attached to this report generation (not the vendor record).
+  const [remark, setRemark] = useState('');
+  const year = today.getUTCFullYear();
+  const periodLabel =
+    period === 'all'
+      ? 'All time'
+      : period === 'ytd'
+        ? `YTD ${year}`
+        : `${period.toUpperCase()} ${year}`;
+  const periodPos = useMemo(() => {
+    if (period === 'all') return data.pendingPos;
+    const bounds: Record<string, [string, string]> = {
+      ytd: [`${year}-01-01`, `${year + 1}-01-01`],
+      q1: [`${year}-01-01`, `${year}-04-01`],
+      q2: [`${year}-04-01`, `${year}-07-01`],
+      q3: [`${year}-07-01`, `${year}-10-01`],
+      q4: [`${year}-10-01`, `${year + 1}-01-01`],
+    };
+    const [from, to] = bounds[period];
+    return data.pendingPos.filter((p) => {
+      const d = (p.po_date ?? p.po_created_date ?? '').slice(0, 10);
+      return d >= from && d < to;
+    });
+  }, [data.pendingPos, period, year]);
   const rows = useMemo(() => {
     const capacityByVendor = new Map(
       (data.vendorCapacity ?? []).map((c) => [
@@ -2049,14 +2082,14 @@ function VendorTab({ data }: { data: DashboardData }) {
       ]),
     );
     return buildVendorRollups(
-      data.pendingPos,
+      periodPos,
       data.vendorTypes,
       data.vendorMasters,
       data.tnaRecords,
       today,
       capacityByVendor,
     );
-  }, [data]);
+  }, [data, periodPos]);
   const openCodes = new Set(rows.map((row) => norm(row.vendorCode)));
   const zero = data.vendorTypes.filter(
     (v) => norm(v.status) === "active" && !openCodes.has(norm(v.vendor_code)),
@@ -2277,14 +2310,41 @@ function VendorTab({ data }: { data: DashboardData }) {
         <div className="panel-title">
           <h3>
             Vendor performance
-            <InfoDot text="Per-vendor rollup of open and delayed POs, quantities, value, capacity and utilisation. Search, filter and export below." />
+            <InfoDot text="Per-vendor rollup of open and delayed POs, quantities, value, capacity and utilisation. Pick a period and add a remark for the PDF; search, filter and export below." />
           </h3>
+        </div>
+        <div className="vendor-report-controls">
+          <label className="meta-field">
+            <span>Period</span>
+            <select
+              className="meta-select"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as typeof period)}
+            >
+              <option value="all">All time</option>
+              <option value="ytd">Year to date</option>
+              <option value="q1">Q1 (Jan–Mar)</option>
+              <option value="q2">Q2 (Apr–Jun)</option>
+              <option value="q3">Q3 (Jul–Sep)</option>
+              <option value="q4">Q4 (Oct–Dec)</option>
+            </select>
+          </label>
+          <label className="meta-field vendor-report-remark">
+            <span>Remark (added to the PDF)</span>
+            <input
+              type="text"
+              placeholder="Optional comment for this report…"
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+            />
+          </label>
         </div>
         <VendorTable
           rows={rows}
-          filename="vendor-performance"
-          exportTitle="Vendor performance"
+          filename={`vendor-performance-${period}`}
+          exportTitle={`Vendor performance — ${periodLabel}`}
           searchPlaceholder="Filter by vendor name or code"
+          reportNote={remark}
           withFilters
         />
       </section>

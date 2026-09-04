@@ -513,6 +513,11 @@ td small { display: block; margin-top: 4px; color: var(--ink-4); font-size: 11px
 .table-meta.has-filters { height: auto; min-height: 49px; padding: 8px 18px; flex-wrap: wrap; row-gap: 8px; }
 .meta-select { height: 34px; padding: 0 9px; color: var(--ink-2); font-size: 12px; background: rgba(255,255,255,.95); border: 1px solid var(--line-strong); border-radius: 8px; transition: border-color .18s ease, box-shadow .18s ease; }
 .meta-select:hover { border-color: var(--color-ecru-400); box-shadow: 0 0 0 3px rgba(240,198,30,.15); }
+/* Vendor performance report controls (period + remark for the PDF) */
+.vendor-report-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; padding: 4px 2px 12px; }
+.meta-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 620; color: var(--ink-2); }
+.vendor-report-remark { flex: 1 1 280px; }
+.vendor-report-remark input { height: 34px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; font-size: 12px; width: 100%; }
 .download-button { padding: 6px 10px; display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--purple-dark); font-size: 10px; font-weight: 640; background: var(--purple-soft); border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: background .17s ease, border-color .17s ease, transform .17s ease; }
 .download-button:hover { background: #e5e1ff; border-color: rgba(109,93,252,.28); transform: translateY(-1px); }
 .download-button:disabled { color: var(--muted); background: rgba(148,163,184,.12); cursor: not-allowed; transform: none; }

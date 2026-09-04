@@ -39,6 +39,8 @@ export async function downloadPdf(
   title: string,
   headers: string[],
   rows: CsvValue[][],
+  /** Optional free-text note (e.g. a report remark) rendered under the header. */
+  note?: string,
 ) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
@@ -54,10 +56,18 @@ export async function downloadPdf(
     40,
     50,
   );
+  let tableStart = 62;
+  const trimmedNote = note?.trim();
+  if (trimmedNote) {
+    doc.setTextColor(60);
+    const wrapped = doc.splitTextToSize(`Remark: ${trimmedNote}`, 760) as string[];
+    doc.text(wrapped, 40, 62);
+    tableStart = 62 + wrapped.length * 10 + 6;
+  }
   autoTable(doc, {
     head: [headers],
     body: rows.map((row) => row.map((v) => (v == null ? '' : String(v)))),
-    startY: 62,
+    startY: tableStart,
     margin: { left: 40, right: 40 },
     styles: { fontSize: 6.5, cellPadding: 3, overflow: 'linebreak' },
     headStyles: { fillColor: [92, 77, 212], fontSize: 6.5 },
