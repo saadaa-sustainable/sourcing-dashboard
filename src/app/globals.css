@@ -1011,6 +1011,11 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .wf-rule-value { font-size: 16px; font-weight: 700; color: var(--ink-1); }
 .wf-rule-error { flex-basis: 100%; margin: 4px 0 0; font-size: 12px; color: #c0392b; }
 
+/* Vendor Capacity — inline product-allocation add + row actions */
+.wf-inline-add { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.wf-inline-add input { width: 130px; padding: 6px 9px; border: 1px solid var(--color-ecru-300, #e3d6bd); border-radius: 8px; font-size: 13px; }
+.wf-row-actions { display: flex; gap: 6px; align-items: center; }
+
 /* Notification bell dropdown (topbar) */
 .wf-bell { position: relative; display: inline-flex; }
 .wf-bell-btn {

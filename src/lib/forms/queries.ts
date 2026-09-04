@@ -61,6 +61,7 @@ import type {
   PpmPrep,
   SyncStatusRow,
   VendorOtifRow,
+  VendorProductAllocation,
   VendorTerm,
   StandardCost,
   StandardCostLine,
@@ -2337,6 +2338,18 @@ export function buildBuyingPlanView(
 /* ------------------------------------------------------------------ */
 /* Vendor capacity                                                     */
 /* ------------------------------------------------------------------ */
+
+/** Vendor Capacity item 1 — all per-vendor per-product capacity allocations. */
+export async function loadVendorProductAllocations(): Promise<VendorProductAllocation[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_vendor_product_capacity_allocation')
+    .select('id, vendor_code, product_code, allocated_qty, entry_date, entered_by')
+    .order('vendor_code')
+    .order('product_code')
+    .limit(PAGE_SIZE);
+  return (data ?? []) as VendorProductAllocation[];
+}
 
 export async function loadVendorCapacity() {
   const supabase = await client();

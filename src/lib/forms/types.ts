@@ -230,6 +230,16 @@ export type PpmPrep = {
   };
 };
 
+/** One vendor+product capacity allocation (pieces/month) — Vendor Capacity item 1. */
+export type VendorProductAllocation = {
+  id: number;
+  vendor_code: string;
+  product_code: string;
+  allocated_qty: number | null;
+  entry_date: string | null;
+  entered_by: string | null;
+};
+
 /** One editable threshold in the Rules Master (sd_analytics_rule). */
 export type AnalyticsRuleRow = {
   rule_key: string;

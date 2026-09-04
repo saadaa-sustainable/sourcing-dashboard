@@ -2,8 +2,11 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadAnalyticsRules,
   loadInProcessByVendor,
+  loadProductCatalog,
   loadVendorCapacity,
+  loadVendorProductAllocations,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { eeVendorActive } from '@/lib/business-logic';
@@ -33,6 +36,12 @@ export default async function VendorCapacityPage() {
   const { logs, vendorMasters, vendorTypes } = await loadVendorCapacity();
   // Real in-process load from the PO pipeline (sd_vendor_in_process), not the sheet.
   const inProcessByCode = await loadInProcessByVendor();
+  // Item 1 product allocations + catalog, and item 3 day-count rules — for the sub-tabs.
+  const [allocations, catalog, rules] = await Promise.all([
+    loadVendorProductAllocations(),
+    loadProductCatalog(),
+    loadAnalyticsRules(),
+  ]);
 
   const currentByCode = new Map(logs.map((row) => [key(row.vendor_code), row]));
   // Fallback type source if a master row has no primary_type set.
@@ -83,7 +92,17 @@ export default async function VendorCapacityPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <VendorCapacityClient vendors={vendors} role={user.role} />
+      <VendorCapacityClient
+        vendors={vendors}
+        role={user.role}
+        allocations={allocations}
+        catalog={catalog}
+        leadDays={{
+          job: rules.lead_days_job,
+          efob: rules.lead_days_efob,
+          fob: rules.lead_days_fob,
+        }}
+      />
     </FormLayout>
   );
 }
