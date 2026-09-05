@@ -12,7 +12,17 @@ import { LineRework } from '@/components/forms/line-rework';
 import { PlanPivot } from '@/components/forms/plan-pivot';
 import { ApprovalContextPanel } from '@/components/forms/approval-context-panel';
 import { productCodeFromLineLabel, type ApprovalContext } from '@/lib/approval-context';
+import { FilterTable, type Column } from '@/components/filter-table';
 import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
+
+// Columns for the approval-history log (read-only decision list) → shared FilterTable.
+const LOG_COLS: Column<ApprovalLogRow>[] = [
+  { key: 'created_at', label: 'When', accessor: (r) => r.created_at, render: (r) => <span className="wf-subtle">{new Date(r.created_at).toLocaleString('en-IN')}</span> },
+  { key: 'record', label: 'Record', accessor: (r) => r.entity_label ?? `${r.entity_type} #${r.entity_id}`, render: (r) => r.entity_label ?? `${r.entity_type} #${r.entity_id}` },
+  { key: 'change', label: 'Change', accessor: (r) => STATUS_LABEL[r.to_status], render: (r) => (<>{r.from_status ? STATUS_LABEL[r.from_status] : '—'} → <strong>{STATUS_LABEL[r.to_status]}</strong></>) },
+  { key: 'actor_email', label: 'Actor', render: (r) => <span className="wf-subtle">{r.actor_email}</span> },
+  { key: 'notes', label: 'Notes', render: (r) => r.notes ?? '—' },
+];
 
 const money = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -253,53 +263,17 @@ export function ApprovalsClient({
         )}
       </div>
 
-      <div className="table-panel">
-        <div className="table-meta">
-          <h3>Approval history</h3>
-          <span>
-            {typeFilter === 'all'
-              ? `Last ${shownLog.length} decisions`
-              : `${shownLog.length} of the last ${log.length} decisions`}
-          </span>
-        </div>
-        <div className="table-scroll">
-          <table className="wide-table">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Record</th>
-                <th>Change</th>
-                <th>Actor</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shownLog.map((row) => (
-                <tr key={row.id}>
-                  <td className="wf-subtle">
-                    {new Date(row.created_at).toLocaleString('en-IN')}
-                  </td>
-                  <td>{row.entity_label ?? `${row.entity_type} #${row.entity_id}`}</td>
-                  <td>
-                    {row.from_status ? STATUS_LABEL[row.from_status] : '—'} →{' '}
-                    <strong>{STATUS_LABEL[row.to_status]}</strong>
-                  </td>
-                  <td className="wf-subtle">{row.actor_email}</td>
-                  <td>{row.notes ?? '—'}</td>
-                </tr>
-              ))}
-              {!shownLog.length && (
-                <tr>
-                  <td colSpan={5} className="wf-empty-cell">
-                    {typeFilter === 'all'
-                      ? 'No decisions recorded yet.'
-                      : 'No recent decisions of this type.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="wf-history-block">
+        <h3 className="wf-card-title">Approval history</h3>
+        <FilterTable
+          rows={shownLog}
+          columns={LOG_COLS}
+          rowKey={(r) => String(r.id)}
+          unit="decisions"
+          searchPlaceholder="Record, actor, notes…"
+          emptyText={typeFilter === 'all' ? 'No decisions recorded yet.' : 'No recent decisions of this type.'}
+          download={{ filename: 'approval-history' }}
+        />
       </div>
     </>
   );
