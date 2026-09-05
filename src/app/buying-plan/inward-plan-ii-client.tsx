@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { AlertTriangle, Download, RotateCcw, Save, Search, Trash2, X } from 'lucide-react';
 import {
   deleteInwardPlanEntry,
@@ -146,6 +147,7 @@ export function InwardPlanIiClient({
     });
   }, [entries, search, statusFilter, vendorFilter]);
 
+  const sort = useColumnSort<(typeof entries)[number]>();
   const hasFilter = Boolean(search || vendorFilter || statusFilter !== 'All');
 
   const totals = useMemo(() => {
@@ -367,11 +369,11 @@ export function InwardPlanIiClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>
+                <th {...sort.th('product_code', (e) => e.product_code)}>
                   Product code
-                  <InfoDot text="Picked from the product master via the Add-a-product search above." label="About Product code" />
+                  <InfoDot text="Picked from the product master via the Add-a-product search above." label="About Product code" /> {sort.ind('product_code')}
                 </th>
-                <th>PO no.</th>
+                <th {...sort.th('po_no', (e) => e.po_no)}>PO no. {sort.ind('po_no')}</th>
                 <th>
                   EDD
                   <InfoDot text="Expected delivery date from the PO itself (not entered here) — shows what's due this month." label="About EDD" />
@@ -380,7 +382,7 @@ export function InwardPlanIiClient({
                   PO closure
                   <InfoDot text="Date the PO was closed/completed, from the PO's own data. Blank until the PO completes." label="About PO closure date" />
                 </th>
-                <th>Vendor</th>
+                <th {...sort.th('vendor', (e) => e.vendor_name)}>Vendor {sort.ind('vendor')}</th>
                 <th className="num">Inward qty</th>
                 <th className="num">Cost/piece</th>
                 <th className="num">
@@ -392,7 +394,7 @@ export function InwardPlanIiClient({
                   MT comments
                   <InfoDot text="Management review note — editable by admins only." label="About MT comments" />
                 </th>
-                <th>Approval status</th>
+                <th {...sort.th('status', (e) => e.approval_status)}>Approval status {sort.ind('status')}</th>
                 <th className="num">
                   Actual inward qty
                   <InfoDot text="What actually arrived, filled as the month closes." label="About Actual inward qty" />
@@ -405,7 +407,7 @@ export function InwardPlanIiClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => {
+              {sort.apply(filtered).map((e) => {
                 const st = rowState(e);
                 return (
                   <EntryRow

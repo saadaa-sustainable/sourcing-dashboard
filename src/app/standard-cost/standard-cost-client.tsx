@@ -55,6 +55,7 @@ import type {
   StandardCostRateHistory,
 } from '@/lib/forms/types';
 import type { CmtpRevision } from '@/lib/standard-cost-revisions.server';
+import { useColumnSort } from '@/lib/use-column-sort';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
 
@@ -141,6 +142,7 @@ export function StandardCostClient({
     const base = mineOnly ? costs.filter((c) => myTurn(c.neg_stage)) : costs;
     return q ? base.filter((c) => c.product_code.toLowerCase().includes(q)) : base;
   }, [costs, filter, mineOnly, myTurn]);
+  const sort = useColumnSort<StandardCost>();
 
   const existingCodes = useMemo(() => new Set(costs.map((c) => c.product_code)), [costs]);
   // Codes soft-deleted from this track (upper-cased) — re-adding restores them intact.
@@ -259,18 +261,18 @@ export function StandardCostClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>{codeLabel}</th>
-                <th className="num">Proposed</th>
-                <th className="num">Target</th>
-                <th className="num input-col">{jobLabel} rate</th>
-                <th className="num input-col">{fobLabel} rate</th>
-                {!isMat && <th className="num input-col">E-FOB rate</th>}
-                <th>Stage</th>
+                <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
+                <th className="num" {...sort.th('proposed', (c) => c.proposed_cost)}>Proposed {sort.ind('proposed')}</th>
+                <th className="num" {...sort.th('target', (c) => c.target_cost)}>Target {sort.ind('target')}</th>
+                <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>{jobLabel} rate {sort.ind('job')}</th>
+                <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>{fobLabel} rate {sort.ind('fob')}</th>
+                {!isMat && <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>E-FOB rate {sort.ind('efob')}</th>}
+                <th {...sort.th('stage', (c) => c.neg_stage ?? c.status)}>Stage {sort.ind('stage')}</th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {shown.map((cost) => (
+              {sort.apply(shown).map((cost) => (
                 <Fragment key={cost.product_code}>
                   <CostRow
                     cost={cost}
