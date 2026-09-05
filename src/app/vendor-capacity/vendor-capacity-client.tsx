@@ -140,7 +140,12 @@ function EntryTab({
   const [merchant, setMerchant] = useState('');
   const [vType, setVType] = useState('');
   const [now, setNow] = useState<number | null>(null);
-  useEffect(() => setNow(Date.now()), []);
+  useEffect(() => {
+    // Client-only "now", set once after mount so the server render never disagrees
+    // on staleness (hydration-safe) — an intentional set-in-effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(Date.now());
+  }, []);
 
   const merchants = useMemo(
     () => [...new Set(vendors.map((v) => v.merchant.trim()).filter(Boolean))].sort(),
