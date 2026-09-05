@@ -40,10 +40,12 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/doq-dashboard', label: 'DOQ Dashboard', group: 'Workspace' },
   { path: '/oos-calculation', label: 'OOS Calculation', group: 'Workspace' },
-  { path: '/vendor-360', label: 'Vendor 360', group: 'Workspace' },
-  { path: '/po-360', label: 'PO 360', group: 'Workspace' },
-  { path: '/product-360', label: 'Product 360', group: 'Workspace' },
+  { path: '/vendor-360', label: 'Vendor Overview', group: 'Workspace' },
+  { path: '/po-360', label: 'PO Overview', group: 'Workspace' },
+  { path: '/product-360', label: 'Product Overview', group: 'Workspace' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },
+  // Vendor OTIF stays a reachable route (linked from Vendor Overview) but is off
+  // the main sidebar — its scoring is summarised in Vendor Overview.
   { path: '/vendor-otif', label: 'Vendor OTIF', group: 'Workspace' },
   { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
   { path: '/cost-analytics', label: 'Cost Analytics', group: 'Workspace' },

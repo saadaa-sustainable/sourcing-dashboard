@@ -13,7 +13,7 @@ export default async function Product360Page() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Product 360" active="/product-360" role="viewer">
+        <FormLayout title="Product Overview" active="/product-360" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -27,7 +27,7 @@ export default async function Product360Page() {
 
   return (
     <FormLayout
-      title="Product 360"
+      title="Product Overview"
       subtitle="One objective, one dimension — every product's availability (stockout + OOS), replenishment need and lifecycle (discontinued still on open POs) in a single one-pager (the DAM principle), instead of piecing it together across separate cards."
       active="/product-360"
       role={user.role}

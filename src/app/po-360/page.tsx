@@ -13,7 +13,7 @@ export default async function Po360Page() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="PO 360" active="/po-360" role="viewer">
+        <FormLayout title="PO Overview" active="/po-360" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -27,7 +27,7 @@ export default async function Po360Page() {
 
   return (
     <FormLayout
-      title="PO 360"
+      title="PO Overview"
       subtitle="One objective, one dimension — every open PO's financial risk, timeline compliance, closure and issuance flow in a single one-pager (the DAM principle), instead of piecing it together across separate cards."
       active="/po-360"
       role={user.role}

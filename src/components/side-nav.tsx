@@ -65,18 +65,21 @@ type NavLink = {
 // Admin-only flags live in the views registry (lib/views.ts) — canView applies
 // them together with the caller's custom-role page set.
 const WORKSPACE_LINKS: NavLink[] = [
+  // Entity one-pagers first (headline consolidated views).
+  { href: '/vendor-360', label: 'Vendor Overview', Icon: Factory },
+  { href: '/po-360', label: 'PO Overview', Icon: FileCheck },
+  { href: '/product-360', label: 'Product Overview', Icon: PackageX },
+  // Task-specific analytical views.
   { href: '/arrivals', label: 'Arrivals', Icon: PackageCheck },
   { href: '/ppm-prep', label: 'PPM Prep', Icon: CalendarClock },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
-  { href: '/vendor-360', label: 'Vendor 360', Icon: Factory },
-  { href: '/po-360', label: 'PO 360', Icon: FileCheck },
-  { href: '/product-360', label: 'Product 360', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
-  { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Handshake },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/cost-analytics', label: 'Cost Analytics', Icon: IndianRupee },
+  // Vendor OTIF scorecard is folded into Vendor Overview — reachable from there
+  // (kept as a route in lib/views.ts), so it's off the main menu to de-clutter.
 ];
 
 // Operational pages, grouped by use case (DAM nav model: chronological
