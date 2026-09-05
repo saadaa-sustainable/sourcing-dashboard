@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { Check, CircleAlert, Save } from 'lucide-react';
 import { saveProductCategory } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
@@ -39,6 +40,7 @@ export function CategoryMappingClient({
       );
     });
   }, [rows, search, missingOnly]);
+  const sort = useColumnSort<CategoryMapRow>();
 
   return (
     <>
@@ -83,15 +85,15 @@ export function CategoryMappingClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>Category</th>
-                <th>Sub-category</th>
-                <th>Source</th>
+                <th {...sort.th('product', (r) => r.product_code)}>Product {sort.ind('product')}</th>
+                <th {...sort.th('category', (r) => r.effectiveCategory)}>Category {sort.ind('category')}</th>
+                <th {...sort.th('sub', (r) => r.effectiveSubCategory)}>Sub-category {sort.ind('sub')}</th>
+                <th {...sort.th('source', (r) => (r.overrideCategory ? 'Team override' : r.effectiveCategory ? 'EasyEcom' : ''))}>Source {sort.ind('source')}</th>
                 {editable && <th>Save</th>}
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => (
+              {sort.apply(shown).map((r) => (
                 <CategoryRow
                   key={r.product_code}
                   row={r}
