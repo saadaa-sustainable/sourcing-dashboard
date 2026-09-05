@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { ChevronDown, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
 import {
   createUserLogin,
@@ -131,6 +132,7 @@ function MembersTab({
   pending: boolean;
   submit: (fd: FormData, action?: ActionFn, reloadOnOk?: boolean) => void;
 }) {
+  const sort = useColumnSort<SdUser>();
   const [draft, setDraft] = useState({
     email: '',
     full_name: '',
@@ -230,17 +232,17 @@ function MembersTab({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Email</th>
-                <th>Name</th>
-                <th>Access level</th>
+                <th {...sort.th('email', (u) => u.email)}>Email {sort.ind('email')}</th>
+                <th {...sort.th('name', (u) => u.full_name)}>Name {sort.ind('name')}</th>
+                <th {...sort.th('role', (u) => u.role)}>Access level {sort.ind('role')}</th>
                 <th>Roles (views)</th>
-                <th>Active</th>
-                <th>Last active</th>
+                <th {...sort.th('active', (u) => (u.is_active ? 1 : 0))}>Active {sort.ind('active')}</th>
+                <th {...sort.th('seen', (u) => u.last_seen_at ?? '')}>Last active {sort.ind('seen')}</th>
                 <th aria-label="Save" />
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {sort.apply(users).map((user) => (
                 <UserRow
                   key={user.email}
                   user={user}

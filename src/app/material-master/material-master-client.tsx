@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { Plus, Save } from 'lucide-react';
 import {
   addColour,
@@ -69,6 +70,7 @@ export function MaterialMasterClient({
           : true,
       );
   }, [materials, type, filter]);
+  const sort = useColumnSort<(typeof materials)[number]>();
 
   function run(action: () => Promise<{ ok: boolean; message?: string; error?: string }>) {
     setError(null);
@@ -221,17 +223,17 @@ export function MaterialMasterClient({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th>Material code</th>
-                <th>Name</th>
-                {type === 'dyed' && <th>Base fabric</th>}
-                {type === 'dyed' && <th>Colour</th>}
-                <th>UOM</th>
-                <th>Active</th>
+                <th {...sort.th('material_code', (m) => m.material_code)}>Material code {sort.ind('material_code')}</th>
+                <th {...sort.th('name', (m) => m.name)}>Name {sort.ind('name')}</th>
+                {type === 'dyed' && <th {...sort.th('base', (m) => m.base_fabric_code)}>Base fabric {sort.ind('base')}</th>}
+                {type === 'dyed' && <th {...sort.th('colour', (m) => m.colour)}>Colour {sort.ind('colour')}</th>}
+                <th {...sort.th('uom', (m) => m.default_uom)}>UOM {sort.ind('uom')}</th>
+                <th {...sort.th('active', (m) => (m.is_active ? 1 : 0))}>Active {sort.ind('active')}</th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
             <tbody>
-              {shown.map((m) => (
+              {sort.apply(shown).map((m) => (
                 <MaterialRow
                   key={m.material_code}
                   material={m}

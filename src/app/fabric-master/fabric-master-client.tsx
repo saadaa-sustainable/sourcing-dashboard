@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { Plus, Save } from 'lucide-react';
 import { addFabric, updateFabric } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
@@ -64,6 +65,7 @@ export function FabricMasterClient({
         )
       : fabrics;
   }, [fabrics, filter]);
+  const sort = useColumnSort<(typeof fabrics)[number]>();
 
   function add() {
     setError(null);
@@ -166,18 +168,22 @@ export function FabricMasterClient({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th>Fabric code</th>
+                <th {...sort.th('fabric_code', (f) => f.fabric_code)}>Fabric code {sort.ind('fabric_code')}</th>
                 {FIELDS.map(({ key, label }) => (
-                  <th key={key} className={key === 'gsm' ? 'num' : undefined}>
-                    {label}
+                  <th
+                    key={key}
+                    className={key === 'gsm' ? 'num' : undefined}
+                    {...sort.th(key, (f) => (f as Record<string, unknown>)[key] as string | number | null | undefined)}
+                  >
+                    {label} {sort.ind(key)}
                   </th>
                 ))}
-                <th>Active</th>
+                <th {...sort.th('active', (f) => (f.is_active ? 1 : 0))}>Active {sort.ind('active')}</th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
             <tbody>
-              {shown.map((fabric) => (
+              {sort.apply(shown).map((fabric) => (
                 <FabricRow
                   key={fabric.fabric_code}
                   fabric={fabric}
