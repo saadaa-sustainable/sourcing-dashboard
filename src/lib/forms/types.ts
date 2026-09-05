@@ -344,6 +344,24 @@ export type GrnDetail = {
 };
 
 /** One vendor's master record (vendor_master_data): identity, capacity model, contacts. */
+/**
+ * Raw EasyEcom vendor master (sd_ee_vendor_master) — mirrors the BigQuery
+ * `Easyecom_Saadaa_vendors` table exactly, no sheet enrichment. Every business
+ * field EasyEcom holds for a vendor; all values are text as landed.
+ */
+export type EeVendorMasterRow = {
+  vendor_code: string | null;
+  vendor_name: string | null;
+  active: string | null; // "1" / "0"
+  email: string | null;
+  address: string | null; // JSON blob { dispatch, billing }
+  paymentterm: string | null;
+  deliveryterm: string | null;
+  currency_code: string | null;
+  vendor_c_id: string | null; // EasyEcom internal vendor id
+  synced_at: string | null;
+};
+
 export type VendorMasterRow = {
   vendor_code: string;
   vendor_name: string | null;

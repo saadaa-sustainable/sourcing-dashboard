@@ -37,6 +37,7 @@ import type {
   MaterialMaster,
   EeProductMaster,
   VendorMasterRow,
+  EeVendorMasterRow,
   InwardPlanGroup,
   InwardPlanEntry,
   NpdPromotionCandidate,
@@ -1117,15 +1118,22 @@ export async function loadDoqDataset(): Promise<DoqInventoryRow[]> {
   return rows;
 }
 
-/** Vendor master (vendor_master_data) — identity + capacity model + contacts, read-only. */
-export async function loadVendorMaster(): Promise<VendorMasterRow[]> {
+/**
+ * Vendor master — the RAW EasyEcom vendor table (sd_ee_vendor_master), mirroring
+ * BigQuery `Easyecom_Saadaa_vendors` exactly. Every EasyEcom vendor field, no
+ * Google-Sheet enrichment. Read-only. (The Airbyte ingestion columns —
+ * _airbyte_*, the pk id — are intentionally not selected.)
+ */
+export async function loadVendorMaster(): Promise<EeVendorMasterRow[]> {
   const supabase = await client();
   const { data, error } = await supabase
-    .from('vendor_master_data')
-    .select('*')
+    .from('sd_ee_vendor_master')
+    .select(
+      'vendor_code, vendor_name, active, email, address, paymentterm, deliveryterm, currency_code, vendor_c_id, synced_at',
+    )
     .order('vendor_name');
-  if (error) throw new Error(`vendor_master_data: ${error.message}`);
-  return (data ?? []) as VendorMasterRow[];
+  if (error) throw new Error(`sd_ee_vendor_master: ${error.message}`);
+  return (data ?? []) as EeVendorMasterRow[];
 }
 
 /** Every product's master row + the NPD-promotion candidates, for the panel. */
