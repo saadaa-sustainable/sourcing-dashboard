@@ -349,7 +349,7 @@ export function FilterTable<T>({
             <button
               type="button"
               className="download-button"
-              title="Download the current view as a spreadsheet (CSV — opens in Excel)"
+              title="Download the rows you're seeing (as a .csv file)"
               onClick={() =>
                 downloadCsv(
                   download.filename,
@@ -358,7 +358,7 @@ export function FilterTable<T>({
                 )
               }
             >
-              <Download size={13} /> Excel
+              <Download size={13} /> Download
             </button>
           )}
           {anyFilter && (
@@ -375,8 +375,8 @@ export function FilterTable<T>({
       </div>
 
       <p className="wf-table-hint">
-        Click a column heading to sort. Type in the box under a heading to filter that
-        column. The <strong>Excel</strong> button downloads exactly what you see.
+        Click a column heading to sort. Type in the box under a heading to search that
+        column. <strong>Download</strong> saves the rows you&rsquo;re seeing.
       </p>
 
       <div className="table-panel wf-grid-panel">
