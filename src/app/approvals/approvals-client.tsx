@@ -151,7 +151,14 @@ export function ApprovalsClient({
 
       <div className="wf-queue">
         {shown.map((item) => (
-          <article key={`${item.entityType}-${item.entityId}`} className="wf-queue-card">
+          <article
+            key={`${item.entityType}-${item.entityId}`}
+            className={`wf-queue-card${
+              item.entityType === 'buying_plan' || item.entityType === 'po_approval'
+                ? ' wf-queue-card-wide'
+                : ''
+            }`}
+          >
             <div className="wf-queue-head">
               <div>
                 <h3>{item.label}</h3>

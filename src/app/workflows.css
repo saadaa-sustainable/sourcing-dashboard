@@ -356,7 +356,7 @@
 .wf-approval-bar { display: flex; flex-direction: column; gap: 8px; min-width: 230px; }
 .wf-approval-actions { display: flex; gap: 8px; }
 .wf-metric-grid { margin-bottom: 4px; }
-.wf-queue { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.wf-queue { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); align-items: start; }
 .wf-queue-card {
   display: flex;
   flex-direction: column;
@@ -365,7 +365,13 @@
   border-radius: 12px;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.08);
+  min-width: 0; /* let inner tables shrink/scroll instead of overflowing the card */
 }
+/* Cards with a wide nested table (buying-plan lines + context panel, PO detail) span
+   the full row so their columns aren't clipped into a single 330px grid track. */
+.wf-queue-card-wide { grid-column: 1 / -1; }
+/* The nested table scrolls inside the card if it's still wider than the row. */
+.wf-queue-card .wf-line-approve { max-width: 100%; overflow-x: auto; }
 .wf-queue-head { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
 .wf-queue-head h3 { margin: 0; font-size: 15px; }
 .wf-queue-head p { margin: 3px 0 0; font-size: 12px; }
