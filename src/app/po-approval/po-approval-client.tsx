@@ -534,6 +534,8 @@ export function PoApprovalClient({
 /** Reporting screen (sheet REQ rows 14-15): issued last week / to issue this week. */
 function ReportingScreen({ pos }: { pos: PoApproval[] }) {
   const { issued, toIssue } = useMemo(() => {
+    // "Last 7 days" is measured from render time — an intentional clock read.
+    // eslint-disable-next-line react-hooks/purity
     const weekAgo = Date.now() - 7 * 86_400_000;
     const issued = pos.filter(
       (p) => p.po_issued_at && new Date(p.po_issued_at).getTime() >= weekAgo,

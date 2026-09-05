@@ -183,6 +183,8 @@ function CountUp({ text }: { text: string }) {
 
   useEffect(() => {
     if (!m || Number.isNaN(target)) return;
+    // Reduced motion: jump straight to the final value — intentional set-in-effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (reduced) { setDisplay(target); return; }
     let raf = 0;
     let start = 0;

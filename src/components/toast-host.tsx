@@ -29,6 +29,8 @@ export function ToastHost() {
   }, [router]);
 
   useEffect(() => {
+    // Client-only mount flag (portal render guard) — intentional set-in-effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     const add = (msg: string, tone: ToastTone) => {
       const id = ++counter;
