@@ -31,7 +31,7 @@ export default async function VendorMasterPage() {
   return (
     <FormLayout
       title="Vendor Master"
-      subtitle="Every vendor's master record (vendor_master_data): identity, active status, type/merchant, the capacity model (machines, karigars, monthly capacity) and contacts."
+      subtitle="Vendor identity and EasyEcom status as fetched from GCP (vendor_master_data). Read-only."
       active="/vendor-master"
       role={user.role}
       userEmail={user.email}
