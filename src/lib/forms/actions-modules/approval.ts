@@ -22,6 +22,7 @@ import {
 } from '../cost';
 import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from '../types';
 import { INWARD_PLAN_STATUSES } from '../types';
+import { notifyReworkSlack } from '@/lib/slack';
 import {
   type ActionResult,
   type LinkResult,
@@ -138,6 +139,10 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
 
   await writeLog(entityType, String(entityId), label, from, to, user.email, notes || undefined);
 
+  if (decision === 'rework') {
+    await notifyReworkSlack({ what: label || `${entityType} #${entityId}`, by: user.email, reason: notes });
+  }
+
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
@@ -201,6 +206,12 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   if (!updated?.length) return fail('Already processed by another approver.');
 
   await writeLog(entityType, String(entityId), label, from, 'rework', user.email, summary);
+  await notifyReworkSlack({
+    what: label || `${entityType} #${entityId}`,
+    by: user.email,
+    reason: summary,
+    scope: `${decisions.length} lines`,
+  });
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   revalidatePath('/po-approval');
@@ -245,4 +256,4 @@ async function decideReceivablePlanBulk(
   );
 }
 
-/** Bulk-submit the weekly receivable inputs (all drafts) for approval. */
+/** Bulk-submit the weekly receivable inputs (all drafts) for approval. */

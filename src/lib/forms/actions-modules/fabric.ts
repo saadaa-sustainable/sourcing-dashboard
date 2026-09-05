@@ -7,6 +7,7 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
+import { notifyFabricRateSlack } from '@/lib/slack';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import {
@@ -195,6 +196,16 @@ export async function submitFabricRate(formData: FormData): Promise<ActionResult
   );
   if (error) return fail(`Could not record the submission: ${error.message}`);
 
+  // Best-effort Slack confirm (no-op until the ops/feedback webhook env var is set).
+  await notifyFabricRateSlack({
+    fabricCode: fabric_code,
+    noChange,
+    greyRate,
+    finishedRate,
+    by: user.email,
+    month,
+  });
+
   revalidatePath('/fabric-cost');
   revalidatePath('/standard-cost');
   return done(
@@ -207,4 +218,4 @@ export async function submitFabricRate(formData: FormData): Promise<ActionResult
 /* ================================================================== */
 /* Material master — one code list for raw / dyed / trim + colours     */
 /* ================================================================== */
-
+
