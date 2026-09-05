@@ -6,6 +6,7 @@ import { signOut } from '@/lib/auth-actions';
 import { ROLE_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/forms/approval';
 import { canView } from '@/lib/views';
 import { FeatureBadgeLive } from '@/components/feature-badge-live';
+import { ReportButton } from '@/components/forms/report-button';
 import type { SdRole, SdStatus } from '@/lib/forms/types';
 
 export function FormLayout({
@@ -83,6 +84,7 @@ export function FormLayout({
           </div>
         </div>
       </main>
+      <ReportButton />
     </div>
   );
 }

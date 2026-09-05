@@ -49,6 +49,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/vendor-otif', label: 'Vendor OTIF', group: 'Workspace' },
   { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
   { path: '/cost-analytics', label: 'Cost Analytics', group: 'Workspace' },
+  { path: '/feedback', label: 'Feedback & Issues', group: 'Workspace' },
   // Workflows — operational pages.
   { path: '/buying-plan', label: 'Buying Plan', group: 'Workflows' },
   { path: '/standard-cost', label: 'Standard Cost', group: 'Workflows' },
@@ -95,6 +96,7 @@ export function canView(
     path === '/' ||
     path === '/my-dashboard' ||
     path === '/arrivals' ||
+    path === '/feedback' ||
     path === 'tab:dashboard'
   )
     return true;
