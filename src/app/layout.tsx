@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import './workflows.css';
 import './analytics-cards.css';
@@ -9,8 +9,28 @@ import { ToastHost } from '@/components/toast-host';
 // size/weight, not typeface). We use Inter as that sans — it loads as a webfont so it
 // renders identically on Windows and Mac (the doc's "Helvetica Neue" stack would fall
 // back to Arial on Windows). JetBrains Mono is the numeric/mono slot.
-const inter = Inter({ variable: '--font-inter', subsets: ['latin'], display: 'swap' });
-const jetbrainsMono = JetBrains_Mono({ variable: '--font-jetbrains-mono', subsets: ['latin'], weight: ['400', '500', '600'], display: 'swap' });
+//
+// Self-hosted (next/font/local) rather than next/font/google: fetching from Google
+// Fonts at `next build` was a hard external build-time dependency — any outage or
+// firewall between the builder and fonts.gstatic.com broke deploys. These are the
+// latin-subset VARIABLE woff2 files (one file covers the whole weight range), served
+// from our own origin. `adjustFontFallback` keeps the metric-matched fallback that
+// next/font/google gave us for free.
+const inter = localFont({
+  src: './fonts/InterVariable.woff2',
+  variable: '--font-inter',
+  display: 'swap',
+  weight: '100 900',
+  fallback: ['system-ui', 'arial'],
+  adjustFontFallback: 'Arial',
+});
+const jetbrainsMono = localFont({
+  src: './fonts/JetBrainsMono.woff2',
+  variable: '--font-jetbrains-mono',
+  display: 'swap',
+  weight: '400 600',
+  fallback: ['ui-monospace', 'monospace'],
+});
 
 export const metadata: Metadata = { title: 'SAADAA Sourcing Dashboard', description: 'Open PO, vendor, TNA, and product sourcing intelligence.' };
 
