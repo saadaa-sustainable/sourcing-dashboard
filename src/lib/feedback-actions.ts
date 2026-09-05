@@ -45,10 +45,17 @@ export async function submitFeedback(formData: FormData): Promise<ActionResult> 
   }
   const screenshot = cleanShot(formData.get('screenshot'));
 
+  const related_ref = String(formData.get('related_ref') ?? '').trim() || null;
+  const tags = String(formData.get('tags') ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
   const supabase = await createClient();
   const { data: fb, error } = await supabase
     .from('sd_feedback')
-    .insert({ kind, title, severity, page_path, context, submitted_by: user.email })
+    .insert({ kind, title, severity, page_path, context, related_ref, tags, submitted_by: user.email })
     .select('id')
     .single();
   if (error || !fb) return { ok: false, error: error?.message ?? 'Could not file the report.' };
@@ -99,6 +106,8 @@ export async function setFeedbackStatus(formData: FormData): Promise<ActionResul
   const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
   const sev = String(formData.get('severity') ?? '');
   if (SEVERITIES.includes(sev)) patch.severity = sev;
+  if (formData.has('assignee')) patch.assignee = String(formData.get('assignee') ?? '').trim() || null;
+  if (formData.has('resolution')) patch.resolution = String(formData.get('resolution') ?? '').trim() || null;
 
   const supabase = await createClient();
   const { error } = await supabase.from('sd_feedback').update(patch).eq('id', feedback_id);
@@ -106,6 +115,31 @@ export async function setFeedbackStatus(formData: FormData): Promise<ActionResul
 
   revalidatePath('/feedback');
   return { ok: true, message: `Marked ${status.replace('_', ' ')}.` };
+}
+
+/** Toggle the current user's "me too" vote on a report. */
+export async function toggleFeedbackVote(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  if (!canEdit(user.role, 'draft')) return { ok: false, error: 'No permission.' };
+  const feedback_id = Number(formData.get('feedback_id'));
+  if (!feedback_id) return { ok: false, error: 'Missing report.' };
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from('sd_feedback_vote')
+    .select('feedback_id')
+    .eq('feedback_id', feedback_id)
+    .eq('voter_email', user.email)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from('sd_feedback_vote').delete().eq('feedback_id', feedback_id).eq('voter_email', user.email);
+  } else {
+    await supabase.from('sd_feedback_vote').insert({ feedback_id, voter_email: user.email });
+  }
+  revalidatePath('/feedback');
+  return { ok: true, message: existing ? 'Vote removed.' : 'Thanks — noted.' };
 }
 
 /** Read one report's full thread (messages + screenshots) — for the expanded view. */

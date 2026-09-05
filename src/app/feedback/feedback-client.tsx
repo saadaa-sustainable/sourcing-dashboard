@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Bug, Lightbulb, HelpCircle, Paperclip, Send, Plus, ChevronDown, ImageIcon, X } from 'lucide-react';
+import { Bug, Lightbulb, HelpCircle, Paperclip, Send, Plus, ChevronDown, ImageIcon, X, ThumbsUp, Tag, Link2 } from 'lucide-react';
 import { Notice } from '@/components/forms/form-layout';
 import { emitToast } from '@/lib/toast';
 import { compressImageToDataUrl, captureContext } from '@/lib/image-compress';
@@ -11,6 +11,7 @@ import {
   replyFeedback,
   setFeedbackStatus,
   getFeedbackThread,
+  toggleFeedbackVote,
 } from '@/lib/feedback-actions';
 import {
   FEEDBACK_KIND_LABEL,
@@ -43,18 +44,28 @@ export function FeedbackClient({
   const params = useSearchParams();
   const [composing, setComposing] = useState(params.get('compose') === '1');
   const fromPath = params.get('from') || undefined;
+  const prefill = {
+    kind: (params.get('kind') as FeedbackKind | null) || undefined,
+    title: params.get('title') || undefined,
+    detail: params.get('detail') || undefined,
+  };
   const [scope, setScope] = useState<'mine' | 'all'>(isAdmin ? 'all' : 'mine');
-  const [statusFilter, setStatusFilter] = useState<FeedbackStatus | 'open' | 'all'>('open');
+  const [statusFilter, setStatusFilter] = useState<FeedbackStatus | 'open' | 'all' | 'shipped'>('open');
+  const [sortBy, setSortBy] = useState<'recent' | 'votes'>('recent');
   const [openId, setOpenId] = useState<number | null>(null);
 
   const shown = useMemo(() => {
-    return items.filter((f) => {
+    const list = items.filter((f) => {
       if (scope === 'mine' && f.submitted_by !== email) return false;
+      if (statusFilter === 'shipped') return f.status === 'resolved';
       if (statusFilter === 'open' && (f.status === 'resolved' || f.status === 'wont_fix')) return false;
       if (statusFilter !== 'open' && statusFilter !== 'all' && f.status !== statusFilter) return false;
       return true;
     });
-  }, [items, scope, statusFilter, email]);
+    return sortBy === 'votes'
+      ? [...list].sort((a, b) => b.voteCount - a.voteCount || +new Date(b.updated_at) - +new Date(a.updated_at))
+      : list;
+  }, [items, scope, statusFilter, sortBy, email]);
 
   const openCount = items.filter((f) => f.status !== 'resolved' && f.status !== 'wont_fix').length;
 
@@ -72,17 +83,21 @@ export function FeedbackClient({
             </div>
           )}
           <div className="segment fb-seg">
-            {(['open', 'all', 'new', 'in_progress', 'resolved'] as const).map((s) => (
+            {(['open', 'new', 'in_progress', 'shipped', 'all'] as const).map((s) => (
               <button key={s} className={statusFilter === s ? 'active' : ''} onClick={() => setStatusFilter(s)}>
-                {s === 'open' ? 'Open' : s === 'all' ? 'All' : FEEDBACK_STATUS_LABEL[s as FeedbackStatus]}
+                {s === 'open' ? 'Open' : s === 'all' ? 'All' : s === 'shipped' ? 'Shipped ✓' : FEEDBACK_STATUS_LABEL[s as FeedbackStatus]}
               </button>
             ))}
+          </div>
+          <div className="segment fb-seg">
+            <button className={sortBy === 'recent' ? 'active' : ''} onClick={() => setSortBy('recent')}>Recent</button>
+            <button className={sortBy === 'votes' ? 'active' : ''} onClick={() => setSortBy('votes')}>Most wanted</button>
           </div>
           <span className="wf-chip">{openCount} open</span>
         </div>
       </div>
 
-      {composing && <ComposeForm fromPath={fromPath} onDone={() => setComposing(false)} />}
+      {composing && <ComposeForm fromPath={fromPath} prefill={prefill} onDone={() => setComposing(false)} />}
 
       <div className="fb-list">
         {shown.map((f) => (
@@ -146,11 +161,21 @@ function ShotPicker({ shot, setShot }: { shot: string | null; setShot: (s: strin
   );
 }
 
-function ComposeForm({ fromPath, onDone }: { fromPath?: string; onDone: () => void }) {
-  const [kind, setKind] = useState<FeedbackKind>('bug');
+function ComposeForm({
+  fromPath,
+  prefill,
+  onDone,
+}: {
+  fromPath?: string;
+  prefill?: { kind?: FeedbackKind; title?: string; detail?: string };
+  onDone: () => void;
+}) {
+  const [kind, setKind] = useState<FeedbackKind>(prefill?.kind ?? 'bug');
   const [severity, setSeverity] = useState<FeedbackSeverity>('medium');
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
+  const [title, setTitle] = useState(prefill?.title ?? '');
+  const [body, setBody] = useState(prefill?.detail ?? '');
+  const [relatedRef, setRelatedRef] = useState('');
+  const [tags, setTags] = useState('');
   const [shot, setShot] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
@@ -162,6 +187,8 @@ function ComposeForm({ fromPath, onDone }: { fromPath?: string; onDone: () => vo
     fd.set('severity', severity);
     fd.set('title', title.trim());
     fd.set('body', body.trim());
+    fd.set('related_ref', relatedRef.trim());
+    fd.set('tags', tags.trim());
     fd.set('page_path', fromPath || (typeof window !== 'undefined' ? window.location.pathname : ''));
     fd.set('context', JSON.stringify(captureContext()));
     if (shot) fd.set('screenshot', shot);
@@ -209,6 +236,16 @@ function ComposeForm({ fromPath, onDone }: { fromPath?: string; onDone: () => vo
           placeholder="What happened, what you expected, and the steps to see it. The page you're on and your browser are attached automatically."
         />
       </label>
+      <div className="fb-compose-row">
+        <label className="fb-field fb-field-grow">
+          <span>Related record <small>(optional — a PO / product / vendor code this is about)</small></span>
+          <input value={relatedRef} onChange={(e) => setRelatedRef(e.target.value)} placeholder="e.g. FY26-27/FOB/SDKUR/AGP-014 or SDKUR" />
+        </label>
+        <label className="fb-field fb-field-grow">
+          <span>Tags <small>(optional, comma-separated)</small></span>
+          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. buying-plan, mobile, urgent" />
+        </label>
+      </div>
       <div className="fb-compose-foot">
         <ShotPicker shot={shot} setShot={setShot} />
         <div className="fb-compose-actions">
@@ -252,21 +289,36 @@ function FeedbackCard({
 
   return (
     <div className={`fb-card${open ? ' is-open' : ''}`}>
-      <button type="button" className="fb-card-head" onClick={toggle}>
-        <span className={`fb-kind fb-kind-${item.kind}`}><Icon size={15} /></span>
-        <span className="fb-card-main">
-          <span className="fb-card-title">{item.title}</span>
-          <span className="fb-card-sub">
-            {item.submitted_by ?? '—'} · {when(item.submitted_at)}
-            {item.page_path ? ` · ${item.page_path}` : ''}
-            {item.hasScreenshot && <> · <ImageIcon size={11} /></>}
-            {item.messageCount > 1 && ` · ${item.messageCount} messages`}
+      <div className="fb-card-head">
+        <button type="button" className="fb-card-expand" onClick={toggle}>
+          <span className={`fb-kind fb-kind-${item.kind}`}><Icon size={15} /></span>
+          <span className="fb-card-main">
+            <span className="fb-card-title">{item.title}</span>
+            <span className="fb-card-sub">
+              {item.submitted_by ?? '—'} · {when(item.submitted_at)}
+              {item.related_ref ? <> · <Link2 size={11} /> {item.related_ref}</> : null}
+              {item.page_path ? ` · ${item.page_path}` : ''}
+              {item.hasScreenshot ? <> · <ImageIcon size={11} /></> : null}
+              {item.messageCount > 1 ? ` · ${item.messageCount} messages` : ''}
+            </span>
+            {item.tags.length > 0 && (
+              <span className="fb-tags">
+                {item.tags.map((t) => (
+                  <span key={t} className="fb-tag"><Tag size={9} /> {t}</span>
+                ))}
+              </span>
+            )}
           </span>
-        </span>
-        <span className={`fb-sev ${SEV_TONE[item.severity]}`}>{FEEDBACK_SEVERITY_LABEL[item.severity]}</span>
-        <span className={`fb-status ${STATUS_TONE[item.status]}`}>{FEEDBACK_STATUS_LABEL[item.status]}</span>
-        <ChevronDown size={16} className="fb-chev" />
-      </button>
+          <span className={`fb-sev ${SEV_TONE[item.severity]}`}>{FEEDBACK_SEVERITY_LABEL[item.severity]}</span>
+          <span className={`fb-status ${STATUS_TONE[item.status]}`}>{FEEDBACK_STATUS_LABEL[item.status]}</span>
+          <ChevronDown size={16} className="fb-chev" />
+        </button>
+        <VoteButton item={item} />
+      </div>
+
+      {item.status === 'resolved' && item.resolution && (
+        <div className="fb-shipped">✓ Shipped — {item.resolution}</div>
+      )}
 
       {open && (
         <div className="fb-thread">
@@ -294,12 +346,40 @@ function FeedbackCard({
   );
 }
 
+function VoteButton({ item }: { item: FeedbackListItem }) {
+  const [busy, start] = useTransition();
+  function toggle() {
+    const fd = new FormData();
+    fd.set('feedback_id', String(item.id));
+    start(async () => {
+      const r = await toggleFeedbackVote(fd);
+      if (r.ok) window.location.reload();
+    });
+  }
+  return (
+    <button
+      type="button"
+      className={`fb-vote${item.votedByMe ? ' is-voted' : ''}`}
+      onClick={toggle}
+      disabled={busy}
+      title={item.votedByMe ? 'Remove your vote' : 'Me too — I want this / hit this too'}
+    >
+      <ThumbsUp size={13} /> {item.voteCount}
+    </button>
+  );
+}
+
 function StatusBar({ item }: { item: FeedbackListItem }) {
   const [busy, start] = useTransition();
+  const [assignee, setAssignee] = useState(item.assignee ?? '');
+  const [resolution, setResolution] = useState(item.resolution ?? '');
+
   function set(status: FeedbackStatus) {
     const fd = new FormData();
     fd.set('feedback_id', String(item.id));
     fd.set('status', status);
+    fd.set('assignee', assignee.trim());
+    fd.set('resolution', resolution.trim());
     start(async () => {
       const res = await setFeedbackStatus(fd);
       if (res.ok) {
@@ -310,18 +390,33 @@ function StatusBar({ item }: { item: FeedbackListItem }) {
   }
   return (
     <div className="fb-statusbar">
-      <span className="wf-subtle">Set status:</span>
-      {(Object.keys(FEEDBACK_STATUS_LABEL) as FeedbackStatus[]).map((s) => (
-        <button
-          key={s}
-          type="button"
-          className={`wf-btn wf-btn-sm ${item.status === s ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
-          disabled={busy || item.status === s}
-          onClick={() => set(s)}
-        >
-          {FEEDBACK_STATUS_LABEL[s]}
+      <div className="fb-status-row">
+        <span className="wf-subtle">Status:</span>
+        {(Object.keys(FEEDBACK_STATUS_LABEL) as FeedbackStatus[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`wf-btn wf-btn-sm ${item.status === s ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
+            disabled={busy || item.status === s}
+            onClick={() => set(s)}
+          >
+            {FEEDBACK_STATUS_LABEL[s]}
+          </button>
+        ))}
+      </div>
+      <div className="fb-status-row">
+        <label className="fb-field">
+          <span>Assignee</span>
+          <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="dev email" />
+        </label>
+        <label className="fb-field fb-field-grow">
+          <span>Resolution note <small>(shown in “Shipped ✓”)</small></span>
+          <input value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="What was done — visible to the reporter when resolved" />
+        </label>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => set(item.status)}>
+          Save note
         </button>
-      ))}
+      </div>
     </div>
   );
 }

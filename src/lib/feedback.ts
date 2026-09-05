@@ -22,12 +22,20 @@ export type FeedbackListItem = {
   severity: FeedbackSeverity;
   status: FeedbackStatus;
   page_path: string | null;
+  related_ref: string | null;
+  tags: string[];
+  assignee: string | null;
+  resolution: string | null;
   submitted_by: string | null;
   submitted_at: string;
   updated_at: string;
   messageCount: number;
   hasScreenshot: boolean;
+  voteCount: number;
+  votedByMe: boolean;
 };
+
+export const FEEDBACK_STATUS_OPEN = (s: FeedbackStatus) => s !== 'resolved' && s !== 'wont_fix';
 
 export const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = {
   bug: 'Bug / problem',

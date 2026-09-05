@@ -1461,9 +1461,22 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .fb-list { display: flex; flex-direction: column; gap: 8px; }
 .fb-card { border: 1px solid var(--line, #e7e2d2); border-radius: 12px; background: #fff; overflow: hidden; }
 .fb-card.is-open { border-color: var(--line-strong, #d8d2c2); box-shadow: 0 2px 10px rgba(0,0,0,.05); }
-.fb-card-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+.fb-card-head { display: flex; align-items: stretch; }
+.fb-card-expand { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 14px;
   background: none; border: 0; cursor: pointer; text-align: left; }
-.fb-card-head:hover { background: var(--surface-2, #faf8f2); }
+.fb-card-expand:hover { background: var(--surface-2, #faf8f2); }
+.fb-vote { display: inline-flex; align-items: center; gap: 5px; margin: 8px 12px 8px 0; padding: 4px 10px;
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--ink-3, #6b6559); background: #fff;
+  border: 1px solid var(--line-strong, #d8d2c2); border-radius: 999px; cursor: pointer; align-self: center; white-space: nowrap; }
+.fb-vote:hover { border-color: var(--accent-strong, #a8870d); }
+.fb-vote.is-voted { background: #fdf6dd; color: #8a6d0a; border-color: #e6cf6a; }
+.fb-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+.fb-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-2, #f3efe6); color: var(--ink-3, #6b6559); font-size: 10.5px; font-weight: 650; }
+.fb-shipped { margin: 0 14px 12px; padding: 8px 12px; border-radius: 9px; background: #eaf6ec; color: #1f7a34;
+  font-size: 12.5px; font-weight: 650; }
+.fb-status-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.fb-statusbar { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 4px; }
 .fb-kind { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; flex: none; }
 .fb-kind-bug { background: #fdecea; color: #c0392b; }
 .fb-kind-suggestion { background: #eaf6ec; color: #1f7a34; }

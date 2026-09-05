@@ -2,6 +2,7 @@ import { LogOut, ShieldAlert } from 'lucide-react';
 import { SideNav } from '@/components/side-nav';
 import { FormHelp } from '@/components/forms/form-help';
 import { ApprovalsBell } from '@/components/forms/approvals-bell';
+import { FeedbackBell } from '@/components/forms/feedback-bell';
 import { signOut } from '@/lib/auth-actions';
 import { ROLE_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/forms/approval';
 import { canView } from '@/lib/views';
@@ -52,6 +53,7 @@ export function FormLayout({
             </div>
             <div className="wf-head-actions">
               <FormHelp route={active} title={title} />
+              {role === 'admin' && <FeedbackBell />}
               {role === 'admin' && <ApprovalsBell />}
               <span className="wf-role">{ROLE_LABEL[role]}</span>
               {actions}
