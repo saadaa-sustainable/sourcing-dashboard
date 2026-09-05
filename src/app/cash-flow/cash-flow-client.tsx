@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { Save } from 'lucide-react';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { saveVendorTerms } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
 import type { CashFlowMonth, VendorTerm } from '@/lib/forms/types';
@@ -36,6 +37,7 @@ export function CashFlowClient({
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [showTerms, setShowTerms] = useState(false);
+  const termSort = useColumnSort<VendorTerm>();
 
   const thisMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
   // Forward-looking (this month onward) + a single "overdue" bucket for past-due.
@@ -137,13 +139,13 @@ export function CashFlowClient({
             <table className="wf-grid">
               <thead>
                 <tr>
-                  <th>Vendor</th>
-                  <th className="num input-col">Payment terms (days)</th>
+                  <th {...termSort.th('vendor', (t) => t.vendor_name || t.vendor_code)}>Vendor {termSort.ind('vendor')}</th>
+                  <th className="num input-col" {...termSort.th('days', (t) => t.payment_terms_days)}>Payment terms (days) {termSort.ind('days')}</th>
                   {editable && <th aria-label="Save" />}
                 </tr>
               </thead>
               <tbody>
-                {vendorTerms.map((t) => (
+                {termSort.apply(vendorTerms).map((t) => (
                   <TermRow
                     key={t.vendor_code}
                     term={t}

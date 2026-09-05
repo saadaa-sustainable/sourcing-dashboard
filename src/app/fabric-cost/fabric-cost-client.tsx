@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import { Calculator, Download, Save, Upload } from 'lucide-react';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { saveFabricCostBase } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Notice } from '@/components/forms/form-layout';
@@ -63,6 +64,8 @@ export function FabricCostClient({
     const q = filter.trim().toLowerCase();
     return q ? drafts.filter((d) => d.fabric_code.toLowerCase().includes(q)) : drafts;
   }, [drafts, filter]);
+  const sort = useColumnSort<Draft>();
+  const n = (v: string) => (v === '' ? null : Number(v));
 
   function set(code: string, field: keyof Draft, value: string) {
     setDrafts((cur) => cur.map((d) => (d.fabric_code === code ? { ...d, [field]: value } : d)));
@@ -199,18 +202,18 @@ export function FabricCostClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Fabric code</th>
-                <th className="num input-col wf-yarn-col">Yarn cost</th>
-                <th className="num input-col wf-yarn-col">Conversion</th>
+                <th {...sort.th('fabric_code', (d) => d.fabric_code)}>Fabric code {sort.ind('fabric_code')}</th>
+                <th className="num input-col wf-yarn-col" {...sort.th('yarn_cost', (d) => n(d.yarn_cost))}>Yarn cost {sort.ind('yarn_cost')}</th>
+                <th className="num input-col wf-yarn-col" {...sort.th('conversion_cost', (d) => n(d.conversion_cost))}>Conversion {sort.ind('conversion_cost')}</th>
                 <th className="wf-yarn-col" aria-label="Compute grey" />
-                <th className="num input-col">Grey rate</th>
-                <th className="num input-col">Processing</th>
-                <th className="num input-col">Finished cost</th>
+                <th className="num input-col" {...sort.th('grey_rate', (d) => n(d.grey_rate))}>Grey rate {sort.ind('grey_rate')}</th>
+                <th className="num input-col" {...sort.th('processing_cost', (d) => n(d.processing_cost))}>Processing {sort.ind('processing_cost')}</th>
+                <th className="num input-col" {...sort.th('finished_fabric_cost', (d) => n(d.finished_fabric_cost))}>Finished cost {sort.ind('finished_fabric_cost')}</th>
                 <th className="input-col">Notes</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((d) => (
+              {sort.apply(shown).map((d) => (
                 <tr key={d.fabric_code} className={dirtyCodes.has(d.fabric_code) ? 'wf-row-dirty' : ''}>
                   <td className="mono">{d.fabric_code}</td>
                   <td className="num input-col wf-yarn-col">
