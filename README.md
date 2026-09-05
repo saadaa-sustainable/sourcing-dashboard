@@ -10,16 +10,18 @@ Requires Node 22.13+.
 
 ```bash
 npm install
-copy .env.example .env.local
+cp .env.example .env.local   # Windows: copy .env.example .env.local
 npm run dev
 ```
 
-Without Supabase environment variables, the app uses the supplied CSV exports in `data/fixtures` so the complete UI can be reviewed locally. With both public Supabase variables configured, authentication and live RLS-protected reads are mandatory.
+Fill `.env.local` with your Supabase project's URL and publishable key (see [Supabase setup](#supabase-setup)); with both set, authentication and live RLS-protected reads are mandatory.
+
+**Fixture mode:** leaving both variables blank makes the loader (`src/lib/data.ts`) read CSV exports from `data/fixtures/`. Those exports contain **real sourcing data and are gitignored — they are not in the repo**, so a fresh clone has no fixtures. To review the UI without Supabase you must drop the CSV exports into `data/fixtures/` yourself; otherwise point the app at a Supabase project.
 
 ## Supabase setup
 
 1. Create/link a Supabase project.
-2. Apply `supabase/migrations/20260715101226_create_sourcing_dashboard.sql` using the normal Supabase migration workflow.
+2. Apply **all** migrations in `supabase/migrations/` in filename order (the baseline `20260715101226_create_sourcing_dashboard.sql` first) via the normal Supabase migration workflow. The schema has grown well beyond the baseline — 100+ migrations add the Standard Cost, Buying Plan, PO Closure, Replenishment/DOQ, OOS, and analytics tables.
 3. Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in Vercel.
 4. Keep the service-role key out of Next.js. It belongs only in Apps Script Script Properties.
 
@@ -72,12 +74,17 @@ To run a manual refresh, select `syncAllSheets` in Apps Script and click **Run**
   KPI and vendor PO counts still count distinct `po_ref_num`, and a PO is flagged delayed if
   any of its lines is overdue.
 
-## Blocked features
+## Feature status
 
-- **Urgent Replenishment / DOQ** — waiting for daily opening inventory and sales history. Available-day calculations must exclude inventory ≤3 and count available days, not calendar days. No placeholder calculation is implemented.
-- **Product State** — waiting for Harsh’s BigQuery FSTR discontinued/ongoing feed. No placeholder state is implemented.
+> This README covers the July 2026 baseline plus the sections below; the app has
+> grown to 50+ routes and 100+ migrations since. The authoritative record of what
+> is built, deferred, or pending is the git history and the local `docs/PENDENCY.md`
+> task log (not committed — see AGENTS.md).
 
-Both appear as explicit source-pending states in Product Tracker.
+Formerly-blocked features that are **now built**:
+
+- **Urgent Replenishment / DOQ** — live at `/replenishment`, `/doq`, `/doq-dashboard`, `/oos-calculation` (ROP-based; canonical sources `saadaa_inventory_planning` + `saadaa_po_grn_mapping`). Still pending: a channel-level DOQ source and the Quantity-Sold→DOQ sales inflow (surfaced as an explicit gap where absent, not faked).
+- **Product State** — the discontinued/ongoing rollup ships via the `product_state_category_rollup` migration and drives the Product Tracker (highest-priority state per category).
 
 ## Verification
 

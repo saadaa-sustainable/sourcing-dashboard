@@ -51,3 +51,4 @@ backfill/node_modules/
 backfill/package-lock.json
 gcp-key.json
 !backfill/.env.example
+!.env.example

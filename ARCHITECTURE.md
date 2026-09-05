@@ -1,5 +1,16 @@
 # Architecture
 
+> **Scope note (2026-09-05):** This document describes the **July 2026 baseline**
+> (the original read-only reporting dashboard: 4 sheet-backed tables, one
+> `dashboard-shell` component, a handful of tabs). The app has since grown to
+> **50+ routes and 100+ migrations** — Standard Cost, Buying Plan, PO Closure,
+> Replenishment/DOQ/OOS, Vendor Capacity, analytics, custom roles, and owned
+> `sd_*` write tables with `sd_is_saadaa()` / `sd_can_write()` RLS. The sections
+> below remain accurate for the baseline data-flow and sync design, but the table
+> and route inventories are **no longer complete**. For the current picture use the
+> git history, the `supabase/migrations/` directory, and the local `docs/PENDENCY.md`
+> task log. Specific baseline claims corrected inline are marked ⓘ.
+
 ## Overview and purpose
 
 The SAADAA Sourcing Dashboard is an internal reporting tool for the sourcing team. It
@@ -37,7 +48,7 @@ public/                    Static SVG assets (Next.js starter icons)
 src/
   proxy.ts                 Next "middleware" (proxy) — refreshes the Supabase session per request
   app/                     App Router
-    layout.tsx             Root layout, fonts (Inter + Space Grotesk), metadata
+    layout.tsx             Root layout, fonts (Inter + JetBrains Mono), metadata
     page.tsx               Home: auth guard -> loadDashboardData() -> <DashboardShell>
     loading.tsx            Route-level loading fallback
     error.tsx              Route-level error boundary
@@ -48,7 +59,11 @@ src/
       google-button.tsx    Client button that starts Google OAuth
     auth/callback/route.ts OAuth callback: exchange code for session, enforce @saadaa.in
   components/
-    dashboard-shell.tsx    The entire client dashboard UI (tabs, KPIs, charts, tables, CSV export)
+    dashboard-shell.tsx    Home client dashboard UI (tabs, KPIs, charts, tables, CSV export).
+                           ⓘ Baseline: this held the whole UI. Now it is only the home
+                           dashboard; each feature (standard-cost, buying-plan, po-closure,
+                           replenishment, …) has its own route under src/app/<feature>/ with
+                           its own *-client.tsx and server module.
   lib/
     types.ts               Row types (PendingPo, VendorType, VendorMaster, TnaRecord) + derived types
     data.ts                Data loader: Supabase (paginated) or CSV fixtures fallback
@@ -64,12 +79,15 @@ src/
       proxy.ts             updateSession(): session refresh used by src/proxy.ts
 ```
 
-Note: `src/components/dashboard-shell.tsx.bak` is a stray backup and is not part of the build.
-
 ## Data model (Supabase / migrations)
 
-All business tables live in the `public` schema and are populated exclusively by the Apps
-Script sync running as the service role. Migrations are applied in filename order.
+Migrations are applied in filename order. ⓘ **Baseline vs now:** the four tables below
+are the original sheet-mirrored reporting tables, still populated exclusively by the Apps
+Script sync running as the service role and read-only to the app. Since the baseline the app
+has added many **owned `sd_*` tables** (Standard Cost, Buying Plan, PO Closure, Replenishment/
+DOQ/OOS, Vendor Capacity, analytics, dynamic links, feedback, …) that the app **does** write
+to, guarded by `sd_is_saadaa()` / `sd_can_write()` RLS rather than SELECT-only grants. See
+`supabase/migrations/` for the full, current inventory.
 
 `20260715101226_create_sourcing_dashboard.sql` (baseline schema):
 
@@ -159,11 +177,14 @@ logic so fixtures and live data behave identically.
 
 ### Dashboard tabs
 
-Dashboard, Open PO Tracker, Vendor Performance, Vendor Type, Merchant Performance, Product
-Tracker, Urgent Replenishment, Vendor Recommendation, Product Matrix View. Urgent
-Replenishment / DOQ and Product State are surfaced as explicit "source pending" states
-because their upstream feeds (daily opening inventory + sales history, and the BigQuery
-FSTR discontinued/ongoing feed) are not yet available — no placeholder math is computed.
+ⓘ **Baseline tabs** were: Dashboard, Open PO Tracker, Vendor Performance, Vendor Type,
+Merchant Performance, Product Tracker, Urgent Replenishment, Vendor Recommendation, Product
+Matrix View. This is now only the home dashboard's tab set; most features are separate
+routes. **Urgent Replenishment / DOQ and Product State are no longer "source pending" —
+they are built** (`/replenishment`, `/doq`, `/doq-dashboard`, `/oos-calculation`, and the
+`product_state_category_rollup` migration). Where a genuine upstream feed is still missing
+(e.g. the sales-quantity inflow, channel-level DOQ), the UI surfaces an explicit gap rather
+than computing a placeholder.
 
 ## Build, run, and deploy
 
@@ -190,7 +211,8 @@ Scripts (`package.json`):
 - `npm run dev` / `npm run build` / `npm start`
 - `npm run lint` — ESLint
 - `npm run typecheck` — `tsc --noEmit`
-- `npm test` — `tsx --test` over `sheet-values.test.ts` and `business-logic.test.ts`
+- `npm test` — `tsx --test` over the `src/lib/**/*.test.ts` suites (sheet-values,
+  business-logic, discontinued, approval, standard-cost, approval-context, matrix-defaults)
 
 Deployment target is Vercel; Supabase migrations are applied through the standard Supabase
 migration workflow, and the Apps Script sync is installed once in the source sheet.

@@ -7,13 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Blocked / pending upstream data
+> **Note (2026-09-05):** This changelog was maintained in detail only through the
+> v1.0.0 baseline (2026-07-21). Roughly six weeks and 100+ migrations of feature
+> work followed and are **not** itemised here. The authoritative record is the git
+> history and the local `docs/PENDENCY.md` task log. The high-level summary below
+> replaces the earlier (now inaccurate) "blocked" section.
 
-- **Urgent Replenishment / DOQ** — awaiting daily opening inventory and sales history.
-  Available-day calculations must exclude inventory ≤3 and count available days (not
-  calendar days). Surfaced as an explicit source-pending state; no placeholder is computed.
-- **Product State** — awaiting the BigQuery FSTR discontinued/ongoing feed. Surfaced as a
-  source-pending state in Product Tracker; no placeholder state is computed.
+### Added since 1.0.0 (high level — see git log for detail)
+
+- **Standard Cost** module (rate history, approval flow, EFOB/fabric cost, CMTP gating).
+- **Buying Plan** rebuild (FG + Fabric/Material + Inward Plan II tracks, category grouping,
+  time-bucketed coverage, partial line-item approval).
+- **PO Closure** (cutting register, dynamic links, surplus, SLA, compliance dashboard).
+- **Urgent Replenishment / DOQ / OOS** — now built (`/replenishment`, `/doq`,
+  `/doq-dashboard`, `/oos-calculation`), superseding the earlier "blocked" state. Still
+  pending: channel-level DOQ source and the sales-quantity inflow (shown as a gap, not faked).
+- **Product State** rollup (discontinued/ongoing, category priority) — superseding the
+  earlier "blocked" state.
+- **Vendor Capacity**, **Vendor Recommendation**, **cross-tab analytics cards**, **custom
+  roles / view-set access**, **manual data ingestion**, toasts / sync monitor, and more.
+
+### Security
+
+- Fixture mode now **fails closed in production**: a deploy missing Supabase env throws
+  instead of serving a no-login admin dashboard (`isFixtureMode()`).
+- GRN webhook capture-first mode bounded (1 MB cap + `GRN_CAPTURE_UNAUTHED` sunset switch).
 
 ## [1.0.0] - 2026-07-21
 
