@@ -349,6 +349,7 @@ export function FilterTable<T>({
             <button
               type="button"
               className="download-button"
+              title="Download the current view as a spreadsheet (CSV — opens in Excel)"
               onClick={() =>
                 downloadCsv(
                   download.filename,
@@ -357,7 +358,7 @@ export function FilterTable<T>({
                 )
               }
             >
-              <Download size={13} /> CSV
+              <Download size={13} /> Excel
             </button>
           )}
           {anyFilter && (
@@ -372,6 +373,11 @@ export function FilterTable<T>({
         </div>
         <div className="wf-chip">{fmt.format(sorted.length)} {unit}</div>
       </div>
+
+      <p className="wf-table-hint">
+        Click a column heading to sort. Type in the box under a heading to filter that
+        column. The <strong>Excel</strong> button downloads exactly what you see.
+      </p>
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
@@ -390,13 +396,17 @@ export function FilterTable<T>({
                       title={sortable ? 'Click to sort' : undefined}
                     >
                       {col.label}
-                      {active ? (sort!.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                      {sortable && (
+                        <span className={`wf-sort-ind${active ? ' is-active' : ''}`} aria-hidden="true">
+                          {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}
+                        </span>
+                      )}
                       {col.info && <InfoDot text={col.info} label={`About ${col.label}`} />}
                     </th>
                   );
                 })}
               </tr>
-              <tr>
+              <tr className="wf-filter-row">
                 {meta.map(({ col, mode, options }) => (
                   <th key={col.key} style={{ padding: '2px 6px' }}>
                     {mode === 'none' ? null : mode === 'select' ? (
