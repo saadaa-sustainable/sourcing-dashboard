@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { currentUser } from '@/lib/forms/queries';
 import { canEdit } from '@/lib/forms/approval';
+import { notifyFeedbackSlack } from '@/lib/slack';
 import type { ActionResult } from '@/lib/forms/actions';
 import type { FeedbackMessage, FeedbackStatus } from '@/lib/feedback';
 
@@ -65,6 +66,19 @@ export async function submitFeedback(formData: FormData): Promise<ActionResult> 
     .insert({ feedback_id: fb.id, author_email: user.email, body, screenshot });
   if (msgErr) return { ok: false, error: msgErr.message };
 
+  // Best-effort Slack ping to the developer (no-op until the webhook env var is set).
+  await notifyFeedbackSlack({
+    event: 'new',
+    kind,
+    severity,
+    title,
+    body,
+    reporter: user.email,
+    pagePath: page_path,
+    relatedRef: related_ref,
+    hasScreenshot: Boolean(screenshot),
+  });
+
   revalidatePath('/feedback');
   return { ok: true, message: 'Thanks — your report was sent to the developer.', id: fb.id as number };
 }
@@ -88,6 +102,24 @@ export async function replyFeedback(formData: FormData): Promise<ActionResult> {
   if (error) return { ok: false, error: error.message };
   // Bump the parent so it re-sorts to the top of the inbox.
   await supabase.from('sd_feedback').update({ updated_at: new Date().toISOString() }).eq('id', feedback_id);
+
+  // Ping the developer on a REPORTER reply (a follow-up needing attention). The
+  // developer's own replies don't ping (they're the one being notified).
+  if (user.role !== 'admin') {
+    const { data: parent } = await supabase
+      .from('sd_feedback')
+      .select('kind, title')
+      .eq('id', feedback_id)
+      .maybeSingle();
+    await notifyFeedbackSlack({
+      event: 'reply',
+      kind: (parent?.kind as string) ?? 'bug',
+      title: (parent?.title as string) ?? `Report #${feedback_id}`,
+      body,
+      reporter: user.email,
+      hasScreenshot: Boolean(screenshot),
+    });
+  }
 
   revalidatePath('/feedback');
   return { ok: true, message: 'Reply added.' };
