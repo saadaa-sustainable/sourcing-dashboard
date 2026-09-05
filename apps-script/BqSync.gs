@@ -645,8 +645,47 @@ const BqSync_ = (function () {
   // replace all rows each run so sd_ee_vendor_master mirrors the source, same
   // delete+insert pattern as adjustments(). SELECT * lands whatever columns exist;
   // sd_ee_vendor_master's columns match runQuery()'s lowercased field names.
+  // Full vendor record — EVERY EasyEcom field, not just the 9 Airbyte normalized
+  // into `Easyecom_Saadaa_vendors`. The rest (contact person, phone, PAN, GSTIN,
+  // MSME, DL, FSSAI, prep/transit days, tokens) live only in the raw _airbyte_data
+  // JSON, so read that and JSON_VALUE every field. Deduped to the latest emission
+  // per vendor. Column names match sd_ee_vendor_master. address stays a JSON blob.
   function eeVendorMaster() {
-    const rows = runQuery(`SELECT * FROM ${DATASET}Easyecom_Saadaa_vendors\``);
+    const rows = runQuery(`
+      WITH latest AS (
+        SELECT _airbyte_data,
+          ROW_NUMBER() OVER (PARTITION BY JSON_VALUE(_airbyte_data, '$.vendor_c_id')
+                             ORDER BY _airbyte_emitted_at DESC) AS rn
+        FROM ${DATASET}_airbyte_raw_Easyecom_Saadaa_vendors\`
+      )
+      SELECT
+        JSON_VALUE(_airbyte_data, '$.vendor_code')                AS vendor_code,
+        JSON_VALUE(_airbyte_data, '$.vendor_name')                AS vendor_name,
+        JSON_VALUE(_airbyte_data, '$.active')                     AS active,
+        JSON_VALUE(_airbyte_data, '$.email')                      AS email,
+        JSON_QUERY(_airbyte_data, '$.address')                    AS address,
+        JSON_VALUE(_airbyte_data, '$.paymentTerm')                AS paymentterm,
+        JSON_VALUE(_airbyte_data, '$.deliveryTerm')               AS deliveryterm,
+        JSON_VALUE(_airbyte_data, '$.currency_code')              AS currency_code,
+        JSON_VALUE(_airbyte_data, '$.vendor_c_id')                AS vendor_c_id,
+        JSON_VALUE(_airbyte_data, '$.firstname')                  AS firstname,
+        JSON_VALUE(_airbyte_data, '$.lastname')                   AS lastname,
+        JSON_VALUE(_airbyte_data, '$.contact_number')             AS contact_number,
+        JSON_VALUE(_airbyte_data, '$.pan')                        AS pan,
+        JSON_VALUE(_airbyte_data, '$.tax_identification_number')  AS tax_identification_number,
+        JSON_VALUE(_airbyte_data, '$.msme_number')                AS msme_number,
+        JSON_VALUE(_airbyte_data, '$.unregisteredVendor')         AS unregistered_vendor,
+        JSON_VALUE(_airbyte_data, '$.vendor_token')               AS vendor_token,
+        JSON_VALUE(_airbyte_data, '$.api_token')                  AS api_token,
+        JSON_VALUE(_airbyte_data, '$.dl_number')                  AS dl_number,
+        JSON_VALUE(_airbyte_data, '$.dl_expiry')                  AS dl_expiry,
+        JSON_VALUE(_airbyte_data, '$.fssai_number')               AS fssai_number,
+        JSON_VALUE(_airbyte_data, '$.fssai_expiry')               AS fssai_expiry,
+        JSON_VALUE(_airbyte_data, '$.freight_forwarding_days')    AS freight_forwarding_days,
+        JSON_VALUE(_airbyte_data, '$.prep_days')                  AS prep_days,
+        JSON_VALUE(_airbyte_data, '$.shipment_Intransit_days')    AS shipment_intransit_days,
+        JSON_VALUE(_airbyte_data, '$.warehouse_checkin_time')     AS warehouse_checkin_time
+      FROM latest WHERE rn = 1 AND JSON_VALUE(_airbyte_data, '$.vendor_code') IS NOT NULL`);
     const synced_at = new Date().toISOString();
     for (const r of rows) r.synced_at = synced_at;
     supa('delete', 'sd_ee_vendor_master?synced_at=gte.1970-01-01T00:00:00Z');

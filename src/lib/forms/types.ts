@@ -359,6 +359,24 @@ export type EeVendorMasterRow = {
   deliveryterm: string | null;
   currency_code: string | null;
   vendor_c_id: string | null; // EasyEcom internal vendor id
+  // Fields that live only in the raw EasyEcom payload (not the normalized table):
+  firstname: string | null;
+  lastname: string | null;
+  contact_number: string | null;
+  pan: string | null;
+  tax_identification_number: string | null; // GSTIN
+  msme_number: string | null;
+  unregistered_vendor: string | null; // "1"/"0"/"true"/"false"
+  vendor_token: string | null;
+  api_token: string | null;
+  dl_number: string | null;
+  dl_expiry: string | null;
+  fssai_number: string | null;
+  fssai_expiry: string | null;
+  freight_forwarding_days: string | null;
+  prep_days: string | null;
+  shipment_intransit_days: string | null;
+  warehouse_checkin_time: string | null;
   synced_at: string | null;
 };
 

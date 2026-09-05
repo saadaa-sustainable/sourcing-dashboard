@@ -59,10 +59,33 @@ const COLS: Column<EeVendorMasterRow>[] = [
     },
   },
   { key: 'vendor_c_id', label: 'EasyEcom ID', kind: 'mono', info: "EasyEcom's internal vendor id (vendor_c_id)." },
+  {
+    key: 'contact_person',
+    label: 'Contact Person',
+    kind: 'text',
+    accessor: (r) => [r.firstname, r.lastname].map((x) => (x ?? '').trim()).filter(Boolean).join(' '),
+    info: 'EasyEcom firstname + lastname.',
+  },
+  { key: 'contact_number', label: 'Contact No.', kind: 'text', accessor: (r) => r.contact_number ?? '' },
   { key: 'email', label: 'Email', kind: 'text' },
+  { key: 'pan', label: 'PAN', kind: 'mono', accessor: (r) => r.pan ?? '' },
+  { key: 'tax_identification_number', label: 'GSTIN', kind: 'mono', accessor: (r) => r.tax_identification_number ?? '', info: 'Tax identification number (GSTIN).' },
+  { key: 'msme_number', label: 'MSME / Udyam', kind: 'text', accessor: (r) => r.msme_number ?? '' },
   { key: 'paymentterm', label: 'Payment Term', kind: 'text', filter: 'select' },
   { key: 'deliveryterm', label: 'Delivery Term', kind: 'text', filter: 'select' },
   { key: 'currency_code', label: 'Currency', kind: 'text', filter: 'select' },
+  {
+    key: 'unregistered_vendor',
+    label: 'Unregistered',
+    kind: 'text',
+    filter: 'select',
+    accessor: (r) => {
+      const v = (r.unregistered_vendor ?? '').toLowerCase();
+      if (v === '' ) return '';
+      return v === '1' || v === 'true' ? 'Yes' : 'No';
+    },
+    info: "EasyEcom's unregistered-vendor flag (no GST registration).",
+  },
   {
     key: 'address',
     label: 'Address',
@@ -73,6 +96,16 @@ const COLS: Column<EeVendorMasterRow>[] = [
       return a ? <span>{a}</span> : <span className="wf-subtle">—</span>;
     },
   },
+  { key: 'dl_number', label: 'DL No.', kind: 'text', accessor: (r) => r.dl_number ?? '', info: 'Drug licence number (where applicable).' },
+  { key: 'dl_expiry', label: 'DL Expiry', kind: 'text', accessor: (r) => r.dl_expiry ?? '' },
+  { key: 'fssai_number', label: 'FSSAI No.', kind: 'text', accessor: (r) => r.fssai_number ?? '' },
+  { key: 'fssai_expiry', label: 'FSSAI Expiry', kind: 'text', accessor: (r) => r.fssai_expiry ?? '' },
+  { key: 'freight_forwarding_days', label: 'Freight Fwd Days', kind: 'text', accessor: (r) => r.freight_forwarding_days ?? '' },
+  { key: 'prep_days', label: 'Prep Days', kind: 'text', accessor: (r) => r.prep_days ?? '' },
+  { key: 'shipment_intransit_days', label: 'In-Transit Days', kind: 'text', accessor: (r) => r.shipment_intransit_days ?? '' },
+  { key: 'warehouse_checkin_time', label: 'WH Check-in', kind: 'text', accessor: (r) => r.warehouse_checkin_time ?? '' },
+  { key: 'vendor_token', label: 'Vendor Token', kind: 'mono', accessor: (r) => r.vendor_token ?? '' },
+  { key: 'api_token', label: 'API Token', kind: 'mono', accessor: (r) => r.api_token ?? '' },
   { key: 'synced_at', label: 'Synced', kind: 'text', accessor: (r) => date(r.synced_at), info: 'When this row was last pulled from GCP.' },
 ];
 

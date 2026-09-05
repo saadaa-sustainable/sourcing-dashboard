@@ -1129,11 +1129,14 @@ export async function loadVendorMaster(): Promise<EeVendorMasterRow[]> {
   const { data, error } = await supabase
     .from('sd_ee_vendor_master')
     .select(
-      'vendor_code, vendor_name, active, email, address, paymentterm, deliveryterm, currency_code, vendor_c_id, synced_at',
+      'vendor_code, vendor_name, active, email, address, paymentterm, deliveryterm, currency_code, vendor_c_id, ' +
+        'firstname, lastname, contact_number, pan, tax_identification_number, msme_number, unregistered_vendor, ' +
+        'vendor_token, api_token, dl_number, dl_expiry, fssai_number, fssai_expiry, freight_forwarding_days, ' +
+        'prep_days, shipment_intransit_days, warehouse_checkin_time, synced_at',
     )
     .order('vendor_name');
   if (error) throw new Error(`sd_ee_vendor_master: ${error.message}`);
-  return (data ?? []) as EeVendorMasterRow[];
+  return (data ?? []) as unknown as EeVendorMasterRow[];
 }
 
 /** Every product's master row + the NPD-promotion candidates, for the panel. */
