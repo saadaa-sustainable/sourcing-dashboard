@@ -9,6 +9,7 @@ import {
   saveAnalyticsRule,
 } from '@/lib/forms/actions';
 import { canEdit } from '@/lib/forms/approval';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { VENDOR_TYPE_MULTIPLIER, normaliseVendorType } from '@/lib/business-logic';
@@ -183,6 +184,7 @@ function EntryTab({
       const bt = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
       return at - bt;
     });
+  const sort = useColumnSort<(typeof filtered)[number]>();
 
   return (
     <>
@@ -253,15 +255,15 @@ function EntryTab({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th>Vendor</th>
-                <th>
-                  Type <span className="wf-fixed-tag"><Lock size={9} /></span>
+                <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')}</th>
+                <th {...sort.th('type', (d) => d.vendor.vendor_type)}>
+                  Type <span className="wf-fixed-tag"><Lock size={9} /></span> {sort.ind('type')}
                 </th>
-                <th className="num input-col">
-                  Machines allocated <span className="wf-live-tag">LIVE</span>
+                <th className="num input-col" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>
+                  Machines allocated <span className="wf-live-tag">LIVE</span> {sort.ind('machines')}
                 </th>
-                <th className="num input-col">
-                  Karigar allocated <span className="wf-live-tag">LIVE</span>
+                <th className="num input-col" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>
+                  Karigar allocated <span className="wf-live-tag">LIVE</span> {sort.ind('karigar')}
                 </th>
                 <th className="num">Capacity / month</th>
                 <th className="num">
@@ -272,12 +274,12 @@ function EntryTab({
                 <th className="num">Available</th>
                 <th className="num">Machine util</th>
                 <th className="num">Capacity util</th>
-                <th>Last updated</th>
+                <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')}</th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(({ vendor, lastUpdated, isStale }) => (
+              {sort.apply(filtered).map(({ vendor, lastUpdated, isStale }) => (
                 <CapacityRow
                   key={vendor.vendor_code}
                   vendor={vendor}

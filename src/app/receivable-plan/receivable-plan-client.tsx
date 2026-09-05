@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { Save } from 'lucide-react';
+import { useColumnSort } from '@/lib/use-column-sort';
 import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
 import type { ReceivablePlanRow } from '@/lib/forms/types';
@@ -116,6 +117,7 @@ export function ReceivablePlanClient({
     });
   }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd]);
 
+  const sort = useColumnSort<ReceivablePlanRow>();
   const oosCount = rows.filter((r) => r.oos_flag).length;
 
   // Most-recent weekly-input save across all rows — the "last updated" stamp.
@@ -210,26 +212,26 @@ export function ReceivablePlanClient({
             <table className="wide-table wf-grid">
               <thead>
                 <tr>
-                  <th>PO</th>
-                  <th>Product / colour</th>
-                  <th>Vendor</th>
-                  <th>Status</th>
-                  <th className="num">Arriving</th>
+                  <th {...sort.th('po', (r) => r.po_number || r.po_ref_num || '')}>PO {sort.ind('po')}</th>
+                  <th {...sort.th('product', (r) => r.product_code || r.product_variant)}>Product / colour {sort.ind('product')}</th>
+                  <th {...sort.th('vendor', (r) => r.vendor_name)}>Vendor {sort.ind('vendor')}</th>
+                  <th {...sort.th('status', (r) => r.product_state)}>Status {sort.ind('status')}</th>
+                  <th className="num" {...sort.th('arriving', (r) => r.arriving_qty)}>Arriving {sort.ind('arriving')}</th>
                   {SIZE_KEYS.map(([, label]) => (
                     <th key={label} className="num">{label}</th>
                   ))}
                   <th className="num">DOQ</th>
-                  <th className="num">Stock</th>
+                  <th className="num" {...sort.th('stock', (r) => r.current_stock)}>Stock {sort.ind('stock')}</th>
                   <th className="num">Sizes in stock</th>
                   <th>OOS</th>
-                  <th className="num">EDD</th>
+                  <th className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
                   <th className="input-col">Receiving week</th>
                   <th className="num input-col">Qty expected</th>
                   {editable && <th aria-label="Save" />}
                 </tr>
               </thead>
               <tbody>
-                {shown.map((row) => (
+                {sort.apply(shown).map((row) => (
                   <ReceivableRow
                     key={row.row_key}
                     row={row}
