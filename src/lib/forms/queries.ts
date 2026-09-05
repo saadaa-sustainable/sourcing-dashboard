@@ -250,12 +250,27 @@ export async function loadAnalyticsRuleRows(): Promise<AnalyticsRuleRow[]> {
  * (first dashboard load of the IST day wins, see sd_record_tna_snapshot) and
  * strictly best-effort.
  */
+// The snapshot is one row per IST day (sd_record_tna_snapshot upserts ON CONFLICT
+// (snapshot_date) DO NOTHING). Every dashboard load used to fire that write RPC even
+// though only the first load of the day changes anything. This per-instance guard
+// remembers the last IST date this warm instance recorded and skips the DB round-trip
+// entirely thereafter; the RPC's ON CONFLICT still guarantees correctness across the
+// many ephemeral instances (a cold instance simply writes once, then no-ops).
+let lastSnapshotIstDate: string | null = null;
+
+function istDateKey(): string {
+  // en-CA gives YYYY-MM-DD; Asia/Kolkata matches the RPC's snapshot_date.
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
 export async function recordTnaSnapshot(counts: {
   onTime: number;
   highRisk: number;
   overdue: number;
   openTotal: number;
 }): Promise<void> {
+  const today = istDateKey();
+  if (lastSnapshotIstDate === today) return; // already recorded today on this instance
   try {
     const supabase = await client();
     await supabase.rpc('sd_record_tna_snapshot', {
@@ -264,6 +279,7 @@ export async function recordTnaSnapshot(counts: {
       p_overdue: counts.overdue,
       p_open_total: counts.openTotal,
     });
+    lastSnapshotIstDate = today; // only mark done if the RPC didn't throw
   } catch {
     /* best-effort only */
   }

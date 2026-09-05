@@ -77,14 +77,23 @@ function mapPipelinePo(r: Record<string, unknown>): PendingPo {
  * sourcing working set). Replaces the pending_po_master sheet. Pages past the
  * PostgREST 1000-row cap with a stable sort on po_detail_id.
  */
+// Only the columns mapPipelinePo() actually reads. sd_po_dashboard is a wide GCP
+// pipeline table; `select('*')` shipped every column × every row over the wire on
+// each load. Selecting the used set keeps the payload bounded as the working set
+// (and, later, the full 64k-row history) grows. Keep in sync with mapPipelinePo().
+const PO_DASHBOARD_COLUMNS =
+  'po_detail_id,po_number,po_date,item_price,po_id,sku,product_description,' +
+  'product_id,original_qty,pending_qty,size,po_status,vendor_name,vendor_code,' +
+  'expected_delivery_date,po_ref_num,product_variant,product_code,po_type';
+
 async function fetchDashboardPos(supabase: Reader): Promise<PendingPo[]> {
   const rows: PendingPo[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase.from('sd_po_dashboard').select('*')
+    const { data, error } = await supabase.from('sd_po_dashboard').select(PO_DASHBOARD_COLUMNS)
       .order('po_detail_id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`Supabase read failed for sd_po_dashboard: ${error.message}`);
     if (!data?.length) break;
-    rows.push(...(data as Record<string, unknown>[]).map(mapPipelinePo));
+    rows.push(...(data as unknown as Record<string, unknown>[]).map(mapPipelinePo));
     if (data.length < PAGE_SIZE) break;
   }
   return rows;
