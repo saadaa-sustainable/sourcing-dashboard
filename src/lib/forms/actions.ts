@@ -1069,6 +1069,17 @@ export async function generateDynamicLink(formData: FormData): Promise<LinkResul
   if (closure?.easycom_completed_at) {
     expires = Math.min(expires, Date.parse(closure.easycom_completed_at) + 15 * 86_400_000);
   }
+  // A PO completed more than 15 days ago yields an expiry in the past — the link
+  // would be born dead. Refuse and explain rather than silently issue a useless
+  // token. (15-day post-completion window is the cutting-register sign-off SLA.)
+  if (expires <= now) {
+    return {
+      ok: false,
+      error:
+        'This PO was completed more than 15 days ago, so a link would already be expired. ' +
+        'Links are only valid for 15 days after EasyCom completion.',
+    };
+  }
   const expiresAt = new Date(expires).toISOString();
 
   const { error } = await supabase.from('sd_dynamic_links').insert({
