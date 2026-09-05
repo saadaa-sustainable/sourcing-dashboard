@@ -607,6 +607,9 @@ function DashboardTab({
         p != null && p.x >= today.getTime() - 45 * dayMs && p.x <= today.getTime() + 90 * dayMs,
     );
   const hasEddScatter = eddScatter.length > 0;
+  // Distinct vendors drive the plot height so the category (Y) labels never
+  // collide — the plot grows per vendor and scrolls inside the panel.
+  const eddVendorCount = new Set(eddScatter.map((p) => p.vendor)).size;
   // Item 3 — expected vs actual delivery volume by week, with the gap between the
   // two shaded (base = the lower line, band = |expected−actual| stacked on top).
   const eva = (expectedVsActual ?? []).map((d) => ({
@@ -859,7 +862,7 @@ function DashboardTab({
           }
         >
           {hasEddScatter ? (
-            <ResponsiveContainer>
+            <VScrollChart count={eddVendorCount} per={20} min={315}>
               <ScatterChart margin={{ left: 8, right: 26, top: 14, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
@@ -917,7 +920,7 @@ function DashboardTab({
                   ))}
                 </Scatter>
               </ScatterChart>
-            </ResponsiveContainer>
+            </VScrollChart>
           ) : (
             <Empty text="No EDDs inside the −45 to +90 day window" />
           )}
