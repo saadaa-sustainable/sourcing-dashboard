@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Download } from 'lucide-react';
+import { Download, ListFilter } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
 import { downloadCsv } from '@/lib/download';
 
@@ -224,6 +224,9 @@ export function FilterTable<T>({
   const [selFilters, setSelFilters] = useState<Record<string, string[]>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [page, setPage] = useState(0);
+  // Per-column filter boxes are OFF by default — a clean table + one Search box is
+  // less intimidating. Users who want column-by-column filtering turn it on.
+  const [showColFilters, setShowColFilters] = useState(false);
 
   // Resolve each column's filter style + dropdown options once per data/columns change.
   const meta = useMemo(
@@ -315,6 +318,9 @@ export function FilterTable<T>({
     Object.values(colFilters).some(Boolean) ||
     Object.values(selFilters).some((s) => s.length > 0) ||
     Boolean(sort);
+  const activeColCount =
+    Object.values(colFilters).filter(Boolean).length +
+    Object.values(selFilters).filter((s) => s.length > 0).length;
 
   function toggleSort(key: string) {
     setSort((cur) => {
@@ -344,6 +350,15 @@ export function FilterTable<T>({
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             />
           </label>
+          <button
+            type="button"
+            className={`wf-btn wf-btn-ghost${showColFilters || activeColCount ? ' is-active' : ''}`}
+            aria-pressed={showColFilters}
+            title="Show a filter box under each column heading"
+            onClick={() => setShowColFilters((v) => !v)}
+          >
+            <ListFilter size={13} /> Filter columns{activeColCount ? ` (${activeColCount})` : ''}
+          </button>
           {toolbarExtra}
           {download && (
             <button
@@ -375,8 +390,9 @@ export function FilterTable<T>({
       </div>
 
       <p className="wf-table-hint">
-        Click a column heading to sort. Type in the box under a heading to search that
-        column. <strong>Download</strong> saves the rows you&rsquo;re seeing.
+        Type in <strong>Search</strong> to find a word anywhere. Click a column heading to
+        sort. To narrow one column, use <strong>Filter columns</strong>.
+        <strong> Download</strong> saves the rows you&rsquo;re seeing.
       </p>
 
       <div className="table-panel wf-grid-panel">
@@ -406,6 +422,7 @@ export function FilterTable<T>({
                   );
                 })}
               </tr>
+              {showColFilters && (
               <tr className="wf-filter-row">
                 {meta.map(({ col, mode, options }) => (
                   <th key={col.key} style={{ padding: '2px 6px' }}>
@@ -426,6 +443,7 @@ export function FilterTable<T>({
                   </th>
                 ))}
               </tr>
+              )}
             </thead>
             <tbody>
               {pageRows.map((row, i) => (
