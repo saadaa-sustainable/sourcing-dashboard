@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Download, ListFilter } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
-import { downloadCsv } from '@/lib/download';
+import { downloadCsv, downloadPdf } from '@/lib/download';
 
 // A reusable read-only data table with: a global search box, a per-column filter row
 // (multi-select checkbox dropdown for low-cardinality columns, text/number-operator
@@ -216,9 +216,11 @@ export function FilterTable<T>({
   emptyText?: string;
   unit?: string;
   toolbarExtra?: ReactNode;
-  /** Adds a CSV button exporting the CURRENT view — filtered + sorted rows, all columns. */
-  download?: { filename: string };
+  /** Adds a Download (CSV) button exporting the CURRENT view — filtered + sorted rows.
+   *  Pass `pdf` to also offer a PDF of the same view (title/note for the PDF header). */
+  download?: { filename: string; pdf?: { title: string; note?: string } };
 }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [colFilters, setColFilters] = useState<Record<string, string>>({});
   const [selFilters, setSelFilters] = useState<Record<string, string[]>>({});
@@ -374,6 +376,30 @@ export function FilterTable<T>({
               }
             >
               <Download size={13} /> Download
+            </button>
+          )}
+          {download?.pdf && (
+            <button
+              type="button"
+              className="download-button"
+              disabled={pdfBusy || !sorted.length}
+              title="Download the rows you're seeing as a PDF"
+              onClick={async () => {
+                setPdfBusy(true);
+                try {
+                  await downloadPdf(
+                    download.filename,
+                    download.pdf!.title,
+                    columns.map((c) => c.label),
+                    sorted.map((r) => columns.map((c) => asText(raw(r, c)))),
+                    download.pdf!.note,
+                  );
+                } finally {
+                  setPdfBusy(false);
+                }
+              }}
+            >
+              <Download size={13} /> {pdfBusy ? 'PDF…' : 'PDF'}
             </button>
           )}
           {anyFilter && (

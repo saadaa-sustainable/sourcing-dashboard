@@ -58,6 +58,7 @@ import {
 } from "@/lib/business-logic";
 import { downloadCsv, downloadPdf, type CsvValue } from "@/lib/download";
 import { MATRIX_DEFAULT_MODE } from "@/lib/matrix-defaults";
+import { FilterTable } from "@/components/filter-table";
 import type {
   DashboardData,
   PendingPo,
@@ -2795,8 +2796,6 @@ function ProductTab({ data }: { data: DashboardData }) {
       .filter((p) => p.product_code)
       .map((r) => r.product_code ?? ""),
   );
-  const pagedProducts = usePaged(products);
-  const pagedSummary = usePaged(summary);
   return (
     <>
       <div className="filter-bar">
@@ -2879,56 +2878,20 @@ function ProductTab({ data }: { data: DashboardData }) {
               label="About Product + variant rollup"
             />
           </h3>
-          <span className="table-meta-actions">
-            <span>{products.length} rows</span>
-            <DownloadButton
-              filename="product-variant-rollup"
-              headers={[
-                "Product code",
-                "Variant",
-                "Pending qty",
-                "Pending value",
-              ]}
-              rows={products.map((row) => [
-                row.productCode,
-                row.variant,
-                row.qty,
-                Math.round(row.value),
-              ])}
-            />
-          </span>
         </div>
-        {products.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product code</th>
-                  <th>Variant</th>
-                  <th>Pending qty</th>
-                  <th>Pending value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedProducts.pageRows.map((row) => (
-                  <tr key={`${row.productCode}-${row.variant}`}>
-                    <td>{row.productCode}</td>
-                    <td>{row.variant}</td>
-                    <td>{fmt.format(row.qty)}</td>
-                    <td>{money.format(row.value)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty />
-        )}
-        <Pager
-          page={pagedProducts.page}
-          setPage={pagedProducts.setPage}
-          pageCount={pagedProducts.pageCount}
-          total={pagedProducts.total}
+        <FilterTable
+          rows={products}
+          columns={[
+            { key: "productCode", label: "Product code" },
+            { key: "variant", label: "Variant" },
+            { key: "qty", label: "Pending qty", kind: "num" },
+            { key: "value", label: "Pending value", kind: "num", render: (r) => money.format(r.value) },
+          ]}
+          rowKey={(r) => `${r.productCode}-${r.variant}`}
+          unit="rows"
+          searchPlaceholder="Product or variant…"
+          emptyText="No products match."
+          download={{ filename: "product-variant-rollup" }}
         />
       </section>
       <section className="panel table-panel">
@@ -2940,53 +2903,20 @@ function ProductTab({ data }: { data: DashboardData }) {
               label="About Product code summary"
             />
           </h3>
-          <DownloadButton
-            filename="product-code-summary"
-            headers={[
-              "Product code",
-              "Variants",
-              "Pending qty",
-              "Pending value",
-            ]}
-            rows={summary.map((row) => [
-              row.productCode,
-              row.variants.size,
-              row.qty,
-              Math.round(row.value),
-            ])}
-          />
         </div>
-        {summary.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product code</th>
-                  <th>Variants</th>
-                  <th>Pending qty</th>
-                  <th>Pending value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedSummary.pageRows.map((row) => (
-                  <tr key={row.productCode}>
-                    <td>{row.productCode}</td>
-                    <td>{row.variants.size}</td>
-                    <td>{fmt.format(row.qty)}</td>
-                    <td>{money.format(row.value)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty />
-        )}
-        <Pager
-          page={pagedSummary.page}
-          setPage={pagedSummary.setPage}
-          pageCount={pagedSummary.pageCount}
-          total={pagedSummary.total}
+        <FilterTable
+          rows={summary}
+          columns={[
+            { key: "productCode", label: "Product code" },
+            { key: "variants", label: "Variants", kind: "num", accessor: (r) => r.variants.size, render: (r) => r.variants.size },
+            { key: "qty", label: "Pending qty", kind: "num" },
+            { key: "value", label: "Pending value", kind: "num", render: (r) => money.format(r.value) },
+          ]}
+          rowKey={(r) => r.productCode}
+          unit="products"
+          searchPlaceholder="Product code…"
+          emptyText="No products match."
+          download={{ filename: "product-code-summary" }}
         />
       </section>
     </>
@@ -3038,7 +2968,6 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
     edd: row.edd,
     delayDays: row.delayDays,
   }));
-  const pagedInProcess = usePaged(inProcess365);
 
   return (
     <>
@@ -3153,47 +3082,25 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
             <InfoDot text="Every open PO line expected within the next 365 days — product, vendor, quantity, EDD and current delay." />
           </h3>
         </div>
-        {inProcess365.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Vendor</th>
-                  <th>PO</th>
-                  <th>Qty</th>
-                  <th>EDD</th>
-                  <th>Delay days</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedInProcess.pageRows.map((row, i) => (
-                  <tr key={i}>
-                    <td>{row.productCode}</td>
-                    <td>{row.vendorCode || row.vendorName}</td>
-                    <td className="mono">{row.poRef}</td>
-                    <td>{fmt.format(row.pendingQty)}</td>
-                    <td>{row.edd ?? "No EDD"}</td>
-                    <td>
-                      {row.delayDays ? (
-                        <span className="badge danger">{row.delayDays}d</span>
-                      ) : (
-                        <span className="badge success">On time</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty text="No products in process within 365 days" />
-        )}
-        <Pager
-          page={pagedInProcess.page}
-          setPage={pagedInProcess.setPage}
-          pageCount={pagedInProcess.pageCount}
-          total={pagedInProcess.total}
+        <FilterTable
+          rows={inProcess365}
+          columns={[
+            { key: "productCode", label: "Product" },
+            { key: "vendor", label: "Vendor", accessor: (r) => r.vendorCode || r.vendorName, render: (r) => r.vendorCode || r.vendorName },
+            { key: "poRef", label: "PO", kind: "mono" },
+            { key: "pendingQty", label: "Qty", kind: "num" },
+            { key: "edd", label: "EDD", accessor: (r) => r.edd ?? "", render: (r) => r.edd ?? "No EDD" },
+            {
+              key: "delayDays", label: "Delay days", kind: "num",
+              accessor: (r) => r.delayDays ?? 0,
+              render: (r) => (r.delayDays ? <span className="badge danger">{r.delayDays}d</span> : <span className="badge success">On time</span>),
+            },
+          ]}
+          rowKey={(r, i) => `${r.poRef}-${r.productCode}-${i}`}
+          unit="lines"
+          searchPlaceholder="Product, vendor, PO…"
+          emptyText="No products in process within 365 days."
+          download={{ filename: "in-process-365d" }}
         />
       </section>
     </>
