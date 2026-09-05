@@ -1,7 +1,7 @@
 'use client';
 
 import { Notice } from '@/components/forms/form-layout';
-import { InfoDot } from '@/components/info-dot';
+import { FilterTable, type Column } from '@/components/filter-table';
 import type { SyncStatusRow } from '@/lib/forms/types';
 
 const fmt = new Intl.NumberFormat('en-IN');
@@ -39,6 +39,42 @@ const BADGE: Record<Health, { text: string; bg: string; fg: string }> = {
   unknown: { text: 'Unknown', bg: '#f0ede6', fg: '#6e695e' },
 };
 
+const COLS: Column<SyncStatusRow>[] = [
+  { key: 'source', label: 'Source' },
+  {
+    key: 'fetched_from',
+    label: 'Fetched from',
+    info: 'The exact object this source pulls: BigQuery table (MAPLEMONK dataset), Google Sheet tab, or API endpoint — and the Supabase table it lands in.',
+    render: (r) => r.fetched_from ?? '—',
+  },
+  { key: 'pipeline', label: 'Pipeline' },
+  { key: 'rows', label: 'Rows', kind: 'num' },
+  {
+    key: 'last_refreshed',
+    label: 'Last refreshed',
+    // Sort chronologically on the raw timestamp; show the friendly "ago" label.
+    accessor: (r) => r.last_refreshed ?? '',
+    render: (r) => {
+      const t = ago(r.last_refreshed);
+      return <span title={t.title}>{t.label}</span>;
+    },
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    info: 'Fresh = refreshed within its expected window. Google Sheets stale after 1h; twice-daily BigQuery (GRN) after 15h; daily BigQuery / EasyEcom after 30h. Unknown = the source carries no sync timestamp.',
+    accessor: (r) => BADGE[health(r)].text,
+    render: (r) => {
+      const b = BADGE[health(r)];
+      return (
+        <span style={{ background: b.bg, color: b.fg, padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600 }}>
+          {b.text}
+        </span>
+      );
+    },
+  },
+];
+
 export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
   const stale = rows.filter((r) => health(r) === 'stale');
 
@@ -54,65 +90,15 @@ export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
         <Notice tone="ok">All data sources are fresh.</Notice>
       )}
 
-      <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wf-grid">
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>
-                  Fetched from
-                  <InfoDot text="The exact object this source pulls: BigQuery table (MAPLEMONK dataset), Google Sheet tab, or API endpoint — and the Supabase table it lands in." />
-                </th>
-                <th>Pipeline</th>
-                <th className="num">Rows</th>
-                <th>Last refreshed</th>
-                <th>
-                  Status
-                  <InfoDot text="Fresh = refreshed within its expected window. Google Sheets stale after 1h; twice-daily BigQuery (GRN) after 15h; daily BigQuery / EasyEcom after 30h. Unknown = the source carries no sync timestamp." />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const h = health(r);
-                const b = BADGE[h];
-                const t = ago(r.last_refreshed);
-                return (
-                  <tr key={r.source}>
-                    <td>{r.source}</td>
-                    <td className="wf-subtle">{r.fetched_from ?? '—'}</td>
-                    <td className="wf-subtle">{r.pipeline}</td>
-                    <td className="num">{fmt.format(r.rows)}</td>
-                    <td title={t.title}>{t.label}</td>
-                    <td>
-                      <span
-                        style={{
-                          background: b.bg,
-                          color: b.fg,
-                          padding: '2px 8px',
-                          borderRadius: 10,
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {b.text}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length && (
-                <tr>
-                  <td colSpan={6} className="wf-empty-cell">
-                    No sources reported.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <FilterTable
+        rows={rows}
+        columns={COLS}
+        rowKey={(r) => r.source}
+        unit="sources"
+        searchPlaceholder="Source, pipeline…"
+        emptyText="No sources reported."
+        download={{ filename: 'sync-health' }}
+      />
     </>
   );
 }

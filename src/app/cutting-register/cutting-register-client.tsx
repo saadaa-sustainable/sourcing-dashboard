@@ -9,6 +9,7 @@ import {
   saveCuttingRegister,
 } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
+import { FilterTable, type Column } from '@/components/filter-table';
 import type { CuttingRegister, DynamicLink, ProductBom } from '@/lib/forms/types';
 
 // product_code is encoded in po_ref_num: FY.../<TYPE>/<PRODUCT>/<VENDOR>-<SEQ>.
@@ -214,43 +215,42 @@ function ActiveLinks({ links, editable }: { links: DynamicLink[]; editable: bool
   );
 }
 
-function EntriesTable({ entries }: { entries: CuttingRegister[] }) {
-  const surplusOf = (e: CuttingRegister) =>
-    e.bom_standard_qty != null && e.actual_consumption_qty != null
-      ? Math.round((e.actual_consumption_qty - e.bom_standard_qty) * 100) / 100
-      : null;
+const surplusOf = (e: CuttingRegister) =>
+  e.bom_standard_qty != null && e.actual_consumption_qty != null
+    ? Math.round((e.actual_consumption_qty - e.bom_standard_qty) * 100) / 100
+    : null;
 
+const ENTRY_COLS: Column<CuttingRegister>[] = [
+  { key: 'po_ref_num', label: 'PO', kind: 'mono' },
+  { key: 'product_code', label: 'Product', render: (e) => e.product_code ?? '—' },
+  {
+    key: 'bom_standard_qty', label: 'BOM', kind: 'num',
+    render: (e) => (e.bom_standard_qty != null ? `${e.bom_standard_qty}${e.bom_uom ? ' ' + e.bom_uom : ''}` : <span className="wf-subtle">No BOM</span>),
+  },
+  { key: 'actual_consumption_qty', label: 'Actual', kind: 'num', render: (e) => disp(e.actual_consumption_qty) },
+  {
+    key: 'surplus', label: 'Surplus', kind: 'num',
+    accessor: (e) => surplusOf(e),
+    render: (e) => { const s = surplusOf(e); return <span className={s != null && s > 0 ? 'wf-error-text' : undefined}>{s != null ? s : '—'}</span>; },
+  },
+  { key: 'cutting_date', label: 'Cut date', accessor: (e) => e.cutting_date ?? '', render: (e) => fmtDate(e.cutting_date) },
+  { key: 'submitted_via', label: 'Via', render: (e) => (e.submitted_via === 'dynamic_link' ? 'link' : 'dashboard') },
+  { key: 'by', label: 'By', accessor: (e) => e.submitted_by_name || e.submitted_by_email || '', render: (e) => e.submitted_by_name || e.submitted_by_email || '—' },
+];
+
+function EntriesTable({ entries }: { entries: CuttingRegister[] }) {
   return (
-    <div className="table-panel wf-grid-panel">
+    <div>
       <div className="wf-card-title wf-table-head">Cutting entries</div>
-      <div className="table-scroll">
-        <table className="wf-grid">
-          <thead>
-            <tr>
-              <th>PO</th><th>Product</th><th className="num">BOM</th><th className="num">Actual</th>
-              <th className="num">Surplus</th><th>Cut date</th><th>Via</th><th>By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((e) => {
-              const s = surplusOf(e);
-              return (
-                <tr key={e.id}>
-                  <td className="mono">{e.po_ref_num}</td>
-                  <td>{e.product_code ?? '—'}</td>
-                  <td className="num">{e.bom_standard_qty != null ? `${e.bom_standard_qty}${e.bom_uom ? ' ' + e.bom_uom : ''}` : <span className="wf-subtle">No BOM</span>}</td>
-                  <td className="num">{disp(e.actual_consumption_qty)}</td>
-                  <td className={`num${s != null && s > 0 ? ' wf-error-text' : ''}`}>{s != null ? s : '—'}</td>
-                  <td>{fmtDate(e.cutting_date)}</td>
-                  <td className="wf-subtle">{e.submitted_via === 'dynamic_link' ? 'link' : 'dashboard'}</td>
-                  <td className="wf-subtle">{e.submitted_by_name || e.submitted_by_email || '—'}</td>
-                </tr>
-              );
-            })}
-            {!entries.length && <tr><td colSpan={8} className="wf-empty-cell">No cutting entries yet.</td></tr>}
-          </tbody>
-        </table>
-      </div>
+      <FilterTable
+        rows={entries}
+        columns={ENTRY_COLS}
+        rowKey={(e) => String(e.id)}
+        unit="entries"
+        searchPlaceholder="PO, product, person…"
+        emptyText="No cutting entries yet."
+        download={{ filename: 'cutting-entries' }}
+      />
     </div>
   );
 }
