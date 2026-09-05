@@ -413,6 +413,7 @@ function ChartCard({
   children,
   download,
   wide = false,
+  tall = false,
   footer,
   actions,
 }: {
@@ -422,6 +423,7 @@ function ChartCard({
   children: React.ReactNode;
   download?: { filename: string; headers: string[]; rows: CsvValue[][] };
   wide?: boolean;
+  tall?: boolean;
   footer?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
@@ -440,7 +442,7 @@ function ChartCard({
           {download && <DownloadButton {...download} />}
         </span>
       </div>
-      <div className="chart-area">{children}</div>
+      <div className={`chart-area${tall ? " tall" : ""}`}>{children}</div>
       {footer}
     </section>
   );
@@ -850,82 +852,6 @@ function DashboardTab({
       </div>
       <div className="bento-grid">
         <ChartCard
-          title="EDD schedule — by vendor & product"
-          kicker="EDD schedule"
-          info="One dot per open PO line at its expected delivery date (X), grouped by vendor (Y) and coloured by product code; dot size is pending quantity. Dots left of the dashed This-week line are overdue. Shows the −45 to +90 day window."
-          actions={
-            <span className="legend-pills">
-              <span className="legend-pill" style={{ "--pill-color": "#8a8477" } as CSSProperties}>
-                <i /> colour = product code · size = qty
-              </span>
-            </span>
-          }
-        >
-          {hasEddScatter ? (
-            <VScrollChart count={eddVendorCount} per={20} min={315}>
-              <ScatterChart margin={{ left: 8, right: 26, top: 14, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  type="number"
-                  dataKey="x"
-                  domain={["dataMin", "dataMax"]}
-                  tickFormatter={eddTick}
-                  tickLine={false}
-                  fontSize={10}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="vendor"
-                  width={110}
-                  tickLine={false}
-                  fontSize={9}
-                  interval={0}
-                />
-                <ZAxis type="number" dataKey="z" range={[30, 340]} />
-                <ReferenceLine
-                  x={today.getTime()}
-                  stroke="#161513"
-                  strokeDasharray="4 3"
-                  label={{ value: "This week", position: "top", fontSize: 9, fill: "#6e695e" }}
-                />
-                <Tooltip
-                  cursor={{ strokeDasharray: "3 3" }}
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const p = payload[0].payload as {
-                      productCode: string; vendor: string; poRef: string; z: number; edd: string;
-                    };
-                    return (
-                      <div
-                        style={{
-                          background: "#fff",
-                          border: "1px solid #e3d6bd",
-                          borderRadius: 8,
-                          padding: "7px 10px",
-                          fontSize: 11,
-                          boxShadow: "0 6px 18px rgba(22,21,19,.12)",
-                        }}
-                      >
-                        <strong>{p.productCode}</strong>
-                        <div>{p.vendor}</div>
-                        <div>PO {p.poRef}</div>
-                        <div>{fmt.format(p.z)} pcs · EDD {p.edd}</div>
-                      </div>
-                    );
-                  }}
-                />
-                <Scatter data={eddScatter} fillOpacity={0.78}>
-                  {eddScatter.map((p, i) => (
-                    <Cell key={i} fill={productColor(p.productCode)} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </VScrollChart>
-          ) : (
-            <Empty text="No EDDs inside the −45 to +90 day window" />
-          )}
-        </ChartCard>
-        <ChartCard
           title="Expected vs actual delivery"
           kicker="Delivery slippage"
           info="Weekly delivery volume from completed POs: Expected = quantity due that week (by EDD), Actual = quantity that actually completed that week. The shaded band is the gap between them — the delivery slippage. Last 12 weeks."
@@ -1330,6 +1256,87 @@ function DashboardTab({
           )}
         </section>
       </div>
+      {/* EDD scatter last: a full-width, tall panel (not a half bento cell) so every
+          vendor gets vertical room — labels never collide, date axis stays in view.
+          Removing it from the top row let Expected-vs-actual + Production pipeline
+          pair up and fill the slot that donut used to leave empty. */}
+      <ChartCard
+        tall
+        title="EDD schedule — by vendor & product"
+        kicker="EDD schedule"
+        info="One dot per open PO line at its expected delivery date (X), grouped by vendor (Y) and coloured by product code; dot size is pending quantity. Dots left of the dashed This-week line are overdue. Shows the −45 to +90 day window."
+        actions={
+          <span className="legend-pills">
+            <span className="legend-pill" style={{ "--pill-color": "#8a8477" } as CSSProperties}>
+              <i /> colour = product code · size = qty
+            </span>
+          </span>
+        }
+      >
+        {hasEddScatter ? (
+          <VScrollChart count={eddVendorCount} per={20} min={525}>
+            <ScatterChart margin={{ left: 8, right: 26, top: 14, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                type="number"
+                dataKey="x"
+                domain={["dataMin", "dataMax"]}
+                tickFormatter={eddTick}
+                tickLine={false}
+                fontSize={10}
+              />
+              <YAxis
+                type="category"
+                dataKey="vendor"
+                width={130}
+                tickLine={false}
+                fontSize={10}
+                interval={0}
+              />
+              <ZAxis type="number" dataKey="z" range={[30, 340]} />
+              <ReferenceLine
+                x={today.getTime()}
+                stroke="#161513"
+                strokeDasharray="4 3"
+                label={{ value: "This week", position: "top", fontSize: 9, fill: "#6e695e" }}
+              />
+              <Tooltip
+                cursor={{ strokeDasharray: "3 3" }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const p = payload[0].payload as {
+                    productCode: string; vendor: string; poRef: string; z: number; edd: string;
+                  };
+                  return (
+                    <div
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #e3d6bd",
+                        borderRadius: 8,
+                        padding: "7px 10px",
+                        fontSize: 11,
+                        boxShadow: "0 6px 18px rgba(22,21,19,.12)",
+                      }}
+                    >
+                      <strong>{p.productCode}</strong>
+                      <div>{p.vendor}</div>
+                      <div>PO {p.poRef}</div>
+                      <div>{fmt.format(p.z)} pcs · EDD {p.edd}</div>
+                    </div>
+                  );
+                }}
+              />
+              <Scatter data={eddScatter} fillOpacity={0.78}>
+                {eddScatter.map((p, i) => (
+                  <Cell key={i} fill={productColor(p.productCode)} />
+                ))}
+              </Scatter>
+            </ScatterChart>
+          </VScrollChart>
+        ) : (
+          <Empty text="No EDDs inside the −45 to +90 day window" />
+        )}
+      </ChartCard>
     </>
   );
 }
