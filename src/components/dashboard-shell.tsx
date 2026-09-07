@@ -73,6 +73,8 @@ import { canView } from "@/lib/views";
 import type { AnalyticsExtras, PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
 import { ApprovalsBell } from "@/components/forms/approvals-bell";
+import { FeedbackBell } from "@/components/forms/feedback-bell";
+import { ReportButton } from "@/components/forms/report-button";
 
 
 type HelpItem = { title: string; text: string; tip?: string };
@@ -3410,6 +3412,7 @@ export function DashboardShell({
             <button className="help-button" onClick={() => setInfo(true)}>
               <CircleHelp size={17} /> What do these mean?
             </button>
+            {role === 'admin' && <FeedbackBell />}
             {role === 'admin' && <ApprovalsBell />}
             {userEmail && (
               <div className="account">
@@ -3656,6 +3659,7 @@ export function DashboardShell({
           )}
         </Modal>
       )}
+      <ReportButton />
     </div>
   );
 }

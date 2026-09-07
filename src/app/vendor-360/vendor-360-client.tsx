@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { InfoDot } from '@/components/info-dot';
 import type { VendorHubData, VendorHubRow } from '@/lib/vendor-hub.server';
 
 const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -42,29 +43,29 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
       {/* Objective KPIs — the Vendor picture at a glance. */}
       <div className="ca-kpi-row">
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Active vendors</span>
+          <span className="ca-kpi-label">Active vendors <InfoDot text="Distinct vendors with at least one open (Approved) PO right now." /></span>
           <strong>{data.summary.vendors}</strong>
           <small>with open work</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Top-3 concentration</span>
+          <span className="ca-kpi-label">Top-3 concentration <InfoDot text="Share of total open PO value held by the 3 biggest vendors. Above 40% flags over-reliance on a few vendors." /></span>
           <strong className={data.summary.top3ConcentrationPct > 40 ? 'ca-over' : ''}>
             {data.summary.top3ConcentrationPct}%
           </strong>
           <small>of open buying value</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Avg OTIF · {quarters}q</span>
+          <span className="ca-kpi-label">Avg OTIF · {quarters}q <InfoDot text="Average on-time-in-full across vendors over the recent window, weighted by each vendor's number of rated (judgeable) POs." /></span>
           <strong className={otifTone(data.summary.avgOtifPct)}>{pct(data.summary.avgOtifPct)}</strong>
           <small>weighted by rated POs</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Worst delay</span>
+          <span className="ca-kpi-label">Worst delay <InfoDot text="The vendor with the highest delay rate — the share of its open POs already past their expected delivery date." /></span>
           <strong className="ca-over">{data.summary.worstDelay ? `${Math.round(data.summary.worstDelay.delayPct)}%` : '—'}</strong>
           <small>{data.summary.worstDelay?.vendorName ?? 'none'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Over capacity</span>
+          <span className="ca-kpi-label">Over capacity <InfoDot text="Count of vendors whose open order quantity exceeds their signed monthly capacity (utilisation over 100%)." /></span>
           <strong className={data.summary.overUtilised > 0 ? 'ca-over' : ''}>{data.summary.overUtilised}</strong>
           <small>vendors &gt; 100% util</small>
         </div>

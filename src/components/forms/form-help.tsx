@@ -184,6 +184,36 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Role', source: 'Access control', detail: 'Admin = full access and approves everything. Team = fills forms and approves routine items. Viewer = read-only.' },
     { field: 'Active', source: 'Access control', detail: 'Turn this off to make someone read-only without deleting them.' },
   ],
+  '/vendor-360': [
+    { field: 'What this is', source: 'Vendor hub (GCP + capacity)', detail: 'One vendor per row — every concentration, delivery-reliability, capacity and OTIF signal in a single one-pager, so you don’t piece it together across separate tabs.' },
+    { field: 'Active vendors', source: 'Automatic', formula: 'distinct vendors with an open Approved PO', detail: 'How many vendors currently carry open work.' },
+    { field: 'Top-3 concentration', source: 'Automatic', formula: 'top-3 open value ÷ total open value × 100', detail: 'Share of open buying value held by the 3 biggest vendors. Above 40% flags over-reliance.' },
+    { field: 'Avg OTIF · Nq', source: 'Completed-PO history', formula: 'Σ(vendor OTIF × rated POs) ÷ Σ rated POs', detail: 'Average on-time-in-full across vendors over the recent quarters, weighted by rated POs.' },
+    { field: 'Worst delay / Over capacity', source: 'Automatic', detail: 'The vendor with the highest delay rate, and the count of vendors booked beyond 100% of signed monthly capacity.' },
+    { field: 'Open value / Share / Open POs', source: 'Real PO data (GCP)', detail: 'Per vendor: open pending value, its share of the total, and the number of open POs.' },
+    { field: 'Delay % / OTIF / On-time / Fill', source: 'Completed-PO + TNA history', detail: 'Delivery-reliability signals: share of open POs past EDD, and the OTIF / on-time / fill rates from completed-PO history.' },
+    { field: 'Capacity/mo · Utilisation', source: 'Vendor capacity + Real PO data', formula: 'utilisation = open qty ÷ capacity/month × 100', detail: 'Signed monthly capacity and how full the vendor is against it (red over 100%).' },
+    { field: 'Fabric pool · Sort by', source: 'Workflow', detail: 'Filter to Woven / Knit, and sort the table by open value, delay %, OTIF or utilisation.' },
+  ],
+  '/product-360': [
+    { field: 'What this is', source: 'Product hub (OOS + replenishment)', detail: 'One product/variant per row with its stock health, replenishment need and lifecycle — the product picture in one place.' },
+    { field: 'In-stock rate', source: 'OOS feed (GCP)', formula: 'SKUs with sellable stock ÷ tracked SKUs × 100', detail: 'Share of tracked SKUs that currently have stock. Green at 80%+.' },
+    { field: 'Stockout gaps', source: 'Automatic', formula: 'high-demand variants with zero stock AND no open PO', detail: 'Genuinely uncovered demand, split by ABC/D class.' },
+    { field: 'Replenishment queue', source: 'Replenishment (DOQ)', formula: 'variants with ROP-30 > 0', detail: 'Colour variants that trip their 30-day reorder point, the pieces to order, and how many are already OOS.' },
+    { field: 'Discontinued on open PO', source: 'Automatic (integrity check)', detail: 'Discontinued products still on an open PO or the current plan — should read zero.' },
+    { field: 'ABC class', source: 'Automatic', detail: 'Demand-based segmentation (A highest → D lowest); filter the table by class.' },
+    { field: 'Pending qty / value · Stock · DOQ', source: 'Real PO data + OOS feed', detail: 'Per product/variant: open pending quantity and value, current stock, and days-of-quantity coverage.' },
+  ],
+  '/po-360': [
+    { field: 'What this is', source: 'PO hub (GCP + TNA + closure)', detail: 'The whole purchase-order portfolio in one view — value, risk, TNA, cost variance and closure across every open PO.' },
+    { field: 'Open POs / Open value', source: 'Real PO data (GCP)', detail: 'Count of open (Approved) POs and their total pending value.' },
+    { field: 'Capital at risk', source: 'Automatic', formula: 'open value of POs that are TNA high-risk or overdue', detail: 'The money most exposed to slippage.' },
+    { field: 'TNA on-time', source: 'TNA + form actuals', formula: 'on-track POs ÷ open POs × 100', detail: 'Share of open POs with no critical-path stage past its planned date. Green 80%+, red under 60%.' },
+    { field: 'Cost variance · mo', source: 'Standard cost + PO rates', formula: 'POs this month with written rate > approved standard', detail: 'POs issued above standard cost this month, with the margin impact.' },
+    { field: 'Closure within SLA', source: 'PO closure', formula: 'closed within SLA ÷ completed × 100', detail: 'Closure discipline against the SLA (editable in Rules Master).' },
+    { field: 'Issued this week', source: 'PO Approval', detail: 'POs issued in the last 7 days, week-over-week change, and how many are pending approval.' },
+    { field: 'Table columns', source: 'Real PO data + TNA', detail: 'Per PO: vendor, product, open value, pending qty, delay, TNA stage / status, and closure state — sortable and filterable.' },
+  ],
 };
 
 export function FormHelp({ route, title }: { route: string; title: string }) {

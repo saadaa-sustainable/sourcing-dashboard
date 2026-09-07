@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { InfoDot } from '@/components/info-dot';
 import type { AbcClass, ProductHubData, ProductHubRow } from '@/lib/product-hub.server';
 
 const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -25,24 +26,24 @@ export function Product360Client({ data }: { data: ProductHubData }) {
     <>
       <div className="ca-kpi-row">
         <div className="ca-kpi">
-          <span className="ca-kpi-label">In-stock rate</span>
+          <span className="ca-kpi-label">In-stock rate <InfoDot text="Share of tracked SKUs that currently have sellable stock (i.e. not at zero stock), from the latest OOS feed. Green at 80%+." /></span>
           <strong className={inStockRate == null ? '' : inStockRate >= 80 ? 'ca-under' : 'ca-over'}>
             {inStockRate == null ? '—' : `${inStockRate}%`}
           </strong>
           <small>{s.totalSkus != null ? `${inr.format(s.totalSkus)} SKUs · ${inr.format(s.zeroStock ?? 0)} zero-stock` : 'no OOS data'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Stockout gaps</span>
+          <span className="ca-kpi-label">Stockout gaps <InfoDot text="High-demand variants with zero stock AND no open PO covering them — genuinely uncovered demand, broken down by ABC/D class." /></span>
           <strong className={s.stockoutGaps > 0 ? 'ca-over' : 'ca-under'}>{inr.format(s.stockoutGaps)}</strong>
           <small>no stock &amp; no open PO · A {s.byClass.A} / B {s.byClass.B} / C {s.byClass.C} / D {s.byClass.D}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Replenishment queue</span>
+          <span className="ca-kpi-label">Replenishment queue <InfoDot text="Colour variants whose 30-day reorder point (ROP-30) is tripped — the pieces to order now, and how many are already out of stock." /></span>
           <strong>{s.replenishmentVariants != null ? inr.format(s.replenishmentVariants) : '—'}</strong>
           <small>{s.rop30Qty != null ? `${inr.format(s.rop30Qty)} pcs ROP-30` : 'no data'}{s.oosVariants != null ? ` · ${inr.format(s.oosVariants)} OOS` : ''}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Discontinued on open PO</span>
+          <span className="ca-kpi-label">Discontinued on open PO <InfoDot text="Products marked Discontinued in the master that still sit on an open PO or the current buying plan — a data-integrity check that should read zero." /></span>
           <strong className={(s.discontinuedOpenPoCount ?? 0) > 0 ? 'ca-over' : ''}>
             {s.discontinuedOpenPoCount != null ? inr.format(s.discontinuedOpenPoCount) : '—'}
           </strong>
@@ -53,7 +54,7 @@ export function Product360Client({ data }: { data: ProductHubData }) {
         </div>
         {s.dataAsOf && (
           <div className="ca-kpi">
-            <span className="ca-kpi-label">Stock data as of</span>
+            <span className="ca-kpi-label">Stock data as of <InfoDot text="The snapshot date of the inventory/OOS feed these stock figures are computed from." /></span>
             <strong style={{ fontSize: 14 }}>{s.dataAsOf}</strong>
             <small>OOS calculation feed</small>
           </div>

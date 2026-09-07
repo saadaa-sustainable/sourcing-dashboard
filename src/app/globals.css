@@ -860,13 +860,21 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 
 /* My Dashboard role tabs (DAM style): plain labels in a single scrollable row,
    the active one a solid black pill, thin scrollbar underneath. */
+/* My Dashboard view switcher — the house .segment pill language (grey track,
+   purple-on-white active), so it matches the segment controls used across the app
+   instead of a one-off black pill. Keeps horizontal scroll + the count badge. */
 .role-tabs {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-bottom: 18px;
-  padding-bottom: 6px;
+  padding: 4px;
+  max-width: 100%;
   overflow-x: auto;
+  background: rgba(231, 233, 243, 0.85);
+  border: 1px solid rgba(34, 40, 74, 0.045);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 3px rgba(28, 32, 57, 0.035);
   scrollbar-width: thin;
   scrollbar-color: var(--color-ecru-300) transparent;
 }
@@ -874,18 +882,23 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
 .role-tabs::-webkit-scrollbar-thumb { background: var(--color-ecru-300); border-radius: 999px; }
 .role-tabs button {
   flex: none;
-  padding: 9px 16px;
+  padding: 8px 16px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 9px;
   background: transparent;
-  color: var(--ink-2);
-  font-size: 12.5px;
-  font-weight: 600;
+  color: #747c91;
+  font-size: 12px;
+  font-weight: 580;
   white-space: nowrap;
-  transition: color .15s ease, background .15s ease;
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease;
 }
-.role-tabs button:hover { color: var(--ink-1); background: rgba(240, 198, 30, .12); }
-.role-tabs button.active { color: #fff; background: var(--ink-1); box-shadow: 0 6px 16px rgba(22, 21, 19, .2); }
+.role-tabs button:hover { color: var(--purple-dark); }
+.role-tabs button.active {
+  color: var(--purple-dark);
+  font-weight: 690;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(34, 40, 74, .09), inset 0 -2px rgba(109, 93, 252, .08);
+}
 .role-tab-count {
   display: inline-flex;
   align-items: center;
@@ -900,7 +913,6 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
   font-size: 10px;
   font-weight: 700;
 }
-.role-tabs button.active .role-tab-count { background: rgba(255, 255, 255, .28); }
 
 /* My Dashboard — persistent Rework notice (un-dismissable) */
 .wf-rework-notice {

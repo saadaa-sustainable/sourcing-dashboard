@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { InfoDot } from '@/components/info-dot';
 import type { PoHubData, PoHubRow } from '@/lib/po-hub.server';
 import type { InternalStatus } from '@/lib/types';
 
@@ -29,36 +30,36 @@ export function Po360Client({ data }: { data: PoHubData }) {
       {/* Objective KPIs — the PO portfolio at a glance across every facet. */}
       <div className="ca-kpi-row">
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Open POs</span>
+          <span className="ca-kpi-label">Open POs <InfoDot text="Count of open (Approved) purchase orders, and their total open value (pending qty × item price)." /></span>
           <strong>{inr.format(s.openPos)}</strong>
           <small>{money(s.openValue)} open value</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Capital at risk</span>
+          <span className="ca-kpi-label">Capital at risk <InfoDot text="Open PO value tied up in POs that are TNA high-risk or already overdue — the money most exposed to slippage." /></span>
           <strong className={s.atRiskValue > 0 ? 'ca-over' : ''}>{money(s.atRiskValue)}</strong>
           <small>{s.atRiskCount} high-risk / overdue POs</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">TNA on-time</span>
+          <span className="ca-kpi-label">TNA on-time <InfoDot text="Share of open POs on track (no critical-path TNA stage past its planned date). Green 80%+, red under 60%." /></span>
           <strong className={s.tnaOnTimePct >= 80 ? 'ca-under' : s.tnaOnTimePct >= 60 ? '' : 'ca-over'}>
             {s.tnaOnTimePct}%
           </strong>
           <small>{s.onTrack} on track · {s.highRisk} risk · {s.overdue} overdue</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Cost variance · mo</span>
+          <span className="ca-kpi-label">Cost variance · mo <InfoDot text="POs issued this month whose written rate exceeded the approved standard cost, with the total margin impact." /></span>
           <strong className={s.costVarianceCount > 0 ? 'ca-over' : ''}>{s.costVarianceCount}</strong>
           <small>{s.costVarianceImpact ? `${money(s.costVarianceImpact)} impact` : 'none above standard'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Closure within SLA</span>
+          <span className="ca-kpi-label">Closure within SLA <InfoDot text="Share of completed POs closed within the closure SLA (editable in Rules Master). Green at 80%+." /></span>
           <strong className={s.closureWithinSlaPct == null ? '' : s.closureWithinSlaPct >= 80 ? 'ca-under' : 'ca-over'}>
             {s.closureWithinSlaPct == null ? '—' : `${s.closureWithinSlaPct}%`}
           </strong>
           <small>{s.closureSlaDays != null ? `${s.closureSlaDays}-day SLA` : 'no closures yet'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Issued this week</span>
+          <span className="ca-kpi-label">Issued this week <InfoDot text="POs issued to EasyCom in the last 7 days, the week-over-week change, and how many are still pending approval." /></span>
           <strong>{inr.format(s.issuedThisWeek)}</strong>
           <small>
             {s.issuedDeltaPct == null ? 'vs last week' : `${s.issuedDeltaPct > 0 ? '+' : ''}${s.issuedDeltaPct}% WoW`}
