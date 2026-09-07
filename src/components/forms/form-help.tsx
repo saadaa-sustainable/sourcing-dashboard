@@ -214,6 +214,105 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Issued this week', source: 'PO Approval', detail: 'POs issued in the last 7 days, week-over-week change, and how many are pending approval.' },
     { field: 'Table columns', source: 'Real PO data + TNA', detail: 'Per PO: vendor, product, open value, pending qty, delay, TNA stage / status, and closure state — sortable and filterable.' },
   ],
+  '/vendor-master': [
+    { field: 'What this is', source: 'EasyEcom (GCP)', detail: 'The EasyEcom vendor master exactly as GCP holds it (Easyecom_Saadaa_vendors) — every field EasyEcom returns, no Google-Sheet data. Read-only, refreshed twice daily.' },
+    { field: 'Vendor code / name / EasyEcom ID', source: 'EasyEcom (GCP)', detail: 'The vendor’s code, name and internal EasyEcom id (vendor_c_id).' },
+    { field: 'Active', source: 'EasyEcom (GCP)', formula: '1 = active, 0 = inactive', detail: 'EasyEcom’s active flag for the vendor.' },
+    { field: 'Contact person / no. / email', source: 'EasyEcom (GCP)', detail: 'The vendor contact — first + last name, phone and email as held in EasyEcom (blank where EasyEcom has none).' },
+    { field: 'PAN / GSTIN / MSME', source: 'EasyEcom (GCP)', detail: 'Statutory identifiers: PAN, tax identification number (GSTIN) and MSME/Udyam registration.' },
+    { field: 'Payment / Delivery term · Currency', source: 'EasyEcom (GCP)', detail: 'The agreed payment term, delivery term and currency for the vendor.' },
+    { field: 'Address', source: 'EasyEcom (GCP)', detail: 'The vendor’s dispatch address, parsed from the EasyEcom address record.' },
+    { field: 'Note on capacity/type', source: 'Not from GCP', detail: 'Vendor Type, capacity model and machines/karigars are NOT in EasyEcom — they live on the Google Sheet and drive Vendor Performance / Vendor Capacity instead.' },
+  ],
+  '/material-master': [
+    { field: 'Material code', source: 'You enter (manual)', detail: 'Entered by hand and duplicate-checked on save — the code that the Buying Plan material track and Material Standard Cost pick from.' },
+    { field: 'Material type', source: 'You choose', detail: 'Raw / Dyed-finished / Trim — groups the material and drives where it appears in the material buying plan.' },
+    { field: 'Attributes', source: 'You enter', detail: 'The descriptive fields for the material (composition / spec, colour, etc.), from the material team’s format.' },
+    { field: 'Active', source: 'You set', detail: 'Turn off to hide a material from the picker without deleting its record.' },
+  ],
+  '/vendor-otif': [
+    { field: 'What this is', source: 'Completed-PO + GRN history', detail: 'On-Time-In-Full per vendor: On-Time and In-Full are tracked separately, then combined as a joint pass/fail per PO.' },
+    { field: 'On-Time', source: 'Automatic', formula: 'GRN receipt date ≤ EDD', detail: 'Whether the PO’s goods were received on or before the expected delivery date.' },
+    { field: 'In-Full', source: 'Automatic', formula: 'received qty ≥ ordered qty (within tolerance)', detail: 'Whether the full ordered quantity actually arrived.' },
+    { field: 'OTIF', source: 'Automatic', formula: 'On-Time AND In-Full', detail: 'A PO passes OTIF only when it is both on time and in full. The vendor’s OTIF % is passing POs ÷ rated POs.' },
+    { field: 'Critical-Path note', source: 'Open PO Tracker', detail: 'TNA-stage (critical-path) compliance is a different lens and lives on the Open PO Tracker, not here.' },
+  ],
+  '/cost-analytics': [
+    { field: 'What this is', source: 'Standard cost + PO rates', detail: 'Standard cost vs actual PO cost, sliced by vendor, product or category and drillable to PO level. A separate EFOB lens covers EFOB volume and EFOB-vs-FOB overpay/underpay.' },
+    { field: 'Standard cost', source: 'Standard Cost sheet', detail: 'The approved standard rate for the product — the benchmark actual PO rates are compared against.' },
+    { field: 'Actual PO cost', source: 'Real PO data (GCP)', detail: 'The rate actually written on issued POs.' },
+    { field: 'Variance', source: 'Automatic', formula: 'actual rate − standard rate (× qty for impact)', detail: 'How far PO rates sit above/below standard; red = over standard (margin leak).' },
+    { field: 'EFOB lens', source: 'Automatic', detail: 'A dedicated view of EFOB PO volume and EFOB-vs-FOB, flagging over- or under-payment on the fabric-carry component.' },
+    { field: 'Lens / drill', source: 'Workflow', detail: 'Switch the slice (vendor / product / category) and expand a group to the PO lines behind it.' },
+  ],
+  '/doq-dashboard': [
+    { field: 'What this is', source: 'Inventory planning (GCP)', detail: 'The DOQ window view — demand rate, days-on-hand, OOS days and sales leakage by product state, over yesterday / weekly / 7-day / all-time windows. Ported formula-for-formula from the DOQ sheet.' },
+    { field: 'Window DOQ', source: 'Automatic', formula: 'qty sold ÷ available days in the window', detail: 'Sales velocity (daily order quantity) for the chosen window.' },
+    { field: 'DOH', source: 'Automatic', formula: 'category avg(stock ÷ DOQ)', detail: 'Days-on-hand — how long current stock lasts at that velocity.' },
+    { field: 'OOS % · Sales leakage', source: 'Automatic', formula: 'leakage = Σ(OOS days × 45-day DOQ × selling price)', detail: 'Share of window days out of stock, and the estimated sales lost to those stockouts.' },
+    { field: 'Windows', source: 'Workflow', detail: 'Yesterday · last 7 days · last 4 complete Mon–Sun weeks · all-time — each column is one window; grouped by Product State.' },
+  ],
+  '/doq': [
+    { field: 'What this is', source: 'BigQuery (GCP)', detail: 'The full daily DOQ snapshot (sd_inventory_planning): one row per SKU × warehouse with stock, in-process, sales windows and every doq_* / oos_days_* figure. Read-only, refreshed daily.' },
+    { field: 'Stock / In-process', source: 'Inventory planning (GCP)', detail: 'On-hand stock and pieces already on order for the SKU at that warehouse.' },
+    { field: 'doq_* / oos_days_*', source: 'Inventory planning (GCP)', detail: 'The raw DOQ (sales-velocity) and out-of-stock-days figures across the source’s windows, exactly as landed.' },
+  ],
+  '/grn-detail': [
+    { field: 'What this is', source: 'EasyEcom (GCP)', detail: 'Inbound-QC GRN lines (sd_ee_grn): received vs QC-passed/failed/pending, with the damage/discard/return dispositions per line. Read-only, refreshed daily.' },
+    { field: 'Received / QC pass / fail / pending', source: 'EasyEcom (GCP)', detail: 'Quantities received and how the inbound QC split them — passed, failed, or still pending.' },
+    { field: 'Dispositions', source: 'EasyEcom (GCP)', detail: 'What happened to rejected units — damaged, discarded or returned to vendor.' },
+  ],
+  '/arrivals': [
+    { field: 'What this is', source: 'Inward plan + PO data', detail: 'What’s arriving when — the monthly approved inward plan against what’s actually confirmed, across the company. Read-only.' },
+    { field: 'Planned inward', source: 'Inward Plan II', detail: 'The quantity the team planned (and management approved) to inward that month.' },
+    { field: 'Confirmed / actual', source: 'Real PO data (GCP)', detail: 'What is actually confirmed to arrive / has arrived against the plan.' },
+    { field: 'Filters', source: 'Workflow', detail: 'Slice by product, category, vendor or month.' },
+  ],
+  '/ppm-prep': [
+    { field: 'What this is', source: 'Live from each source', detail: 'Everything compiled before the Production Planning Meeting in one place, pulled live. Each section links to its detail page.' },
+    { field: 'Sections', source: 'Automatic', detail: 'Each block (open POs, capacity, replenishment, approvals, …) is a live summary of its module — not a stored copy. Click through for the full detail.' },
+  ],
+  '/po-closure': [
+    { field: 'What this is', source: 'PO closure workflow', detail: 'Closing out completed POs against an SLA: a two-leg workflow (sourcing then finance) with a compliance clock from EasyCom completion.' },
+    { field: 'Legs / stage', source: 'Workflow', detail: 'A completed PO moves through the closure legs; the stage shows whose turn it is (in progress / finance pending).' },
+    { field: 'SLA / compliance (RAG)', source: 'Automatic', formula: 'days open vs the closure SLA', detail: 'Red/amber/green on how long the closure has been open against the SLA (editable in Rules Master).' },
+    { field: 'Cutting register / dynamic links', source: 'Workflow', detail: 'Surplus from the cutting register and the public /fill links captured as part of closing the PO.' },
+  ],
+  '/po-manual-adjustment': [
+    { field: 'What this is', source: 'BigQuery (GCP), cached', detail: 'Two BigQuery adjustment feeds (manual PO-qty adjustments and the cutting register) cached in the dashboard, shown as sub-tabs. Read-only.' },
+    { field: 'Refresh', source: 'Workflow', formula: 'rate-limited to 2×/hour per user per table', detail: 'Pull the latest from BigQuery on demand — throttled so a table isn’t hammered.' },
+    { field: 'Columns', source: 'BigQuery (GCP)', detail: 'The adjustment quantity / cutting figures exactly as they land in BigQuery, with the ingestion date and who ingested them.' },
+  ],
+  '/cutting-register': [
+    { field: 'What this is', source: 'Cutting register', detail: 'Fabric cutting recorded against POs — the qty cut, fabric consumed and approvals, used for surplus tracking at PO closure.' },
+    { field: 'Cutting qty / fabric consumed', source: 'You enter / GCP', detail: 'Pieces cut and the fabric it consumed, per PO and date.' },
+    { field: 'Where this is used', source: 'PO Closure', detail: 'Feeds the cutting-surplus check when a PO is closed.' },
+  ],
+  '/category-mapping': [
+    { field: 'What this is', source: 'Category master', detail: 'The authoritative category / sub-category per product code — mandatory, and the field every zoomed-out view (Buying Plan snapshot, Group By, Cost Analytics) slices by.' },
+    { field: 'Product code', source: 'Product master', detail: 'The code being categorised.' },
+    { field: 'Category / Sub-category', source: 'You set', detail: 'The garment category (e.g. Top wear / Bottom wear) and finer sub-category. Set it here so the grouped views roll up correctly.' },
+  ],
+  '/rules-master': [
+    { field: 'What this is', source: 'Admin config (sd_analytics_rule)', detail: 'The editable thresholds the analytics cards and several rules reference — change behaviour here, not in code. Admin only.' },
+    { field: 'Rule / Value', source: 'You set', detail: 'Each row is a named threshold (e.g. capital-risk quantile, concentration alert %, closure SLA days, PO-type lead times, replenishment knobs, sync-stale hours). Edit the value; the cards pick it up on next load.' },
+    { field: 'Fallbacks', source: 'Automatic', detail: 'If a rule is unset or the table is unreachable, the app falls back to the seeded default so nothing breaks.' },
+  ],
+  '/feature-status': [
+    { field: 'What this is', source: 'Admin config', detail: 'Label each feature’s sprint phase — Live, In Testing or Coming Soon — so the team knows what’s ready to trust. Shows as a badge on that feature’s page header; editable here without a code change.' },
+    { field: 'Phase', source: 'You set', detail: 'Live = trusted; In Testing = usable but being validated; Coming Soon = not ready. Pairs with the hide-non-released rule (fully hidden vs visible-but-labelled).' },
+  ],
+  '/feedback': [
+    { field: 'What this is', source: 'Feedback channel', detail: 'Report a bug, suggestion or question — with a screenshot and the auto-captured page/browser context. Two-way thread between you and the dev.' },
+    { field: 'Type / Severity', source: 'You choose', detail: 'Bug / Suggestion / Question, and how urgent it is.' },
+    { field: 'Status', source: 'Workflow', detail: 'New → in progress → resolved. The dev updates status; “Shipped ✓” marks resolved items with a resolution note.' },
+    { field: 'Report / Suggest button', source: 'Every page', detail: 'The floating button on every page opens this compose form pre-filled with where you were.' },
+  ],
+  '/my-dashboard': [
+    { field: 'What this is', source: 'Your roles', detail: 'Your role-specific view of the sourcing operation. You see the views your custom roles grant; admins can switch through every role’s view via the tabs.' },
+    { field: 'View tabs', source: 'Access control', detail: 'Each tab is one granted role-view (e.g. Sourcing). The count badge is items waiting on you.' },
+    { field: 'My approvals / rework', source: 'Workflow', detail: 'Items awaiting your decision and anything sent back to you for rework, surfaced so they don’t get lost in the shared queue.' },
+  ],
 };
 
 export function FormHelp({ route, title }: { route: string; title: string }) {
