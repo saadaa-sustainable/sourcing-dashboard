@@ -896,12 +896,11 @@
 /* Weekly-input meta stacked under the qty field (% of arriving, last updated). */
 .wf-qty-meta { display: flex; flex-direction: column; line-height: 1.25; font-size: 10.5px; }
 
-/* ---- Per-screen accent (distinct processes read as distinct pages) ---- */
-.wf-accent .wf-head {
-  border-top: 3px solid var(--wf-accent-c, transparent);
-  padding-top: 16px;
-}
-.wf-accent .wf-head h1 { color: var(--wf-accent-c, inherit); }
+/* ---- Per-screen accent ----
+   Kept only as an in-page content tint (wf-po-primary, wf-chip-btn, …). It is NO
+   LONGER applied to the page header: every page header now reads the same — dark
+   title, no coloured top border — so the Overview / recently-added pages match the
+   rest of the dashboard instead of showing a blue/purple title. */
 .wf-accent-blue { --wf-accent-c: #3f78c8; }
 .wf-accent-purple { --wf-accent-c: #7a5cf0; }
 .wf-accent-teal { --wf-accent-c: #20a88f; }
