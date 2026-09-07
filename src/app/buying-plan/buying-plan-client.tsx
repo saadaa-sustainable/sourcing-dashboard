@@ -611,6 +611,7 @@ export function BuyingPlanClient({
           rows={view}
           columns={sheetCols}
           rowKey={(v) => v.row.key}
+          defaultSource="supabase"
           unit="lines"
           pageSize={100}
           searchPlaceholder="Product code or status"

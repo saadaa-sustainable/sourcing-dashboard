@@ -45,6 +45,7 @@ export function GrnDetailClient({ rows, limit }: { rows: GrnDetail[]; limit: num
         rows={rows}
         columns={COLS}
         rowKey={(r) => String(r.grn_detail_id)}
+        defaultSource="easyecom"
         unit="GRN lines"
         searchPlaceholder="SKU, vendor, PO number or ref"
         emptyText="No GRN lines match your filters."

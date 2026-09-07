@@ -120,6 +120,7 @@ export function VendorMasterClient({ rows }: { rows: EeVendorMasterRow[] }) {
         rows={rows}
         columns={COLS}
         rowKey={(r) => r.vendor_code ?? r.vendor_c_id ?? r.vendor_name ?? ''}
+        defaultSource="easyecom"
         unit="vendors"
         searchPlaceholder="Vendor, code, email or term"
         emptyText="No vendors match your filters."

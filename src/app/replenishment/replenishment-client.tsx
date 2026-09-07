@@ -83,9 +83,9 @@ const buildCols = (
       isNpdFamily(r.product_state) ? 'NPD' : productClassOf(r.ipdoq ?? 0, classRules),
     info: 'ABC/D classification from IPDOQ (A above 10/day, B ≥ 7, C ≥ 3, else D — rules-master thresholds). NPD-family products are not classed.',
   },
-  { key: 'rop_30', label: '30d', kind: 'num', info: 'Reorder quantity to cover the next 30 days at the IPDOQ rate, net of stock and in-process.', render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
-  { key: 'rop_60', label: '60d', kind: 'num', info: 'Reorder quantity to cover the next 60 days at the IPDOQ rate, net of stock and in-process.' },
-  { key: 'rop_90', label: '90d', kind: 'num', info: 'Reorder quantity to cover the next 90 days at the IPDOQ rate, net of stock and in-process.' },
+  { key: 'rop_30', source: 'computed', label: '30d', kind: 'num', info: 'Reorder quantity to cover the next 30 days at the IPDOQ rate, net of stock and in-process.', render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
+  { key: 'rop_60', source: 'computed', label: '60d', kind: 'num', info: 'Reorder quantity to cover the next 60 days at the IPDOQ rate, net of stock and in-process.' },
+  { key: 'rop_90', source: 'computed', label: '90d', kind: 'num', info: 'Reorder quantity to cover the next 90 days at the IPDOQ rate, net of stock and in-process.' },
 ];
 
 /** Admin strip: the two IPDOQ judgement numbers, edited in the Rules Master. */
@@ -203,6 +203,7 @@ export function ReplenishmentClient({
         rows={rows}
         columns={buildCols(classRules, launchByCode)}
         rowKey={(r) => r.product_variant}
+        defaultSource="bigquery"
         rowClass={(r) => (r.oos_flag ? 'wf-row-over' : undefined)}
         unit="colours"
         searchPlaceholder="Product, colour or code"

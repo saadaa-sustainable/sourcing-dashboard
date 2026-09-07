@@ -96,6 +96,7 @@ export function DoqClient({
         rows={rows}
         columns={COLS}
         rowKey={(r) => r.row_key}
+        defaultSource="bigquery"
         unit="rows"
         searchPlaceholder="SKU, variant, product or category"
         emptyText="No rows match your filters."

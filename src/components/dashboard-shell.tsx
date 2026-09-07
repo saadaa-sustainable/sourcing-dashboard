@@ -2900,6 +2900,7 @@ function ProductTab({ data }: { data: DashboardData }) {
             { key: "value", label: "Pending value", kind: "num", render: (r) => money.format(r.value) },
           ]}
           rowKey={(r) => `${r.productCode}-${r.variant}`}
+          defaultSource="easyecom"
           unit="rows"
           searchPlaceholder="Product or variant…"
           emptyText="No products match."
@@ -2925,6 +2926,7 @@ function ProductTab({ data }: { data: DashboardData }) {
             { key: "value", label: "Pending value", kind: "num", render: (r) => money.format(r.value) },
           ]}
           rowKey={(r) => r.productCode}
+          defaultSource="easyecom"
           unit="products"
           searchPlaceholder="Product code…"
           emptyText="No products match."
@@ -3109,6 +3111,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
             },
           ]}
           rowKey={(r, i) => `${r.poRef}-${r.productCode}-${i}`}
+          defaultSource="easyecom"
           unit="lines"
           searchPlaceholder="Product, vendor, PO…"
           emptyText="No products in process within 365 days."

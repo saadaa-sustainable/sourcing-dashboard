@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Download, ListFilter } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
+import { SourceLegend, SourceBar } from '@/components/source-legend';
+import { sourceOrder, type DataSourceKey } from '@/lib/data-source';
 import { downloadCsv, downloadPdf } from '@/lib/download';
 
 // A reusable read-only data table with: a global search box, a per-column filter row
@@ -22,6 +24,8 @@ export type Column<T> = {
   sortable?: boolean;
   /** Optional ⓘ help shown next to the header label. */
   info?: string;
+  /** Data-source tag → colours a thin bar under the header + feeds the legend. */
+  source?: DataSourceKey;
 };
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
@@ -206,6 +210,7 @@ export function FilterTable<T>({
   unit = 'rows',
   toolbarExtra,
   download,
+  defaultSource,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -219,6 +224,8 @@ export function FilterTable<T>({
   /** Adds a Download (CSV) button exporting the CURRENT view — filtered + sorted rows.
    *  Pass `pdf` to also offer a PDF of the same view (title/note for the PDF header). */
   download?: { filename: string; pdf?: { title: string; note?: string } };
+  /** Source applied to every column that doesn't set its own — for single-source tables. */
+  defaultSource?: DataSourceKey;
 }) {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [search, setSearch] = useState('');
@@ -257,6 +264,13 @@ export function FilterTable<T>({
         return { col, mode, options };
       }),
     [columns, rows],
+  );
+
+  // Distinct data sources across the columns (falling back to the table default)
+  // → the legend above the table.
+  const legendSources = useMemo(
+    () => sourceOrder(columns.map((c) => c.source ?? defaultSource)),
+    [columns, defaultSource],
   );
 
   const filtered = useMemo(() => {
@@ -419,7 +433,10 @@ export function FilterTable<T>({
         Type in <strong>Search</strong> to find a word anywhere. Click a column heading to
         sort. To narrow one column, use <strong>Filter columns</strong>.
         <strong> Download</strong> saves the rows you&rsquo;re seeing.
+        {legendSources.length > 0 && ' Each column heading carries a source-coloured bar — see the legend.'}
       </p>
+
+      {legendSources.length > 0 && <SourceLegend sources={legendSources} />}
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
@@ -444,6 +461,7 @@ export function FilterTable<T>({
                         </span>
                       )}
                       {col.info && <InfoDot text={col.info} label={`About ${col.label}`} />}
+                      {(col.source ?? defaultSource) && <SourceBar source={(col.source ?? defaultSource)!} />}
                     </th>
                   );
                 })}

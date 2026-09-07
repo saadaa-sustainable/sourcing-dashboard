@@ -163,6 +163,7 @@ export function OosCalculationClient({
           rows={visible}
           columns={COLS}
           rowKey={(r) => r.sku}
+          defaultSource="bigquery"
           unit="SKUs"
           searchPlaceholder="SKU, name, variant, RM or colour"
           emptyText="No SKUs match your filters."
@@ -196,6 +197,7 @@ export function OosCalculationClient({
             rows={exclusions}
             columns={cols}
             rowKey={(r) => r.sku}
+            defaultSource="supabase"
             unit="SKUs"
             searchPlaceholder="SKU, reason or person"
             emptyText="No SKUs are excluded — everything counts toward the calculation."

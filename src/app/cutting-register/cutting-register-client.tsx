@@ -246,6 +246,7 @@ function EntriesTable({ entries }: { entries: CuttingRegister[] }) {
         rows={entries}
         columns={ENTRY_COLS}
         rowKey={(e) => String(e.id)}
+        defaultSource="bigquery"
         unit="entries"
         searchPlaceholder="PO, product, person…"
         emptyText="No cutting entries yet."

@@ -108,6 +108,7 @@ export function ProductMasterClient({ products }: { products: EeProductMaster[] 
         rows={products}
         columns={COLS}
         rowKey={(r) => r.sku}
+        defaultSource="easyecom"
         unit="SKUs"
         searchPlaceholder="SKU, name, variant or colour"
         emptyText="No SKUs match your filters."

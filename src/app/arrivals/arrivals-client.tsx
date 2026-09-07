@@ -110,6 +110,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
           rows={rows}
           columns={columns}
           rowKey={(r) => String(r.id)}
+          defaultSource="supabase"
           unit="lines"
           searchPlaceholder="Product, vendor, PO…"
           emptyText="No arrival lines match your filters."

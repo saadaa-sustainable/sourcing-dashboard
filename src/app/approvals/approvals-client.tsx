@@ -276,6 +276,7 @@ export function ApprovalsClient({
           rows={shownLog}
           columns={LOG_COLS}
           rowKey={(r) => String(r.id)}
+          defaultSource="supabase"
           unit="decisions"
           searchPlaceholder="Record, actor, notes…"
           emptyText={typeFilter === 'all' ? 'No decisions recorded yet.' : 'No recent decisions of this type.'}

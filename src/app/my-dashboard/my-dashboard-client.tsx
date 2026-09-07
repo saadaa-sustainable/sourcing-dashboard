@@ -121,6 +121,7 @@ function SourcingView({ rows }: { rows: SourcingPoRow[] }) {
           rows={rows}
           columns={SOURCING_COLS}
           rowKey={(r) => r.poNumber}
+          defaultSource="easyecom"
           unit="POs"
           searchPlaceholder="PO, vendor, code or merchandiser"
           emptyText="No open POs match your filters."

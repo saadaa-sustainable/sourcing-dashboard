@@ -111,6 +111,7 @@ export function PoDetailsClient({ rows }: { rows: PoDetails[] }) {
         rows={viewRows}
         columns={COLS}
         rowKey={(r) => r.source_row_key}
+        defaultSource="form"
         unit="submissions"
         searchPlaceholder="PO ref, EasyEcom no, product, vendor"
         emptyText="No submissions match."

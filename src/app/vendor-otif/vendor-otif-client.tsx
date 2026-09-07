@@ -101,6 +101,7 @@ export function VendorOtifClient({
           rows={vendors}
           columns={columns}
           rowKey={(r) => r.vendorCode ?? r.vendorName}
+          defaultSource="easyecom"
           unit="vendors"
           searchPlaceholder="Vendor…"
           emptyText="No vendors match your filters."

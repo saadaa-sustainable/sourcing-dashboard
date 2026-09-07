@@ -122,6 +122,7 @@ function Panel({
         rows={rows}
         columns={columns}
         rowKey={(_, i) => `${source}-${i}`}
+        defaultSource="bigquery"
         unit="entries"
         searchPlaceholder="Search entries…"
         emptyText="No rows yet — the sync hasn’t loaded this feed."

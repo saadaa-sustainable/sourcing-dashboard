@@ -41,6 +41,7 @@ export function InwardPlanClient({ groups }: { groups: InwardPlanGroup[] }) {
       rows={groups}
       columns={COLS}
       rowKey={(g) => `${g.po_number}-${g.product_code}-${g.product_variant}`}
+      defaultSource="easyecom"
       unit="lines"
       searchPlaceholder="PO, product, variant or vendor"
       emptyText="No lines match your filters."
