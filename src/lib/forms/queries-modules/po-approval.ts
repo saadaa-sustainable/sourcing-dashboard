@@ -23,14 +23,17 @@ import type {
 export async function loadPoApprovals() {
   const supabase = await client();
 
-  const [{ data: pos }, { data: cycle }, { data: variants }, { data: vendors }] = await Promise.all([
+  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }] = await Promise.all([
     supabase
       .from('sd_po_approval')
       .select('*')
       .order('id', { ascending: false })
       .limit(500),
     supabase.from('sd_po_cycle_time').select('*').limit(500),
-    supabase.from('sd_active_variants').select('product_code').limit(PAGE_SIZE),
+    // Product-code dropdown = products that exist in the Standard Cost sheet only
+    // (non-hidden). A PO must be raised against a costed product, so we suggest
+    // exactly the codes on the Standard Cost list rather than every active variant.
+    supabase.from('sd_standard_cost').select('product_code').eq('hidden', false).limit(PAGE_SIZE),
     supabase
       .from('vendor_master_data')
       .select('vendor_code, vendor_name, is_active')
@@ -51,7 +54,7 @@ export async function loadPoApprovals() {
 
   const productCodes = [
     ...new Set(
-      ((variants ?? []) as { product_code: string }[])
+      ((stdProducts ?? []) as { product_code: string }[])
         .map((r) => r.product_code)
         .filter(Boolean),
     ),
