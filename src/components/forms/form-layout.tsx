@@ -14,6 +14,7 @@ export function FormLayout({
   title,
   subtitle,
   active,
+  helpRoute,
   role,
   userEmail = null,
   allowedPages = null,
@@ -24,6 +25,9 @@ export function FormLayout({
   title: string;
   subtitle?: string;
   active: string;
+  /** Route used for the "What do these mean?" help — defaults to `active`.
+   *  Hub pages (e.g. /master) pass the active sub-route so its help still shows. */
+  helpRoute?: string;
   role: SdRole;
   userEmail?: string | null;
   /**
@@ -52,7 +56,7 @@ export function FormLayout({
               {subtitle && <p className="wf-sub">{subtitle}</p>}
             </div>
             <div className="wf-head-actions">
-              <FormHelp route={active} title={title} />
+              <FormHelp route={helpRoute ?? active} title={title} />
               {role === 'admin' && <FeedbackBell />}
               {role === 'admin' && <ApprovalsBell />}
               <span className="wf-role">{ROLE_LABEL[role]}</span>

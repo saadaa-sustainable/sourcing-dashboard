@@ -18,7 +18,6 @@ import {
   FilePen,
   FileText,
   IndianRupee,
-  Layers,
   LayoutDashboard,
   Menu,
   PackageCheck,
@@ -111,14 +110,10 @@ const GOVERNANCE_LINKS: NavLink[] = [
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
 ];
 
-// Reference data the workflows read from.
+// Reference data the workflows read from. All the masters now live under one
+// "Master" hub (inner tabs); the two raw datasets stay as their own entries.
 const MASTERS_LINKS: NavLink[] = [
-  { href: '/product-master', label: 'Product Master', Icon: Tags },
-  { href: '/category-mapping', label: 'Category Mapping', Icon: Tags },
-  { href: '/vendor-master', label: 'Vendor Master', Icon: Factory },
-  { href: '/fabric-master', label: 'Fabric Master', Icon: Layers },
-  { href: '/material-master', label: 'Material Master', Icon: Boxes },
-  { href: '/fabric-cost', label: 'Fabric Cost', Icon: IndianRupee },
+  { href: '/master', label: 'Master', Icon: Tags },
   { href: '/grn-detail', label: 'GRN Detail', Icon: PackageCheck },
   { href: '/doq', label: 'DOQ Dataset', Icon: Database },
 ];

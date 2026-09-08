@@ -64,6 +64,10 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/discontinue', label: 'Discontinued Products View', group: 'Workflows' },
   { path: '/approvals', label: 'Approvals', group: 'Workflows', adminOnly: true },
   // Data & Admin — masters and datasets.
+  // One "Master" hub gathers the individual masters below as inner tabs; the
+  // per-master routes stay registered (reachable + grantable) and the hub shows
+  // only the tabs a user's roles allow.
+  { path: '/master', label: 'Master', group: 'Data & Admin' },
   { path: '/product-master', label: 'Product Master', group: 'Data & Admin' },
   { path: '/category-mapping', label: 'Category Mapping', group: 'Data & Admin' },
   { path: '/grn-detail', label: 'GRN Detail', group: 'Data & Admin' },
@@ -100,8 +104,23 @@ export function canView(
     path === 'tab:dashboard'
   )
     return true;
+  // The Master hub is visible whenever the user can see ANY master it contains.
+  if (path === '/master') {
+    if (role === 'admin' || allowedPages == null) return true;
+    return MASTER_ROUTES.some((r) => allowedPages.includes(r));
+  }
   const def = ALL_VIEWS.find((v) => v.path === path);
   if (def?.adminOnly && role !== 'admin') return false;
   if (role === 'admin' || allowedPages == null) return true;
   return allowedPages.includes(path);
 }
+
+/** The per-master routes gathered under the /master hub. */
+export const MASTER_ROUTES = [
+  '/product-master',
+  '/category-mapping',
+  '/vendor-master',
+  '/fabric-master',
+  '/material-master',
+  '/fabric-cost',
+];
