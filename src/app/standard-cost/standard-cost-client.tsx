@@ -83,6 +83,7 @@ export function StandardCostClient({
   initialOpen = null,
   role,
   track = 'fg',
+  marginPct = 0.15,
 }: {
   costs: StandardCost[];
   lines?: StandardCostLine[];
@@ -103,11 +104,16 @@ export function StandardCostClient({
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
+  /** Final-price margin as a fraction (e.g. 0.15), from Rules Master (margin_pct). */
+  marginPct?: number;
 }) {
   const isMat = track === 'material';
   const codeLabel = isMat ? 'Material code' : 'Product code';
-  const jobLabel = isMat ? 'Job Work' : 'Job';
-  const fobLabel = isMat ? 'Purchase' : 'FOB';
+  // Material track relabels the three rate columns (2026-09-08): Billing (fob_cost),
+  // FOB Fabric (job_cost), Standard Fabric = the EFOB fabric rate we value from (efob_cost).
+  const jobLabel = isMat ? 'FOB Fabric' : 'Job';
+  const fobLabel = isMat ? 'Billing' : 'FOB';
+  const efobLabel = isMat ? 'Standard Fabric' : 'E-FOB';
 
   const editable = canEdit(role, 'draft');
   const [message, setMessage] = useState<string | null>(null);
@@ -203,13 +209,13 @@ export function StandardCostClient({
     });
   }
 
-  const colCount = isMat ? 7 : 8;
+  const colCount = 8; // code, proposed, target, 3 rate cols, stage, actions (both tracks)
 
   return (
     <>
       <Notice tone="info">
         Cost is <strong>negotiated</strong>, not just approved: team{' '}
-        <strong>proposes</strong> (fill the {jobLabel} / {fobLabel}{isMat ? '' : ' / E-FOB'} rate that
+        <strong>proposes</strong> (fill the {jobLabel} / {fobLabel} / {efobLabel} rate that
         applies) → Mahesh <strong>accepts the proposal as-is</strong>, <strong>rejects</strong> it, or
         sets a <strong>target</strong> → team returns with the <strong>actual vendor rate</strong> →
         Mahesh <strong>signs off</strong>, and that becomes the Standard Cost the Buying Plan values
@@ -306,9 +312,19 @@ export function StandardCostClient({
                 <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
                 <th className="num" {...sort.th('proposed', (c) => c.proposed_cost)}>Proposed {sort.ind('proposed')}</th>
                 <th className="num" {...sort.th('target', (c) => c.target_cost)}>Target {sort.ind('target')}</th>
-                <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>{jobLabel} rate {sort.ind('job')}</th>
-                <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>{fobLabel} rate {sort.ind('fob')}</th>
-                {!isMat && <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>E-FOB rate {sort.ind('efob')}</th>}
+                {isMat ? (
+                  <>
+                    <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>{fobLabel} rate {sort.ind('fob')}</th>
+                    <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>{jobLabel} rate {sort.ind('job')}</th>
+                    <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>{efobLabel} rate {sort.ind('efob')}</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>{jobLabel} rate {sort.ind('job')}</th>
+                    <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>{fobLabel} rate {sort.ind('fob')}</th>
+                    <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>{efobLabel} rate {sort.ind('efob')}</th>
+                  </>
+                )}
                 <th {...sort.th('stage', (c) => c.neg_stage ?? c.status)}>Stage {sort.ind('stage')}</th>
                 <th aria-label="Actions" />
               </tr>
@@ -323,27 +339,36 @@ export function StandardCostClient({
                     expanded={expanded === cost.product_code}
                     temp={tempProducts[cost.product_code]}
                     mergeCandidates={catalog}
-                    onToggle={
-                      isMat
-                        ? undefined
-                        : () => setExpanded(expanded === cost.product_code ? null : cost.product_code)
-                    }
+                    onToggle={() => setExpanded(expanded === cost.product_code ? null : cost.product_code)}
                   />
-                  {!isMat && expanded === cost.product_code && (
+                  {expanded === cost.product_code && (
                     <tr className="wf-cost-detail-row">
                       <td colSpan={colCount}>
-                        <CostDetail
-                          cost={cost}
-                          lines={linesByCode.get(cost.product_code) ?? []}
-                          cmtp={cmtpByCode.get(cost.product_code) ?? []}
-                          cmtpSubitems={cmtpSubitems}
-                          fabricBase={fabricBase}
-                          fabricCodes={fabricCodes}
-                          history={rateHistory[cost.product_code] ?? []}
-                          revisions={cmtpRevisions[cost.product_code] ?? []}
-                          masterFabric={productFabric[cost.product_code] ?? null}
-                          editable={!cost.frozen && canEdit(role, cost.status)}
-                        />
+                        {isMat ? (
+                          // Material has no CMTP/fabric detail — just its accepted-rate history,
+                          // with the material rate labels (Billing / FOB Fabric / Standard Fabric).
+                          <div className="wf-cost-detail">
+                            <RateHistoryPanel
+                              history={rateHistory[cost.product_code] ?? []}
+                              hideRevisions
+                              rateLabels={{ fob: 'Billing', job: 'FOB Fabric', efob: 'Standard Fabric' }}
+                            />
+                          </div>
+                        ) : (
+                          <CostDetail
+                            cost={cost}
+                            lines={linesByCode.get(cost.product_code) ?? []}
+                            cmtp={cmtpByCode.get(cost.product_code) ?? []}
+                            cmtpSubitems={cmtpSubitems}
+                            fabricBase={fabricBase}
+                            fabricCodes={fabricCodes}
+                            history={rateHistory[cost.product_code] ?? []}
+                            revisions={cmtpRevisions[cost.product_code] ?? []}
+                            masterFabric={productFabric[cost.product_code] ?? null}
+                            editable={!cost.frozen && canEdit(role, cost.status)}
+                            marginPct={marginPct}
+                          />
+                        )}
                       </td>
                     </tr>
                   )}
@@ -375,7 +400,9 @@ function StandardFieldsPanel({
   const [fabric, setFabric] = useState(standards.fabric_cost?.toString() ?? '');
   const [dyeing, setDyeing] = useState(standards.dyeing_cost?.toString() ?? '');
   const [shrink, setShrink] = useState(standards.shrinkage_pct?.toString() ?? '');
-  const [margin, setMargin] = useState(standards.margin_pct?.toString() ?? '');
+  // Margin now lives in Rules Master; we keep the stored value only to re-persist it
+  // unchanged (no data loss) — it is no longer editable from this panel.
+  const [margin] = useState(standards.margin_pct?.toString() ?? '');
   const [terms, setTerms] = useState(standards.payment_terms ?? '');
   const [busy, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -402,7 +429,7 @@ function StandardFieldsPanel({
         <Field label="Fabric cost"><input type="number" min={0} value={fabric} disabled={!editable} onChange={(e) => setFabric(e.target.value)} /></Field>
         <Field label="Dyeing cost"><input type="number" min={0} value={dyeing} disabled={!editable} onChange={(e) => setDyeing(e.target.value)} /></Field>
         <Field label="Shrinkage %"><input type="number" min={0} value={shrink} disabled={!editable} onChange={(e) => setShrink(e.target.value)} /></Field>
-        <Field label="Margin %"><input type="number" min={0} value={margin} disabled={!editable} onChange={(e) => setMargin(e.target.value)} /></Field>
+        <Field label="Margin %" hint="Set in Rules Master"><input value="Rules Master" disabled readOnly /></Field>
         <Field label="Payment terms"><input value={terms} disabled={!editable} placeholder="e.g. 30 days" onChange={(e) => setTerms(e.target.value)} /></Field>
         {editable && (
           <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={busy}>
@@ -527,8 +554,9 @@ function CostRow({
   mergeCandidates?: ProductCatalogItem[];
 }) {
   const isMat = track === 'material';
-  const jobLabel = isMat ? 'Job Work' : 'Job';
-  const fobLabel = isMat ? 'Purchase' : 'FOB';
+  const jobLabel = isMat ? 'FOB Fabric' : 'Job';
+  const fobLabel = isMat ? 'Billing' : 'FOB';
+  const efobLabel = isMat ? 'Standard Fabric' : 'E-FOB';
   const stage = cost.neg_stage;
   const stageKey = stage ?? '';
 
@@ -636,9 +664,20 @@ function CostRow({
       </td>
       <td className="num">{disp(cost.proposed_cost)}</td>
       <td className="num">{disp(cost.target_cost)}</td>
-      <td className="num input-col">{rateCell(job, setJob)}</td>
-      <td className="num input-col">{rateCell(fob, setFob)}</td>
-      {!isMat && <td className="num input-col">{rateCell(efob, setEfob)}</td>}
+      {isMat ? (
+        <>
+          {/* Billing (fob_cost) · FOB Fabric (job_cost) · Standard Fabric (efob_cost) */}
+          <td className="num input-col">{rateCell(fob, setFob)}</td>
+          <td className="num input-col">{rateCell(job, setJob)}</td>
+          <td className="num input-col">{rateCell(efob, setEfob)}</td>
+        </>
+      ) : (
+        <>
+          <td className="num input-col">{rateCell(job, setJob)}</td>
+          <td className="num input-col">{rateCell(fob, setFob)}</td>
+          <td className="num input-col">{rateCell(efob, setEfob)}</td>
+        </>
+      )}
       <td>
         <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>
           {COST_STAGE_LABEL[stageKey]}
@@ -703,7 +742,7 @@ function CostRow({
           {canPropose(role, stage) && !cost.frozen && (
             <div className="wf-issue-row wf-issue-row-wrap">
               <span className="wf-subtle wf-propose-hint">
-                Fill the {jobLabel} / {fobLabel}{isMat ? '' : ' / E-FOB'} rate(s) that apply →
+                Fill the {jobLabel} / {fobLabel} / {efobLabel} rate(s) that apply →
               </span>
               <input
                 className="wf-mini-input"
@@ -722,7 +761,7 @@ function CostRow({
                     proposed_cost: proposed,
                     job_cost: job,
                     fob_cost: fob,
-                    ...(isMat ? {} : { efob_cost: efob }),
+                    efob_cost: efob,
                   })
                 }
               >
@@ -779,7 +818,7 @@ function CostRow({
                 act(submitActualRate, {
                   job_cost: job,
                   fob_cost: fob,
-                  ...(isMat ? {} : { efob_cost: efob }),
+                  efob_cost: efob,
                 })
               }
             >
@@ -865,19 +904,12 @@ function CostRow({
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'] as const;
 const numv = (s: string) => Number(s) || 0;
 
-// FINAL PRICE buildup (matches the live cost sheet): on the total garment cost,
-// REJ and OH each add min(5%, ₹10), then MARGIN adds 15% on the subtotal.
-const REJ_PCT = 0.05;
-const OH_PCT = 0.05;
-const MARGIN_PCT = 0.15;
-const RO_CAP = 10;
+// FINAL PRICE buildup (matches the live cost sheet): MARGIN adds a % on the garment
+// cost. REJ/OH were removed (2026-09-08); the margin % comes from Rules Master.
 const r2 = (n: number) => Math.round(n * 100) / 100;
-function buildFinal(garment: number) {
-  const rej = Math.min(garment * REJ_PCT, RO_CAP);
-  const oh = Math.min(garment * OH_PCT, RO_CAP);
-  const sub = garment + rej + oh;
-  const margin = sub * MARGIN_PCT;
-  return { rej, oh, margin, final: sub + margin };
+function buildFinal(garment: number, marginPct: number) {
+  const margin = garment * marginPct;
+  return { margin, final: garment + margin };
 }
 
 /**
@@ -900,6 +932,7 @@ function CostDetail({
   revisions,
   masterFabric,
   editable,
+  marginPct,
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
@@ -911,6 +944,7 @@ function CostDetail({
   revisions: CmtpRevision[];
   masterFabric: { fabricCode: string | null; multi: boolean } | null;
   editable: boolean;
+  marginPct: number;
 }) {
   const [view, setView] = useState<'cmtp' | 'fabric' | 'final' | 'history'>('cmtp');
   // Default the fabric from Product Master when the sheet hasn't set one and the
@@ -941,15 +975,13 @@ function CostDetail({
     const has = cons !== '';
     const fabric = has && fabricRate != null ? r2(fabricRate * numv(cons)) : null;
     const garment = fabric != null && cmtpTotal != null ? r2(fabric + cmtpTotal) : null;
-    const f = garment != null ? buildFinal(garment) : null;
+    const f = garment != null ? buildFinal(garment, marginPct) : null;
     return {
       size,
       cons,
       has,
       fabric,
       garment,
-      rej: f ? r2(f.rej) : null,
-      oh: f ? r2(f.oh) : null,
       margin: f ? r2(f.margin) : null,
       final: f ? r2(f.final) : null,
     };
@@ -1106,8 +1138,6 @@ function CostDetail({
                   <th className="num wf-cell-calc">Fabric</th>
                   <th className="num wf-cell-calc">CMTP</th>
                   <th className="num wf-cell-calc">Garment</th>
-                  <th className="num wf-cell-calc">REJ</th>
-                  <th className="num wf-cell-calc">OH</th>
                   <th className="num wf-cell-calc">Margin</th>
                   <th className="num wf-cell-calc">Final price</th>
                 </tr>
@@ -1119,23 +1149,21 @@ function CostDetail({
                     <td className="num wf-cell-calc">{disp(r.fabric)}</td>
                     <td className="num wf-cell-calc">{disp(cmtpTotal)}</td>
                     <td className="num wf-cell-calc">{disp(r.garment)}</td>
-                    <td className="num wf-cell-calc">{disp(r.rej)}</td>
-                    <td className="num wf-cell-calc">{disp(r.oh)}</td>
                     <td className="num wf-cell-calc">{disp(r.margin)}</td>
                     <td className="num strong wf-cell-calc">{disp(r.final)}</td>
                   </tr>
                 ))}
                 {!filled.length && (
-                  <tr><td colSpan={8} className="wf-empty-cell">Fill fabric consumption (Fabric Cost tab) + CMTP to compute the final price.</td></tr>
+                  <tr><td colSpan={6} className="wf-empty-cell">Fill fabric consumption (Fabric Cost tab) + CMTP to compute the final price.</td></tr>
                 )}
               </tbody>
               {poAvgFinal != null && (
-                <tfoot><tr><td colSpan={7}>PO AVG final price</td><td className="num strong wf-cell-calc">{poAvgFinal}</td></tr></tfoot>
+                <tfoot><tr><td colSpan={5}>PO AVG final price</td><td className="num strong wf-cell-calc">{poAvgFinal}</td></tr></tfoot>
               )}
             </table>
           </div>
           <p className="wf-subtle">
-            Final price = Garment (Fabric + CMTP) + REJ (5% or ₹10, lower) + OH (5% or ₹10, lower) + Margin 15%.
+            Final price = Garment (Fabric + CMTP) + Margin {r2(marginPct * 100)}% (set in Rules Master).
             {cmtpTotal == null && ' · CMTP not filled yet — fill the CMTP tab.'}
           </p>
 
@@ -1167,10 +1195,17 @@ function CostDetail({
 function RateHistoryPanel({
   history,
   revisions = [],
+  hideRevisions = false,
+  rateLabels,
 }: {
   history: StandardCostRateHistory[];
   revisions?: CmtpRevision[];
+  /** Material track has no CMTP breakdown, so it hides the line-revision log. */
+  hideRevisions?: boolean;
+  /** Column headers for the three rate slots (job / fob / efob). Material relabels them. */
+  rateLabels?: { job: string; fob: string; efob: string };
 }) {
+  const lbl = rateLabels ?? { job: 'Job', fob: 'FOB', efob: 'E-FOB' };
   const when = (iso: string) =>
     new Date(iso).toLocaleString('en-IN', {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -1189,9 +1224,9 @@ function RateHistoryPanel({
             <thead>
               <tr>
                 <th>Accepted on</th>
-                <th className="num">Job</th>
-                <th className="num">FOB</th>
-                <th className="num">E-FOB</th>
+                <th className="num">{lbl.job}</th>
+                <th className="num">{lbl.fob}</th>
+                <th className="num">{lbl.efob}</th>
                 <th>By</th>
                 <th>Note</th>
               </tr>
@@ -1220,42 +1255,46 @@ function RateHistoryPanel({
 
       {/* Item 2 — line-item CMTP revision log: every single-line change with its
           mandatory reason (old → new), so a karigar-rate or trim-rate move is
-          auditable without a whole-sheet re-approval. */}
-      <p className="wf-subtle" style={{ marginTop: 18 }}>
-        <strong>CMTP line revisions</strong> — individual cost-line changes, newest first, each
-        with the reason it was revised.
-      </p>
-      <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wf-grid">
-            <thead>
-              <tr>
-                <th>Revised on</th>
-                <th>Line</th>
-                <th className="num">Old</th>
-                <th className="num">New</th>
-                <th>By</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {revisions.map((rv) => (
-                <tr key={rv.id}>
-                  <td>{when(rv.revised_at)}</td>
-                  <td>{rv.category}{rv.label ? ` · ${rv.label}` : ''}</td>
-                  <td className="num">{amt(rv.old_amount)}</td>
-                  <td className="num">{amt(rv.new_amount)}</td>
-                  <td className="wf-subtle">{rv.revised_by ?? '—'}</td>
-                  <td className="wf-subtle">{rv.reason}</td>
-                </tr>
-              ))}
-              {!revisions.length && (
-                <tr><td colSpan={6} className="wf-empty-cell">No line revisions yet — the CMTP breakdown has not been changed since it was first entered.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          auditable without a whole-sheet re-approval. Material has no CMTP, so it hides this. */}
+      {!hideRevisions && (
+        <>
+          <p className="wf-subtle" style={{ marginTop: 18 }}>
+            <strong>CMTP line revisions</strong> — individual cost-line changes, newest first, each
+            with the reason it was revised.
+          </p>
+          <div className="table-panel wf-grid-panel">
+            <div className="table-scroll">
+              <table className="wf-grid">
+                <thead>
+                  <tr>
+                    <th>Revised on</th>
+                    <th>Line</th>
+                    <th className="num">Old</th>
+                    <th className="num">New</th>
+                    <th>By</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revisions.map((rv) => (
+                    <tr key={rv.id}>
+                      <td>{when(rv.revised_at)}</td>
+                      <td>{rv.category}{rv.label ? ` · ${rv.label}` : ''}</td>
+                      <td className="num">{amt(rv.old_amount)}</td>
+                      <td className="num">{amt(rv.new_amount)}</td>
+                      <td className="wf-subtle">{rv.revised_by ?? '—'}</td>
+                      <td className="wf-subtle">{rv.reason}</td>
+                    </tr>
+                  ))}
+                  {!revisions.length && (
+                    <tr><td colSpan={6} className="wf-empty-cell">No line revisions yet — the CMTP breakdown has not been changed since it was first entered.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

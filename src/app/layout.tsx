@@ -4,6 +4,7 @@ import './globals.css';
 import './workflows.css';
 import './analytics-cards.css';
 import { ToastHost } from '@/components/toast-host';
+import { NumberInputGuard } from '@/components/number-input-guard';
 
 // Design system §4 intent: one clean neutral sans for body + headings (hierarchy by
 // size/weight, not typeface). We use Inter as that sans — it loads as a webfont so it
@@ -35,5 +36,5 @@ const jetbrainsMono = localFont({
 export const metadata: Metadata = { title: 'SAADAA Sourcing Dashboard', description: 'Open PO, vendor, TNA, and product sourcing intelligence.' };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}><body>{children}<ToastHost /></body></html>;
+  return <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}><body>{children}<ToastHost /><NumberInputGuard /></body></html>;
 }

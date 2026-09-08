@@ -1605,3 +1605,9 @@ tbody tr:hover { background: rgba(240,198,30,.075); }
   letter-spacing: .04em; vertical-align: middle; }
 .wf-temp-add { display: flex; gap: 8px; align-items: center; }
 .wf-temp-add input { flex: 1; min-width: 0; }
+
+/* Task 1 — number inputs are filled directly; remove the spinner arrows so there's
+   no click-to-increment, and NumberInputGuard blocks scroll-to-change. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }

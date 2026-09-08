@@ -11,8 +11,10 @@ import {
   loadProductCatalog,
   loadStandardCostLines,
   loadStandardCostRateHistory,
+  loadMaterialStandardCostRateHistory,
   loadStandardCosts,
   loadHiddenStandardCostCodes,
+  loadAnalyticsRules,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostClient } from './standard-cost-client';
@@ -51,7 +53,7 @@ export default async function StandardCostPage({
 
   const [costs, lines, fabricBase, standards, cmtp, efob, catalog, rateHistory, cmtpSubitems] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], await loadEfobFabricCost(), [], {}, {}]
+      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], await loadEfobFabricCost(), [], await loadMaterialStandardCostRateHistory(), {}]
       : await Promise.all([
           loadStandardCosts(),
           loadStandardCostLines(),
@@ -78,6 +80,10 @@ export default async function StandardCostPage({
 
   // Temporary products (minted here for items not yet in EasyEcom) — badge + merge (FG).
   const tempProducts = track === 'material' ? {} : await loadTempProductMap();
+
+  // Final-price margin from Rules Master (margin_pct, stored as a percent). REJ/OH
+  // were removed 2026-09-08 — final = garment + margin.
+  const marginPct = (await loadAnalyticsRules()).margin_pct / 100;
 
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
   // Cost tab references these read-only from the Fabric Cost master.
@@ -125,6 +131,7 @@ export default async function StandardCostPage({
         initialOpen={openCode}
         role={user.role}
         track={track}
+        marginPct={marginPct}
       />
     </FormLayout>
   );

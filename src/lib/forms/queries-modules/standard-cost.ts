@@ -212,3 +212,23 @@ export async function loadStandardCostRateHistory(): Promise<Record<string, Stan
   for (const r of rows) (byCode[r.product_code] ??= []).push(r);
   return byCode;
 }
+
+/** Full accepted-rate history per material, newest first — for the material Rate History view. */
+export async function loadMaterialStandardCostRateHistory(): Promise<Record<string, StandardCostRateHistory[]>> {
+  const supabase = await client();
+  const rows: StandardCostRateHistory[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('sd_material_standard_cost_rate_history')
+      .select('*')
+      .order('accepted_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`sd_material_standard_cost_rate_history: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as StandardCostRateHistory[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  const byCode: Record<string, StandardCostRateHistory[]> = {};
+  for (const r of rows) (byCode[r.product_code] ??= []).push(r);
+  return byCode;
+}

@@ -33,6 +33,9 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   product_class_c_min: 3,
   // Data & sync card: a feed counts as stale after this many hours without refresh.
   sync_stale_hours: 30,
+  // Standard Cost final-price margin (%). REJ/OH were removed (2026-09-08) — the
+  // final price is Garment + this margin. Editable here in Rules Master.
+  margin_pct: 15,
 };
 
 export async function loadAnalyticsRules(): Promise<Record<string, number>> {

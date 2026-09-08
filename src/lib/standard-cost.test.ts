@@ -6,19 +6,20 @@ import {
   validateSubmittedCost,
 } from './standard-cost';
 
-test('finalPrice: REJ/OH cap at ₹10, margin 15% after REJ+OH', () => {
-  // Garment 220 → 5% = 11 > cap → REJ = OH = 10; margin = 15% of 240 = 36.
+test('finalPrice: final = garment + margin (REJ/OH removed 2026-09-08)', () => {
+  // Garment 220 → margin 15% = 33 → final 253.
   const b = finalPrice(120, 100);
   assert.equal(b.garment, 220);
-  assert.equal(b.rej, 10);
-  assert.equal(b.oh, 10);
-  assert.equal(b.margin, 36);
-  assert.equal(b.final, 276);
-  // Small garment: 5% below the ₹10 cap applies as a percentage.
-  const s = finalPrice(50, 50); // garment 100 → REJ = OH = 5; margin = 15% of 110 = 16.5
-  assert.equal(s.rej, 5);
-  assert.equal(s.oh, 5);
-  assert.equal(s.final, 126.5); // 100 + 5 + 5 + 16.5
+  assert.equal(b.margin, 33);
+  assert.equal(b.final, 253);
+  // Garment 100 → margin 15% = 15 → final 115.
+  const s = finalPrice(50, 50);
+  assert.equal(s.margin, 15);
+  assert.equal(s.final, 115);
+  // Margin is configurable (Rules Master): 20% on garment 100 → final 120.
+  const custom = finalPrice(50, 50, { marginPct: 0.2 });
+  assert.equal(custom.margin, 20);
+  assert.equal(custom.final, 120);
 });
 
 test('recomputeExpectedCost: substitutes the current fabric rate, holds CMTP', () => {
@@ -29,7 +30,7 @@ test('recomputeExpectedCost: substitutes the current fabric rate, holds CMTP', (
   // Fabric side rises by exactly the ₹15 rate move.
   assert.equal(now.expectedFabric - atStd.expectedFabric, 15);
   assert.equal(now.rateDelta, 15);
-  // The whole expected total shifts up (garment +15 flows through REJ/OH/margin).
+  // The whole expected total shifts up (garment +15 flows through the margin).
   assert.ok(now.expected.final > atStd.expected.final);
 });
 

@@ -7,7 +7,7 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
+import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
@@ -364,7 +364,12 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
         }
       }
       if (rateNow != null && avgCons > 0 && sc?.cm_cost != null) {
-        const rc = recomputeExpectedCost({ consumption: avgCons, fabricRateNow: rateNow, cmtp: Number(sc.cm_cost), fabricRateAtStd: rateAtStd });
+        // Final-price margin from Rules Master (margin_pct, a percent) — REJ/OH removed.
+        const marginPct = (await loadAnalyticsRules()).margin_pct / 100;
+        const rc = recomputeExpectedCost(
+          { consumption: avgCons, fabricRateNow: rateNow, cmtp: Number(sc.cm_cost), fabricRateAtStd: rateAtStd },
+          { marginPct },
+        );
         recomputePatch.expected_cost_recomputed = rc.expected.final;
         recomputePatch.expected_fabric_rate_now = rc.fabricRateNow;
         recomputePatch.expected_recomputed_at = new Date().toISOString();

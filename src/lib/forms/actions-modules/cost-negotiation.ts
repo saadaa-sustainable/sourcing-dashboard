@@ -35,15 +35,22 @@ import {
   textOrNull,
 } from './_shared';
 
+// Accepted-rate history table per track (material got its own history 2026-09-08).
+const COST_HISTORY_TABLE: Record<'fg' | 'material', string> = {
+  fg: 'sd_standard_cost_rate_history',
+  material: 'sd_material_standard_cost_rate_history',
+};
+
 async function recordAcceptedRate(
   supabase: Awaited<ReturnType<typeof supa>>,
+  track: 'fg' | 'material',
   productCode: string,
   rates: { job: number | null; fob: number | null; efob: number | null },
   acceptedBy: string,
   note: string,
 ) {
   try {
-    await supabase.from('sd_standard_cost_rate_history').insert({
+    await supabase.from(COST_HISTORY_TABLE[track]).insert({
       product_code: productCode,
       job_cost: rates.job,
       fob_cost: rates.fob,
@@ -81,7 +88,7 @@ type CostRow = {
   neg_stage: string | null;
   job_cost: number | null;
   fob_cost: number | null;
-  efob_cost?: number | null; // FG only — the material table has no E-FOB column
+  efob_cost?: number | null; // both tracks (material's efob_cost = Standard Fabric rate)
 };
 
 async function loadCostRow(track: CostTrack, id: number) {
@@ -89,9 +96,7 @@ async function loadCostRow(track: CostTrack, id: number) {
   const table = COST_TABLE[track];
   const { data } = await supabase
     .from(table)
-    .select(
-      `id, product_code, status, frozen, neg_stage, job_cost, fob_cost${track === 'fg' ? ', efob_cost' : ''}`,
-    )
+    .select('id, product_code, status, frozen, neg_stage, job_cost, fob_cost, efob_cost')
     .eq('id', id)
     .maybeSingle();
   return { supabase, table, row: (data as CostRow | null) ?? null };
@@ -115,9 +120,9 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   const proposed = numOrNull(formData.get('proposed_cost'));
   const job = numOrNull(formData.get('job_cost'));
   const fob = numOrNull(formData.get('fob_cost'));
-  const efob = track === 'fg' ? numOrNull(formData.get('efob_cost')) : null;
+  const efob = numOrNull(formData.get('efob_cost'));
   if (proposed == null && job == null && fob == null && efob == null) {
-    return fail('Enter at least one proposed rate (Job / FOB / E-FOB) or an expected cost.');
+    return fail('Enter at least one proposed rate or an expected cost.');
   }
 
   const patch: Record<string, unknown> = {
@@ -125,19 +130,20 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
     proposed_cost: proposed,
     job_cost: job,
     fob_cost: fob,
+    efob_cost: efob,
     status: 'draft',
     rejection_notes: null,
     negotiation_notes: null,
     updated_at: new Date().toISOString(),
   };
-  if (track === 'fg') patch.efob_cost = efob;
 
   const { error } = await supabase.from(table).update(patch).eq('id', id);
   if (error) return fail(error.message);
+  // Rate labels differ by track (material: FOB Fabric / Billing / Standard Fabric).
   const rateSummary = [
-    job != null ? `Job ${job}` : null,
-    fob != null ? `${track === 'material' ? 'Purchase' : 'FOB'} ${fob}` : null,
-    efob != null ? `E-FOB ${efob}` : null,
+    job != null ? `${track === 'material' ? 'FOB Fabric' : 'Job'} ${job}` : null,
+    fob != null ? `${track === 'material' ? 'Billing' : 'FOB'} ${fob}` : null,
+    efob != null ? `${track === 'material' ? 'Standard Fabric' : 'E-FOB'} ${efob}` : null,
   ]
     .filter(Boolean)
     .join(', ');
@@ -197,13 +203,11 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
   // Guarded on the stage so a concurrent reject/target can't be overwritten.
   const { error } = await supabase.from(table).update(patch).eq('id', id).eq('neg_stage', 'proposed');
   if (error) return fail(error.message);
-  if (track === 'fg') {
-    await recordAcceptedRate(
-      supabase, row.product_code,
-      { job: row.job_cost, fob: row.fob_cost, efob: row.efob_cost ?? null },
-      user.email, 'Proposal accepted as-is',
-    );
-  }
+  await recordAcceptedRate(
+    supabase, track, row.product_code,
+    { job: row.job_cost, fob: row.fob_cost, efob: row.efob_cost ?? null },
+    user.email, 'Proposal accepted as-is',
+  );
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Proposal accepted as-is — standard cost');
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
@@ -226,9 +230,9 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
     neg_stage: 'rate_submitted',
     job_cost: numOrNull(formData.get('job_cost')),
     fob_cost: numOrNull(formData.get('fob_cost')),
+    efob_cost: numOrNull(formData.get('efob_cost')),
     updated_at: new Date().toISOString(),
   };
-  if (track === 'fg') patch.efob_cost = numOrNull(formData.get('efob_cost'));
   if (patch.job_cost == null && patch.fob_cost == null && patch.efob_cost == null) {
     return fail('Enter at least one actual rate.');
   }
@@ -261,6 +265,13 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   if (track === 'fg') patch.documented = true;
   const { error } = await supabase.from(table).update(patch).eq('id', id).eq('neg_stage', 'rate_submitted');
   if (error) return fail(error.message);
+  // Snapshot the signed-off rate into the track's accepted-rate history (material has
+  // its own history table now; this is the only sign-off path materials use).
+  await recordAcceptedRate(
+    supabase, track, row.product_code,
+    { job: row.job_cost, fob: row.fob_cost, efob: row.efob_cost ?? null },
+    user.email, 'Signed off — standard cost',
+  );
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Signed off — standard cost');
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
@@ -447,7 +458,7 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already processed.');
   await recordAcceptedRate(
-    supabase, row.product_code as string,
+    supabase, 'fg', row.product_code as string,
     { job: row.job_cost as number | null, fob: row.fob_cost as number | null, efob: row.efob_cost as number | null },
     user.email, 'Signed off — CM confirmed',
   );
@@ -460,4 +471,4 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
 /* ================================================================== */
 /* PO Approval                                                         */
 /* ================================================================== */
-
+

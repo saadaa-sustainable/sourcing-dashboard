@@ -21,21 +21,17 @@
  * comparable to the live rate so it stops masquerading as a CM discrepancy.
  */
 
-/** FINAL PRICE build constants (STANDARD-COST-SPEC §4b). REJ/OH cap at ₹10. */
+/** FINAL PRICE build constant. REJ + OH were removed (2026-09-08) — the final price
+ *  is now just Garment + Margin. The margin % is configurable in Rules Master
+ *  (`margin_pct`); callers pass the live value, this is only the fallback default. */
 export const FINAL_PRICE = {
-  rejPct: 0.05,
-  rejCap: 10,
-  ohPct: 0.05,
-  ohCap: 10,
-  marginPct: 0.15, // flat 15% on the subtotal after REJ + OH (spec assumption)
+  marginPct: 0.15,
 };
 
 export type FinalPriceBreakdown = {
   fabric: number;
   cmtp: number;
   garment: number; // fabric + CMTP
-  rej: number;
-  oh: number;
   margin: number;
   final: number;
 };
@@ -43,8 +39,8 @@ export type FinalPriceBreakdown = {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * Garment (Fabric + CMTP) → REJ (min 5%/₹10) → OH (min 5%/₹10) → MARGIN 15%
- * → FINAL PRICE. Mirrors the Final Cost tab so recompute == displayed standard.
+ * Garment (Fabric + CMTP) → MARGIN → FINAL PRICE. Mirrors the Final Cost tab so
+ * recompute == displayed standard. (REJ/OH removed 2026-09-08; margin from Rules Master.)
  */
 export function finalPrice(
   fabric: number,
@@ -52,17 +48,13 @@ export function finalPrice(
   k = FINAL_PRICE,
 ): FinalPriceBreakdown {
   const garment = fabric + cmtp;
-  const rej = Math.min(garment * k.rejPct, k.rejCap);
-  const oh = Math.min(garment * k.ohPct, k.ohCap);
-  const margin = (garment + rej + oh) * k.marginPct;
+  const margin = garment * k.marginPct;
   return {
     fabric: r2(fabric),
     cmtp: r2(cmtp),
     garment: r2(garment),
-    rej: r2(rej),
-    oh: r2(oh),
     margin: r2(margin),
-    final: r2(garment + rej + oh + margin),
+    final: r2(garment + margin),
   };
 }
 
