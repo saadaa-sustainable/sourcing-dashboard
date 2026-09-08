@@ -108,6 +108,8 @@ export function BuyingPlanClient({
   pendingByCode,
   actuals,
   catalog = [],
+  pickerItems = [],
+  restrictPicker = false,
   leadDays = { job: 30, efob: 45, fob: 90 },
   role,
 }: {
@@ -120,6 +122,10 @@ export function BuyingPlanClient({
   pendingByCode: Record<string, number>;
   actuals: Record<string, { qty: number; value: number }>;
   catalog?: ProductCatalogItem[];
+  /** Products offered in the add-product picker (Standard-Cost-only when restricted). */
+  pickerItems?: ProductCatalogItem[];
+  /** When true, only Standard-Cost products are selectable (no free-typed codes). */
+  restrictPicker?: boolean;
   leadDays?: { job: number; efob: number; fob: number };
   role: SdRole;
 }) {
@@ -556,10 +562,11 @@ export function BuyingPlanClient({
               <Upload size={15} /> Import CSV
             </button>
             <ProductPicker
-              items={catalog}
+              items={restrictPicker ? pickerItems : catalog}
               exclude={used}
+              allowFreeText={!restrictPicker}
               onPick={(code) => addRow(code)}
-              placeholder="Add product — search code or name…"
+              placeholder={restrictPicker ? 'Add product — from Standard Cost…' : 'Add product — search code or name…'}
             />
             <button
               type="button"

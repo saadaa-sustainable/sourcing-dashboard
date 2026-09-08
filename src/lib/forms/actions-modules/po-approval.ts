@@ -96,6 +96,29 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
 
   const fields = readPoFields(formData);
 
+  // Rules-Master toggle (default on): a PO's product must exist in Standard Cost
+  // (a real EasyEcom code or a temporary TMP-xxxx). Keeps PO products in lockstep
+  // with the cost sheet.
+  if (fields.product_code) {
+    const { data: rule } = await supabase
+      .from('sd_analytics_rule')
+      .select('value')
+      .eq('rule_key', 'restrict_plan_po_to_standard_cost')
+      .maybeSingle();
+    if (Number(rule?.value ?? 1) >= 1) {
+      const { data: sc } = await supabase
+        .from('sd_standard_cost')
+        .select('product_code')
+        .eq('product_code', fields.product_code)
+        .maybeSingle();
+      if (!sc) {
+        return fail(
+          `${fields.product_code} isn't in Standard Cost. Add it there first — or create a temporary product if it isn't in EasyEcom yet.`,
+        );
+      }
+    }
+  }
+
   if (id) {
     const { error } = await supabase
       .from('sd_po_approval')
@@ -464,4 +487,4 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
  * approve this PO (team for FG ≤5,000; admin for >5,000 / NPD / MAT) may enter or
  * confirm them. decideApproval hard-blocks the cost decision until this has run, so a
  * PO with a nonsensical delivery window can't get its cost approved unchecked.
- */
+ */

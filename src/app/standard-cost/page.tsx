@@ -20,6 +20,7 @@ import { CostTrackTabs } from './cost-track-tabs';
 import type { StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 import { loadProductFabricMap } from '@/lib/product-fabric.server';
+import { loadTempProductMap } from '@/lib/temp-product.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,9 @@ export default async function StandardCostPage({
   // Soft-deleted codes for this track — re-adding one restores it (un-hide) with data intact.
   const hiddenCodes = await loadHiddenStandardCostCodes(track === 'material');
 
+  // Temporary products (minted here for items not yet in EasyEcom) — badge + merge (FG).
+  const tempProducts = track === 'material' ? {} : await loadTempProductMap();
+
   // Fabric buildup map (grey / processing / finished) + code list — the Fabric
   // Cost tab references these read-only from the Fabric Cost master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -117,6 +121,7 @@ export default async function StandardCostPage({
         cmtpRevisions={cmtpRevisions}
         productFabric={productFabric}
         hiddenCodes={hiddenCodes}
+        tempProducts={tempProducts}
         initialOpen={openCode}
         role={user.role}
         track={track}

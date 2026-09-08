@@ -21,6 +21,8 @@ import {
   setTargetCost,
   signOffCost,
   submitActualRate,
+  mintTempProduct,
+  mergeTempProduct,
   type ActionResult,
 } from '@/lib/forms/actions';
 import {
@@ -55,6 +57,7 @@ import type {
   StandardCostRateHistory,
 } from '@/lib/forms/types';
 import type { CmtpRevision } from '@/lib/standard-cost-revisions.server';
+import type { TempProductInfo } from '@/lib/temp-product.server';
 import { useColumnSort } from '@/lib/use-column-sort';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
@@ -76,6 +79,7 @@ export function StandardCostClient({
   cmtpRevisions = {},
   productFabric = {},
   hiddenCodes = [],
+  tempProducts = {},
   initialOpen = null,
   role,
   track = 'fg',
@@ -94,6 +98,8 @@ export function StandardCostClient({
   productFabric?: Record<string, { fabricCode: string | null; multi: boolean }>;
   /** Product codes soft-deleted from this track — re-adding one restores it intact. */
   hiddenCodes?: string[];
+  /** Temporary products keyed by code (badge + merge). */
+  tempProducts?: Record<string, TempProductInfo>;
   initialOpen?: string | null;
   role: SdRole;
   track?: 'fg' | 'material';
@@ -111,6 +117,7 @@ export function StandardCostClient({
   // A newly-added product opens straight into its cost format.
   const [expanded, setExpanded] = useState<string | null>(initialOpen);
   const [newCode, setNewCode] = useState('');
+  const [tempName, setTempName] = useState('');
 
   const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
 
@@ -180,6 +187,22 @@ export function StandardCostClient({
     });
   }
 
+  // Create a not-yet-in-EasyEcom product with a system-minted TMP-xxxx code.
+  function addTemp() {
+    const name = tempName.trim();
+    if (!name) return;
+    setError(null);
+    setMessage(null);
+    const fd = new FormData();
+    fd.set('name', name);
+    start(async () => {
+      const result = await mintTempProduct(fd);
+      if (result.ok) {
+        window.location.href = '/standard-cost';
+      } else setError(result.error);
+    });
+  }
+
   const colCount = isMat ? 7 : 8;
 
   return (
@@ -223,15 +246,34 @@ export function StandardCostClient({
               </button>
             </div>
           ) : (
-            <Field label="Add a product" hint="search by code or name — from the product master">
-              <ProductPicker
-                items={catalog}
-                exclude={existingCodes}
-                onPick={(code) => addCode(code)}
-                disabled={pending}
-                placeholder="Search product code or name…"
-              />
-            </Field>
+            <div className="wf-form-grid">
+              <Field label="Add a product" hint="search by code or name — from the product master">
+                <ProductPicker
+                  items={catalog}
+                  exclude={existingCodes}
+                  onPick={(code) => addCode(code)}
+                  disabled={pending}
+                  placeholder="Search product code or name…"
+                />
+              </Field>
+              <Field label="…or a new product not in EasyEcom yet" hint="gets a temporary ID (TMP-…) you can merge later">
+                <div className="wf-temp-add">
+                  <input
+                    value={tempName}
+                    placeholder="New product name"
+                    onChange={(e) => setTempName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-ghost wf-btn-sm"
+                    disabled={pending || !tempName.trim()}
+                    onClick={addTemp}
+                  >
+                    <Plus size={13} /> Create temporary
+                  </button>
+                </div>
+              </Field>
+            </div>
           )}
         </div>
       )}
@@ -279,6 +321,8 @@ export function StandardCostClient({
                     role={role}
                     track={track}
                     expanded={expanded === cost.product_code}
+                    temp={tempProducts[cost.product_code]}
+                    mergeCandidates={catalog}
                     onToggle={
                       isMat
                         ? undefined
@@ -469,12 +513,18 @@ function CostRow({
   track,
   expanded,
   onToggle,
+  temp,
+  mergeCandidates = [],
 }: {
   cost: StandardCost;
   role: SdRole;
   track: 'fg' | 'material';
   expanded?: boolean;
   onToggle?: () => void;
+  /** Set when this product is a temporary (not-yet-in-EasyEcom) product. */
+  temp?: TempProductInfo;
+  /** Real product codes a temp can be merged into (admin). */
+  mergeCandidates?: ProductCatalogItem[];
 }) {
   const isMat = track === 'material';
   const jobLabel = isMat ? 'Job Work' : 'Job';
@@ -490,9 +540,26 @@ function CostRow({
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
   const [note, setNote] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const canManageList = canEdit(role, 'draft');
+  const isTemp = temp?.status === 'active';
+
+  function mergeInto(realCode: string) {
+    setErr(null);
+    const fd = new FormData();
+    fd.set('temp_code', cost.product_code);
+    fd.set('real_code', realCode);
+    start(async () => {
+      const res = await mergeTempProduct(fd);
+      if (res.ok) reloadWithToast(res.message);
+      else {
+        setErr(res.error);
+        setMergeOpen(false);
+      }
+    });
+  }
 
   // Soft-delete: remove from the list but keep every field + the history; re-adding
   // the code restores it. Never edits the cost itself, so allowed even when frozen.
@@ -552,6 +619,11 @@ function CostRow({
             </button>
           )}
           {cost.product_code}
+          {isTemp && (
+            <span className="wf-temp-badge" title={temp?.name ? `Temporary product — ${temp.name}` : 'Temporary product — merge when it exists in EasyEcom'}>
+              TEMP{temp?.name ? ` · ${temp.name}` : ''}
+            </span>
+          )}
           {cost.frozen && (
             <small className="wf-subtle">
               <Lock size={11} /> frozen
@@ -582,6 +654,27 @@ function CostRow({
       <td>
         <div className="wf-cost-actions">
           {err && <small className="wf-line-error">{err}</small>}
+
+          {isTemp && role === 'admin' && (
+            mergeOpen ? (
+              <span className="wf-issue-row wf-issue-row-wrap">
+                <small className="wf-subtle">Merge into the real product now in EasyEcom:</small>
+                <ProductPicker
+                  items={mergeCandidates}
+                  onPick={(code) => mergeInto(code)}
+                  disabled={busy}
+                  placeholder="Search the real product code…"
+                />
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMergeOpen(false)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMergeOpen(true)}>
+                Merge…
+              </button>
+            )
+          )}
 
           {canManageList && (
             confirmRemove ? (

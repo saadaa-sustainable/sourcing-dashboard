@@ -12,6 +12,7 @@ import {
   loadProductCatalog,
   NotConfiguredError,
 } from '@/lib/forms/queries';
+import { loadStandardCostProductOptions } from '@/lib/temp-product.server';
 import { BuyingPlanClient } from './buying-plan-client';
 import { MaterialPlanClient } from './material-plan-client';
 import { InwardPlanIiClient } from './inward-plan-ii-client';
@@ -93,6 +94,10 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
     loadAnalyticsRules(),
     loadNpdBudget(planMonth),
   ]);
+  // Rules-Master toggle (default on): restrict the add-product picker to products that
+  // exist in Standard Cost (real + temp), instead of the full EasyEcom catalog.
+  const restrictToStandardCost = (rules.restrict_plan_po_to_standard_cost ?? 1) >= 1;
+  const pickerItems = restrictToStandardCost ? await loadStandardCostProductOptions() : catalog;
   return (
     <>
     <NpdBudgetCard budget={npdBudget} role={role} />
@@ -106,6 +111,8 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       pendingByCode={pendingByCode}
       actuals={Object.fromEntries(actualsMap)}
       catalog={catalog}
+      pickerItems={pickerItems}
+      restrictPicker={restrictToStandardCost}
       leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
       role={role}
     />

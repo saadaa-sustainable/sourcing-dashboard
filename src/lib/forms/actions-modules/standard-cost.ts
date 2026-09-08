@@ -505,4 +505,61 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
 /* Cost negotiation — its own process (propose → target → actual →     */
 /* sign-off), on either the FG or the material cost sheet.             */
 /* ------------------------------------------------------------------ */
-
+
+/* ------------------------------------------------------------------ */
+/* Temporary products — a product not yet in EasyEcom gets a minted    */
+/* TMP-xxxx code here, usable across Buying Plan / PO, and later merged */
+/* into the real code when it appears.                                 */
+/* ------------------------------------------------------------------ */
+
+/** Create a temporary product (system-minted TMP-xxxx) + seed its Standard Cost row. */
+export async function mintTempProduct(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to add products.');
+
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) return fail('Give the new product a name.');
+
+  const supabase = await supa();
+  const { data: code, error } = await supabase.rpc('sd_mint_temp_product', {
+    p_name: name,
+    p_by: user.email,
+  });
+  if (error || !code) return fail(error?.message ?? 'Could not create the temporary product.');
+
+  // Seed its Standard Cost row so it shows up in the sheet ready to be costed.
+  const { error: scErr } = await supabase
+    .from('sd_standard_cost')
+    .upsert({ product_code: code, documented: false, updated_at: new Date().toISOString() }, { onConflict: 'product_code' });
+  if (scErr) return fail(`Created ${code} but could not seed its cost row: ${scErr.message}`);
+
+  revalidatePath('/standard-cost');
+  return { ok: true, message: `Created temporary product ${code} — “${name}”. Fill its cost, then it can be used in Buying Plan / PO.` };
+}
+
+/** Merge a temporary product into its real EasyEcom code (admin) — atomic repoint. */
+export async function mergeTempProduct(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role !== 'admin') return fail('Only an admin can merge a temporary product.');
+
+  const temp_code = String(formData.get('temp_code') ?? '').trim();
+  const real_code = String(formData.get('real_code') ?? '').trim().toUpperCase();
+  if (!temp_code || !real_code) return fail('Both the temporary product and the real product code are required.');
+  if (temp_code === real_code) return fail('The temporary and real codes must differ.');
+
+  const supabase = await supa();
+  const { error } = await supabase.rpc('sd_merge_temp_product', {
+    p_temp: temp_code,
+    p_real: real_code,
+    p_by: user.email,
+  });
+  if (error) return fail(error.message);
+
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  revalidatePath('/po-approval');
+  return { ok: true, message: `Merged ${temp_code} into ${real_code}. All its cost, plan and PO data now lives under ${real_code}.` };
+}
+
