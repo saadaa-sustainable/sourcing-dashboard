@@ -156,6 +156,60 @@ export async function pushCuttingRegisterRow(id: number): Promise<boolean> {
   }
 }
 
+export type CuttingBqProbe = {
+  keyPresent: boolean; // is GCP_SA_KEY set in this runtime?
+  projectId: string;
+  dataset: string;
+  table: string;
+  canReadTable: boolean; // dataset/table metadata reachable
+  canWrite: boolean; // write permission confirmed (non-destructive dry-run INSERT)
+  verdict: 'ready' | 'no-key' | 'read-only' | 'no-access';
+  error?: string;
+};
+
+/**
+ * Non-destructive check of whether THIS runtime's service account can actually write to the
+ * warehouse cutting-register table — so write access can be verified before relying on the
+ * push. Reads table metadata (connectivity + read), then dry-runs an INSERT that executes
+ * nothing (DML planning still requires write permission, so a missing role surfaces here).
+ * Writes no rows. Admin-gated by its route.
+ */
+export async function probeCuttingBqAccess(): Promise<CuttingBqProbe> {
+  const projectId = process.env.BQ_BILLING_PROJECT || 'saadaa-wh';
+  const out: CuttingBqProbe = {
+    keyPresent: !!process.env.GCP_SA_KEY,
+    projectId,
+    dataset: BQ_DATASET,
+    table: BQ_TABLE,
+    canReadTable: false,
+    canWrite: false,
+    verdict: 'no-access',
+  };
+  try {
+    const bq = makeBq();
+    const table = bq.dataset(BQ_DATASET).table(BQ_TABLE);
+    await table.getMetadata();
+    out.canReadTable = true;
+    // Dry-run only (nothing is inserted); DML planning checks tables.updateData.
+    await bq.createQueryJob({
+      query: `INSERT INTO \`${projectId}.${BQ_DATASET}.${BQ_TABLE}\` (po_number) SELECT CAST(NULL AS STRING) WHERE 1 = 0`,
+      location: 'asia-south1',
+      dryRun: true,
+    });
+    out.canWrite = true;
+  } catch (err) {
+    out.error = err instanceof Error ? err.message : String(err);
+  }
+  out.verdict = !out.keyPresent
+    ? 'no-key'
+    : out.canWrite
+      ? 'ready'
+      : out.canReadTable
+        ? 'read-only'
+        : 'no-access';
+  return out;
+}
+
 /**
  * Batch reconcile: push every row not yet in BigQuery and stamp them. Idempotent and safe to
  * run repeatedly. Returns the number of rows pushed. Throws only on an unexpected DB read
