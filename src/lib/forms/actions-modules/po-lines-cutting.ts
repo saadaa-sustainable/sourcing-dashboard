@@ -7,6 +7,7 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
+import { pushCuttingRegisterRow, reconcileCuttingToBq } from '@/lib/cutting-bq';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import {
@@ -141,18 +142,27 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
     bomU = pm?.bom_uom ?? null;
   }
 
-  const { error } = await supabase.from('sd_cutting_register').insert({
-    po_ref_num,
-    product_code,
-    bom_standard_qty: bomQ,
-    bom_uom: bomU,
-    actual_consumption_qty: actual,
-    cutting_date: dateOrNull(formData.get('cutting_date')),
-    remarks: textOrNull(formData.get('remarks')),
-    submitted_via: 'dashboard',
-    submitted_by_email: user.email,
-  });
+  const { data: inserted, error } = await supabase
+    .from('sd_cutting_register')
+    .insert({
+      po_ref_num,
+      product_code,
+      bom_standard_qty: bomQ,
+      bom_uom: bomU,
+      actual_consumption_qty: actual,
+      cutting_date: dateOrNull(formData.get('cutting_date')),
+      remarks: textOrNull(formData.get('remarks')),
+      submitted_via: 'dashboard',
+      submitted_by_email: user.email,
+    })
+    .select('id')
+    .maybeSingle();
   if (error) return fail(`Could not save: ${error.message}`);
+
+  // Push this entry to the warehouse (GCP BigQuery) immediately, best-effort — a GCP
+  // failure never blocks the save; the twice-daily reconcile catches anything missed.
+  if (inserted?.id) await pushCuttingRegisterRow(Number(inserted.id));
+
   revalidatePath('/cutting-register');
   return done(`Saved cutting entry for ${po_ref_num}.`);
 }
@@ -243,6 +253,16 @@ export async function submitCuttingViaLink(formData: FormData): Promise<ActionRe
   });
   if (error) return fail('Could not submit — this link may no longer be active.');
   if (data === false) return fail('This link is no longer active.');
+
+  // The link path inserts via a SECURITY DEFINER RPC (no row id returned here), so push
+  // to the warehouse with a best-effort reconcile — it picks up this row (and any other
+  // not-yet-synced) and stamps them. Never blocks the vendor's submission.
+  try {
+    await reconcileCuttingToBq();
+  } catch (err) {
+    console.error('[cutting-bq] link-submit push failed (will retry in batch):', err instanceof Error ? err.message : err);
+  }
+
   return done('Submitted — thank you!');
 }
 
@@ -250,4 +270,4 @@ export async function submitCuttingViaLink(formData: FormData): Promise<ActionRe
 /* PO Closure — gating + two-leg workflow + surplus (spec §4-5)        */
 /* ================================================================== */
 
-/** Begin closure. Gated: only a completed PO (closure row carries the stamp). */
+/** Begin closure. Gated: only a completed PO (closure row carries the stamp). */

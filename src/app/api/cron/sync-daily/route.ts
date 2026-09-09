@@ -16,11 +16,12 @@ export async function GET(request: NextRequest) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  // ?only=grn|doq|product-master runs a single target; default runs all three.
+  // ?only=grn|doq|product-master|vendor-master|adjustments|cutting-push runs a single
+  // target; default runs them all.
   const onlyParam = request.nextUrl.searchParams.get('only');
-  const only = (['product-master', 'doq', 'grn', 'vendor-master', 'adjustments'] as const).find(
-    (t) => t === onlyParam,
-  );
+  const only = (
+    ['product-master', 'doq', 'grn', 'vendor-master', 'adjustments', 'cutting-push'] as const
+  ).find((t) => t === onlyParam);
 
   const startedAt = new Date().toISOString();
   try {

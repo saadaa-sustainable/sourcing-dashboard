@@ -9,8 +9,15 @@
 
 import { BigQuery } from '@google-cloud/bigquery';
 import { syncAllAdjustments } from '@/lib/adjustments';
+import { reconcileCuttingToBq } from '@/lib/cutting-bq';
 
-export type SyncTarget = 'product-master' | 'doq' | 'grn' | 'vendor-master' | 'adjustments';
+export type SyncTarget =
+  | 'product-master'
+  | 'doq'
+  | 'grn'
+  | 'vendor-master'
+  | 'adjustments'
+  | 'cutting-push';
 export const GRN_WINDOW_DAYS = 45;
 
 const flat = (v: unknown): unknown =>
@@ -204,7 +211,7 @@ async function appendSync(bq: BigQuery, spec: AppendSpec): Promise<number> {
   return mapped.length;
 }
 
-type AppendTarget = Exclude<SyncTarget, 'vendor-master' | 'adjustments'>;
+type AppendTarget = Exclude<SyncTarget, 'vendor-master' | 'adjustments' | 'cutting-push'>;
 
 const SPECS: Record<AppendTarget, AppendSpec> = {
   'product-master': {
@@ -239,7 +246,7 @@ export async function runDailySync(only?: SyncTarget): Promise<Record<string, nu
   const bq = makeBq();
   const targets: SyncTarget[] = only
     ? [only]
-    : ['product-master', 'doq', 'grn', 'vendor-master', 'adjustments'];
+    : ['product-master', 'doq', 'grn', 'vendor-master', 'adjustments', 'cutting-push'];
   const summary: Record<string, number> = {};
   for (const t of targets) {
     if (t === 'vendor-master') {
@@ -247,6 +254,16 @@ export async function runDailySync(only?: SyncTarget): Promise<Record<string, nu
     } else if (t === 'adjustments') {
       const a = await syncAllAdjustments();
       summary[t] = a.po + a.cutting;
+    } else if (t === 'cutting-push') {
+      // Reverse-direction push (Supabase → BigQuery). Best-effort: a missing write
+      // permission or BQ hiccup must not abort the read syncs above. Rows stay unsynced
+      // and are retried next run.
+      try {
+        summary[t] = await reconcileCuttingToBq();
+      } catch (err) {
+        console.error('[bq-sync] cutting-push failed:', err instanceof Error ? err.message : err);
+        summary[t] = -1; // sentinel: ran but errored (see logs)
+      }
     } else {
       summary[t] = await appendSync(bq, SPECS[t]);
     }

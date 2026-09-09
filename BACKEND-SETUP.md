@@ -128,6 +128,17 @@ to keep it out of Next.js — that still holds for page rendering. It is require
 for the cron route only, which is server-only and never bundled to the browser.
 Never prefix it `NEXT_PUBLIC_`.
 
+⚠️ **Cutting-register → BigQuery push (reverse direction).** Cutting entries made on
+the dashboard (`sd_cutting_register`) are pushed BACK into
+`saadaa-wh.MAPLEMONK.po_qty_cutting_register` — immediately on save and via the
+`cutting-push` cron target (`src/lib/cutting-bq.ts`). Unlike every other sync (which
+only reads BigQuery), this **writes**, so the `GCP_SA_KEY` service account must have
+the **BigQuery Data Editor** role on the MAPLEMONK dataset (read-only is not enough).
+If the key is unset or lacks write access, saves still succeed — the push is
+best-effort and rows stay `bq_synced_at IS NULL`, retried by the cron once access is
+granted. (The Apps-Script `BqSync.gs` schedule runs as a *user* and does not do this
+push; it stays BigQuery→Supabase only.)
+
 ### 3e. Cron schedule
 
 `vercel.json` at repo root:
