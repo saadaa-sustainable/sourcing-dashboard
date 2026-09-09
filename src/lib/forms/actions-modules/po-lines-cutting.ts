@@ -21,7 +21,7 @@ import {
   canSignOff,
   canSubmitRate,
 } from '../cost';
-import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from '../types';
+import type { ApprovalEntity, CuttingItemOption, CuttingPoOption, PoCategory, PoType, SdRole, SdStatus } from '../types';
 import { INWARD_PLAN_STATUSES } from '../types';
 import {
   type ActionResult,
@@ -112,9 +112,11 @@ const productFromPoRef = (po: string) => {
 };
 
 /**
- * Authenticated Cutting Register entry. Snapshots the product's BOM standard at
- * creation time (spec §3) — reads it fresh from sd_product_master so the record
- * reflects the standard as it was at cutting, not a stale client value.
+ * Authenticated Cutting Register entry, matching the team template: the team picks a
+ * fabric SKU, then a PO containing it, then the item on that PO, and fills the cutting
+ * figures. Fields line up 1:1 with the warehouse table so the BigQuery push is direct.
+ * The signed cutting-approval image is uploaded to storage client-side; its path is
+ * passed here in `cutting_approval_sheet`.
  */
 export async function saveCuttingRegister(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
@@ -122,34 +124,33 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
   if (!canEdit(user.role, 'draft')) return fail('You do not have permission to add cutting entries.');
 
   const po_ref_num = String(formData.get('po_ref_num') ?? '').trim();
-  if (!po_ref_num) return fail('Enter the PO reference.');
-  const actual = numOrNull(formData.get('actual_consumption_qty'));
-  if (actual == null) return fail('Enter the actual consumption.');
+  if (!po_ref_num) return fail('Pick a PO.');
+  const fabric_sku_code = textOrNull(formData.get('fabric_sku_code'));
+  if (!fabric_sku_code) return fail('Pick the fabric SKU.');
+  const item_code = textOrNull(formData.get('item_code'));
+  const cutting_qty = numOrNull(formData.get('cutting_qty'));
+  const fabric_consumed = numOrNull(formData.get('fabric_consumed'));
+  if (cutting_qty == null && fabric_consumed == null) {
+    return fail('Enter the cutting quantity or the fabric consumed.');
+  }
 
   const product_code = productFromPoRef(po_ref_num);
   const supabase = await supa();
-
-  // Snapshot BOM from the master (null when there's no BOM on file — never 0).
-  let bomQ: number | null = null;
-  let bomU: string | null = null;
-  if (product_code) {
-    const { data: pm } = await supabase
-      .from('sd_product_master')
-      .select('bom_quantity, bom_uom')
-      .eq('product_code', product_code)
-      .maybeSingle();
-    bomQ = pm?.bom_quantity ?? null;
-    bomU = pm?.bom_uom ?? null;
-  }
 
   const { data: inserted, error } = await supabase
     .from('sd_cutting_register')
     .insert({
       po_ref_num,
+      po_number: textOrNull(formData.get('po_number')),
       product_code,
-      bom_standard_qty: bomQ,
-      bom_uom: bomU,
-      actual_consumption_qty: actual,
+      vendor_code: textOrNull(formData.get('vendor_code')),
+      fabric_sku_code,
+      item_code,
+      cutting_qty,
+      avg_fabric_consumption_approved: numOrNull(formData.get('avg_fabric_consumption_approved')),
+      width_of_fabric: textOrNull(formData.get('width_of_fabric')),
+      cutting_approval_sheet: textOrNull(formData.get('cutting_approval_sheet')),
+      fabric_consumed,
       cutting_date: dateOrNull(formData.get('cutting_date')),
       remarks: textOrNull(formData.get('remarks')),
       submitted_via: 'dashboard',
@@ -171,6 +172,123 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
 
   revalidatePath('/cutting-register');
   return done(`Saved cutting entry for ${po_ref_num}.`);
+}
+
+/* ---- Cutting Register pickers: fabric SKU -> PO -> item ---- */
+
+const PICK_LIMIT = 100;
+
+/** Type-ahead over dyed-fabric SKUs (Item Master). Returns up to 30 distinct matches. */
+export async function searchFabricSkus(query: string): Promise<string[]> {
+  const user = await currentUser();
+  if (!user) return [];
+  const q = String(query ?? '').trim();
+  const supabase = await supa();
+  let sel = supabase
+    .from('sd_ee_product_master')
+    .select('dyed_fabric_sku')
+    .not('dyed_fabric_sku', 'is', null)
+    .neq('dyed_fabric_sku', '')
+    .order('dyed_fabric_sku', { ascending: true })
+    .limit(600);
+  if (q) sel = sel.ilike('dyed_fabric_sku', `%${q}%`);
+  const { data } = await sel;
+  const seen = new Set<string>();
+  for (const r of (data ?? []) as { dyed_fabric_sku: string }[]) {
+    if (r.dyed_fabric_sku) seen.add(r.dyed_fabric_sku);
+    if (seen.size >= 30) break;
+  }
+  return [...seen];
+}
+
+/** SKUs (garment) that use a given dyed-fabric SKU. Internal helper. */
+async function skusForFabric(
+  supabase: Awaited<ReturnType<typeof supa>>,
+  fabricSku: string,
+): Promise<string[]> {
+  const { data } = await supabase
+    .from('sd_ee_product_master')
+    .select('sku')
+    .eq('dyed_fabric_sku', fabricSku)
+    .not('sku', 'is', null)
+    .limit(1000);
+  return [...new Set(((data ?? []) as { sku: string }[]).map((r) => r.sku).filter(Boolean))];
+}
+
+/** POs that contain a garment using the given fabric SKU (searchable, newest first). */
+export async function loadPosForFabric(
+  fabricSku: string,
+  query = '',
+): Promise<CuttingPoOption[]> {
+  const user = await currentUser();
+  if (!user) return [];
+  const fabric = String(fabricSku ?? '').trim();
+  if (!fabric) return [];
+  const supabase = await supa();
+  const skus = await skusForFabric(supabase, fabric);
+  if (!skus.length) return [];
+
+  const q = String(query ?? '').trim();
+  let sel = supabase
+    .from('sd_po_master_raw')
+    .select('po_ref_num, po_number, vendor_code, vendor_name, po_date')
+    .in('sku', skus)
+    .order('po_date', { ascending: false, nullsFirst: false })
+    .limit(1500);
+  if (q) sel = sel.or(`po_number.ilike.%${q}%,po_ref_num.ilike.%${q}%,vendor_code.ilike.%${q}%,vendor_name.ilike.%${q}%`);
+  const { data } = await sel;
+
+  const byRef = new Map<string, CuttingPoOption>();
+  for (const r of (data ?? []) as (CuttingPoOption & { po_date: string | null })[]) {
+    const key = r.po_ref_num || r.po_number || '';
+    if (!key || byRef.has(key)) continue;
+    byRef.set(key, { po_ref_num: r.po_ref_num, po_number: r.po_number, vendor_code: r.vendor_code, vendor_name: r.vendor_name });
+    if (byRef.size >= PICK_LIMIT) break;
+  }
+  return [...byRef.values()];
+}
+
+/** Items (garment variants using the fabric) on a chosen PO — the item picker. */
+export async function loadPoItems(
+  poRefNum: string,
+  fabricSku: string,
+): Promise<CuttingItemOption[]> {
+  const user = await currentUser();
+  if (!user) return [];
+  const poRef = String(poRefNum ?? '').trim();
+  const fabric = String(fabricSku ?? '').trim();
+  if (!poRef || !fabric) return [];
+  const supabase = await supa();
+  const skus = await skusForFabric(supabase, fabric);
+  if (!skus.length) return [];
+
+  const { data } = await supabase
+    .from('sd_po_master_raw')
+    .select('product_variant, product_code, product_description, sku')
+    .eq('po_ref_num', poRef)
+    .in('sku', skus)
+    .limit(500);
+
+  const byVariant = new Map<string, CuttingItemOption>();
+  for (const r of (data ?? []) as { product_variant: string | null; product_code: string | null; product_description: string | null }[]) {
+    const code = r.product_variant || r.product_code;
+    if (!code || byVariant.has(code)) continue;
+    byVariant.set(code, { item_code: code, product_code: r.product_code, description: r.product_description });
+  }
+  return [...byVariant.values()];
+}
+
+/** Short-lived signed URL to view an uploaded cutting-approval image. */
+export async function signCuttingApproval(path: string): Promise<{ url: string } | { error: string }> {
+  const user = await currentUser();
+  if (!user) return { error: 'Not signed in.' };
+  const p = String(path ?? '').trim();
+  if (!p) return { error: 'No file.' };
+  if (!hasSupabaseAdminEnv()) return { error: 'Storage not configured.' };
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from('cutting-approvals').createSignedUrl(p, 600);
+  if (error || !data) return { error: error?.message ?? 'Could not sign URL.' };
+  return { url: data.signedUrl };
 }
 
 export async function generateDynamicLink(formData: FormData): Promise<LinkResult> {

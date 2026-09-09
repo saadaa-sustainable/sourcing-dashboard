@@ -49,8 +49,10 @@ const CuttingPush_ = (function () {
   const DATASET = 'MAPLEMONK';
   const TABLE = 'po_qty_cutting_register';
   const SELECT =
-    'id,po_ref_num,product_code,bom_standard_qty,actual_consumption_qty,' +
-    'cutting_date,remarks,submitted_by_email,submitted_by_name,created_at';
+    'id,po_ref_num,po_number,product_code,vendor_code,fabric_sku_code,item_code,' +
+    'cutting_qty,avg_fabric_consumption_approved,width_of_fabric,cutting_approval_sheet,' +
+    'fabric_consumed,bom_standard_qty,actual_consumption_qty,cutting_date,remarks,' +
+    'submitted_by_email,submitted_by_name,created_at';
 
   // ---- Supabase (reuse BqSync/Code script properties) ----
   function conf_() {
@@ -115,18 +117,19 @@ const CuttingPush_ = (function () {
   }
   function toWarehouse_(r) {
     const p = parsePoRef_(r.po_ref_num);
+    // Prefer captured template fields; fall back to derived/legacy for old or /fill-link rows.
     return {
       date_of_cutting: r.cutting_date,
-      vendor_code: p.vendor,
-      po_number: r.po_ref_num,
-      fabric_sku_code: null,
-      item_code: r.product_code,
-      cutting_qty: null,
-      avg_fabric_consumption_approved: r.bom_standard_qty,
-      width_of_fabric: null,
-      cutting_approval_sheet: null,
+      vendor_code: r.vendor_code || p.vendor,
+      po_number: r.po_number || r.po_ref_num,
+      fabric_sku_code: r.fabric_sku_code,
+      item_code: r.item_code || r.product_code,
+      cutting_qty: r.cutting_qty,
+      avg_fabric_consumption_approved: r.avg_fabric_consumption_approved != null ? r.avg_fabric_consumption_approved : r.bom_standard_qty,
+      width_of_fabric: r.width_of_fabric,
+      cutting_approval_sheet: r.cutting_approval_sheet,
       remarks_of_cutting: r.remarks,
-      fabric_consumed: r.actual_consumption_qty,
+      fabric_consumed: r.fabric_consumed != null ? r.fabric_consumed : r.actual_consumption_qty,
       type_of_po: p.type,
       date_of_ingestion: r.created_at,
       ingestion_by: r.submitted_by_email || r.submitted_by_name || 'sourcing-dashboard',

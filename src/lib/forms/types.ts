@@ -868,9 +868,9 @@ export type CuttingRegister = {
   id: number;
   po_ref_num: string;
   product_code: string | null;
-  bom_standard_qty: number | null; // snapshotted at creation
+  bom_standard_qty: number | null; // snapshotted at creation (legacy/link flow)
   bom_uom: string | null;
-  actual_consumption_qty: number | null;
+  actual_consumption_qty: number | null; // legacy/link flow
   cutting_date: string | null;
   remarks: string | null;
   submitted_via: string; // 'dashboard' | 'dynamic_link'
@@ -878,6 +878,31 @@ export type CuttingRegister = {
   submitted_by_name: string | null;
   dynamic_link_id: number | null;
   created_at: string;
+  // Template fields (fabric SKU -> PO -> item flow); map 1:1 to the warehouse table.
+  vendor_code: string | null;
+  po_number: string | null;
+  fabric_sku_code: string | null;
+  item_code: string | null;
+  cutting_qty: number | null;
+  avg_fabric_consumption_approved: number | null;
+  width_of_fabric: string | null;
+  cutting_approval_sheet: string | null; // storage path of the signed sheet image
+  fabric_consumed: number | null;
+};
+
+/** One PO option in the cutting-register picker (POs containing a given fabric SKU). */
+export type CuttingPoOption = {
+  po_ref_num: string;
+  po_number: string | null;
+  vendor_code: string | null;
+  vendor_name: string | null;
+};
+
+/** One item option within a chosen PO (garments using the selected fabric SKU). */
+export type CuttingItemOption = {
+  item_code: string; // product_variant
+  product_code: string | null;
+  description: string | null;
 };
 
 /** A tokenized, expiring, single-use data-capture link (sd_dynamic_links). */

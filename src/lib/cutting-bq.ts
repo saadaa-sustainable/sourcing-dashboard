@@ -21,13 +21,24 @@ const BQ_TABLE = 'po_qty_cutting_register';
 
 // Columns we read from sd_cutting_register to build a warehouse row.
 const SELECT_COLS =
-  'id, po_ref_num, product_code, bom_standard_qty, actual_consumption_qty, ' +
-  'cutting_date, remarks, submitted_by_email, submitted_by_name, created_at';
+  'id, po_ref_num, po_number, product_code, vendor_code, fabric_sku_code, item_code, ' +
+  'cutting_qty, avg_fabric_consumption_approved, width_of_fabric, cutting_approval_sheet, ' +
+  'fabric_consumed, bom_standard_qty, actual_consumption_qty, cutting_date, remarks, ' +
+  'submitted_by_email, submitted_by_name, created_at';
 
 export type CuttingSourceRow = {
   id: number;
   po_ref_num: string;
+  po_number: string | null;
   product_code: string | null;
+  vendor_code: string | null;
+  fabric_sku_code: string | null;
+  item_code: string | null;
+  cutting_qty: number | null;
+  avg_fabric_consumption_approved: number | null;
+  width_of_fabric: string | null;
+  cutting_approval_sheet: string | null;
+  fabric_consumed: number | null;
   bom_standard_qty: number | null;
   actual_consumption_qty: number | null;
   cutting_date: string | null;
@@ -66,18 +77,20 @@ function parsePoRef(po: string): { type: string | null; vendor: string | null } 
  */
 export function mapCuttingToWarehouse(r: CuttingSourceRow): Record<string, unknown> {
   const { type, vendor } = parsePoRef(r.po_ref_num);
+  // Prefer the fields the team actually captured (template flow); fall back to the derived
+  // / legacy values for rows created before the redesign or via the public /fill link.
   return {
     date_of_cutting: r.cutting_date,
-    vendor_code: vendor,
-    po_number: r.po_ref_num,
-    fabric_sku_code: null,
-    item_code: r.product_code,
-    cutting_qty: null,
-    avg_fabric_consumption_approved: r.bom_standard_qty,
-    width_of_fabric: null,
-    cutting_approval_sheet: null,
+    vendor_code: r.vendor_code ?? vendor,
+    po_number: r.po_number ?? r.po_ref_num,
+    fabric_sku_code: r.fabric_sku_code,
+    item_code: r.item_code ?? r.product_code,
+    cutting_qty: r.cutting_qty,
+    avg_fabric_consumption_approved: r.avg_fabric_consumption_approved ?? r.bom_standard_qty,
+    width_of_fabric: r.width_of_fabric,
+    cutting_approval_sheet: r.cutting_approval_sheet,
     remarks_of_cutting: r.remarks,
-    fabric_consumed: r.actual_consumption_qty,
+    fabric_consumed: r.fabric_consumed ?? r.actual_consumption_qty,
     type_of_po: type,
     date_of_ingestion: r.created_at,
     ingestion_by: r.submitted_by_email ?? r.submitted_by_name ?? 'sourcing-dashboard',

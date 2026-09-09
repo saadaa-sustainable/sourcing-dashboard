@@ -4,7 +4,6 @@ import {
   currentUser,
   loadCuttingRegisters,
   loadDynamicLinks,
-  loadProductBom,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { canEdit } from '@/lib/forms/approval';
@@ -28,10 +27,9 @@ export default async function CuttingRegisterPage() {
   }
   if (!user) redirect('/login');
 
-  const [entries, links, bom] = await Promise.all([
+  const [entries, links] = await Promise.all([
     loadCuttingRegisters(),
     loadDynamicLinks(),
-    loadProductBom(),
   ]);
 
   return (
@@ -47,7 +45,6 @@ export default async function CuttingRegisterPage() {
       <CuttingRegisterClient
         entries={entries}
         links={links}
-        bom={bom}
         editable={canEdit(user.role, 'draft')}
       />
     </FormLayout>

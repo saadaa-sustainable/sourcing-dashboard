@@ -1,36 +1,42 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Check, Copy, Link2, MessageCircle, Save, Trash2 } from 'lucide-react';
+import { Check, Copy, ExternalLink, Link2, MessageCircle, Save, Trash2, Upload } from 'lucide-react';
 import {
   generateDynamicLink,
   revokeDynamicLink,
   saveCuttingRegister,
+  searchFabricSkus,
+  loadPosForFabric,
+  loadPoItems,
+  signCuttingApproval,
 } from '@/lib/forms/actions';
+import { createClient } from '@/lib/supabase/client';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
-import type { CuttingRegister, DynamicLink, ProductBom } from '@/lib/forms/types';
+import type {
+  CuttingRegister,
+  CuttingItemOption,
+  CuttingPoOption,
+  DynamicLink,
+} from '@/lib/forms/types';
 
-// product_code is encoded in po_ref_num: FY.../<TYPE>/<PRODUCT>/<VENDOR>-<SEQ>.
-const productFromPo = (po: string) => po.split('/')[2]?.trim() || '';
 const disp = (v: number | null) => (v == null ? '—' : String(v));
 const fmtDate = (s: string | null) => (s ? s.slice(0, 10) : '—');
 
 export function CuttingRegisterClient({
   entries,
   links,
-  bom,
   editable,
 }: {
   entries: CuttingRegister[];
   links: DynamicLink[];
-  bom: Record<string, ProductBom>;
   editable: boolean;
 }) {
   return (
     <>
-      {editable && <EntryPanel bom={bom} />}
+      {editable && <EntryPanel />}
       {editable && <LinkPanel />}
 
       <ActiveLinks links={links} editable={editable} />
@@ -39,26 +45,124 @@ export function CuttingRegisterClient({
   );
 }
 
-/** Authenticated cutting entry — shows the BOM standard beside the actual input. */
-function EntryPanel({ bom }: { bom: Record<string, ProductBom> }) {
-  const [po, setPo] = useState('');
-  const [actual, setActual] = useState('');
+/**
+ * Template entry flow: pick the Fabric SKU → pick a PO that contains it (Vendor / PO fill
+ * in) → pick the item on that PO → fill the cutting figures + upload the signed approval
+ * sheet. Saves to Supabase and flows to the warehouse BigQuery table.
+ */
+function EntryPanel() {
+  // Fabric SKU (type-ahead)
+  const [fabric, setFabric] = useState('');
+  const [fabricQ, setFabricQ] = useState('');
+  const [fabricOpts, setFabricOpts] = useState<string[]>([]);
+  const [fabricOpen, setFabricOpen] = useState(false);
+
+  // PO (searchable, filtered by fabric)
+  const [po, setPo] = useState<CuttingPoOption | null>(null);
+  const [poQ, setPoQ] = useState('');
+  const [poOpts, setPoOpts] = useState<CuttingPoOption[]>([]);
+  const [poOpen, setPoOpen] = useState(false);
+
+  // Item on the PO
+  const [items, setItems] = useState<CuttingItemOption[]>([]);
+  const [item, setItem] = useState('');
+
+  // Cutting figures
   const [date, setDate] = useState('');
+  const [cutQty, setCutQty] = useState('');
+  const [avg, setAvg] = useState('');
+  const [width, setWidth] = useState('');
+  const [consumed, setConsumed] = useState('');
   const [remarks, setRemarks] = useState('');
+
+  // Signed approval image (uploaded to storage; we keep the path)
+  const [fileName, setFileName] = useState('');
+  const [approvalPath, setApprovalPath] = useState('');
+  const [uploading, setUploading] = useState(false);
+
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
-  const productCode = productFromPo(po);
-  const std = productCode ? bom[productCode] : undefined;
-  const bomQty = std?.bom_quantity ?? null;
-  const actualNum = actual === '' ? null : Number(actual);
-  const surplus = bomQty != null && actualNum != null ? Math.round((actualNum - bomQty) * 100) / 100 : null;
+  // Fabric SKU type-ahead (debounced).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void searchFabricSkus(fabricQ).then(setFabricOpts);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [fabricQ]);
+
+  // PO search — reruns when the fabric or the PO query changes.
+  useEffect(() => {
+    if (!fabric) {
+      setPoOpts([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      void loadPosForFabric(fabric, poQ).then(setPoOpts);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [fabric, poQ]);
+
+  function pickFabric(f: string) {
+    setFabric(f);
+    setFabricQ(f);
+    setFabricOpen(false);
+    setPo(null);
+    setPoQ('');
+    setItems([]);
+    setItem('');
+  }
+
+  function pickPo(o: CuttingPoOption) {
+    setPo(o);
+    setPoOpen(false);
+    setPoQ(o.po_number || o.po_ref_num);
+    setItem('');
+    void loadPoItems(o.po_ref_num, fabric).then(setItems);
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setErr(null);
+    setUploading(true);
+    setFileName(f.name);
+    try {
+      const supabase = createClient();
+      const ext = (f.name.split('.').pop() || 'bin').toLowerCase();
+      const path = `cutting/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage.from('cutting-approvals').upload(path, f, { upsert: false });
+      if (error) {
+        setErr(`Image upload failed: ${error.message}`);
+        setFileName('');
+        setApprovalPath('');
+      } else {
+        setApprovalPath(path);
+      }
+    } catch {
+      setErr('Image upload failed.');
+      setFileName('');
+      setApprovalPath('');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const canSave = !!fabric && !!po && !uploading && (cutQty !== '' || consumed !== '');
 
   function save() {
     setErr(null);
     const fd = new FormData();
-    fd.set('po_ref_num', po);
-    fd.set('actual_consumption_qty', actual);
+    fd.set('po_ref_num', po?.po_ref_num ?? '');
+    fd.set('po_number', po?.po_number ?? '');
+    fd.set('vendor_code', po?.vendor_code ?? '');
+    fd.set('fabric_sku_code', fabric);
+    fd.set('item_code', item);
+    fd.set('cutting_qty', cutQty);
+    fd.set('avg_fabric_consumption_approved', avg);
+    fd.set('width_of_fabric', width);
+    fd.set('fabric_consumed', consumed);
+    fd.set('cutting_approval_sheet', approvalPath);
     fd.set('cutting_date', date);
     fd.set('remarks', remarks);
     start(async () => {
@@ -73,26 +177,84 @@ function EntryPanel({ bom }: { bom: Record<string, ProductBom> }) {
       <h3 className="wf-card-title">Add a cutting entry</h3>
       {err && <Notice tone="error">{err}</Notice>}
       <div className="wf-form-grid">
-        <Field label="PO reference" hint="product is read from the PO code">
-          <input value={po} placeholder="FY26-27/FOB/SDRPT/VEND-01" onChange={(e) => setPo(e.target.value)} />
+        {/* 1 — Fabric SKU */}
+        <Field label="Fabric SKU code" hint="type to search the dyed-fabric SKU (Item Master)">
+          <div className="wf-async-picker">
+            <input
+              value={fabricQ}
+              placeholder="e.g. 20CT/63/BL"
+              onChange={(e) => { setFabricQ(e.target.value); setFabric(''); setFabricOpen(true); }}
+              onFocus={() => setFabricOpen(true)}
+              onBlur={() => setTimeout(() => setFabricOpen(false), 150)}
+            />
+            {fabricOpen && fabricOpts.length > 0 && (
+              <ul className="wf-async-list">
+                {fabricOpts.map((f) => (
+                  <li key={f}><button type="button" onMouseDown={(e) => { e.preventDefault(); pickFabric(f); }}>{f}</button></li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Field>
-        <Field label="Product"><input value={productCode} readOnly disabled /></Field>
-        <Field label="BOM standard" hint={std ? '' : productCode ? 'No BOM on file' : ''}>
-          <input value={bomQty != null ? `${bomQty}${std?.bom_uom ? ' ' + std.bom_uom : ''}` : (productCode ? 'No BOM on file' : '—')} readOnly disabled />
+
+        {/* 2 — PO (filtered by fabric) */}
+        <Field label="PO number" hint={fabric ? 'POs containing this fabric — search by PO or vendor' : 'pick a fabric SKU first'}>
+          <div className="wf-async-picker">
+            <input
+              value={poQ}
+              disabled={!fabric}
+              placeholder={fabric ? 'search PO / vendor…' : '—'}
+              onChange={(e) => { setPoQ(e.target.value); setPo(null); setPoOpen(true); }}
+              onFocus={() => setPoOpen(true)}
+              onBlur={() => setTimeout(() => setPoOpen(false), 150)}
+            />
+            {poOpen && poOpts.length > 0 && (
+              <ul className="wf-async-list">
+                {poOpts.map((o) => (
+                  <li key={o.po_ref_num}>
+                    <button type="button" onMouseDown={(e) => { e.preventDefault(); pickPo(o); }}>
+                      <span className="mono">{o.po_number || o.po_ref_num}</span>
+                      <span className="wf-subtle"> · {o.vendor_code ?? ''}{o.vendor_name ? ` (${o.vendor_name})` : ''}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Field>
-        <Field label="Actual consumption">
-          <input type="number" min={0} step="0.01" value={actual} onChange={(e) => setActual(e.target.value)} />
+
+        <Field label="Vendor code"><input value={po?.vendor_code ?? ''} readOnly disabled /></Field>
+
+        {/* 3 — Item on the PO */}
+        <Field label="Item code" hint={po ? 'garments on this PO using the fabric' : 'pick a PO first'}>
+          <select value={item} disabled={!po} onChange={(e) => setItem(e.target.value)}>
+            <option value="">{po ? '— pick item —' : '—'}</option>
+            {items.map((it) => (
+              <option key={it.item_code} value={it.item_code}>
+                {it.item_code}{it.description ? ` · ${it.description}` : ''}
+              </option>
+            ))}
+          </select>
         </Field>
-        <Field label="Surplus vs BOM" hint="actual − BOM">
-          <input value={surplus != null ? String(surplus) : '—'} readOnly disabled />
+
+        {/* 4 — Cutting figures */}
+        <Field label="Date of cutting"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="Cutting qty"><input type="number" min={0} step="1" value={cutQty} onChange={(e) => setCutQty(e.target.value)} /></Field>
+        <Field label="Avg fabric consumption approved" hint="the final approved avg consumption used"><input type="number" min={0} step="0.001" value={avg} onChange={(e) => setAvg(e.target.value)} /></Field>
+        <Field label="Width of fabric"><input value={width} placeholder='e.g. 58"' onChange={(e) => setWidth(e.target.value)} /></Field>
+        <Field label="Fabric consumed"><input type="number" min={0} step="0.001" value={consumed} onChange={(e) => setConsumed(e.target.value)} /></Field>
+        <Field label="Remarks of cutting"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} /></Field>
+
+        {/* 5 — Signed approval image */}
+        <Field label="Cutting approval sheet/image" hint="Saadaa sign mandatory">
+          <label className="wf-btn wf-btn-ghost wf-btn-sm wf-file-btn">
+            <Upload size={13} /> {uploading ? 'Uploading…' : approvalPath ? 'Replace image' : 'Upload image'}
+            <input type="file" accept="image/*,application/pdf" hidden onChange={onFile} disabled={uploading} />
+          </label>
+          {approvalPath && <span className="wf-subtle"> {fileName} ✓</span>}
         </Field>
-        <Field label="Cutting date">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </Field>
-        <Field label="Remarks">
-          <input value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-        </Field>
-        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy || !po || actual === ''} onClick={save}>
+
+        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy || !canSave} onClick={save}>
           <Save size={13} /> {busy ? 'Saving…' : 'Save entry'}
         </button>
       </div>
@@ -110,9 +272,7 @@ function LinkPanel() {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const url = result ? `${origin}/fill/${result.token}` : '';
-  const waText = result
-    ? `Please fill the cutting register for PO ${result.po}: ${url}`
-    : '';
+  const waText = result ? `Please fill the cutting register for PO ${result.po}: ${url}` : '';
   const waHref = `https://wa.me/?text=${encodeURIComponent(waText)}`;
 
   function generate() {
@@ -215,25 +375,38 @@ function ActiveLinks({ links, editable }: { links: DynamicLink[]; editable: bool
   );
 }
 
-const surplusOf = (e: CuttingRegister) =>
-  e.bom_standard_qty != null && e.actual_consumption_qty != null
-    ? Math.round((e.actual_consumption_qty - e.bom_standard_qty) * 100) / 100
-    : null;
+/** "View" button for an uploaded approval image — fetches a short-lived signed URL on click. */
+function ApprovalCell({ path }: { path: string | null }) {
+  const [busy, setBusy] = useState(false);
+  if (!path) return <span className="wf-subtle">—</span>;
+  async function open() {
+    setBusy(true);
+    try {
+      const res = await signCuttingApproval(path!);
+      if ('url' in res) window.open(res.url, '_blank', 'noopener,noreferrer');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={open}>
+      <ExternalLink size={12} /> {busy ? '…' : 'View'}
+    </button>
+  );
+}
 
 const ENTRY_COLS: Column<CuttingRegister>[] = [
-  { key: 'po_ref_num', label: 'PO', kind: 'mono' },
-  { key: 'product_code', label: 'Product', render: (e) => e.product_code ?? '—' },
-  {
-    key: 'bom_standard_qty', label: 'BOM', kind: 'num',
-    render: (e) => (e.bom_standard_qty != null ? `${e.bom_standard_qty}${e.bom_uom ? ' ' + e.bom_uom : ''}` : <span className="wf-subtle">No BOM</span>),
-  },
-  { key: 'actual_consumption_qty', label: 'Actual', kind: 'num', render: (e) => disp(e.actual_consumption_qty) },
-  {
-    key: 'surplus', label: 'Surplus', kind: 'num',
-    accessor: (e) => surplusOf(e),
-    render: (e) => { const s = surplusOf(e); return <span className={s != null && s > 0 ? 'wf-error-text' : undefined}>{s != null ? s : '—'}</span>; },
-  },
   { key: 'cutting_date', label: 'Cut date', accessor: (e) => e.cutting_date ?? '', render: (e) => fmtDate(e.cutting_date) },
+  { key: 'fabric_sku_code', label: 'Fabric SKU', kind: 'mono', render: (e) => e.fabric_sku_code ?? '—' },
+  { key: 'po', label: 'PO', kind: 'mono', accessor: (e) => e.po_number || e.po_ref_num, render: (e) => e.po_number || e.po_ref_num },
+  { key: 'vendor_code', label: 'Vendor', render: (e) => e.vendor_code ?? '—' },
+  { key: 'item_code', label: 'Item', kind: 'mono', render: (e) => e.item_code ?? e.product_code ?? '—' },
+  { key: 'cutting_qty', label: 'Cut qty', kind: 'num', render: (e) => disp(e.cutting_qty) },
+  { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', kind: 'num', render: (e) => disp(e.avg_fabric_consumption_approved) },
+  { key: 'width_of_fabric', label: 'Width', render: (e) => e.width_of_fabric ?? '—' },
+  { key: 'fabric_consumed', label: 'Consumed', kind: 'num', render: (e) => disp(e.fabric_consumed) },
+  { key: 'cutting_approval_sheet', label: 'Approval', render: (e) => <ApprovalCell path={e.cutting_approval_sheet} /> },
+  { key: 'remarks', label: 'Remarks', render: (e) => e.remarks ?? '—' },
   { key: 'submitted_via', label: 'Via', render: (e) => (e.submitted_via === 'dynamic_link' ? 'link' : 'dashboard') },
   { key: 'by', label: 'By', accessor: (e) => e.submitted_by_name || e.submitted_by_email || '', render: (e) => e.submitted_by_name || e.submitted_by_email || '—' },
 ];
@@ -248,7 +421,7 @@ function EntriesTable({ entries }: { entries: CuttingRegister[] }) {
         rowKey={(e) => String(e.id)}
         defaultSource="bigquery"
         unit="entries"
-        searchPlaceholder="PO, product, person…"
+        searchPlaceholder="fabric, PO, vendor, item, person…"
         emptyText="No cutting entries yet."
         download={{ filename: 'cutting-entries' }}
       />
