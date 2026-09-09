@@ -7,26 +7,29 @@
  * (pushpendra), who already has BigQuery access, so NO service-account key is needed
  * anywhere (the dashboard has no GCP creds).
  *
- * Two ways it runs, both idempotent (a row is pushed only while bq_synced_at IS NULL,
- * stamped on success; a deterministic insertId dedups streaming retries):
- *   • doPost(e)  — IMMEDIATE. The dashboard POSTs {secret, id} right after a save; this
- *                  pushes that one row in real time. (Web App URL, "Execute as: me".)
- *   • cuttingReconcile() — BATCH. A time trigger sweeps every not-yet-synced row, so the
- *                  public /fill-link submissions and any failed immediate call are caught up.
+ * How it runs (idempotent: a row is pushed only while bq_synced_at IS NULL, stamped on
+ * success; a deterministic insertId dedups streaming retries):
+ *   • cuttingReconcile() — PRIMARY. A time trigger every 5 minutes sweeps every not-yet-synced
+ *                  row (dashboard saves + public /fill-link submissions) and pushes them, so
+ *                  entries reach BigQuery within ~5 min. No external call needed.
+ *   • doPost(e)  — OPTIONAL, only if anonymous web apps are allowed. The dashboard POSTs
+ *                  {secret, id} for a true real-time push. NOTE: the saadaa.in Workspace blocks
+ *                  anonymous web-app access, so this route currently can't be reached — the
+ *                  5-minute trigger is what actually runs. Kept in case the policy changes.
  *
  * Reuses the Script Properties BqSync/Code already set: SUPABASE_URL,
- * SUPABASE_SERVICE_ROLE_KEY. Add one more: CUTTING_PUSH_SECRET (any long random string;
- * the same value goes in Vercel as APPS_SCRIPT_CUTTING_SECRET).
+ * SUPABASE_SERVICE_ROLE_KEY. CUTTING_PUSH_SECRET is only needed for the (optional) web app.
  *
- * ONE-TIME SETUP:
+ * ONE-TIME SETUP (trigger route — no web app / no Vercel env needed):
  *   1. Paste this file into the Apps Script project that runs Code.gs / BqSync.gs.
- *   2. Editor -> Services (+) -> add "BigQuery API" (BqSync.gs already needs it).
- *   3. Project Settings -> Script Properties -> add CUTTING_PUSH_SECRET = <random string>.
- *   4. Deploy -> New deployment -> type "Web app", Execute as "Me", Who has access
- *      "Anyone". Copy the /exec URL -> set it in Vercel as APPS_SCRIPT_CUTTING_URL,
- *      and set APPS_SCRIPT_CUTTING_SECRET to the same value as step 3. Redeploy Vercel.
- *   5. Run installCuttingPushTrigger() once (installs the twice-daily reconcile) and grant
- *      the OAuth consent. Optional first fill: run cuttingReconcile() manually.
+ *   2. Editor -> Services (+) -> confirm "BigQuery" is present (BqSync.gs already needs it).
+ *   3. Run installCuttingPushTrigger() once and grant the OAuth consent (installs the
+ *      every-5-minute reconcile). Optional first fill: run cuttingReconcile() manually.
+ *   (Because the dashboard doesn't call the web app in this mode, leave APPS_SCRIPT_CUTTING_URL
+ *    UNSET in Vercel so it doesn't make pointless calls. The web-app steps below are only
+ *    relevant if your Workspace ever allows anonymous access.)
+ *   Optional web app: Deploy -> New deployment -> "Web app", Execute as "Me", access "Anyone";
+ *   add CUTTING_PUSH_SECRET script property; set APPS_SCRIPT_CUTTING_URL + _SECRET in Vercel.
  *
  * Requires the installing user to have BigQuery *write* (Data Editor / tables.updateData)
  * on the MAPLEMONK dataset. If a push fails with a permission error it's logged and the
@@ -201,9 +204,13 @@ const CuttingPush_ = (function () {
     for (const t of ScriptApp.getProjectTriggers()) {
       if (t.getHandlerFunction() === 'cuttingReconcile') ScriptApp.deleteTrigger(t);
     }
-    ScriptApp.newTrigger('cuttingReconcile').timeBased().everyDays(1).atHour(6).create();
-    ScriptApp.newTrigger('cuttingReconcile').timeBased().everyDays(1).atHour(18).create();
-    console.log('cuttingReconcile triggers installed (~6 AM and ~6 PM, script timezone).');
+    // Every 5 minutes: this is the PRIMARY push mechanism (the saadaa.in Workspace blocks
+    // anonymous web-app access, so the doPost/immediate HTTP route can't be reached from the
+    // dashboard). A run reads only the rows with bq_synced_at IS NULL — usually zero — so it's
+    // cheap; entries reach BigQuery within ~5 minutes. Change to everyMinutes(1) for tighter
+    // latency, or everyMinutes(10/15/30) to run less often.
+    ScriptApp.newTrigger('cuttingReconcile').timeBased().everyMinutes(5).create();
+    console.log('cuttingReconcile trigger installed: every 5 minutes.');
   }
 
   return { doPost: doPost, reconcile: reconcile, install: install, pushByIds: pushByIds };

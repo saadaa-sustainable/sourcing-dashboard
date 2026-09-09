@@ -133,17 +133,15 @@ the dashboard (`sd_cutting_register`) are pushed BACK into
 `saadaa-wh.MAPLEMONK.po_qty_cutting_register`. Unlike every other sync (which only reads
 BigQuery), this **writes**. There are two possible routes; pick one:
 
-**Route A — Apps Script Web App (default, no service account).** `apps-script/CuttingPush.gs`
-runs BigQuery as the installing *user* (who has BQ access), so no key is needed in Vercel.
-Deploy it as a Web App (Execute as: me · Access: Anyone), then set in Vercel:
-```
-APPS_SCRIPT_CUTTING_URL    = <the /exec URL>
-APPS_SCRIPT_CUTTING_SECRET = <same value as the script's CUTTING_PUSH_SECRET property>
-```
-The dashboard POSTs the row id on each save (immediate); a time trigger reconciles the
-rest (vendor /fill links, retries). Requires the installing user to have BigQuery
-**Data Editor** (write) on the MAPLEMONK dataset. Full steps are in the header of
-`apps-script/CuttingPush.gs`.
+**Route A — Apps Script (default, no service account).** `apps-script/CuttingPush.gs`
+runs BigQuery as the installing *user* (who has BQ write on MAPLEMONK), so no key is needed
+anywhere. The saadaa.in Workspace **blocks anonymous web apps**, so the immediate HTTP route
+can't be reached — instead a **time trigger every 5 minutes** (`cuttingReconcile`) sweeps rows
+with `bq_synced_at IS NULL` (dashboard saves + /fill-link submissions) and pushes them; entries
+land in BigQuery within ~5 min. Setup: paste `CuttingPush.gs` into the Apps Script project,
+confirm the BigQuery service is present, run `installCuttingPushTrigger()` once. Leave
+`APPS_SCRIPT_CUTTING_URL` **unset** in Vercel (the web-app path is dormant unless the Workspace
+ever allows anonymous access). Full steps are in the header of `apps-script/CuttingPush.gs`.
 
 **Route B — Service account (only if you can't/won't use Apps Script).** Set `GCP_SA_KEY`
 to a service account that has **BigQuery Data Editor** on MAPLEMONK + **BigQuery Job User**;
