@@ -130,14 +130,28 @@ Never prefix it `NEXT_PUBLIC_`.
 
 ⚠️ **Cutting-register → BigQuery push (reverse direction).** Cutting entries made on
 the dashboard (`sd_cutting_register`) are pushed BACK into
-`saadaa-wh.MAPLEMONK.po_qty_cutting_register` — immediately on save and via the
-`cutting-push` cron target (`src/lib/cutting-bq.ts`). Unlike every other sync (which
-only reads BigQuery), this **writes**, so the `GCP_SA_KEY` service account must have
-the **BigQuery Data Editor** role on the MAPLEMONK dataset (read-only is not enough).
-If the key is unset or lacks write access, saves still succeed — the push is
-best-effort and rows stay `bq_synced_at IS NULL`, retried by the cron once access is
-granted. (The Apps-Script `BqSync.gs` schedule runs as a *user* and does not do this
-push; it stays BigQuery→Supabase only.)
+`saadaa-wh.MAPLEMONK.po_qty_cutting_register`. Unlike every other sync (which only reads
+BigQuery), this **writes**. There are two possible routes; pick one:
+
+**Route A — Apps Script Web App (default, no service account).** `apps-script/CuttingPush.gs`
+runs BigQuery as the installing *user* (who has BQ access), so no key is needed in Vercel.
+Deploy it as a Web App (Execute as: me · Access: Anyone), then set in Vercel:
+```
+APPS_SCRIPT_CUTTING_URL    = <the /exec URL>
+APPS_SCRIPT_CUTTING_SECRET = <same value as the script's CUTTING_PUSH_SECRET property>
+```
+The dashboard POSTs the row id on each save (immediate); a time trigger reconciles the
+rest (vendor /fill links, retries). Requires the installing user to have BigQuery
+**Data Editor** (write) on the MAPLEMONK dataset. Full steps are in the header of
+`apps-script/CuttingPush.gs`.
+
+**Route B — Service account (only if you can't/won't use Apps Script).** Set `GCP_SA_KEY`
+to a service account that has **BigQuery Data Editor** on MAPLEMONK + **BigQuery Job User**;
+the app then pushes directly (`src/lib/cutting-bq.ts`) and the `cutting-push` cron target
+reconciles. Verify with the admin-only probe `GET /api/diagnostics/cutting-bq`.
+
+Either way the push is best-effort: if unconfigured or lacking write access, saves still
+succeed and rows stay `bq_synced_at IS NULL`, retried once the route is set up.
 
 ### 3e. Cron schedule
 

@@ -156,6 +156,39 @@ export async function pushCuttingRegisterRow(id: number): Promise<boolean> {
   }
 }
 
+/**
+ * Push via the Apps Script Web App (the credential-free route: it runs BigQuery as the
+ * installing user, so no service account / GCP_SA_KEY is needed in Vercel). POSTs the row
+ * id(s) + shared secret; an empty list asks Apps Script to reconcile every unsynced row.
+ * Best-effort: returns false (never throws) when unconfigured or on failure — the Apps
+ * Script time trigger reconciles anything missed. Configure APPS_SCRIPT_CUTTING_URL +
+ * APPS_SCRIPT_CUTTING_SECRET in Vercel (secret must match the script's CUTTING_PUSH_SECRET).
+ */
+export async function pushCuttingViaAppsScript(idOrIds: number | number[]): Promise<boolean> {
+  const url = process.env.APPS_SCRIPT_CUTTING_URL;
+  const secret = process.env.APPS_SCRIPT_CUTTING_SECRET;
+  if (!url || !secret) return false;
+  const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret, ids }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+    return data?.ok === true;
+  } catch (err) {
+    console.error('[cutting-bq] apps-script push failed (will retry in batch):', err instanceof Error ? err.message : err);
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type CuttingBqProbe = {
   keyPresent: boolean; // is GCP_SA_KEY set in this runtime?
   projectId: string;

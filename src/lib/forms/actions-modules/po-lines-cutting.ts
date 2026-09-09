@@ -7,7 +7,7 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { pushCuttingRegisterRow, reconcileCuttingToBq } from '@/lib/cutting-bq';
+import { pushCuttingRegisterRow, reconcileCuttingToBq, pushCuttingViaAppsScript } from '@/lib/cutting-bq';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import {
@@ -161,7 +161,13 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
 
   // Push this entry to the warehouse (GCP BigQuery) immediately, best-effort — a GCP
   // failure never blocks the save; the twice-daily reconcile catches anything missed.
-  if (inserted?.id) await pushCuttingRegisterRow(Number(inserted.id));
+  // Preferred route is the Apps Script Web App (runs as the user, no service-account key);
+  // if that isn't configured, fall back to a direct service-account push (needs GCP_SA_KEY).
+  if (inserted?.id) {
+    const id = Number(inserted.id);
+    if (process.env.APPS_SCRIPT_CUTTING_URL) await pushCuttingViaAppsScript(id);
+    else await pushCuttingRegisterRow(id);
+  }
 
   revalidatePath('/cutting-register');
   return done(`Saved cutting entry for ${po_ref_num}.`);
@@ -256,9 +262,11 @@ export async function submitCuttingViaLink(formData: FormData): Promise<ActionRe
 
   // The link path inserts via a SECURITY DEFINER RPC (no row id returned here), so push
   // to the warehouse with a best-effort reconcile — it picks up this row (and any other
-  // not-yet-synced) and stamps them. Never blocks the vendor's submission.
+  // not-yet-synced) and stamps them. Never blocks the vendor's submission. Preferred route
+  // is the Apps Script Web App (no key); else the service-account reconcile.
   try {
-    await reconcileCuttingToBq();
+    if (process.env.APPS_SCRIPT_CUTTING_URL) await pushCuttingViaAppsScript([]);
+    else await reconcileCuttingToBq();
   } catch (err) {
     console.error('[cutting-bq] link-submit push failed (will retry in batch):', err instanceof Error ? err.message : err);
   }
