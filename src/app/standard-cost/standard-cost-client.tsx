@@ -211,6 +211,11 @@ export function StandardCostClient({
 
   const colCount = 8; // code, proposed, target, 3 rate cols, stage, actions (both tracks)
 
+  // CMTP + Fabric Cost are documentation: editable until the cost is FROZEN (a PO was
+  // issued), even after sign-off — a CMTP amount change still logs a revision reason. The
+  // rate itself stays governed by the negotiation controls, not these tabs.
+  const cmtpFabricEditable = (c: StandardCost) => !c.frozen && canEdit(role, 'draft');
+
   return (
     <>
       <Notice tone="info">
@@ -365,7 +370,7 @@ export function StandardCostClient({
                             history={rateHistory[cost.product_code] ?? []}
                             revisions={cmtpRevisions[cost.product_code] ?? []}
                             masterFabric={productFabric[cost.product_code] ?? null}
-                            editable={!cost.frozen && canEdit(role, cost.status)}
+                            editable={cmtpFabricEditable(cost)}
                             marginPct={marginPct}
                           />
                         )}

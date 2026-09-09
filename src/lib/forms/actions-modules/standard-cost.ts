@@ -55,20 +55,12 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   if (existing?.frozen) {
     return fail('This cost is frozen (a PO was issued) and can no longer be edited.');
   }
-  const status = (existing?.status ?? 'draft') as SdStatus;
-  if (!canEdit(user.role, status)) {
-    return fail(
-      status === 'approved'
-        ? 'This cost is approved — resubmit to change it.'
-        : 'You cannot edit this cost right now.',
-    );
-  }
+  // Documentation (fabric link, consumption-derived total, CAD/RFP) stays editable even
+  // after sign-off — only a PO-issued freeze locks it. The rate (job/FOB/EFOB) is owned by
+  // the negotiation flow, so this save only touches rate columns when they're explicitly sent.
 
   const patch: Record<string, unknown> = {
     product_code,
-    job_cost: numOrNull(formData.get('job_cost')),
-    fob_cost: numOrNull(formData.get('fob_cost')),
-    efob_cost: numOrNull(formData.get('efob_cost')),
     total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
     cad_link: textOrNull(formData.get('cad_link')),
     rfp_link: textOrNull(formData.get('rfp_link')),
@@ -77,6 +69,11 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     documented: true,
     updated_at: new Date().toISOString(),
   };
+  // Rate columns are owned by the negotiation flow — only touch them when a caller
+  // explicitly sends them, so a documentation save never nulls a signed-off rate.
+  if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));
+  if (formData.has('fob_cost')) patch.fob_cost = numOrNull(formData.get('fob_cost'));
+  if (formData.has('efob_cost')) patch.efob_cost = numOrNull(formData.get('efob_cost'));
   // cm_cost is owned by the CMTP breakdown (saveCmtpComponents). Only touch it
   // when a caller explicitly sends it, so a header save never wipes the CMTP total.
   if (formData.has('cm_cost')) patch.cm_cost = numOrNull(formData.get('cm_cost'));
