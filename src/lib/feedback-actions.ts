@@ -6,7 +6,7 @@ import { currentUser } from '@/lib/forms/queries';
 import { canEdit } from '@/lib/forms/approval';
 import { notifyFeedbackSlack } from '@/lib/slack';
 import type { ActionResult } from '@/lib/forms/actions';
-import type { FeedbackMessage, FeedbackStatus } from '@/lib/feedback';
+import type { FeedbackMessage } from '@/lib/feedback';
 
 const KINDS = ['bug', 'suggestion', 'question'];
 const SEVERITIES = ['low', 'medium', 'high', 'blocker'];
@@ -186,6 +186,3 @@ export async function getFeedbackThread(feedbackId: number): Promise<{ messages:
     .order('created_at', { ascending: true });
   return { messages: (data ?? []) as FeedbackMessage[] };
 }
-
-// Re-exported for the status enum type in callers.
-export type { FeedbackStatus };
