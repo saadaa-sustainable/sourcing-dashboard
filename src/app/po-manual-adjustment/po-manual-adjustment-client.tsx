@@ -177,7 +177,7 @@ export function PoManualAdjustmentClient({
           PO Manual Adjustment
         </button>
         <button className={tab === 'cutting' ? 'active' : ''} onClick={() => setTab('cutting')}>
-          Cutting Register Adjustment
+          Cutting Register
         </button>
       </div>
       {/* Both panels stay mounted so tab switches keep filters and refreshed rows. */}
