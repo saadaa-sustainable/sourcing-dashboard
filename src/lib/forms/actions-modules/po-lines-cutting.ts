@@ -174,65 +174,19 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
   return done(`Saved cutting entry for ${po_ref_num}.`);
 }
 
-/* ---- Cutting Register pickers: fabric SKU -> PO -> item ---- */
+/* ---- Cutting Register pickers: PO -> item (vendor + fabric SKU auto from the PO) ---- */
 
 const PICK_LIMIT = 100;
 
-/** Type-ahead over dyed-fabric SKUs (Item Master). Returns up to 30 distinct matches. */
-export async function searchFabricSkus(query: string): Promise<string[]> {
+/** Search ALL POs by PO number / ref / vendor (newest first). Vendor fills in on pick. */
+export async function searchPos(query: string): Promise<CuttingPoOption[]> {
   const user = await currentUser();
   if (!user) return [];
   const q = String(query ?? '').trim();
   const supabase = await supa();
-  let sel = supabase
-    .from('sd_ee_product_master')
-    .select('dyed_fabric_sku')
-    .not('dyed_fabric_sku', 'is', null)
-    .neq('dyed_fabric_sku', '')
-    .order('dyed_fabric_sku', { ascending: true })
-    .limit(600);
-  if (q) sel = sel.ilike('dyed_fabric_sku', `%${q}%`);
-  const { data } = await sel;
-  const seen = new Set<string>();
-  for (const r of (data ?? []) as { dyed_fabric_sku: string }[]) {
-    if (r.dyed_fabric_sku) seen.add(r.dyed_fabric_sku);
-    if (seen.size >= 30) break;
-  }
-  return [...seen];
-}
-
-/** SKUs (garment) that use a given dyed-fabric SKU. Internal helper. */
-async function skusForFabric(
-  supabase: Awaited<ReturnType<typeof supa>>,
-  fabricSku: string,
-): Promise<string[]> {
-  const { data } = await supabase
-    .from('sd_ee_product_master')
-    .select('sku')
-    .eq('dyed_fabric_sku', fabricSku)
-    .not('sku', 'is', null)
-    .limit(1000);
-  return [...new Set(((data ?? []) as { sku: string }[]).map((r) => r.sku).filter(Boolean))];
-}
-
-/** POs that contain a garment using the given fabric SKU (searchable, newest first). */
-export async function loadPosForFabric(
-  fabricSku: string,
-  query = '',
-): Promise<CuttingPoOption[]> {
-  const user = await currentUser();
-  if (!user) return [];
-  const fabric = String(fabricSku ?? '').trim();
-  if (!fabric) return [];
-  const supabase = await supa();
-  const skus = await skusForFabric(supabase, fabric);
-  if (!skus.length) return [];
-
-  const q = String(query ?? '').trim();
   let sel = supabase
     .from('sd_po_master_raw')
     .select('po_ref_num, po_number, vendor_code, vendor_name, po_date')
-    .in('sku', skus)
     .order('po_date', { ascending: false, nullsFirst: false })
     .limit(1500);
   if (q) sel = sel.or(`po_number.ilike.%${q}%,po_ref_num.ilike.%${q}%,vendor_code.ilike.%${q}%,vendor_name.ilike.%${q}%`);
@@ -248,34 +202,83 @@ export async function loadPosForFabric(
   return [...byRef.values()];
 }
 
-/** Items (garment variants using the fabric) on a chosen PO — the item picker. */
-export async function loadPoItems(
-  poRefNum: string,
-  fabricSku: string,
-): Promise<CuttingItemOption[]> {
+/** Items on a PO, each carrying its dyed-fabric SKU (so picking an item auto-fills the fabric). */
+export async function loadPoItems(poRefNum: string): Promise<CuttingItemOption[]> {
   const user = await currentUser();
   if (!user) return [];
   const poRef = String(poRefNum ?? '').trim();
-  const fabric = String(fabricSku ?? '').trim();
-  if (!poRef || !fabric) return [];
+  if (!poRef) return [];
   const supabase = await supa();
-  const skus = await skusForFabric(supabase, fabric);
-  if (!skus.length) return [];
-
   const { data } = await supabase
     .from('sd_po_master_raw')
     .select('product_variant, product_code, product_description, sku')
     .eq('po_ref_num', poRef)
-    .in('sku', skus)
-    .limit(500);
+    .limit(1000);
+  const lines = (data ?? []) as { product_variant: string | null; product_code: string | null; product_description: string | null; sku: string | null }[];
+
+  // Map each line SKU to its dyed-fabric SKU from the Item Master (fabric is auto-fetched).
+  const skus = [...new Set(lines.map((l) => l.sku).filter(Boolean) as string[])];
+  const fabricBySku = new Map<string, string | null>();
+  if (skus.length) {
+    const { data: pm } = await supabase
+      .from('sd_ee_product_master')
+      .select('sku, dyed_fabric_sku')
+      .in('sku', skus);
+    for (const r of (pm ?? []) as { sku: string; dyed_fabric_sku: string | null }[]) fabricBySku.set(r.sku, r.dyed_fabric_sku);
+  }
 
   const byVariant = new Map<string, CuttingItemOption>();
-  for (const r of (data ?? []) as { product_variant: string | null; product_code: string | null; product_description: string | null }[]) {
-    const code = r.product_variant || r.product_code;
+  for (const l of lines) {
+    const code = l.product_variant || l.product_code;
     if (!code || byVariant.has(code)) continue;
-    byVariant.set(code, { item_code: code, product_code: r.product_code, description: r.product_description });
+    byVariant.set(code, {
+      item_code: code,
+      product_code: l.product_code,
+      description: l.product_description,
+      fabric_sku_code: (l.sku ? fabricBySku.get(l.sku) ?? null : null),
+    });
   }
   return [...byVariant.values()];
+}
+
+/** Bulk import cutting entries from a parsed template (Bulk Update mode). */
+export async function bulkSaveCuttingRegister(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to add cutting entries.');
+  let rows: Record<string, unknown>[] = [];
+  try { rows = JSON.parse(String(formData.get('rows') ?? '[]')); } catch { rows = []; }
+  if (!Array.isArray(rows) || !rows.length) return fail('No rows to import.');
+
+  const clean = rows
+    .map((r) => {
+      const po = String(r.po_number ?? r.po_ref_num ?? '').trim();
+      return {
+        po_ref_num: po,
+        po_number: po || null,
+        product_code: po ? productFromPoRef(po) : null,
+        vendor_code: textOrNull(r.vendor_code),
+        fabric_sku_code: textOrNull(r.fabric_sku_code),
+        item_code: textOrNull(r.item_code),
+        cutting_qty: numOrNull(r.cutting_qty),
+        avg_fabric_consumption_approved: numOrNull(r.avg_fabric_consumption_approved),
+        width_of_fabric: textOrNull(r.width_of_fabric),
+        cutting_approval_sheet: textOrNull(r.cutting_approval_sheet),
+        fabric_consumed: numOrNull(r.fabric_consumed),
+        cutting_date: dateOrNull(r.date_of_cutting),
+        remarks: textOrNull(r.remarks_of_cutting),
+        submitted_via: 'bulk',
+        submitted_by_email: user.email,
+      };
+    })
+    .filter((r) => r.po_ref_num);
+
+  if (!clean.length) return fail('No valid rows — each row needs a PO number.');
+  const supabase = await supa();
+  const { error } = await supabase.from('sd_cutting_register').insert(clean);
+  if (error) return fail(`Could not import: ${error.message}`);
+  revalidatePath('/po-manual-adjustment');
+  return done(`Imported ${clean.length} cutting ${clean.length === 1 ? 'entry' : 'entries'}. They sync to BigQuery within ~5 minutes.`);
 }
 
 /** Short-lived signed URL to view an uploaded cutting-approval image. */

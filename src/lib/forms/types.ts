@@ -898,11 +898,12 @@ export type CuttingPoOption = {
   vendor_name: string | null;
 };
 
-/** One item option within a chosen PO (garments using the selected fabric SKU). */
+/** One item option within a chosen PO; carries its dyed-fabric SKU (auto-fetched). */
 export type CuttingItemOption = {
   item_code: string; // product_variant
   product_code: string | null;
   description: string | null;
+  fabric_sku_code: string | null;
 };
 
 /** A tokenized, expiring, single-use data-capture link (sd_dynamic_links). */

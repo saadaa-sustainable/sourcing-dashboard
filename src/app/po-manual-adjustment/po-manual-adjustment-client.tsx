@@ -5,6 +5,7 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 import { refreshAdjustmentAction } from '@/lib/adjustments-actions';
 import { REFRESH_LIMIT_PER_HOUR, type AdjustmentSource } from '@/lib/adjustments-types';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { CuttingRegisterInput, CuttingBulkUpdate } from './cutting-input';
 
 type Row = Record<string, unknown>;
 type Col = {
@@ -149,14 +150,17 @@ export function PoManualAdjustmentClient({
   cuttingRows,
   manualState,
   cuttingState,
+  editable,
 }: {
   portalUrl: string;
   manualRows: Row[];
   cuttingRows: Row[];
   manualState: { remaining: number; retryAfterMinutes: number };
   cuttingState: { remaining: number; retryAfterMinutes: number };
+  editable: boolean;
 }) {
   const [tab, setTab] = useState<AdjustmentSource>('po');
+  const [cutMode, setCutMode] = useState<'input' | 'bulk' | 'synced'>('input');
 
   return (
     <div className="wf-stack">
@@ -187,13 +191,24 @@ export function PoManualAdjustmentClient({
         />
       </div>
       <div hidden={tab !== 'cutting'}>
-        <Panel
-          source="cutting"
-          cols={CUTTING_COLS}
-          initialRows={cuttingRows}
-          initialRemaining={cuttingState.remaining}
-          initialRetry={cuttingState.retryAfterMinutes}
-        />
+        {/* Cutting Register: enter on the dashboard (UI Input / Bulk Update) or view the
+            data already synced from BigQuery. */}
+        <div className="segment fb-seg" style={{ marginBottom: 12 }}>
+          <button className={cutMode === 'input' ? 'active' : ''} onClick={() => setCutMode('input')}>UI Input</button>
+          <button className={cutMode === 'bulk' ? 'active' : ''} onClick={() => setCutMode('bulk')}>Bulk Update</button>
+          <button className={cutMode === 'synced' ? 'active' : ''} onClick={() => setCutMode('synced')}>Synced data</button>
+        </div>
+        <div hidden={cutMode !== 'input'}><CuttingRegisterInput editable={editable} /></div>
+        <div hidden={cutMode !== 'bulk'}><CuttingBulkUpdate editable={editable} /></div>
+        <div hidden={cutMode !== 'synced'}>
+          <Panel
+            source="cutting"
+            cols={CUTTING_COLS}
+            initialRows={cuttingRows}
+            initialRemaining={cuttingState.remaining}
+            initialRetry={cuttingState.retryAfterMinutes}
+          />
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { ExternalLink } from 'lucide-react';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import { currentUser, NotConfiguredError } from '@/lib/forms/queries';
+import { canEdit } from '@/lib/forms/approval';
 import { loadCached, refreshState } from '@/lib/adjustments';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,7 @@ export default async function PoManualAdjustmentPage() {
         cuttingRows={cuttingRows}
         manualState={manualState}
         cuttingState={cuttingState}
+        editable={canEdit(user.role, 'draft')}
       />
     </FormLayout>
   );
