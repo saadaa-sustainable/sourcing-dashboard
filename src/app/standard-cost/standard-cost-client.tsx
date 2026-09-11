@@ -296,16 +296,21 @@ export function StandardCostClient({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        {awaitingCount > 0 && (
+        {/* Always-visible filter so approvers can jump straight to what needs them,
+            without scrolling the whole list. */}
+        <div className="segment fb-seg">
+          <button type="button" className={!mineOnly ? 'active' : ''} onClick={() => setMineOnly(false)}>
+            All
+          </button>
           <button
             type="button"
-            className={`wf-btn wf-btn-sm ${mineOnly ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
-            onClick={() => setMineOnly((v) => !v)}
-            title="Show only rows waiting on you"
+            className={mineOnly ? 'active' : ''}
+            onClick={() => setMineOnly(true)}
+            title={role === 'admin' ? 'Only costs waiting on your approval' : 'Only costs waiting on your input'}
           >
-            {awaitingCount} awaiting your action
+            {role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})
           </button>
-        )}
+        </div>
         <span className="wf-subtle">{shown.length} shown</span>
       </div>
 
