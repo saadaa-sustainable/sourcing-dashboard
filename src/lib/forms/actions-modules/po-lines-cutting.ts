@@ -21,7 +21,7 @@ import {
   canSignOff,
   canSubmitRate,
 } from '../cost';
-import type { ApprovalEntity, CuttingItemOption, CuttingPoOption, PoCategory, PoType, SdRole, SdStatus } from '../types';
+import type { ApprovalEntity, CuttingSkuOption, CuttingPoOption, PoCategory, PoType, SdRole, SdStatus } from '../types';
 import { INWARD_PLAN_STATUSES } from '../types';
 import {
   type ActionResult,
@@ -207,9 +207,11 @@ export async function searchPos(query: string): Promise<CuttingPoOption[]> {
   return [...byRef.values()];
 }
 
-/** Items on a PO grouped by item (product) code; each carries the dyed-fabric SKUs of its
- *  variants so the fabric auto-fills (one) or is picked (several). */
-export async function loadPoItems(poRefNum: string): Promise<CuttingItemOption[]> {
+const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'XXL', 'XXXL'];
+const sizeFromSku = (sku: string | null) => { const m = String(sku ?? '').match(/^.*_([^_]+)$/); return m ? m[1] : null; };
+
+/** SKUs on a PO. Selecting one derives item code (product_code), dyed-fabric SKU and size. */
+export async function loadPoSkus(poRefNum: string): Promise<CuttingSkuOption[]> {
   const user = await currentUser();
   if (!user) return [];
   const poRef = String(poRefNum ?? '').trim();
@@ -220,48 +222,36 @@ export async function loadPoItems(poRefNum: string): Promise<CuttingItemOption[]
     .select('product_variant, product_code, product_description, sku')
     .eq('po_ref_num', poRef)
     .eq('warehouse', CUTTING_WAREHOUSE)
-    .limit(2000);
+    .limit(3000);
   const lines = (data ?? []) as { product_variant: string | null; product_code: string | null; product_description: string | null; sku: string | null }[];
 
-  // Map each line SKU to its dyed-fabric SKU from the Item Master.
-  const skus = [...new Set(lines.map((l) => l.sku).filter(Boolean) as string[])];
+  // Map each SKU to its dyed-fabric SKU from the Item Master.
+  const skuList = [...new Set(lines.map((l) => l.sku).filter(Boolean) as string[])];
   const fabricBySku = new Map<string, string | null>();
-  if (skus.length) {
+  if (skuList.length) {
     const { data: pm } = await supabase
       .from('sd_ee_product_master')
       .select('sku, dyed_fabric_sku')
-      .in('sku', skus);
+      .in('sku', skuList);
     for (const r of (pm ?? []) as { sku: string; dyed_fabric_sku: string | null }[]) fabricBySku.set(r.sku, r.dyed_fabric_sku);
   }
 
-  // Group by item/product code → fabric (colour) → sizes on the PO. Size is parsed from the
-  // SKU suffix (e.g. SDRPTBR_L → L). Lines without a fabric are skipped (fabric is required).
-  const sizeOf = (sku: string | null) => { const m = String(sku ?? '').match(/^.*_([^_]+)$/); return m ? m[1] : null; };
-  const byCode = new Map<string, { item_code: string; description: string | null; byFabric: Map<string, Set<string>> }>();
+  const bySku = new Map<string, CuttingSkuOption>();
   for (const l of lines) {
-    const code = l.product_code || l.product_variant;
-    if (!code) continue;
-    const fab = l.sku ? fabricBySku.get(l.sku) ?? null : null;
-    if (!fab) continue;
-    let g = byCode.get(code);
-    if (!g) { g = { item_code: code, description: l.product_description, byFabric: new Map<string, Set<string>>() }; byCode.set(code, g); }
-    let sizes = g.byFabric.get(fab);
-    if (!sizes) { sizes = new Set<string>(); g.byFabric.set(fab, sizes); }
-    const size = sizeOf(l.sku);
-    if (size) sizes.add(size);
+    if (!l.sku || bySku.has(l.sku)) continue;
+    bySku.set(l.sku, {
+      sku: l.sku,
+      item_code: l.product_code || l.product_variant || l.sku,
+      fabric_sku_code: fabricBySku.get(l.sku) ?? null,
+      size: sizeFromSku(l.sku),
+      description: l.product_description,
+    });
   }
-  const rank = (s: string) => { const i = SIZE_ORDER.indexOf(s.toUpperCase()); return i === -1 ? 999 : i; };
-  return [...byCode.values()].map((g) => ({
-    item_code: g.item_code,
-    description: g.description,
-    fabrics: [...g.byFabric.entries()].map(([fabric_sku, sizes]) => ({
-      fabric_sku,
-      sizes: [...sizes].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)),
-    })),
-  }));
+  const rank = (s: string | null) => { const i = SIZE_ORDER.indexOf(String(s ?? '').toUpperCase()); return i === -1 ? 999 : i; };
+  return [...bySku.values()].sort(
+    (a, b) => a.item_code.localeCompare(b.item_code) || rank(a.size) - rank(b.size) || a.sku.localeCompare(b.sku),
+  );
 }
-
-const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'XXL', 'XXXL'];
 
 /** Bulk import cutting entries from a parsed template (Bulk Update mode). */
 export async function bulkSaveCuttingRegister(formData: FormData): Promise<ActionResult> {

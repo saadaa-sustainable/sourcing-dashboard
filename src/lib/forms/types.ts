@@ -899,12 +899,14 @@ export type CuttingPoOption = {
   vendor_name: string | null;
 };
 
-/** One item on a chosen PO. item_code is the product/style code; a style may span several
- *  colours (dyed-fabric SKUs), each with its own set of sizes on the PO. */
-export type CuttingItemOption = {
-  item_code: string; // product_code (style / item code)
+/** One SKU on a chosen PO. Selecting it derives the item code (product/style code), the
+ *  dyed-fabric SKU, and the size — all from the SKU. */
+export type CuttingSkuOption = {
+  sku: string;
+  item_code: string;          // product_code (style / item code)
+  fabric_sku_code: string | null;
+  size: string | null;
   description: string | null;
-  fabrics: { fabric_sku: string; sizes: string[] }[];
 };
 
 /** A tokenized, expiring, single-use data-capture link (sd_dynamic_links). */

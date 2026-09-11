@@ -3,16 +3,15 @@
 import { useEffect, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import { Save, Upload, FileUp, ExternalLink } from 'lucide-react';
-import { searchPos, loadPoItems, saveCuttingRegister, bulkSaveCuttingRegister } from '@/lib/forms/actions';
+import { searchPos, loadPoSkus, saveCuttingRegister, bulkSaveCuttingRegister } from '@/lib/forms/actions';
 import { createClient } from '@/lib/supabase/client';
 import { Field, Notice } from '@/components/forms/form-layout';
-import type { CuttingItemOption, CuttingPoOption } from '@/lib/forms/types';
+import type { CuttingSkuOption, CuttingPoOption } from '@/lib/forms/types';
 
 /* ============================ UI Input ============================ */
 /**
- * Cutting entry, PO-first: pick the PO → pick the Item → Vendor code/name and Fabric SKU
- * auto-fetch → fill the cutting figures + upload the signed approval image. Saves to
- * Supabase and flows to the warehouse BigQuery table.
+ * Cutting entry, PO-first: pick the PO → pick the SKU → item code, fabric SKU, size and
+ * vendor auto-derive → fill the cutting figures + upload the signed approval image.
  */
 export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   const [poQ, setPoQ] = useState('');
@@ -20,8 +19,8 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   const [poOpen, setPoOpen] = useState(false);
   const [po, setPo] = useState<CuttingPoOption | null>(null);
 
-  const [items, setItems] = useState<CuttingItemOption[]>([]);
-  const [itemCode, setItemCode] = useState('');
+  const [skus, setSkus] = useState<CuttingSkuOption[]>([]);
+  const [skuSel, setSkuSel] = useState('');
 
   const [date, setDate] = useState('');
   const [cutQty, setCutQty] = useState('');
@@ -34,8 +33,6 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   const [approvalPath, setApprovalPath] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  const [fabricSel, setFabricSel] = useState('');
-  const [sizeSel, setSizeSel] = useState('');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
@@ -46,23 +43,19 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     return () => clearTimeout(t);
   }, [poQ, poOpen]);
 
-  const selectedItem = items.find((i) => i.item_code === itemCode) ?? null;
-  const fabrics = selectedItem?.fabrics ?? [];
-  const fabricOptions = fabrics.map((f) => f.fabric_sku);
-  // One fabric SKU → auto-fill; several colours under the item → the user picks.
-  const fabric = fabricOptions.length === 1 ? fabricOptions[0] : fabricSel;
-  const sizeOptions = fabrics.find((f) => f.fabric_sku === fabric)?.sizes ?? [];
-  const size = sizeOptions.length === 1 ? sizeOptions[0] : sizeSel;
+  // Everything below the SKU derives from the chosen SKU.
+  const selected = skus.find((s) => s.sku === skuSel) ?? null;
+  const itemCode = selected?.item_code ?? '';
+  const fabric = selected?.fabric_sku_code ?? '';
+  const size = selected?.size ?? '';
 
   function pickPo(o: CuttingPoOption) {
     setPo(o);
     setPoOpen(false);
     setPoQ(o.po_ref_num || o.po_number || '');
-    setItemCode('');
-    setFabricSel('');
-    setSizeSel('');
-    setItems([]);
-    void loadPoItems(o.po_ref_num).then(setItems);
+    setSkuSel('');
+    setSkus([]);
+    void loadPoSkus(o.po_ref_num).then(setSkus);
   }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -85,9 +78,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     }
   }
 
-  const canSave = editable && !!po && !!itemCode && fabric !== ''
-    && (sizeOptions.length === 0 || size !== '')
-    && !uploading && (cutQty !== '' || consumed !== '');
+  const canSave = editable && !!po && !!skuSel && !uploading && (cutQty !== '' || consumed !== '');
 
   function save() {
     setErr(null);
@@ -143,46 +134,24 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
           </div>
         </Field>
 
-        {/* 2 — Item (auto-populated from the PO) */}
-        <Field label="Item code" hint={po ? 'items on this PO' : 'pick a PO first'}>
-          <select value={itemCode} disabled={!po} onChange={(e) => { setItemCode(e.target.value); setFabricSel(''); setSizeSel(''); }}>
-            <option value="">{po ? (items.length ? '— pick item —' : 'no items found') : '—'}</option>
-            {items.map((it) => (
-              <option key={it.item_code} value={it.item_code}>
-                {it.item_code}{it.description ? ` · ${it.description}` : ''}
+        {/* 2 — SKU (the PO's SKUs) */}
+        <Field label="SKU" hint={po ? 'pick the SKU from this PO' : 'pick a PO first'}>
+          <select value={skuSel} disabled={!po} onChange={(e) => setSkuSel(e.target.value)}>
+            <option value="">{po ? (skus.length ? '— pick SKU —' : 'no SKUs found') : '—'}</option>
+            {skus.map((s) => (
+              <option key={s.sku} value={s.sku}>
+                {s.sku}{s.description ? ` · ${s.description}` : ''}
               </option>
             ))}
           </select>
         </Field>
 
-        {/* 3 — Auto-fetched from the PO / item */}
+        {/* 3 — Auto-derived from the SKU / PO */}
+        <Field label="Item code" hint="auto from SKU (style code)"><input value={itemCode} readOnly disabled /></Field>
+        <Field label="Fabric SKU" hint="auto from item master (dyed fabric)"><input value={fabric} readOnly disabled /></Field>
+        <Field label="Size" hint="auto from SKU"><input value={size} readOnly disabled /></Field>
         <Field label="Vendor code"><input value={po?.vendor_code ?? ''} readOnly disabled /></Field>
         <Field label="Vendor name"><input value={po?.vendor_name ?? ''} readOnly disabled /></Field>
-        <Field
-          label="Fabric SKU"
-          hint={fabricOptions.length > 1 ? 'multiple colours on this item — pick the fabric' : 'auto from item master (dyed fabric)'}
-        >
-          {fabricOptions.length > 1 ? (
-            <select value={fabricSel} onChange={(e) => { setFabricSel(e.target.value); setSizeSel(''); }}>
-              <option value="">— pick fabric —</option>
-              {fabricOptions.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
-          ) : (
-            <input value={fabric} readOnly disabled />
-          )}
-        </Field>
-
-        {/* Size — the sizes available for the chosen item + fabric on this PO */}
-        <Field label="Size" hint={fabric ? (sizeOptions.length ? 'sizes on this PO' : 'no sizes on the PO — type if needed') : 'pick item + fabric first'}>
-          {sizeOptions.length > 0 ? (
-            <select value={size} disabled={!fabric} onChange={(e) => setSizeSel(e.target.value)}>
-              <option value="">— pick size —</option>
-              {sizeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          ) : (
-            <input value={sizeSel} disabled={!fabric} placeholder="e.g. L" onChange={(e) => setSizeSel(e.target.value)} />
-          )}
-        </Field>
 
         {/* 4 — Cutting figures */}
         <Field label="Date of cutting"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
