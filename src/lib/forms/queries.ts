@@ -12,6 +12,7 @@ import 'server-only';
 export { NotConfiguredError } from './queries-modules/_shared';
 export * from './queries-modules/auth';
 export * from './queries-modules/analytics';
+export * from './queries-modules/adoption';
 export * from './queries-modules/replenishment-oos';
 export * from './queries-modules/product';
 export * from './queries-modules/standard-cost';

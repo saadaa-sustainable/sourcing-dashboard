@@ -77,6 +77,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/material-master', label: 'Material Master', group: 'Data & Admin' },
   { path: '/fabric-cost', label: 'Fabric Cost', group: 'Data & Admin' },
   { path: '/users', label: 'User Panel', group: 'Data & Admin', adminOnly: true },
+  { path: '/adoption', label: 'Adoption & Activity', group: 'Data & Admin', adminOnly: true },
   { path: '/rules-master', label: 'Rules Master', group: 'Data & Admin', adminOnly: true },
   { path: '/feature-status', label: 'Feature Status', group: 'Data & Admin', adminOnly: true },
   { path: '/sync-status', label: 'Sync Health', group: 'Data & Admin' },

@@ -119,6 +119,7 @@ const MASTERS_LINKS: NavLink[] = [
 // System administration.
 const ADMIN_LINKS: NavLink[] = [
   { href: '/users', label: 'User Panel', Icon: UserCog },
+  { href: '/adoption', label: 'Adoption & Activity', Icon: Activity },
   { href: '/rules-master', label: 'Rules Master', Icon: SlidersHorizontal },
   { href: '/feature-status', label: 'Feature Status', Icon: Activity },
   { href: '/sync-status', label: 'Sync Health', Icon: Activity },
