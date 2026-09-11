@@ -177,8 +177,11 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
 /* ---- Cutting Register pickers: PO -> item (vendor + fabric SKU auto from the PO) ---- */
 
 const PICK_LIMIT = 100;
+// Cutting is done for production POs raised at the manufacturing entity; other warehouses
+// (EBO, Amazon FBA, defective goods, etc.) are not relevant to the cutting register.
+const CUTTING_WAREHOUSE = 'SAADAA SUSTAINABLE DESIGNS AND TECHNOLOGIES PRIVATE LIMITED';
 
-/** Search ALL POs by PO number / ref / vendor (newest first). Vendor fills in on pick. */
+/** Search POs at the SAADAA manufacturing location by PO reference / vendor (newest first). */
 export async function searchPos(query: string): Promise<CuttingPoOption[]> {
   const user = await currentUser();
   if (!user) return [];
@@ -187,9 +190,10 @@ export async function searchPos(query: string): Promise<CuttingPoOption[]> {
   let sel = supabase
     .from('sd_po_master_raw')
     .select('po_ref_num, po_number, vendor_code, vendor_name, po_date')
+    .eq('warehouse', CUTTING_WAREHOUSE)
     .order('po_date', { ascending: false, nullsFirst: false })
     .limit(1500);
-  if (q) sel = sel.or(`po_number.ilike.%${q}%,po_ref_num.ilike.%${q}%,vendor_code.ilike.%${q}%,vendor_name.ilike.%${q}%`);
+  if (q) sel = sel.or(`po_ref_num.ilike.%${q}%,po_number.ilike.%${q}%,vendor_code.ilike.%${q}%,vendor_name.ilike.%${q}%`);
   const { data } = await sel;
 
   const byRef = new Map<string, CuttingPoOption>();
@@ -202,7 +206,8 @@ export async function searchPos(query: string): Promise<CuttingPoOption[]> {
   return [...byRef.values()];
 }
 
-/** Items on a PO, each carrying its dyed-fabric SKU (so picking an item auto-fills the fabric). */
+/** Items on a PO grouped by item (product) code; each carries the dyed-fabric SKUs of its
+ *  variants so the fabric auto-fills (one) or is picked (several). */
 export async function loadPoItems(poRefNum: string): Promise<CuttingItemOption[]> {
   const user = await currentUser();
   if (!user) return [];
@@ -213,10 +218,11 @@ export async function loadPoItems(poRefNum: string): Promise<CuttingItemOption[]
     .from('sd_po_master_raw')
     .select('product_variant, product_code, product_description, sku')
     .eq('po_ref_num', poRef)
-    .limit(1000);
+    .eq('warehouse', CUTTING_WAREHOUSE)
+    .limit(2000);
   const lines = (data ?? []) as { product_variant: string | null; product_code: string | null; product_description: string | null; sku: string | null }[];
 
-  // Map each line SKU to its dyed-fabric SKU from the Item Master (fabric is auto-fetched).
+  // Map each line SKU to its dyed-fabric SKU from the Item Master.
   const skus = [...new Set(lines.map((l) => l.sku).filter(Boolean) as string[])];
   const fabricBySku = new Map<string, string | null>();
   if (skus.length) {
@@ -227,18 +233,17 @@ export async function loadPoItems(poRefNum: string): Promise<CuttingItemOption[]
     for (const r of (pm ?? []) as { sku: string; dyed_fabric_sku: string | null }[]) fabricBySku.set(r.sku, r.dyed_fabric_sku);
   }
 
-  const byVariant = new Map<string, CuttingItemOption>();
+  // Group by item/product code; collect distinct fabric SKUs across the item's variants.
+  const byCode = new Map<string, { item_code: string; description: string | null; fabrics: Set<string> }>();
   for (const l of lines) {
-    const code = l.product_variant || l.product_code;
-    if (!code || byVariant.has(code)) continue;
-    byVariant.set(code, {
-      item_code: code,
-      product_code: l.product_code,
-      description: l.product_description,
-      fabric_sku_code: (l.sku ? fabricBySku.get(l.sku) ?? null : null),
-    });
+    const code = l.product_code || l.product_variant;
+    if (!code) continue;
+    let g = byCode.get(code);
+    if (!g) { g = { item_code: code, description: l.product_description, fabrics: new Set<string>() }; byCode.set(code, g); }
+    const fab = l.sku ? fabricBySku.get(l.sku) : null;
+    if (fab) g.fabrics.add(fab);
   }
-  return [...byVariant.values()];
+  return [...byCode.values()].map((g) => ({ item_code: g.item_code, description: g.description, fabric_skus: [...g.fabrics] }));
 }
 
 /** Bulk import cutting entries from a parsed template (Bulk Update mode). */

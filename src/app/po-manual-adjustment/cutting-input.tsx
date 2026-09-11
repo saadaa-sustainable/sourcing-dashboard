@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Save, Upload, FileUp } from 'lucide-react';
+import { Save, Upload, FileUp, ExternalLink } from 'lucide-react';
 import { searchPos, loadPoItems, saveCuttingRegister, bulkSaveCuttingRegister } from '@/lib/forms/actions';
 import { createClient } from '@/lib/supabase/client';
 import { Field, Notice } from '@/components/forms/form-layout';
@@ -34,6 +34,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   const [approvalPath, setApprovalPath] = useState('');
   const [uploading, setUploading] = useState(false);
 
+  const [fabricSel, setFabricSel] = useState('');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
@@ -45,13 +46,16 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   }, [poQ, poOpen]);
 
   const selectedItem = items.find((i) => i.item_code === itemCode) ?? null;
-  const fabric = selectedItem?.fabric_sku_code ?? '';
+  const fabricOptions = selectedItem?.fabric_skus ?? [];
+  // One fabric SKU → auto-fill; several colours under the item → the user picks.
+  const fabric = fabricOptions.length === 1 ? fabricOptions[0] : fabricSel;
 
   function pickPo(o: CuttingPoOption) {
     setPo(o);
     setPoOpen(false);
-    setPoQ(o.po_number || o.po_ref_num);
+    setPoQ(o.po_ref_num || o.po_number || '');
     setItemCode('');
+    setFabricSel('');
     setItems([]);
     void loadPoItems(o.po_ref_num).then(setItems);
   }
@@ -76,7 +80,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     }
   }
 
-  const canSave = editable && !!po && !uploading && (cutQty !== '' || consumed !== '');
+  const canSave = editable && !!po && !!itemCode && fabric !== '' && !uploading && (cutQty !== '' || consumed !== '');
 
   function save() {
     setErr(null);
@@ -107,11 +111,11 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
       {err && <Notice tone="error">{err}</Notice>}
       <div className="wf-form-grid">
         {/* 1 — PO */}
-        <Field label="PO number" hint="search by PO number or vendor">
+        <Field label="PO reference" hint="search by PO reference or vendor">
           <div className="wf-async-picker">
             <input
               value={poQ}
-              placeholder="search PO / vendor…"
+              placeholder="search PO reference / vendor…"
               onChange={(e) => { setPoQ(e.target.value); setPo(null); setPoOpen(true); }}
               onFocus={() => setPoOpen(true)}
               onBlur={() => setTimeout(() => setPoOpen(false), 150)}
@@ -121,7 +125,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
                 {poOpts.map((o) => (
                   <li key={o.po_ref_num}>
                     <button type="button" onMouseDown={(e) => { e.preventDefault(); pickPo(o); }}>
-                      <span className="mono">{o.po_number || o.po_ref_num}</span>
+                      <span className="mono">{o.po_ref_num || o.po_number}</span>
                       <span className="wf-subtle"> · {o.vendor_code ?? ''}{o.vendor_name ? ` (${o.vendor_name})` : ''}</span>
                     </button>
                   </li>
@@ -133,7 +137,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
 
         {/* 2 — Item (auto-populated from the PO) */}
         <Field label="Item code" hint={po ? 'items on this PO' : 'pick a PO first'}>
-          <select value={itemCode} disabled={!po} onChange={(e) => setItemCode(e.target.value)}>
+          <select value={itemCode} disabled={!po} onChange={(e) => { setItemCode(e.target.value); setFabricSel(''); }}>
             <option value="">{po ? (items.length ? '— pick item —' : 'no items found') : '—'}</option>
             {items.map((it) => (
               <option key={it.item_code} value={it.item_code}>
@@ -146,14 +150,26 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
         {/* 3 — Auto-fetched from the PO / item */}
         <Field label="Vendor code"><input value={po?.vendor_code ?? ''} readOnly disabled /></Field>
         <Field label="Vendor name"><input value={po?.vendor_name ?? ''} readOnly disabled /></Field>
-        <Field label="Fabric SKU" hint="auto from item master (dyed fabric)"><input value={fabric} readOnly disabled /></Field>
+        <Field
+          label="Fabric SKU"
+          hint={fabricOptions.length > 1 ? 'multiple colours on this item — pick the fabric' : 'auto from item master (dyed fabric)'}
+        >
+          {fabricOptions.length > 1 ? (
+            <select value={fabricSel} onChange={(e) => setFabricSel(e.target.value)}>
+              <option value="">— pick fabric —</option>
+              {fabricOptions.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          ) : (
+            <input value={fabric} readOnly disabled />
+          )}
+        </Field>
 
         {/* 4 — Cutting figures */}
         <Field label="Date of cutting"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="Cutting qty"><input type="number" min={0} step="1" value={cutQty} onChange={(e) => setCutQty(e.target.value)} /></Field>
         <Field label="Avg fabric consumption approved"><input type="number" min={0} step="0.001" value={avg} onChange={(e) => setAvg(e.target.value)} /></Field>
         <Field label="Width of fabric"><input value={width} placeholder='e.g. 58"' onChange={(e) => setWidth(e.target.value)} /></Field>
-        <Field label="Fabric consumed"><input type="number" min={0} step="0.001" value={consumed} onChange={(e) => setConsumed(e.target.value)} /></Field>
+        <Field label="Fabric Consumed (meter)"><input type="number" min={0} step="0.001" value={consumed} onChange={(e) => setConsumed(e.target.value)} /></Field>
         <Field label="Remarks of cutting"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} /></Field>
 
         {/* 5 — Signed approval image */}
@@ -216,7 +232,7 @@ function parseCsv(text: string): string[][] {
 
 const HINT_TOKENS = new Set(['auto', 'manual', 'i/p', 'input']);
 
-export function CuttingBulkUpdate({ editable }: { editable: boolean }) {
+export function CuttingBulkUpdate({ editable, portalUrl }: { editable: boolean; portalUrl: string }) {
   const [fileName, setFileName] = useState('');
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [parseErr, setParseErr] = useState<string | null>(null);
@@ -267,9 +283,19 @@ export function CuttingBulkUpdate({ editable }: { editable: boolean }) {
   return (
     <div className="wf-form-panel wf-card">
       {err && <Notice tone="error">{err}</Notice>}
-      <p className="wf-subtle">
-        Upload a CSV using the cutting-register template headers. Each row needs a <strong>PO NUMBER</strong>;
-        the rest map by column name. Rows import to Supabase and sync to BigQuery within ~5 minutes.
+
+      <div className="wf-notice wf-notice-info">
+        <strong>Bulk submit via the ingestion portal:</strong>{' '}
+        <a href={portalUrl} target="_blank" rel="noopener noreferrer">
+          Open ingestion portal <ExternalLink size={12} style={{ verticalAlign: '-1px' }} />
+        </a>
+        {' '}— submit the cutting-register data there in bulk; it syncs back into these tables.
+      </div>
+
+      <p className="wf-subtle" style={{ marginTop: 12 }}>
+        …or upload a CSV here using the cutting-register template headers. Each row needs a
+        <strong> PO REFERENCE / PO NUMBER</strong>; the rest map by column name. Rows import to
+        Supabase and sync to BigQuery within ~5 minutes.
       </p>
       <p className="wf-subtle" style={{ fontSize: 12 }}>Columns: {TEMPLATE_HEADERS.join(' · ')}</p>
 

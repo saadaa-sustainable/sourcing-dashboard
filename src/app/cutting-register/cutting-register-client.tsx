@@ -170,7 +170,7 @@ function ApprovalCell({ path }: { path: string | null }) {
 const ENTRY_COLS: Column<CuttingRegister>[] = [
   { key: 'cutting_date', label: 'Cut date', accessor: (e) => e.cutting_date ?? '', render: (e) => fmtDate(e.cutting_date) },
   { key: 'fabric_sku_code', label: 'Fabric SKU', kind: 'mono', render: (e) => e.fabric_sku_code ?? '—' },
-  { key: 'po', label: 'PO', kind: 'mono', accessor: (e) => e.po_number || e.po_ref_num, render: (e) => e.po_number || e.po_ref_num },
+  { key: 'po', label: 'PO ref', kind: 'mono', accessor: (e) => e.po_ref_num || e.po_number || '', render: (e) => e.po_ref_num || e.po_number || '—' },
   { key: 'vendor_code', label: 'Vendor', render: (e) => e.vendor_code ?? '—' },
   { key: 'item_code', label: 'Item', kind: 'mono', render: (e) => e.item_code ?? e.product_code ?? '—' },
   { key: 'cutting_qty', label: 'Cut qty', kind: 'num', render: (e) => disp(e.cutting_qty) },
