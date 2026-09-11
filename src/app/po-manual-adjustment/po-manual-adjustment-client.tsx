@@ -199,7 +199,7 @@ export function PoManualAdjustmentClient({
           <button className={cutMode === 'synced' ? 'active' : ''} onClick={() => setCutMode('synced')}>Synced data</button>
         </div>
         <div hidden={cutMode !== 'input'}><CuttingRegisterInput editable={editable} /></div>
-        <div hidden={cutMode !== 'bulk'}><CuttingBulkUpdate editable={editable} portalUrl={portalUrl} /></div>
+        <div hidden={cutMode !== 'bulk'}><CuttingBulkUpdate portalUrl={portalUrl} /></div>
         <div hidden={cutMode !== 'synced'}>
           <Panel
             source="cutting"

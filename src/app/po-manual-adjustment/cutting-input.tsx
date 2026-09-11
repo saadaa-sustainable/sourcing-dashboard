@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Save, Upload, FileUp, ExternalLink } from 'lucide-react';
-import { searchPos, loadPoSkus, saveCuttingRegister, bulkSaveCuttingRegister } from '@/lib/forms/actions';
+import { Save, Upload, ExternalLink } from 'lucide-react';
+import { searchPos, loadPoSkus, saveCuttingRegister } from '@/lib/forms/actions';
 import { createClient } from '@/lib/supabase/client';
 import { Field, Notice } from '@/components/forms/form-layout';
 import type { CuttingSkuOption, CuttingPoOption } from '@/lib/forms/types';
@@ -179,100 +179,11 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
 }
 
 /* ============================ Bulk Update ============================ */
-
-const TEMPLATE_HEADERS = [
-  'DATE OF CUTTING', 'Vendor Code', 'PO NUMBER', 'FABRIC SKU CODE', 'ITEM CODE', 'Cutting Qty',
-  'AVG FABRIC CONSUMPTION APPROVED', 'Width of fabric', 'Cutting Approval Sheet/Image', 'Remarks of cutting', 'Fabric Consumed',
-];
-
-const FIELD_FOR_HEADER: { key: string; match: (h: string) => boolean }[] = [
-  { key: 'date_of_cutting', match: (h) => h.includes('date of cutting') },
-  { key: 'vendor_code', match: (h) => h.includes('vendor code') },
-  { key: 'po_number', match: (h) => h.includes('po number') || h === 'po' },
-  { key: 'fabric_sku_code', match: (h) => h.includes('fabric sku') },
-  { key: 'item_code', match: (h) => h.includes('item code') },
-  { key: 'cutting_qty', match: (h) => h.includes('cutting qty') },
-  { key: 'avg_fabric_consumption_approved', match: (h) => h.includes('avg fabric consumption') },
-  { key: 'width_of_fabric', match: (h) => h.includes('width of fabric') },
-  { key: 'cutting_approval_sheet', match: (h) => h.includes('cutting approval') },
-  { key: 'remarks_of_cutting', match: (h) => h.includes('remarks') },
-  { key: 'fabric_consumed', match: (h) => h.includes('fabric consumed') },
-];
-
-// Minimal RFC-4180-ish CSV parser (handles quoted fields with commas/quotes/newlines).
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
-      else field += c;
-    } else if (c === '"') inQuotes = true;
-    else if (c === ',') { row.push(field); field = ''; }
-    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
-    else if (c !== '\r') field += c;
-  }
-  if (field.length || row.length) { row.push(field); rows.push(row); }
-  return rows.filter((r) => r.some((c) => c.trim() !== ''));
-}
-
-const HINT_TOKENS = new Set(['auto', 'manual', 'i/p', 'input']);
-
-export function CuttingBulkUpdate({ editable, portalUrl }: { editable: boolean; portalUrl: string }) {
-  const [fileName, setFileName] = useState('');
-  const [rows, setRows] = useState<Record<string, string>[]>([]);
-  const [parseErr, setParseErr] = useState<string | null>(null);
-  const [busy, start] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
-
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setErr(null); setParseErr(null); setRows([]); setFileName(f.name);
-    try {
-      const text = await f.text();
-      const table = parseCsv(text);
-      if (table.length < 2) { setParseErr('The file has no data rows.'); return; }
-      const headers = table[0].map((h) => h.trim().toLowerCase());
-      const colKey: (string | null)[] = headers.map((h) => FIELD_FOR_HEADER.find((f2) => f2.match(h))?.key ?? null);
-      if (!colKey.some((k) => k === 'po_number')) { setParseErr('Could not find a "PO NUMBER" column. Use the template headers.'); return; }
-      const parsed: Record<string, string>[] = [];
-      for (let r = 1; r < table.length; r++) {
-        const obj: Record<string, string> = {};
-        table[r].forEach((cell, c) => { const k = colKey[c]; if (k) obj[k] = cell.trim(); });
-        const po = (obj.po_number ?? '').trim();
-        if (!po || HINT_TOKENS.has(po.toLowerCase())) continue; // skip blanks + the template hint row
-        parsed.push(obj);
-      }
-      if (!parsed.length) { setParseErr('No data rows with a PO number were found.'); return; }
-      setRows(parsed);
-    } catch {
-      setParseErr('Could not read that file.');
-    }
-  }
-
-  function importRows() {
-    setErr(null);
-    const fd = new FormData();
-    fd.set('rows', JSON.stringify(rows));
-    start(async () => {
-      const res = await bulkSaveCuttingRegister(fd);
-      if (res.ok) reloadWithToast(res.message);
-      else setErr(res.error);
-    });
-  }
-
-  if (!editable) return <Notice tone="info">You have view-only access — ask an admin for edit rights to import cutting entries.</Notice>;
-
-  const preview = rows.slice(0, 8);
-
+/** Bulk cutting-register submission goes through the external ingestion portal, which syncs
+ *  back into these tables. (The in-app CSV upload was removed by request.) */
+export function CuttingBulkUpdate({ portalUrl }: { portalUrl: string }) {
   return (
     <div className="wf-form-panel wf-card">
-      {err && <Notice tone="error">{err}</Notice>}
-
       <div className="wf-notice wf-notice-info">
         <strong>Bulk submit via the ingestion portal:</strong>{' '}
         <a href={portalUrl} target="_blank" rel="noopener noreferrer">
@@ -280,54 +191,6 @@ export function CuttingBulkUpdate({ editable, portalUrl }: { editable: boolean; 
         </a>
         {' '}— submit the cutting-register data there in bulk; it syncs back into these tables.
       </div>
-
-      <p className="wf-subtle" style={{ marginTop: 12 }}>
-        …or upload a CSV here using the cutting-register template headers. Each row needs a
-        <strong> PO REFERENCE / PO NUMBER</strong>; the rest map by column name. Rows import to
-        Supabase and sync to BigQuery within ~5 minutes.
-      </p>
-      <p className="wf-subtle" style={{ fontSize: 12 }}>Columns: {TEMPLATE_HEADERS.join(' · ')}</p>
-
-      <div className="wf-issue-row wf-issue-row-wrap">
-        <label className="wf-btn wf-btn-ghost wf-btn-sm wf-file-btn">
-          <FileUp size={13} /> {fileName || 'Choose CSV file'}
-          <input type="file" accept=".csv,text/csv" hidden onChange={onFile} />
-        </label>
-        {rows.length > 0 && (
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={importRows}>
-            {busy ? 'Importing…' : `Import ${rows.length} row${rows.length === 1 ? '' : 's'}`}
-          </button>
-        )}
-      </div>
-
-      {parseErr && <Notice tone="error">{parseErr}</Notice>}
-
-      {rows.length > 0 && (
-        <div className="table-scroll" style={{ marginTop: 12 }}>
-          <table className="wf-grid">
-            <thead>
-              <tr>
-                <th>PO</th><th>Vendor</th><th>Fabric SKU</th><th>Item</th>
-                <th className="num">Cut qty</th><th className="num">Consumed</th><th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.map((r, i) => (
-                <tr key={i}>
-                  <td className="mono">{r.po_number ?? '—'}</td>
-                  <td>{r.vendor_code ?? '—'}</td>
-                  <td className="mono">{r.fabric_sku_code ?? '—'}</td>
-                  <td className="mono">{r.item_code ?? '—'}</td>
-                  <td className="num">{r.cutting_qty ?? '—'}</td>
-                  <td className="num">{r.fabric_consumed ?? '—'}</td>
-                  <td>{r.date_of_cutting ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.length > preview.length && <p className="wf-subtle wf-pad-sm">+ {rows.length - preview.length} more row(s)…</p>}
-        </div>
-      )}
     </div>
   );
 }
