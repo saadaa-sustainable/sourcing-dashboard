@@ -173,6 +173,7 @@ const ENTRY_COLS: Column<CuttingRegister>[] = [
   { key: 'po', label: 'PO ref', kind: 'mono', accessor: (e) => e.po_ref_num || e.po_number || '', render: (e) => e.po_ref_num || e.po_number || '—' },
   { key: 'vendor_code', label: 'Vendor', render: (e) => e.vendor_code ?? '—' },
   { key: 'item_code', label: 'Item', kind: 'mono', render: (e) => e.item_code ?? e.product_code ?? '—' },
+  { key: 'size', label: 'Size', render: (e) => e.size ?? '—' },
   { key: 'cutting_qty', label: 'Cut qty', kind: 'num', render: (e) => disp(e.cutting_qty) },
   { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', kind: 'num', render: (e) => disp(e.avg_fabric_consumption_approved) },
   { key: 'width_of_fabric', label: 'Width', render: (e) => e.width_of_fabric ?? '—' },

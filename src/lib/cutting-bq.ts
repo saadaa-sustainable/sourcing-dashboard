@@ -21,7 +21,7 @@ const BQ_TABLE = 'po_qty_cutting_register';
 
 // Columns we read from sd_cutting_register to build a warehouse row.
 const SELECT_COLS =
-  'id, po_ref_num, po_number, product_code, vendor_code, fabric_sku_code, item_code, ' +
+  'id, po_ref_num, po_number, product_code, vendor_code, fabric_sku_code, item_code, size, ' +
   'cutting_qty, avg_fabric_consumption_approved, width_of_fabric, cutting_approval_sheet, ' +
   'fabric_consumed, bom_standard_qty, actual_consumption_qty, cutting_date, remarks, ' +
   'submitted_by_email, submitted_by_name, created_at';
@@ -34,6 +34,7 @@ export type CuttingSourceRow = {
   vendor_code: string | null;
   fabric_sku_code: string | null;
   item_code: string | null;
+  size: string | null;
   cutting_qty: number | null;
   avg_fabric_consumption_approved: number | null;
   width_of_fabric: string | null;
@@ -85,6 +86,7 @@ export function mapCuttingToWarehouse(r: CuttingSourceRow): Record<string, unkno
     po_number: r.po_number ?? r.po_ref_num,
     fabric_sku_code: r.fabric_sku_code,
     item_code: r.item_code ?? r.product_code,
+    size: r.size,
     cutting_qty: r.cutting_qty,
     avg_fabric_consumption_approved: r.avg_fabric_consumption_approved ?? r.bom_standard_qty,
     width_of_fabric: r.width_of_fabric,
@@ -142,7 +144,11 @@ export async function pushCuttingRowsToBq(rows: CuttingSourceRow[]): Promise<num
   const payload = rows.map((r) => {
     const mapped = mapCuttingToWarehouse(r);
     const json: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(mapped)) json[k] = coerce(v, typeMap.get(k.toLowerCase()) ?? 'STRING');
+    for (const [k, v] of Object.entries(mapped)) {
+      const t = typeMap.get(k.toLowerCase());
+      if (!t) continue; // column not in the warehouse table (e.g. `size` until it's added) — skip
+      json[k] = coerce(v, t);
+    }
     return { insertId: `sd_cutting_register:${r.id}`, json };
   });
   await table.insert(payload, { raw: true, skipInvalidRows: false, ignoreUnknownValues: false });

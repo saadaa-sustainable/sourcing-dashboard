@@ -49,7 +49,7 @@ const CuttingPush_ = (function () {
   const DATASET = 'MAPLEMONK';
   const TABLE = 'po_qty_cutting_register';
   const SELECT =
-    'id,po_ref_num,po_number,product_code,vendor_code,fabric_sku_code,item_code,' +
+    'id,po_ref_num,po_number,product_code,vendor_code,fabric_sku_code,item_code,size,' +
     'cutting_qty,avg_fabric_consumption_approved,width_of_fabric,cutting_approval_sheet,' +
     'fabric_consumed,bom_standard_qty,actual_consumption_qty,cutting_date,remarks,' +
     'submitted_by_email,submitted_by_name,created_at';
@@ -124,6 +124,7 @@ const CuttingPush_ = (function () {
       po_number: r.po_number || r.po_ref_num,
       fabric_sku_code: r.fabric_sku_code,
       item_code: r.item_code || r.product_code,
+      size: r.size,
       cutting_qty: r.cutting_qty,
       avg_fabric_consumption_approved: r.avg_fabric_consumption_approved != null ? r.avg_fabric_consumption_approved : r.bom_standard_qty,
       width_of_fabric: r.width_of_fabric,
@@ -143,7 +144,11 @@ const CuttingPush_ = (function () {
     const bqRows = rows.map(function (r) {
       const mapped = toWarehouse_(r);
       const json = {};
-      for (const k in mapped) json[k] = coerce_(mapped[k], types[k.toLowerCase()] || 'STRING');
+      for (const k in mapped) {
+        const t = types[k.toLowerCase()];
+        if (!t) continue; // column not in the warehouse table (e.g. size until added) — skip
+        json[k] = coerce_(mapped[k], t);
+      }
       return { insertId: 'sd_cutting_register:' + r.id, json: json };
     });
     const resp = BigQuery.Tabledata.insertAll(

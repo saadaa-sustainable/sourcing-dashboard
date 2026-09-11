@@ -883,6 +883,7 @@ export type CuttingRegister = {
   po_number: string | null;
   fabric_sku_code: string | null;
   item_code: string | null;
+  size: string | null;
   cutting_qty: number | null;
   avg_fabric_consumption_approved: number | null;
   width_of_fabric: string | null;
@@ -899,11 +900,11 @@ export type CuttingPoOption = {
 };
 
 /** One item on a chosen PO. item_code is the product/style code; a style may span several
- *  colours, so it carries the set of dyed-fabric SKUs across its variants (one → auto-fill). */
+ *  colours (dyed-fabric SKUs), each with its own set of sizes on the PO. */
 export type CuttingItemOption = {
   item_code: string; // product_code (style / item code)
   description: string | null;
-  fabric_skus: string[];
+  fabrics: { fabric_sku: string; sizes: string[] }[];
 };
 
 /** A tokenized, expiring, single-use data-capture link (sd_dynamic_links). */

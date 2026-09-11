@@ -35,6 +35,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   const [uploading, setUploading] = useState(false);
 
   const [fabricSel, setFabricSel] = useState('');
+  const [sizeSel, setSizeSel] = useState('');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
@@ -46,9 +47,12 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
   }, [poQ, poOpen]);
 
   const selectedItem = items.find((i) => i.item_code === itemCode) ?? null;
-  const fabricOptions = selectedItem?.fabric_skus ?? [];
+  const fabrics = selectedItem?.fabrics ?? [];
+  const fabricOptions = fabrics.map((f) => f.fabric_sku);
   // One fabric SKU → auto-fill; several colours under the item → the user picks.
   const fabric = fabricOptions.length === 1 ? fabricOptions[0] : fabricSel;
+  const sizeOptions = fabrics.find((f) => f.fabric_sku === fabric)?.sizes ?? [];
+  const size = sizeOptions.length === 1 ? sizeOptions[0] : sizeSel;
 
   function pickPo(o: CuttingPoOption) {
     setPo(o);
@@ -56,6 +60,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     setPoQ(o.po_ref_num || o.po_number || '');
     setItemCode('');
     setFabricSel('');
+    setSizeSel('');
     setItems([]);
     void loadPoItems(o.po_ref_num).then(setItems);
   }
@@ -80,7 +85,9 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     }
   }
 
-  const canSave = editable && !!po && !!itemCode && fabric !== '' && !uploading && (cutQty !== '' || consumed !== '');
+  const canSave = editable && !!po && !!itemCode && fabric !== ''
+    && (sizeOptions.length === 0 || size !== '')
+    && !uploading && (cutQty !== '' || consumed !== '');
 
   function save() {
     setErr(null);
@@ -90,6 +97,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     fd.set('vendor_code', po?.vendor_code ?? '');
     fd.set('fabric_sku_code', fabric);
     fd.set('item_code', itemCode);
+    fd.set('size', size);
     fd.set('cutting_qty', cutQty);
     fd.set('avg_fabric_consumption_approved', avg);
     fd.set('width_of_fabric', width);
@@ -137,7 +145,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
 
         {/* 2 — Item (auto-populated from the PO) */}
         <Field label="Item code" hint={po ? 'items on this PO' : 'pick a PO first'}>
-          <select value={itemCode} disabled={!po} onChange={(e) => { setItemCode(e.target.value); setFabricSel(''); }}>
+          <select value={itemCode} disabled={!po} onChange={(e) => { setItemCode(e.target.value); setFabricSel(''); setSizeSel(''); }}>
             <option value="">{po ? (items.length ? '— pick item —' : 'no items found') : '—'}</option>
             {items.map((it) => (
               <option key={it.item_code} value={it.item_code}>
@@ -155,12 +163,24 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
           hint={fabricOptions.length > 1 ? 'multiple colours on this item — pick the fabric' : 'auto from item master (dyed fabric)'}
         >
           {fabricOptions.length > 1 ? (
-            <select value={fabricSel} onChange={(e) => setFabricSel(e.target.value)}>
+            <select value={fabricSel} onChange={(e) => { setFabricSel(e.target.value); setSizeSel(''); }}>
               <option value="">— pick fabric —</option>
               {fabricOptions.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           ) : (
             <input value={fabric} readOnly disabled />
+          )}
+        </Field>
+
+        {/* Size — the sizes available for the chosen item + fabric on this PO */}
+        <Field label="Size" hint={fabric ? (sizeOptions.length ? 'sizes on this PO' : 'no sizes on the PO — type if needed') : 'pick item + fabric first'}>
+          {sizeOptions.length > 0 ? (
+            <select value={size} disabled={!fabric} onChange={(e) => setSizeSel(e.target.value)}>
+              <option value="">— pick size —</option>
+              {sizeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : (
+            <input value={sizeSel} disabled={!fabric} placeholder="e.g. L" onChange={(e) => setSizeSel(e.target.value)} />
           )}
         </Field>
 
