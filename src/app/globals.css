@@ -460,6 +460,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   transition: border-color .18s ease, box-shadow .18s ease;
 }
 .field select:hover, .search-field:focus-within { border-color: rgba(109,93,252,.3); box-shadow: 0 0 0 3px rgba(109,93,252,.07); }
+/* Constrain selects to their grid cell so a long option value (e.g. SKU + description)
+   truncates instead of overflowing into the neighbouring field. */
+.field select { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-field { min-width: 270px; display: flex; align-items: center; gap: 8px; }
 .search-field svg { color: #969daf; }
 .search-field input { width: 100%; color: var(--ink); background: transparent; border: 0; outline: 0; }
