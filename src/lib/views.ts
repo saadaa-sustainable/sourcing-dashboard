@@ -54,7 +54,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/buying-plan', label: 'Buying Plan', group: 'Workflows' },
   { path: '/standard-cost', label: 'Standard Cost', group: 'Workflows' },
   { path: '/vendor-capacity', label: 'Vendor Capacity', group: 'Workflows' },
-  { path: '/po-approval', label: 'PO Approval', group: 'Workflows', adminOnly: true },
+  { path: '/po-approval', label: 'PO Approval', group: 'Workflows' },
   { path: '/po-details', label: 'PO Details (Form)', group: 'Workflows' },
   { path: '/cutting-register', label: 'Cutting Register', group: 'Workflows' },
   { path: '/po-closure', label: 'PO Closure', group: 'Workflows' },

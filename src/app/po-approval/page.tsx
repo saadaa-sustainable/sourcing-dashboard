@@ -8,6 +8,7 @@ import {
   loadTnaLeadtimes,
   NotConfiguredError,
 } from '@/lib/forms/queries';
+import { canView } from '@/lib/views';
 import { PoApprovalClient } from './po-approval-client';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,9 @@ export default async function PoApprovalPage() {
   }
 
   if (!user) redirect('/login');
-  if (user.role !== 'admin') redirect('/');
+  // Access is grantable via custom roles (e.g. the Sourcing role). Team users can raise / submit /
+  // issue POs here; approve & reject stay admin-only, in the Approvals queue.
+  if (!canView('/po-approval', user.role, user.allowed_pages ?? null)) redirect('/');
 
   const [
     { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor },
