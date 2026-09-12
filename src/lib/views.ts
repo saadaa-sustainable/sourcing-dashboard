@@ -47,7 +47,6 @@ export const ALL_VIEWS: ViewDef[] = [
   // Vendor OTIF stays a reachable route (linked from Vendor Overview) but is off
   // the main sidebar — its scoring is summarised in Vendor Overview.
   { path: '/vendor-otif', label: 'Vendor OTIF', group: 'Workspace' },
-  { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
   { path: '/cost-analytics', label: 'Cost Analytics', group: 'Workspace' },
   { path: '/feedback', label: 'Feedback & Issues', group: 'Workspace' },
   // Workflows — operational pages.

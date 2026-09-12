@@ -29,7 +29,6 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Tags,
-  Truck,
   UserCog,
   Wallet,
   Users,
@@ -78,7 +77,6 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
-  { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/cost-analytics', label: 'Cost Analytics', Icon: IndianRupee },
   // Off by default (folded elsewhere) — an admin can surface them via User Panel → Tabs.
   { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Award, defaultOff: true },

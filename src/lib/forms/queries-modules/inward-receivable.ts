@@ -9,97 +9,136 @@ import {
 } from '@/lib/business-logic';
 import { loadMergedTnaRecords } from '@/lib/data';
 import { loadProductCatalog } from './product';
-import type {
-  InwardPlanEntry,
-  ProductCatalogItem,
-  InwardPlanGroup,
-  ReceivablePlanRow,
-} from '../types';
+import type { InwardPlanGroup, ReceivablePlanRow } from '../types';
 
-/**
- * Inward Plan II — the team-filled monthly inward sheet (Buying Plan tab).
- * Returns the month's rows plus the product-master catalog (same source as the
- * Buying Plan's Add-Product picker) so the team types a code straight from the
- * master rather than from the plan.
- */
-export async function loadInwardPlanSheet(planMonth: string): Promise<{
-  entries: InwardPlanEntry[];
-  catalog: ProductCatalogItem[];
-}> {
-  const supabase = await client();
-  const [{ data: entries, error }, catalog] = await Promise.all([
-    supabase
-      .from('sd_inward_plan_entry')
-      .select('*')
-      .eq('plan_month', planMonth)
-      .order('id'),
-    loadProductCatalog(),
-  ]);
-  if (error) throw new Error(`sd_inward_plan_entry: ${error.message}`);
-  const enriched = await enrichInwardWithPoDates((entries ?? []) as InwardPlanEntry[]);
-  return { entries: enriched, catalog };
+export type ArrivalRow = {
+  row_key: string;
+  po_number: string | null;
+  po_ref_num: string | null;
+  product_code: string | null;
+  product_variant: string | null;
+  vendor_name: string | null;
+  category: string | null;
+  expected_qty: number | null;   // qty_expected_this_week (Receivable Plan)
+  expected_date: string | null;  // delivery_date_this_week
+  expected_week: string | null;  // ISO week of the expected date
+  received_qty: number;          // Σ GRN received for this PO + product colour
+  last_received_on: string | null;
+  received_weeks: string | null; // distinct ISO weeks the goods actually landed
+  variance: number | null;       // received − expected
+  remarks: string | null;
+  status: string | null;         // Receivable Plan input status
+};
+
+// SKU convention: <variant><_size> (e.g. SDVCTWH_XS → variant SDVCTWH).
+const variantOfSku = (sku: string) => (sku.includes('_') ? sku.slice(0, sku.lastIndexOf('_')) : sku);
+
+function isoWeekLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = (d.getUTCDay() + 6) % 7; // Mon = 0
+  d.setUTCDate(d.getUTCDate() - day + 3); // Thursday of this ISO week
+  const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round((d.getTime() - firstThu.getTime()) / 604_800_000);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
 /**
- * Item 4: fill each inward entry's EDD + closure date from the PO's own feeds
- * (never re-entered). EDD comes from whichever feed holds the PO (open or
- * completed); the closure date only exists once the PO has completed.
+ * Arrivals — what the team said would arrive (Receivable Plan: qty_expected_this_week +
+ * delivery_date_this_week) vs what actually landed (GRN Detail: received_quantity by
+ * grn_created_at week), one row per PO + product colour. Read-only, company-wide.
  */
-async function enrichInwardWithPoDates(rows: InwardPlanEntry[]): Promise<InwardPlanEntry[]> {
-  if (!rows.length) return rows;
+export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
   const supabase = await client();
-  const poNos = [...new Set(rows.map((e) => (e.po_no ?? '').trim()).filter(Boolean))];
-  const poDates = new Map<string, { edd: string | null; closure: string | null }>();
-  if (poNos.length) {
-    const [openPo, compPo] = await Promise.all([
-      supabase.from('pending_po_master').select('po_number, expected_delivery_date').in('po_number', poNos),
-      supabase.from('sd_po_completed').select('po_number, expected_delivery_date, po_updated_date').in('po_number', poNos),
-    ]);
-    for (const r of (openPo.data ?? []) as { po_number: string; expected_delivery_date: string | null }[]) {
-      const cur = poDates.get(r.po_number) ?? { edd: null, closure: null };
-      cur.edd = cur.edd ?? r.expected_delivery_date ?? null;
-      poDates.set(r.po_number, cur);
-    }
-    // Completed feed wins for EDD (final) and is the only source of a closure date.
-    for (const r of (compPo.data ?? []) as {
-      po_number: string; expected_delivery_date: string | null; po_updated_date: string | null;
-    }[]) {
-      const cur = poDates.get(r.po_number) ?? { edd: null, closure: null };
-      cur.edd = r.expected_delivery_date ?? cur.edd;
-      cur.closure = r.po_updated_date ?? cur.closure;
-      poDates.set(r.po_number, cur);
+
+  // 1) Team expectations from the Receivable Plan inputs (qty + week).
+  const inputs: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await supabase
+      .from('sd_receivable_input')
+      .select('row_key, po_number, product_variant, delivery_date_this_week, qty_expected_this_week, remarks, status')
+      .range(from, from + PAGE_SIZE - 1);
+    if (!data?.length) break;
+    inputs.push(...(data as Record<string, unknown>[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  const filled = inputs.filter((i) => i.qty_expected_this_week != null || i.delivery_date_this_week != null);
+  if (!filled.length) return { rows: [] };
+
+  // 2) Plan base (product/vendor/ref) for those rows, by row_key.
+  const rowKeys = [...new Set(filled.map((i) => String(i.row_key)).filter(Boolean))];
+  const planByKey = new Map<string, Record<string, unknown>>();
+  for (let i = 0; i < rowKeys.length; i += 200) {
+    const chunk = rowKeys.slice(i, i + 200);
+    if (!chunk.length) continue;
+    const { data } = await supabase
+      .from('sd_receivable_plan')
+      .select('row_key, po_number, po_ref_num, product_code, product_variant, vendor_name')
+      .in('row_key', chunk);
+    for (const r of (data ?? []) as Record<string, unknown>[]) planByKey.set(String(r.row_key), r);
+  }
+
+  // 3) Actual receipts from GRN, aggregated by PO + product colour (variant).
+  const poNos = [...new Set(
+    filled.map((i) => String((planByKey.get(String(i.row_key))?.po_number ?? i.po_number) ?? '').trim()).filter(Boolean),
+  )];
+  const grnByKey = new Map<string, { qty: number; last: string | null; weeks: Set<string> }>();
+  for (let i = 0; i < poNos.length; i += 200) {
+    const chunk = poNos.slice(i, i + 200);
+    if (!chunk.length) continue;
+    const { data } = await supabase
+      .from('sd_ee_grn')
+      .select('po_number, sku, received_quantity, grn_created_at')
+      .in('po_number', chunk);
+    for (const g of (data ?? []) as { po_number: string; sku: string | null; received_quantity: number | null; grn_created_at: string | null }[]) {
+      const key = `${g.po_number}|${variantOfSku(String(g.sku ?? ''))}`;
+      const agg = grnByKey.get(key) ?? { qty: 0, last: null, weeks: new Set<string>() };
+      agg.qty += Number(g.received_quantity) || 0;
+      if (g.grn_created_at) {
+        if (!agg.last || g.grn_created_at > agg.last) agg.last = g.grn_created_at;
+        const wk = isoWeekLabel(g.grn_created_at);
+        if (wk) agg.weeks.add(wk);
+      }
+      grnByKey.set(key, agg);
     }
   }
-  return rows.map((e) => {
-    const d = e.po_no ? poDates.get(e.po_no.trim()) : undefined;
-    return { ...e, expected_delivery_date: d?.edd ?? null, po_closure_date: d?.closure ?? null };
-  });
-}
 
-/**
- * Item 5: company-wide "what's arriving when". The monthly approved inward plan
- * across recent + upcoming months (sd_inward_plan_entry), enriched with each PO's
- * EDD + closure (item 4) and the product's category, for a read-only, filterable
- * cross-department view. Planned = inward_qty, actual = actual_inward_qty.
- */
-export async function loadArrivalPlan(): Promise<{
-  rows: (InwardPlanEntry & { category: string | null })[];
-}> {
-  const supabase = await client();
-  const [{ data: entries }, catalog] = await Promise.all([
-    supabase
-      .from('sd_inward_plan_entry')
-      .select('*')
-      .order('plan_month', { ascending: false })
-      .limit(PAGE_SIZE),
-    loadProductCatalog(),
-  ]);
-  const enriched = await enrichInwardWithPoDates((entries ?? []) as InwardPlanEntry[]);
+  // 4) Category from the product-master catalog.
+  const catalog = await loadProductCatalog();
   const catByCode = new Map(catalog.map((c) => [c.product_code, c.category] as const));
-  const rows = enriched.map((e) => ({
-    ...e,
-    category: catByCode.get(e.product_code) ?? null,
-  }));
+
+  const rows: ArrivalRow[] = filled.map((i) => {
+    const p = planByKey.get(String(i.row_key));
+    const po_number = String((p?.po_number ?? i.po_number) ?? '') || null;
+    const product_variant = String((p?.product_variant ?? i.product_variant) ?? '') || null;
+    const product_code = (p?.product_code as string | null) ?? null;
+    const grn = po_number && product_variant ? grnByKey.get(`${po_number}|${product_variant}`) : undefined;
+    const expected_qty = (i.qty_expected_this_week as number | null) ?? null;
+    const expected_date = (i.delivery_date_this_week as string | null) ?? null;
+    const received_qty = grn?.qty ?? 0;
+    return {
+      row_key: String(i.row_key),
+      po_number,
+      po_ref_num: (p?.po_ref_num as string | null) ?? null,
+      product_code,
+      product_variant,
+      vendor_name: (p?.vendor_name as string | null) ?? null,
+      category: product_code ? catByCode.get(product_code) ?? null : null,
+      expected_qty,
+      expected_date,
+      expected_week: isoWeekLabel(expected_date),
+      received_qty,
+      last_received_on: grn?.last ?? null,
+      received_weeks: grn && grn.weeks.size ? [...grn.weeks].sort().join(', ') : null,
+      variance: expected_qty != null ? received_qty - expected_qty : null,
+      remarks: (i.remarks as string | null) ?? null,
+      status: (i.status as string | null) ?? null,
+    };
+  });
+  rows.sort(
+    (a, b) => (a.expected_date ?? '').localeCompare(b.expected_date ?? '') || (a.po_number ?? '').localeCompare(b.po_number ?? ''),
+  );
   return { rows };
 }
 

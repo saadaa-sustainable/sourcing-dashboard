@@ -24,5 +24,4 @@ export * from './actions-modules/fabric';
 export * from './actions-modules/material';
 export * from './actions-modules/users-roles';
 export * from './actions-modules/oos';
-export * from './actions-modules/inward-plan';
 export type { ActionResult, LinkResult } from './actions-modules/_shared';

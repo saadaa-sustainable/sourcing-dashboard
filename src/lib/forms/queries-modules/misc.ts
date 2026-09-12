@@ -51,7 +51,14 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
   const wkStart = weekStart();
   const planMonth = monthStart();
 
-  const [rep, pending, issuance, approvalsWk, inward, dash] = await Promise.all([
+  // Month window [planMonth, next month) for the receivable-vs-GRN rollup.
+  const monthEnd = (() => {
+    const d = new Date(`${planMonth}T00:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const [rep, pending, issuance, approvalsWk, expected, received, dash] = await Promise.all([
     // OOS / OS % — sd_replenishment (the existing OOS source; no DOQ rebuild needed).
     supabase.from('sd_replenishment').select('oos_flag', { count: 'exact' }).limit(1),
     countPendingApprovals(),
@@ -67,11 +74,19 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
       .from('sd_po_approval')
       .select('id', { count: 'exact', head: true })
       .gte('approved_at', wkStart),
-    // Inward plan status (this month) — planned vs actual.
+    // Arrivals status (this month) — what the team expected in the Receivable Plan
+    // for delivery this month vs what GRN recorded as received this month.
     supabase
-      .from('sd_inward_plan_entry')
-      .select('inward_qty, actual_inward_qty')
-      .eq('plan_month', planMonth)
+      .from('sd_receivable_input')
+      .select('qty_expected_this_week')
+      .gte('delivery_date_this_week', planMonth)
+      .lt('delivery_date_this_week', monthEnd)
+      .limit(PAGE_SIZE),
+    supabase
+      .from('sd_ee_grn')
+      .select('received_quantity')
+      .gte('grn_created_at', planMonth)
+      .lt('grn_created_at', monthEnd)
       .limit(PAGE_SIZE),
     loadDashboardData(),
   ]);
@@ -104,11 +119,12 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     qty: issuanceRows.reduce((s, r) => s + (Number(r.po_qty) || 0), 0),
   };
 
-  const inwardRows = (inward.data ?? []) as { inward_qty: number | null; actual_inward_qty: number | null }[];
-  const inwardTotals = inwardRows.reduce(
-    (a, r) => ({ planned: a.planned + (Number(r.inward_qty) || 0), actual: a.actual + (Number(r.actual_inward_qty) || 0) }),
-    { planned: 0, actual: 0 },
-  );
+  const expectedRows = (expected.data ?? []) as { qty_expected_this_week: number | null }[];
+  const receivedRows = (received.data ?? []) as { received_quantity: number | null }[];
+  const inwardTotals = {
+    planned: expectedRows.reduce((s, r) => s + (Number(r.qty_expected_this_week) || 0), 0),
+    actual: receivedRows.reduce((s, r) => s + (Number(r.received_quantity) || 0), 0),
+  };
 
   // PO audit — High Risk / Overdue open POs, with the offending stage as the "why".
   const tracker = buildTrackerRows(dash.pendingPos, dash.vendorTypes, dash.vendorMasters, dash.tnaRecords);
