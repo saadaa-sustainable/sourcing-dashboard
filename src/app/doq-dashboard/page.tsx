@@ -110,7 +110,8 @@ export default async function DoqDashboardPage() {
         tables={tables}
         comTables={comTables}
         meta={meta}
-        excludedCount={excluded.size}
+        exclusions={exclusions}
+        editable={user.role !== 'viewer'}
       />
     </FormLayout>
   );

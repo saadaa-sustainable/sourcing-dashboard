@@ -49,6 +49,7 @@ export async function addOosExclusion(formData: FormData): Promise<ActionResult>
     .upsert({ sku, reason, added_by: user.email, added_at: new Date().toISOString() });
   if (error) return fail(`Could not exclude: ${error.message}`);
   revalidatePath('/oos-calculation');
+  revalidatePath('/doq-dashboard');
   return done(`${sku} excluded from the OOS calculation.`);
 }
 
@@ -64,6 +65,7 @@ export async function removeOosExclusion(formData: FormData): Promise<ActionResu
   const { error } = await supabase.from('sd_oos_sku_exclusion').delete().eq('sku', sku);
   if (error) return fail(`Could not remove: ${error.message}`);
   revalidatePath('/oos-calculation');
+  revalidatePath('/doq-dashboard');
   return done(`${sku} restored to the OOS calculation.`);
 }
 
@@ -71,4 +73,4 @@ export async function removeOosExclusion(formData: FormData): Promise<ActionResu
 /* Inward Plan II — team-filled monthly inward sheet (Buying Plan tab) */
 /* ================================================================== */
 
-/** Team fills / edits a row (product, PO, vendor, qty, cost, remarks, actual). */
+/** Team fills / edits a row (product, PO, vendor, qty, cost, remarks, actual). */
