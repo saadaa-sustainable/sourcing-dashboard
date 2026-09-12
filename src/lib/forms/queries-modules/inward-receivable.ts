@@ -28,6 +28,7 @@ export type ArrivalRow = {
   variance: number | null;       // received − expected
   remarks: string | null;
   status: string | null;         // Receivable Plan input status
+  source: 'live' | 'history';    // live receivable plan vs approved historical plan
 };
 
 // SKU convention: <variant><_size> (e.g. SDVCTWH_XS → variant SDVCTWH).
@@ -141,12 +142,93 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
       variance: expected_qty != null ? received_qty - expected_qty : null,
       remarks: (i.remarks as string | null) ?? null,
       status: (i.status as string | null) ?? null,
+      source: 'live',
     };
   });
-  rows.sort(
+
+  // Append the approved historical plan (e.g. the August sheet in sd_inward_plan_entry),
+  // PO-level, so completed months still show planned-vs-received in one place.
+  const historical = await loadHistoricalArrivalRows(supabase, catByCode);
+
+  const all = [...rows, ...historical];
+  all.sort(
     (a, b) => (a.expected_date ?? '').localeCompare(b.expected_date ?? '') || (a.po_number ?? '').localeCompare(b.po_number ?? ''),
   );
-  return { rows };
+  return { rows: all };
+}
+
+/**
+ * Approved historical plan → Arrivals rows (PO-level). Reads the approved rows of
+ * sd_inward_plan_entry (the frozen monthly sheets, e.g. August) and matches GRN
+ * receipts by po_ref_num for the whole PO, since the sheet is one row per
+ * PO + product code (no colour split). Only APPROVED rows are shown.
+ */
+async function loadHistoricalArrivalRows(
+  supabase: Awaited<ReturnType<typeof client>>,
+  catByCode: Map<string, string | null>,
+): Promise<ArrivalRow[]> {
+  const { data: entries } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, remarks, mt_comments, approval_status')
+    .ilike('approval_status', 'approved%');
+  const rows = (entries ?? []) as Record<string, unknown>[];
+  if (!rows.length) return [];
+
+  // GRN receipts by po_ref_num (the sheet's po_no is the PO reference).
+  const refs = [...new Set(rows.map((r) => String(r.po_no ?? '').trim()).filter(Boolean))];
+  const grnByRef = new Map<string, { qty: number; last: string | null; weeks: Set<string> }>();
+  for (let i = 0; i < refs.length; i += 200) {
+    const chunk = refs.slice(i, i + 200);
+    if (!chunk.length) continue;
+    const { data } = await supabase
+      .from('sd_ee_grn')
+      .select('po_ref_num, received_quantity, grn_created_at')
+      .in('po_ref_num', chunk);
+    for (const g of (data ?? []) as { po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }[]) {
+      const ref = String(g.po_ref_num ?? '').trim();
+      if (!ref) continue;
+      const agg = grnByRef.get(ref) ?? { qty: 0, last: null, weeks: new Set<string>() };
+      agg.qty += Number(g.received_quantity) || 0;
+      if (g.grn_created_at) {
+        if (!agg.last || g.grn_created_at > agg.last) agg.last = g.grn_created_at;
+        const wk = isoWeekLabel(g.grn_created_at);
+        if (wk) agg.weeks.add(wk);
+      }
+      grnByRef.set(ref, agg);
+    }
+  }
+
+  return rows.map((r) => {
+    const ref = String(r.po_no ?? '').trim() || null;
+    const product_code = (r.product_code as string | null) ?? null;
+    const planMonth = (r.plan_month as string | null) ?? null;
+    const expected_qty = r.inward_qty != null ? Number(r.inward_qty) || 0 : null;
+    const grn = ref ? grnByRef.get(ref) : undefined;
+    const received_qty = grn?.qty ?? 0;
+    const remarks = [r.remarks, r.mt_comments]
+      .map((v) => String(v ?? '').trim())
+      .filter(Boolean)
+      .join(' · ') || null;
+    return {
+      row_key: `hist|${ref ?? ''}|${product_code ?? ''}|${String(r.id)}`,
+      po_number: null,
+      po_ref_num: ref,
+      product_code,
+      product_variant: null,
+      vendor_name: (r.vendor_name as string | null) ?? null,
+      category: product_code ? catByCode.get(product_code) ?? null : null,
+      expected_qty,
+      expected_date: planMonth,
+      expected_week: monthLabel(planMonth),
+      received_qty,
+      last_received_on: grn?.last ?? null,
+      received_weeks: grn && grn.weeks.size ? [...grn.weeks].sort().join(', ') : null,
+      variance: expected_qty != null ? received_qty - expected_qty : null,
+      remarks,
+      status: 'Approved',
+      source: 'history',
+    };
+  });
 }
 
 /**

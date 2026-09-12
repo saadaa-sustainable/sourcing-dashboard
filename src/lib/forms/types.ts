@@ -1233,6 +1233,8 @@ export type ApprovalQueueItem = {
   requiredRole: SdRole;
   submittedBy: string | null;
   submittedAt: string | null;
+  /** Optional remark the submitter attached (currently the receivable plan). */
+  submitNote?: string | null;
   href: string;
   // Line items (Buying Plan / PO Approval) for line-item rework and, for the
   // Buying Plan, per-line multi-select approval + the Woven/Knitted pivot.

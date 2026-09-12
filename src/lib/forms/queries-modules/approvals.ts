@@ -517,11 +517,19 @@ export async function loadApprovalQueue(): Promise<{
     }
   }
 
-  const { count: recCount } = await supabase
+  const { data: recRows, count: recCount } = await supabase
     .from('sd_receivable_input')
-    .select('row_key', { count: 'exact', head: true })
-    .eq('status', 'submitted');
+    .select('submitted_by, submitted_at, submit_notes', { count: 'exact' })
+    .eq('status', 'submitted')
+    .order('submitted_at', { ascending: false });
   if (recCount) {
+    const latest = (recRows ?? [])[0] as
+      | { submitted_by: string | null; submitted_at: string | null; submit_notes: string | null }
+      | undefined;
+    // Most recent non-empty submit remark across the submitted batch.
+    const note =
+      ((recRows ?? []) as { submit_notes: string | null }[]).find((r) => (r.submit_notes ?? '').trim())
+        ?.submit_notes ?? null;
     items.push({
       entityType: 'receivable_plan',
       entityId: 'batch',
@@ -530,8 +538,9 @@ export async function loadApprovalQueue(): Promise<{
       status: 'submitted',
       quantity: recCount,
       requiredRole: routeApproval('receivable_plan'),
-      submittedBy: null,
-      submittedAt: null,
+      submittedBy: latest?.submitted_by ?? null,
+      submittedAt: latest?.submitted_at ?? null,
+      submitNote: note,
       href: '/receivable-plan',
     });
   }

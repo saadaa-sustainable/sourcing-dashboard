@@ -35,21 +35,28 @@ import {
   textOrNull,
 } from './_shared';
 
-export async function submitReceivablePlan(): Promise<ActionResult> {
+export async function submitReceivablePlan(remarks?: string): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   if (!canSubmit(user.role, 'draft')) return fail('You do not have permission to submit.');
+  const note = String(remarks ?? '').trim() || null;
   const now = new Date().toISOString();
   const supabase = await supa();
   const { data, error } = await supabase
     .from('sd_receivable_input')
-    .update({ status: 'submitted', submitted_by: user.email, submitted_at: now })
+    .update({ status: 'submitted', submitted_by: user.email, submitted_at: now, submit_notes: note })
     .eq('status', 'draft')
     .select('row_key');
   if (error) return fail(error.message);
+  const count = data?.length ?? 0;
+  // Record the submission (and the team's remark) in the approval history so the
+  // approver sees it immediately, before deciding.
+  if (count) {
+    await writeLog('receivable_plan', 'batch', `Receivable plan — ${count} row(s)`, 'draft', 'submitted', user.email, note || undefined);
+  }
   revalidatePath('/receivable-plan');
   revalidatePath('/approvals');
-  return done(`Submitted ${data?.length ?? 0} row(s) for approval.`);
+  return done(`Submitted ${count} row(s) for approval.`);
 }
 
 /**

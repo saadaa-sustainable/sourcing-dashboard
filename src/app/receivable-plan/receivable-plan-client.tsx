@@ -95,6 +95,7 @@ export function ReceivablePlanClient({
   const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
   const [view, setView] = useState<ViewMode>('lines');
   const [message, setMessage] = useState<string | null>(null);
+  const [submitRemark, setSubmitRemark] = useState('');
   const [submitting, startSubmit] = useTransition();
 
   const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
@@ -102,8 +103,9 @@ export function ReceivablePlanClient({
 
   function submitAll() {
     startSubmit(async () => {
-      const res = await submitReceivablePlan();
+      const res = await submitReceivablePlan(submitRemark);
       setMessage(res.ok ? res.message ?? 'Submitted.' : res.error);
+      if (res.ok) setSubmitRemark('');
     });
   }
 
@@ -204,14 +206,23 @@ export function ReceivablePlanClient({
           {oosCount > 0 && <em className="wf-chip-warn">{oosCount} OOS</em>}
         </span>
         {editable && view === 'lines' && (
-          <button
-            type="button"
-            className="wf-btn wf-btn-primary wf-btn-sm"
-            disabled={submitting}
-            onClick={submitAll}
-          >
-            {submitting ? 'Submitting…' : 'Submit week for approval'}
-          </button>
+          <>
+            <input
+              className="wf-search"
+              placeholder="Remark for approver (optional)…"
+              value={submitRemark}
+              onChange={(e) => setSubmitRemark(e.target.value)}
+              aria-label="Remark for the approver"
+            />
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              disabled={submitting}
+              onClick={submitAll}
+            >
+              {submitting ? 'Submitting…' : 'Submit week for approval'}
+            </button>
+          </>
         )}
       </div>
 

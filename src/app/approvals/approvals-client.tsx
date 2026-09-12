@@ -183,6 +183,12 @@ export function ApprovalsClient({
                 <dt>Needs</dt>
                 <dd>{ROLE_LABEL[item.requiredRole]}</dd>
               </div>
+              {item.submitNote && (
+                <div className="wf-queue-note">
+                  <dt>Submitter remark</dt>
+                  <dd>{item.submitNote}</dd>
+                </div>
+              )}
               {item.entityType === 'po_approval' && item.vendorCode && (
                 <>
                   <div>

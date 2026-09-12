@@ -26,6 +26,13 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
 
   const columns: Column<ArrivalRow>[] = [
     {
+      key: 'source',
+      label: 'Source',
+      kind: 'text',
+      filter: 'select',
+      accessor: (r) => (r.source === 'history' ? 'Approved plan (history)' : 'Live plan'),
+    },
+    {
       key: 'product_variant',
       label: 'Product',
       kind: 'mono',
@@ -83,6 +90,14 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       filter: 'select',
       accessor: (r) => r.status || '—',
+    },
+    {
+      key: 'remarks',
+      label: 'Remarks',
+      kind: 'text',
+      accessor: (r) => r.remarks ?? '',
+      render: (r) => r.remarks ?? '—',
+      info: 'Team / review remarks captured with the plan.',
     },
   ];
 

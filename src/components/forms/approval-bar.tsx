@@ -53,19 +53,20 @@ export function ApprovalBar({
 
   return (
     <div className="wf-approval-bar">
-      {mode && (
-        <textarea
-          className="wf-textarea"
-          rows={2}
-          placeholder={
-            mode === 'reject'
-              ? 'Reason for rejection — sent to the submitter'
-              : 'Reason for rework/reassign — sent to the submitter'
-          }
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-        />
-      )}
+      <textarea
+        className="wf-textarea"
+        rows={2}
+        placeholder={
+          mode === 'reject'
+            ? 'Reason for rejection — sent to the submitter'
+            : mode === 'rework'
+              ? 'Reason for rework/reassign — sent to the submitter'
+              : 'Comment (optional) — recorded with your approval'
+        }
+        value={notes}
+        onChange={(event) => setNotes(event.target.value)}
+      />
+
       <div className="wf-approval-actions">
         {mode ? (
           <>
