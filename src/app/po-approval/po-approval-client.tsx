@@ -136,9 +136,12 @@ export function PoApprovalClient({
     setMessage('Critical path generated from the lead-times — adjust any date if needed.');
   }
 
-  // Auto-suggest the PO ref in the observed standard format
-  // FY<yy>-<yy+1>/<TYPE>/<PRODUCT>/<VENDOR>- (sequence appended manually for now).
-  // Falls back to manual entry — the exact numbering rule is still to be confirmed.
+  // Auto-suggest the PO ref in the observed standard format:
+  //   FY<yy>-<yy+1>/<TYPE>/<PRODUCT>/<VENDOR>-<NN>
+  // The trailing 2-digit sequence is now filled automatically: we scan existing
+  // POs for the same prefix and use the next number, so Suggest yields a COMPLETE,
+  // non-colliding reference (the server also enforces uniqueness). Still fully
+  // editable afterwards.
   function suggestRef() {
     const d = new Date();
     const fyStart = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
@@ -146,10 +149,18 @@ export function PoApprovalClient({
     const yy2 = String(fyStart + 1).slice(2);
     const typeTok =
       form.po_type === 'job_work' ? 'JOB' : form.po_type === 'efob' ? 'EFOB' : 'FOB';
-    set(
-      'po_ref_num',
-      `FY${yy}-${yy2}/${typeTok}/${form.product_code}/${form.vendor_code.toUpperCase()}-`,
-    );
+    const prefix = `FY${yy}-${yy2}/${typeTok}/${form.product_code}/${form.vendor_code.toUpperCase()}-`;
+    // Highest existing sequence for this exact prefix, across all loaded POs.
+    let maxSeq = 0;
+    for (const p of pos) {
+      const ref = p.po_ref_num ?? '';
+      if (ref.startsWith(prefix)) {
+        const n = parseInt(ref.slice(prefix.length), 10);
+        if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
+      }
+    }
+    const seq = String(maxSeq + 1).padStart(2, '0');
+    set('po_ref_num', `${prefix}${seq}`);
   }
 
   const buildPayload = () => {
@@ -250,7 +261,7 @@ export function PoApprovalClient({
             </Field>
             <Field
               label="PO reference number"
-              hint="Suggest builds the standard code — edit or type your own"
+              hint="Suggest builds the full standard code incl. the next sequence — edit if needed. Must be unique."
             >
               <div className="wf-issue-row">
                 <input

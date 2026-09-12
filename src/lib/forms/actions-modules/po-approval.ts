@@ -119,13 +119,34 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     }
   }
 
+  // PO reference numbers must be unique across all POs (a DB partial unique index
+  // is the hard guarantee; this check gives a clear message before we hit it).
+  // Blank/null refs (drafts without a reference yet) are exempt.
+  if (fields.po_ref_num) {
+    let dupQ = supabase
+      .from('sd_po_approval')
+      .select('id')
+      .eq('po_ref_num', fields.po_ref_num)
+      .limit(1);
+    if (id) dupQ = dupQ.neq('id', id);
+    const { data: dups } = await dupQ;
+    if (dups && dups.length) {
+      return fail(
+        `PO reference "${fields.po_ref_num}" is already used on PO #${dups[0].id}. Reference numbers must be unique — use Suggest, or change the trailing sequence.`,
+      );
+    }
+  }
+
   if (id) {
     const { error } = await supabase
       .from('sd_po_approval')
       .update(fields)
       .eq('id', id)
       .in('status', ['draft', 'rework']);
-    if (error) return fail(`Could not save: ${error.message}`);
+    if (error) {
+      if (error.code === '23505') return fail(`PO reference "${fields.po_ref_num}" is already used. Reference numbers must be unique.`);
+      return fail(`Could not save: ${error.message}`);
+    }
     revalidatePath('/po-approval');
     return { ok: true, message: 'Saved.', id };
   }
@@ -135,7 +156,10 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     .insert({ ...fields, created_by: user.email, status: 'draft' })
     .select('id')
     .single();
-  if (error) return fail(`Could not create PO: ${error.message}`);
+  if (error) {
+    if (error.code === '23505') return fail(`PO reference "${fields.po_ref_num}" is already used. Reference numbers must be unique.`);
+    return fail(`Could not create PO: ${error.message}`);
+  }
   revalidatePath('/po-approval');
   return { ok: true, message: `Saved PO #${data.id}.`, id: data.id as number };
 }
