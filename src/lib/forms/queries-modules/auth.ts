@@ -56,6 +56,23 @@ export async function currentUser(): Promise<SdUser | null> {
   return user;
 }
 
+/**
+ * Global sidebar tab-visibility overrides: path → visible. A path present here overrides
+ * the tab's built-in default (in-sidebar = shown; extra pages = hidden). Read by everyone
+ * to render their sidebar; only admins write it (setNavVisibility). Never throws.
+ */
+export async function loadNavVisibility(): Promise<Record<string, boolean>> {
+  try {
+    const supabase = await client();
+    const { data } = await supabase.from('sd_nav_visibility').select('path, visible');
+    const out: Record<string, boolean> = {};
+    for (const r of ((data ?? []) as { path: string; visible: boolean }[])) out[r.path] = r.visible;
+    return out;
+  } catch {
+    return {}; // a visibility hiccup must never blank the whole sidebar
+  }
+}
+
 /** All custom roles with their member emails, for the User Panel. */
 export async function loadCustomRoles(): Promise<SdCustomRole[]> {
   const supabase = await client();

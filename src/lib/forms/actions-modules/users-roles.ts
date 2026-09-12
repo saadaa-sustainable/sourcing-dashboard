@@ -216,7 +216,23 @@ async function findAuthUserByEmail(email: string) {
 }
 
 /* ------------------------------------------------------------------ */
-/* OOS Calculation — team-managed SKU exclusion list                   */
+/* Sidebar tab visibility — global show/hide, admin-managed             */
 /* ------------------------------------------------------------------ */
 
-/** Team/admin: exclude a SKU from the OOS Calculation view. */
+/** Admin: show or hide a nav tab globally (for everyone). An explicit row overrides the
+ *  tab's built-in default; access is still governed by roles/adminOnly. */
+export async function setNavVisibility(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can change tab visibility.');
+  const path = String(formData.get('path') ?? '').trim();
+  if (!path) return fail('Missing tab.');
+  const visible = String(formData.get('visible')) === 'true';
+  const supabase = await supa();
+  const { error } = await supabase
+    .from('sd_nav_visibility')
+    .upsert({ path, visible, updated_by: actor.email, updated_at: new Date().toISOString() }, { onConflict: 'path' });
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/', 'layout');
+  return done(`Tab ${visible ? 'shown' : 'hidden'}.`);
+}

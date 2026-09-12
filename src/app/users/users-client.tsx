@@ -3,17 +3,19 @@
 import { useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
-import { ChevronDown, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, LayoutList, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
 import {
   createUserLogin,
   deleteCustomRole,
   saveCustomRole,
   saveUser,
+  setNavVisibility,
   setUserRoles,
 } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ROLE_LABEL } from '@/lib/forms/approval';
 import { ALL_VIEWS, VIEW_GROUPS } from '@/lib/views';
+import { NAV_ITEMS } from '@/components/side-nav';
 import type { SdCustomRole, SdRole, SdUser } from '@/lib/forms/types';
 
 const ROLES: SdRole[] = ['admin', 'team', 'viewer'];
@@ -25,13 +27,15 @@ export function UsersClient({
   roles,
   currentEmail,
   canCreateLogins,
+  navOverrides = {},
 }: {
   users: SdUser[];
   roles: SdCustomRole[];
   currentEmail: string;
   canCreateLogins: boolean;
+  navOverrides?: Record<string, boolean>;
 }) {
-  const [tab, setTab] = useState<'members' | 'roles'>('members');
+  const [tab, setTab] = useState<'members' | 'roles' | 'tabs'>('members');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -94,6 +98,13 @@ export function UsersClient({
           >
             <ShieldCheck size={14} /> Roles &amp; Permissions ({roles.length})
           </button>
+          <button
+            type="button"
+            className={tab === 'tabs' ? 'active' : ''}
+            onClick={() => setTab('tabs')}
+          >
+            <LayoutList size={14} /> Tabs
+          </button>
         </div>
       </div>
 
@@ -106,10 +117,82 @@ export function UsersClient({
           pending={pending}
           submit={submit}
         />
-      ) : (
+      ) : tab === 'roles' ? (
         <RolesTab roles={roles} pending={pending} submit={submit} />
+      ) : (
+        <TabsManager navOverrides={navOverrides} pending={pending} submit={submit} />
       )}
     </>
+  );
+}
+
+/* ================================================================== */
+/* Tabs — global sidebar show/hide                                     */
+/* ================================================================== */
+
+function TabsManager({
+  navOverrides,
+  pending,
+  submit,
+}: {
+  navOverrides: Record<string, boolean>;
+  pending: boolean;
+  submit: (payload: FormData, action?: ActionFn, reloadOnOk?: boolean) => void;
+}) {
+  function setVisible(path: string, visible: boolean) {
+    const fd = new FormData();
+    fd.set('path', path);
+    fd.set('visible', String(visible));
+    submit(fd, setNavVisibility);
+  }
+
+  const byGroup = new Map<string, typeof NAV_ITEMS>();
+  for (const it of NAV_ITEMS) {
+    byGroup.set(it.group, [...(byGroup.get(it.group) ?? []), it]);
+  }
+
+  return (
+    <div className="wf-stack">
+      <Notice tone="info">
+        Show or hide sidebar tabs for <strong>everyone</strong>. Hidden tabs stay reachable by direct
+        URL and are still governed by roles. Tabs marked “off by default” are surfaced only when you
+        turn them on here.
+      </Notice>
+      {[...byGroup.entries()].map(([group, items]) => (
+        <div className="table-panel wf-grid-panel" key={group}>
+          <div className="wf-card-title wf-table-head">{group}</div>
+          <div className="table-scroll">
+            <table className="wf-grid">
+              <thead>
+                <tr><th>Tab</th><th>Path</th><th>Status</th><th aria-label="Toggle" /></tr>
+              </thead>
+              <tbody>
+                {items.map((it) => {
+                  const visible = navOverrides[it.href] ?? !it.defaultOff;
+                  return (
+                    <tr key={it.href}>
+                      <td>{it.label}{it.defaultOff && <span className="wf-subtle"> · off by default</span>}</td>
+                      <td className="mono wf-subtle">{it.href}</td>
+                      <td>{visible ? <span className="wf-ok-text">Shown</span> : <span className="wf-subtle">Hidden</span>}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={`wf-btn wf-btn-sm ${visible ? 'wf-btn-ghost' : 'wf-btn-primary'}`}
+                          disabled={pending}
+                          onClick={() => setVisible(it.href, !visible)}
+                        >
+                          {visible ? <><EyeOff size={13} /> Hide</> : <><Eye size={13} /> Show</>}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@
 import { Fragment, useState, type ComponentType } from 'react';
 import type { SdRole } from '@/lib/forms/types';
 import { canView } from '@/lib/views';
+import { useNavOverrides } from '@/components/nav-overrides';
 import {
   Activity,
   Award,
@@ -20,6 +21,7 @@ import {
   IndianRupee,
   LayoutDashboard,
   Menu,
+  MessageSquare,
   PackageCheck,
   PackageSearch,
   PackageX,
@@ -55,6 +57,8 @@ type NavLink = {
   label: string;
   Icon: ComponentType<{ size?: number }>;
   external?: boolean;
+  /** Not in the sidebar by default (surfaced only when an admin turns it on). */
+  defaultOff?: boolean;
 };
 
 // Read-only analytical views. They're separate routes (not the SPA tabs above),
@@ -76,8 +80,9 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/inward-plan', label: 'Inward Plan', Icon: Truck },
   { href: '/cost-analytics', label: 'Cost Analytics', Icon: IndianRupee },
-  // Vendor OTIF scorecard is folded into Vendor Overview — reachable from there
-  // (kept as a route in lib/views.ts), so it's off the main menu to de-clutter.
+  // Off by default (folded elsewhere) — an admin can surface them via User Panel → Tabs.
+  { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Award, defaultOff: true },
+  { href: '/feedback', label: 'Feedback & Issues', Icon: MessageSquare, defaultOff: true },
 ];
 
 // Operational pages, grouped by use case (DAM nav model: chronological
@@ -114,6 +119,14 @@ const MASTERS_LINKS: NavLink[] = [
   { href: '/master', label: 'Master', Icon: Tags },
   { href: '/grn-detail', label: 'GRN Detail', Icon: PackageCheck },
   { href: '/doq', label: 'DOQ Dataset', Icon: Database },
+  // The individual masters live inside the Master hub by default; an admin can surface
+  // any of them as its own sidebar link via User Panel → Tabs.
+  { href: '/product-master', label: 'Product Master', Icon: Tags, defaultOff: true },
+  { href: '/category-mapping', label: 'Category Mapping', Icon: Tags, defaultOff: true },
+  { href: '/vendor-master', label: 'Vendor Master', Icon: Factory, defaultOff: true },
+  { href: '/fabric-master', label: 'Fabric Master', Icon: Tags, defaultOff: true },
+  { href: '/material-master', label: 'Material Master', Icon: Tags, defaultOff: true },
+  { href: '/fabric-cost', label: 'Fabric Cost', Icon: IndianRupee, defaultOff: true },
 ];
 
 // System administration.
@@ -123,6 +136,22 @@ const ADMIN_LINKS: NavLink[] = [
   { href: '/rules-master', label: 'Rules Master', Icon: SlidersHorizontal },
   { href: '/feature-status', label: 'Feature Status', Icon: Activity },
   { href: '/sync-status', label: 'Sync Health', Icon: Activity },
+];
+
+// Whether a nav path is shown, given the global overrides and its built-in default.
+export function navPathVisible(href: string, overrides: Record<string, boolean>, defaultOff = false): boolean {
+  return overrides[href] ?? !defaultOff;
+}
+
+/** Flat list of every sidebar-manageable tab (base + surfaceable extras), for the
+ *  User Panel → Tabs manager. `defaultOff` marks pages hidden unless turned on. */
+export const NAV_ITEMS: { href: string; label: string; group: string; defaultOff: boolean }[] = [
+  ...WORKSPACE_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Workspace', defaultOff: !!l.defaultOff })),
+  ...PLANNING_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Planning', defaultOff: !!l.defaultOff })),
+  ...PO_WORKFLOW_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'PO Workflow', defaultOff: !!l.defaultOff })),
+  ...GOVERNANCE_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Governance & Data', defaultOff: !!l.defaultOff })),
+  ...MASTERS_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Masters & Datasets', defaultOff: !!l.defaultOff })),
+  ...ADMIN_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Admin', defaultOff: !!l.defaultOff })),
 ];
 
 /**
@@ -150,8 +179,10 @@ export function SideNav({
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const close = () => setNavOpen(false);
+  // Global show/hide overrides come from context (root layout provides them).
+  const navOverrides = useNavOverrides();
   const visible = (links: NavLink[]) =>
-    links.filter(({ href }) => canView(href, role, allowedPages));
+    links.filter((l) => navPathVisible(l.href, navOverrides, l.defaultOff) && canView(l.href, role, allowedPages));
   const workspace = visible(WORKSPACE_LINKS);
   // Use-case sections below the Workspace block; a divider renders only when
   // the caller can see at least one page in the group.

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadCustomRoles, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
+import { currentUser, loadCustomRoles, loadNavVisibility, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
 import { hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { UsersClient } from './users-client';
 
@@ -24,7 +24,9 @@ export default async function UsersPage() {
   if (!user) redirect('/login');
 
   const isAdmin = user.role === 'admin';
-  const [users, roles] = isAdmin ? await Promise.all([loadUsers(), loadCustomRoles()]) : [[], []];
+  const [users, roles, navOverrides] = isAdmin
+    ? await Promise.all([loadUsers(), loadCustomRoles(), loadNavVisibility()])
+    : [[], [], {}];
 
   return (
     <FormLayout
@@ -41,6 +43,7 @@ export default async function UsersPage() {
           roles={roles}
           currentEmail={user.email}
           canCreateLogins={hasSupabaseAdminEnv()}
+          navOverrides={navOverrides}
         />
       ) : (
         <Notice tone="warn">

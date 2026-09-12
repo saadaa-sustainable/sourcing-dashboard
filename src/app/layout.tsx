@@ -5,6 +5,8 @@ import './workflows.css';
 import './analytics-cards.css';
 import { ToastHost } from '@/components/toast-host';
 import { NumberInputGuard } from '@/components/number-input-guard';
+import { NavOverridesProvider } from '@/components/nav-overrides';
+import { loadNavVisibility } from '@/lib/forms/queries';
 
 // Design system §4 intent: one clean neutral sans for body + headings (hierarchy by
 // size/weight, not typeface). We use Inter as that sans — it loads as a webfont so it
@@ -35,6 +37,17 @@ const jetbrainsMono = localFont({
 
 export const metadata: Metadata = { title: 'SAADAA Sourcing Dashboard', description: 'Open PO, vendor, TNA, and product sourcing intelligence.' };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}><body>{children}<ToastHost /><NumberInputGuard /></body></html>;
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Global sidebar show/hide overrides, loaded once and provided to the client SideNav via
+  // context (keeps the server-only loader out of form-layout, which client code imports).
+  const navOverrides = await loadNavVisibility();
+  return (
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <body>
+        <NavOverridesProvider value={navOverrides}>{children}</NavOverridesProvider>
+        <ToastHost />
+        <NumberInputGuard />
+      </body>
+    </html>
+  );
 }
