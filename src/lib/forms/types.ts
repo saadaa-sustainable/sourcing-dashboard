@@ -1084,6 +1084,9 @@ export type ReceivablePlanRow = {
   stock_by_size: Record<string, number>;
   // Merged-in weekly inputs (sd_receivable_input).
   delivery_date_this_week: string | null;
+  // Whether delivery_date_this_week is a specific week (Monday) or a whole month
+  // (1st) — the team may fill either. Legacy rows read as 'week'.
+  receiving_granularity: 'week' | 'month';
   qty_expected_this_week: number | null;
   remarks: string | null;
   // When the weekly input for this row was last saved (drives the "last updated" stamp).

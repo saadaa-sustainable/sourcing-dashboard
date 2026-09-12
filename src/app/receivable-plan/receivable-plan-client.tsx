@@ -48,6 +48,21 @@ function buildWeekOptions(thisMonday: string, back = 6, ahead = 20): { value: st
   }
   return out;
 }
+function firstOfMonth(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}
+function buildMonthOptions(thisMonday: string, back = 1, ahead = 8): { value: string; label: string }[] {
+  const base = new Date(`${firstOfMonth(thisMonday)}T00:00:00Z`);
+  const thisMonthValue = firstOfMonth(thisMonday);
+  const out: { value: string; label: string }[] = [];
+  for (let i = -back; i <= ahead; i++) {
+    const d = new Date(base);
+    d.setUTCMonth(d.getUTCMonth() + i);
+    const value = d.toISOString().slice(0, 10);
+    out.push({ value, label: monthLabelOf(value) + (value === thisMonthValue ? ' · this month' : '') });
+  }
+  return out;
+}
 
 type ViewMode = 'lines' | 'product' | 'variant' | 'month';
 const VIEW_TABS: { key: ViewMode; label: string }[] = [
@@ -79,6 +94,7 @@ export function ReceivablePlanClient({
   const [submitting, startSubmit] = useTransition();
 
   const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
+  const monthOptions = useMemo(() => buildMonthOptions(weekStart), [weekStart]);
 
   function submitAll() {
     startSubmit(async () => {
@@ -129,11 +145,11 @@ export function ReceivablePlanClient({
   return (
     <>
       <Notice tone="info">
-        Each row is one colour on an open PO, split by size. Pick the{' '}
-        <strong>receiving week</strong> (Mon–Sun) and the <strong>qty expected</strong> for the
-        plan — the two editable fields. DOQ, stock and OOS come from the inventory-planning
-        snapshot; <strong>Status</strong> is the live TNA risk. Use <strong>View</strong> to see
-        the plan by product, variant or receiving month.
+        Each row is one colour on an open PO, split by size. Pick when it's expected — either a{' '}
+        <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
+        know — and the <strong>qty expected</strong>. Those are the two editable fields. DOQ, stock
+        and OOS come from the inventory-planning snapshot; <strong>Status</strong> is the live TNA
+        risk. Use <strong>View</strong> to see the plan by product, variant or receiving month.
         {lastUpdated && (
           <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
         )}
@@ -225,7 +241,7 @@ export function ReceivablePlanClient({
                   <th className="num">Sizes in stock</th>
                   <th>OOS</th>
                   <th className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
-                  <th className="input-col">Receiving week</th>
+                  <th className="input-col">Receiving week / month</th>
                   <th className="num input-col">Qty expected</th>
                   {editable && <th aria-label="Save" />}
                 </tr>
@@ -237,6 +253,7 @@ export function ReceivablePlanClient({
                     row={row}
                     editable={editable}
                     weekOptions={weekOptions}
+                    monthOptions={monthOptions}
                     onSaved={() => setMessage('Saved.')}
                   />
                 ))}
@@ -389,28 +406,47 @@ function ReceivableRow({
   row,
   editable,
   weekOptions,
+  monthOptions,
   onSaved,
 }: {
   row: ReceivablePlanRow;
   editable: boolean;
   weekOptions: { value: string; label: string }[];
+  monthOptions: { value: string; label: string }[];
   onSaved: () => void;
 }) {
-  // Stored value is a date; snap to its Monday so it matches a week option.
-  const initialWeek = row.delivery_date_this_week ? mondayOf(row.delivery_date_this_week) : '';
-  const [week, setWeek] = useState(initialWeek);
+  // The picker holds a tagged value: `m<date>` = a whole month (1st stored),
+  // `w<date>` = a specific week (Monday stored). Empty = unset.
+  const initialValue = row.delivery_date_this_week
+    ? row.receiving_granularity === 'month'
+      ? `m${firstOfMonth(row.delivery_date_this_week)}`
+      : `w${mondayOf(row.delivery_date_this_week)}`
+    : '';
+  const [pick, setPick] = useState(initialValue);
   const [qty, setQty] = useState(row.qty_expected_this_week?.toString() ?? '');
   const [pending, start] = useTransition();
 
-  const dirty = week !== initialWeek || qty !== (row.qty_expected_this_week?.toString() ?? '');
+  const dirty = pick !== initialValue || qty !== (row.qty_expected_this_week?.toString() ?? '');
 
-  // Week options plus the row's own week if it falls outside the generated range.
-  const options = useMemo(() => {
-    if (week && !weekOptions.some((o) => o.value === week)) {
-      return [{ value: week, label: weekRangeLabel(week) }, ...weekOptions];
+  // Month/week options, plus the row's own pick if it falls outside the ranges.
+  const months = useMemo(() => {
+    if (pick.startsWith('m')) {
+      const d = pick.slice(1);
+      if (!monthOptions.some((o) => o.value === d)) {
+        return [{ value: d, label: monthLabelOf(d) }, ...monthOptions];
+      }
+    }
+    return monthOptions;
+  }, [pick, monthOptions]);
+  const weeks = useMemo(() => {
+    if (pick.startsWith('w')) {
+      const d = pick.slice(1);
+      if (!weekOptions.some((o) => o.value === d)) {
+        return [{ value: d, label: weekRangeLabel(d) }, ...weekOptions];
+      }
     }
     return weekOptions;
-  }, [week, weekOptions]);
+  }, [pick, weekOptions]);
 
   // % of the arriving qty covered by what's planned to land.
   const arriving = row.arriving_qty || 0;
@@ -423,7 +459,9 @@ function ReceivableRow({
   function save() {
     const fd = new FormData();
     fd.set('row_key', row.row_key);
-    fd.set('delivery_date_this_week', week); // Monday of the chosen receiving week
+    // Tagged pick → date + granularity. `m` stores the 1st; `w` stores the Monday.
+    fd.set('delivery_date_this_week', pick ? pick.slice(1) : '');
+    fd.set('receiving_granularity', pick.startsWith('m') ? 'month' : 'week');
     fd.set('qty_expected_this_week', qty);
     start(async () => {
       const res = await saveReceivableInput(fd);
@@ -472,11 +510,18 @@ function ReceivableRow({
       <td>{row.oos_flag ? <span className="wf-over-tag">OOS</span> : ''}</td>
       <td className="num wf-subtle">{row.expected_delivery_date ?? '—'}</td>
       <td className="input-col">
-        <select value={week} disabled={!editable} onChange={(e) => setWeek(e.target.value)}>
-          <option value="">— pick week —</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+        <select value={pick} disabled={!editable} onChange={(e) => setPick(e.target.value)}>
+          <option value="">— pick month / week —</option>
+          <optgroup label="Whole month">
+            {months.map((o) => (
+              <option key={`m${o.value}`} value={`m${o.value}`}>{o.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Specific week">
+            {weeks.map((o) => (
+              <option key={`w${o.value}`} value={`w${o.value}`}>{o.label}</option>
+            ))}
+          </optgroup>
         </select>
       </td>
       <td className="num input-col">

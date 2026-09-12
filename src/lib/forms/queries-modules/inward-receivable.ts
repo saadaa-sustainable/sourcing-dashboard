@@ -43,6 +43,12 @@ function isoWeekLabel(iso: string | null): string | null {
   const week = 1 + Math.round((d.getTime() - firstThu.getTime()) / 604_800_000);
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
+function monthLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
 
 /**
  * Arrivals — what the team said would arrive (Receivable Plan: qty_expected_this_week +
@@ -57,7 +63,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data } = await supabase
       .from('sd_receivable_input')
-      .select('row_key, po_number, product_variant, delivery_date_this_week, qty_expected_this_week, remarks, status')
+      .select('row_key, po_number, product_variant, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, status')
       .range(from, from + PAGE_SIZE - 1);
     if (!data?.length) break;
     inputs.push(...(data as Record<string, unknown>[]));
@@ -116,6 +122,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
     const grn = po_number && product_variant ? grnByKey.get(`${po_number}|${product_variant}`) : undefined;
     const expected_qty = (i.qty_expected_this_week as number | null) ?? null;
     const expected_date = (i.delivery_date_this_week as string | null) ?? null;
+    const isMonth = (i.receiving_granularity as string | null) === 'month';
     const received_qty = grn?.qty ?? 0;
     return {
       row_key: String(i.row_key),
@@ -127,7 +134,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
       category: product_code ? catByCode.get(product_code) ?? null : null,
       expected_qty,
       expected_date,
-      expected_week: isoWeekLabel(expected_date),
+      expected_week: isMonth ? monthLabel(expected_date) : isoWeekLabel(expected_date),
       received_qty,
       last_received_on: grn?.last ?? null,
       received_weeks: grn && grn.weeks.size ? [...grn.weeks].sort().join(', ') : null,
@@ -163,7 +170,7 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
 
   const { data: inputs } = await supabase
     .from('sd_receivable_input')
-    .select('row_key, delivery_date_this_week, qty_expected_this_week, remarks, updated_at');
+    .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at');
   const inputByKey = new Map(
     ((inputs ?? []) as Record<string, unknown>[]).map((i) => [String(i.row_key), i]),
   );
@@ -198,6 +205,7 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
       internal_status,
       stock_by_size: stockByVariant.get(String(r.product_variant ?? '')) ?? {},
       delivery_date_this_week: (inp?.delivery_date_this_week as string | null) ?? null,
+      receiving_granularity: (inp?.receiving_granularity as 'week' | 'month' | null) ?? 'week',
       qty_expected_this_week: (inp?.qty_expected_this_week as number | null) ?? null,
       remarks: (inp?.remarks as string | null) ?? null,
       input_updated_at: (inp?.updated_at as string | null) ?? null,

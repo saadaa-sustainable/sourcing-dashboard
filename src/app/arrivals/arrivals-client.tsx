@@ -45,12 +45,12 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     },
     {
       key: 'expected_week',
-      label: 'Expected week',
+      label: 'Expected week / month',
       kind: 'text',
       filter: 'select',
       accessor: (r) => r.expected_week ?? '',
       render: (r) => r.expected_week ?? '—',
-      info: 'ISO week of the expected delivery date the team filled.',
+      info: 'When the team expected it — a specific ISO week, or a whole month if that is all they filled.',
     },
     {
       key: 'received_qty',

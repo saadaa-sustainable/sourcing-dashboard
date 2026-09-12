@@ -66,6 +66,8 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
   if (!row_key) return fail('Invalid row.');
   const [po_number, product_variant] = row_key.split('|');
 
+  const granularity = String(formData.get('receiving_granularity') ?? 'week') === 'month' ? 'month' : 'week';
+
   const supabase = await supa();
   const { error } = await supabase.from('sd_receivable_input').upsert(
     {
@@ -73,6 +75,7 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
       po_number: po_number ?? null,
       product_variant: product_variant ?? null,
       delivery_date_this_week: dateOrNull(formData.get('delivery_date_this_week')),
+      receiving_granularity: granularity,
       qty_expected_this_week: numOrNull(formData.get('qty_expected_this_week')),
       updated_by: user.email,
       updated_at: new Date().toISOString(),
@@ -117,4 +120,4 @@ export async function saveVendorTerms(formData: FormData): Promise<ActionResult>
 /* ================================================================== */
 /* User panel — admin (role manager) assigns roles                     */
 /* ================================================================== */
-
+
