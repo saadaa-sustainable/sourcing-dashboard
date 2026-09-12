@@ -33,6 +33,14 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       accessor: (r) => (r.source === 'history' ? 'Approved plan (history)' : 'Live plan'),
     },
     {
+      key: 'expected_month',
+      label: 'Month',
+      kind: 'text',
+      filter: 'select',
+      accessor: (r) => r.expected_month ?? '—',
+      info: 'Calendar month the arrival was expected in — pick one to view that month.',
+    },
+    {
       key: 'product_variant',
       label: 'Product',
       kind: 'mono',
@@ -54,7 +62,6 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       key: 'expected_week',
       label: 'Expected week / month',
       kind: 'text',
-      filter: 'select',
       accessor: (r) => r.expected_week ?? '',
       render: (r) => r.expected_week ?? '—',
       info: 'When the team expected it — a specific ISO week, or a whole month if that is all they filled.',

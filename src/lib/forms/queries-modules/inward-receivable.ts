@@ -21,6 +21,7 @@ export type ArrivalRow = {
   category: string | null;
   expected_qty: number | null;   // qty_expected_this_week (Receivable Plan)
   expected_date: string | null;  // delivery_date_this_week
+  expected_month: string | null; // calendar month of the expected date (e.g. "Aug 2026")
   expected_week: string | null;  // ISO week of the expected date
   received_qty: number;          // Σ GRN received for this PO + product colour
   last_received_on: string | null;
@@ -70,8 +71,9 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
     inputs.push(...(data as Record<string, unknown>[]));
     if (data.length < PAGE_SIZE) break;
   }
+  // Note: do NOT early-return when there are no live inputs — the approved
+  // historical plan (below) must still show.
   const filled = inputs.filter((i) => i.qty_expected_this_week != null || i.delivery_date_this_week != null);
-  if (!filled.length) return { rows: [] };
 
   // 2) Plan base (product/vendor/ref) for those rows, by row_key.
   const rowKeys = [...new Set(filled.map((i) => String(i.row_key)).filter(Boolean))];
@@ -135,6 +137,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
       category: product_code ? catByCode.get(product_code) ?? null : null,
       expected_qty,
       expected_date,
+      expected_month: monthLabel(expected_date),
       expected_week: isMonth ? monthLabel(expected_date) : isoWeekLabel(expected_date),
       received_qty,
       last_received_on: grn?.last ?? null,
@@ -219,6 +222,7 @@ async function loadHistoricalArrivalRows(
       category: product_code ? catByCode.get(product_code) ?? null : null,
       expected_qty,
       expected_date: planMonth,
+      expected_month: monthLabel(planMonth),
       expected_week: monthLabel(planMonth),
       received_qty,
       last_received_on: grn?.last ?? null,
