@@ -170,7 +170,7 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
 
   const { data: inputs } = await supabase
     .from('sd_receivable_input')
-    .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at');
+    .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at, status, approved_month');
   const inputByKey = new Map(
     ((inputs ?? []) as Record<string, unknown>[]).map((i) => [String(i.row_key), i]),
   );
@@ -209,6 +209,8 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
       qty_expected_this_week: (inp?.qty_expected_this_week as number | null) ?? null,
       remarks: (inp?.remarks as string | null) ?? null,
       input_updated_at: (inp?.updated_at as string | null) ?? null,
+      input_status: (inp?.status as ReceivablePlanRow['input_status']) ?? null,
+      approved_month: (inp?.approved_month as string | null) ?? null,
     };
   });
 }

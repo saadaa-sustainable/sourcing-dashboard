@@ -67,16 +67,42 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
   const [po_number, product_variant] = row_key.split('|');
 
   const granularity = String(formData.get('receiving_granularity') ?? 'week') === 'month' ? 'month' : 'week';
+  const deliveryDate = dateOrNull(formData.get('delivery_date_this_week'));
+  const qty = numOrNull(formData.get('qty_expected_this_week'));
 
   const supabase = await supa();
+
+  // Approval rule: once a row's MONTH is approved, the team may switch to any week
+  // inside that month with no re-approval. Anything else — a new month, a week
+  // outside the approved month, or a quantity change — drops it back to draft so
+  // it must be submitted and approved again.
+  const { data: existing } = await supabase
+    .from('sd_receivable_input')
+    .select('status, approved_month, qty_expected_this_week')
+    .eq('row_key', row_key)
+    .maybeSingle();
+
+  const approvedMonth = (existing?.approved_month as string | null) ?? null;
+  const monthOf = (iso: string | null) => (iso ? `${iso.slice(0, 7)}-01` : null);
+  const qtyUnchanged = qty === ((existing?.qty_expected_this_week as number | null) ?? null);
+  const weekWithinApprovedMonth =
+    granularity === 'week' && !!approvedMonth && !!deliveryDate && monthOf(deliveryDate) === approvedMonth;
+
+  // Stay approved only when the sole change is a week inside the already-approved
+  // month (quantity untouched); otherwise the edit needs approval afresh.
+  const keepApproved =
+    existing?.status === 'approved' && weekWithinApprovedMonth && qtyUnchanged;
+  const status: SdStatus = keepApproved ? 'approved' : 'draft';
+
   const { error } = await supabase.from('sd_receivable_input').upsert(
     {
       row_key,
       po_number: po_number ?? null,
       product_variant: product_variant ?? null,
-      delivery_date_this_week: dateOrNull(formData.get('delivery_date_this_week')),
+      delivery_date_this_week: deliveryDate,
       receiving_granularity: granularity,
-      qty_expected_this_week: numOrNull(formData.get('qty_expected_this_week')),
+      qty_expected_this_week: qty,
+      status,
       updated_by: user.email,
       updated_at: new Date().toISOString(),
     },
@@ -84,7 +110,12 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
   );
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/receivable-plan');
-  return done('Saved.');
+  revalidatePath('/approvals');
+  return done(
+    keepApproved
+      ? 'Saved — week updated within the approved month, no re-approval needed.'
+      : 'Saved as draft — submit for approval.',
+  );
 }
 
 /* ================================================================== */

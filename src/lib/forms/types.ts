@@ -1091,6 +1091,11 @@ export type ReceivablePlanRow = {
   remarks: string | null;
   // When the weekly input for this row was last saved (drives the "last updated" stamp).
   input_updated_at: string | null;
+  // Approval status of this row's weekly input (draft/submitted/approved/…).
+  input_status: SdStatus | null;
+  // The month (1st) approved at month-granularity, if any. While set, the team may
+  // switch to any week within it without re-approval.
+  approved_month: string | null;
 };
 
 /** One arriving-stock line for the Inward Plan (grouped PO × product × variant). */

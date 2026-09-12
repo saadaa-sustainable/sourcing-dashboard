@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
+import { STATUS_LABEL } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import type { ReceivablePlanRow } from '@/lib/forms/types';
 
@@ -18,6 +19,9 @@ const cell = (v: number | null) => (v ? fmt.format(v) : '');
 const BLANK = '—';
 const statusTone = (s: string | null) =>
   s === 'Overdue' ? 'danger' : s === 'High Risk' ? 'warn' : 'success';
+// Approval status → .badge tone (success/warn/danger). Draft is neutral (no tone).
+const approvalTone = (s: string): string =>
+  s === 'approved' ? 'success' : s === 'rejected' ? 'danger' : s === 'draft' ? '' : 'warn';
 
 /* ---- Week helpers: the team plans by receiving WEEK (Mon–Sun), not a single
    date. We store the Monday of the chosen week in delivery_date_this_week. ---- */
@@ -147,9 +151,11 @@ export function ReceivablePlanClient({
       <Notice tone="info">
         Each row is one colour on an open PO, split by size. Pick when it's expected — either a{' '}
         <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
-        know — and the <strong>qty expected</strong>. Those are the two editable fields. DOQ, stock
-        and OOS come from the inventory-planning snapshot; <strong>Status</strong> is the live TNA
-        risk. Use <strong>View</strong> to see the plan by product, variant or receiving month.
+        know — and the <strong>qty expected</strong>, then submit for approval. <strong>Once a
+        month is approved</strong> you can switch to any week within it without re-approval; filling
+        a week directly, changing the quantity, or moving to another month needs approval again.
+        DOQ, stock and OOS come from the inventory-planning snapshot; <strong>Status</strong> is the
+        live TNA risk. Use <strong>View</strong> to see the plan by product, variant or receiving month.
         {lastUpdated && (
           <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
         )}
@@ -453,6 +459,19 @@ function ReceivableRow({
   const qtyNum = Number(qty) || 0;
   const pctComplete = arriving > 0 ? Math.round((qtyNum / arriving) * 100) : null;
 
+  // Approval cue: while a month is approved for this row, any week within it saves
+  // without re-approval; a week outside it, a new month, or a qty change won't.
+  const approvedMonthLabel = row.approved_month ? monthLabelOf(row.approved_month) : null;
+  const qtyUnchanged = qty === (row.qty_expected_this_week?.toString() ?? '');
+  const pickMonth = pick ? firstOfMonth(pick.slice(1)) : null;
+  const staysApproved =
+    row.input_status === 'approved' &&
+    pick.startsWith('w') &&
+    !!row.approved_month &&
+    pickMonth === row.approved_month &&
+    qtyUnchanged;
+  const willNeedApproval = dirty && !staysApproved;
+
   const totalSizes = SIZE_KEYS.filter(([k]) => row[k]).length;
   const inStockSizes = SIZE_KEYS.filter(([k]) => (row.stock_by_size?.[k] ?? 0) > 0).length;
 
@@ -523,6 +542,15 @@ function ReceivableRow({
             ))}
           </optgroup>
         </select>
+        <small className="wf-subtle wf-qty-meta">
+          {row.input_status && (
+            <span className={`badge ${approvalTone(row.input_status)}`}>
+              {STATUS_LABEL[row.input_status]}
+            </span>
+          )}
+          {approvedMonthLabel && <span>weeks free in {approvedMonthLabel}</span>}
+          {willNeedApproval && <span className="wf-chip-warn">will need approval</span>}
+        </small>
       </td>
       <td className="num input-col">
         <input

@@ -243,11 +243,38 @@ async function decideReceivablePlanBulk(
           }
         : { status: to, rejection_notes: notes || null };
   const supabase = await supa();
+
+  // Capture the month-granularity rows being approved so we can stamp the
+  // approved month on them — that stamp is what lets the team later switch to any
+  // week within the month without another approval.
+  let monthRows: { row_key: string; delivery_date_this_week: string | null }[] = [];
+  if (decision === 'approve') {
+    const { data } = await supabase
+      .from('sd_receivable_input')
+      .select('row_key, delivery_date_this_week')
+      .eq('status', from)
+      .eq('receiving_granularity', 'month');
+    monthRows = (data ?? []) as typeof monthRows;
+  }
+
   const { error } = await supabase
     .from('sd_receivable_input')
     .update(patch)
     .eq('status', from);
   if (error) return fail(error.message);
+
+  if (decision === 'approve' && monthRows.length) {
+    // Group by month so each distinct approved month is one update.
+    const byMonth = new Map<string, string[]>();
+    for (const r of monthRows) {
+      const month = r.delivery_date_this_week ? `${r.delivery_date_this_week.slice(0, 7)}-01` : null;
+      if (!month) continue;
+      (byMonth.get(month) ?? byMonth.set(month, []).get(month)!).push(r.row_key);
+    }
+    for (const [month, keys] of byMonth) {
+      await supabase.from('sd_receivable_input').update({ approved_month: month }).in('row_key', keys);
+    }
+  }
   await writeLog('receivable_plan', 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
   revalidatePath('/approvals');
   revalidatePath('/receivable-plan');
