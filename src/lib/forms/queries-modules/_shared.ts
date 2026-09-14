@@ -29,11 +29,16 @@ export async function client() {
  * pages don't overlap. Use it for any table that can grow past PAGE_SIZE rows.
  */
 export async function pageAll<T>(
-  build: () => { range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null }> },
+  build: () => {
+    range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error?: { message: string } | null }>;
+  },
 ): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data } = await build().range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    // A failed page must be LOUD — returning "no rows" here once made every Arrivals
+    // receipt read as 0 (an ORDER BY on a column the table doesn't have).
+    if (error) throw new Error(`pageAll: ${error.message}`);
     if (!data?.length) break;
     out.push(...(data as T[]));
     if (data.length < PAGE_SIZE) break;

@@ -101,7 +101,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
         .select('po_number, sku, received_quantity, grn_created_at')
         .in('po_number', chunk)
         .order('po_number')
-        .order('id'),
+        .order('grn_detail_id'),
     );
     for (const g of data) {
       const key = `${g.po_number}|${variantOfSku(String(g.sku ?? ''))}`;
@@ -199,7 +199,7 @@ async function loadHistoricalArrivalRows(
         .select('po_ref_num, received_quantity, grn_created_at')
         .in('po_ref_num', chunk)
         .order('po_ref_num')
-        .order('id'),
+        .order('grn_detail_id'),
     );
     for (const g of data) {
       const ref = String(g.po_ref_num ?? '').trim();

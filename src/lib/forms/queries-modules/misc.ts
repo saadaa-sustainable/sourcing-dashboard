@@ -94,7 +94,7 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
         .select('received_quantity')
         .gte('grn_created_at', planMonth)
         .lt('grn_created_at', monthEnd)
-        .order('id'),
+        .order('grn_detail_id'),
     ),
     loadDashboardData(),
   ]);
