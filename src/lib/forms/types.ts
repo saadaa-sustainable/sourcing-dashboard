@@ -1375,3 +1375,17 @@ export type PoApprovalDetail = {
     tnaConfirmed: boolean;
   };
 };
+
+/** One manual-adjustment entry made on the dashboard (sd_manual_adjustment_entry), pushed
+ *  back to the warehouse table po_qty_manual_adjustment. bq_synced_at = landed in BigQuery. */
+export type ManualAdjustmentEntry = {
+  id: number;
+  po_ref_num: string;
+  sku_code: string;
+  manual_adjust_qty: number;
+  po_type: string | null;
+  remarks: string | null;
+  submitted_by_email: string | null;
+  created_at: string;
+  bq_synced_at: string | null;
+};

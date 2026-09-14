@@ -10,6 +10,7 @@
 import { BigQuery } from '@google-cloud/bigquery';
 import { syncAllAdjustments } from '@/lib/adjustments';
 import { reconcileCuttingToBq } from '@/lib/cutting-bq';
+import { reconcileManualAdjustmentToBq } from '@/lib/manual-adjustment-bq';
 
 export type SyncTarget =
   | 'product-master'
@@ -17,7 +18,8 @@ export type SyncTarget =
   | 'grn'
   | 'vendor-master'
   | 'adjustments'
-  | 'cutting-push';
+  | 'cutting-push'
+  | 'adjust-push';
 export const GRN_WINDOW_DAYS = 45;
 
 const flat = (v: unknown): unknown =>
@@ -211,7 +213,7 @@ async function appendSync(bq: BigQuery, spec: AppendSpec): Promise<number> {
   return mapped.length;
 }
 
-type AppendTarget = Exclude<SyncTarget, 'vendor-master' | 'adjustments' | 'cutting-push'>;
+type AppendTarget = Exclude<SyncTarget, 'vendor-master' | 'adjustments' | 'cutting-push' | 'adjust-push'>;
 
 const SPECS: Record<AppendTarget, AppendSpec> = {
   'product-master': {
@@ -246,7 +248,7 @@ export async function runDailySync(only?: SyncTarget): Promise<Record<string, nu
   const bq = makeBq();
   const targets: SyncTarget[] = only
     ? [only]
-    : ['product-master', 'doq', 'grn', 'vendor-master', 'adjustments', 'cutting-push'];
+    : ['product-master', 'doq', 'grn', 'vendor-master', 'adjustments', 'cutting-push', 'adjust-push'];
   const summary: Record<string, number> = {};
   for (const t of targets) {
     if (t === 'vendor-master') {
@@ -263,6 +265,15 @@ export async function runDailySync(only?: SyncTarget): Promise<Record<string, nu
       } catch (err) {
         console.error('[bq-sync] cutting-push failed:', err instanceof Error ? err.message : err);
         summary[t] = -1; // sentinel: ran but errored (see logs)
+      }
+    } else if (t === 'adjust-push') {
+      // Same reverse push for dashboard-entered PO manual adjustments
+      // (sd_manual_adjustment_entry → po_qty_manual_adjustment). Best-effort, like cutting-push.
+      try {
+        summary[t] = await reconcileManualAdjustmentToBq();
+      } catch (err) {
+        console.error('[bq-sync] adjust-push failed:', err instanceof Error ? err.message : err);
+        summary[t] = -1;
       }
     } else {
       summary[t] = await appendSync(bq, SPECS[t]);

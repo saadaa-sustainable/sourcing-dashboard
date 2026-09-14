@@ -40,7 +40,7 @@ export default async function PoManualAdjustmentPage() {
   return (
     <FormLayout
       title="Manual Data Ingestion"
-      subtitle="All PO manual adjustments and cutting-register entries ingested via the portal. Refresh (2×/hour per table) reloads the newest synced data to confirm an entry has landed."
+      subtitle="Enter PO manual adjustments and cutting-register data here — they push to the warehouse (BigQuery) automatically. Synced data + Refresh (2×/hour per table) confirm an entry has landed."
       active="/po-manual-adjustment"
       role={user.role}
       userEmail={user.email}

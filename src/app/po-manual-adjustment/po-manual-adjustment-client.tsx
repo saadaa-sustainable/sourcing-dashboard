@@ -6,6 +6,7 @@ import { refreshAdjustmentAction } from '@/lib/adjustments-actions';
 import { REFRESH_LIMIT_PER_HOUR, type AdjustmentSource } from '@/lib/adjustments-types';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { CuttingRegisterInput, CuttingBulkUpdate } from './cutting-input';
+import { ManualAdjustmentInput } from './manual-adjustment-input';
 
 type Row = Record<string, unknown>;
 type Col = {
@@ -161,16 +162,19 @@ export function PoManualAdjustmentClient({
 }) {
   const [tab, setTab] = useState<AdjustmentSource>('po');
   const [cutMode, setCutMode] = useState<'input' | 'bulk' | 'synced'>('input');
+  const [poMode, setPoMode] = useState<'input' | 'synced'>('input');
 
   return (
     <div className="wf-stack">
       <div className="wf-notice wf-notice-info">
-        <strong>Ingest the data from here:</strong>{' '}
+        <strong>Enter data right here</strong> — use <strong>UI Input</strong> on either tab; entries
+        push to the warehouse (BigQuery) automatically within ~5 minutes. <strong>Synced data</strong>{' '}
+        shows what has landed; hit <strong>Refresh</strong> to pull the newest rows — up to{' '}
+        {REFRESH_LIMIT_PER_HOUR}× per hour per table. The old{' '}
         <a href={portalUrl} target="_blank" rel="noopener noreferrer">
-          Ingestion portal <ExternalLink size={12} style={{ verticalAlign: '-1px' }} />
-        </a>
-        {' '}— entries made there are synced into these tables. Hit <strong>Refresh</strong> to pull
-        the newest synced rows — up to {REFRESH_LIMIT_PER_HOUR}× per hour per table.
+          ingestion portal <ExternalLink size={12} style={{ verticalAlign: '-1px' }} />
+        </a>{' '}
+        remains only for bulk cutting-register uploads.
       </div>
       <div className="segment">
         <button className={tab === 'po' ? 'active' : ''} onClick={() => setTab('po')}>
@@ -182,13 +186,22 @@ export function PoManualAdjustmentClient({
       </div>
       {/* Both panels stay mounted so tab switches keep filters and refreshed rows. */}
       <div hidden={tab !== 'po'}>
-        <Panel
-          source="po"
-          cols={MANUAL_COLS}
-          initialRows={manualRows}
-          initialRemaining={manualState.remaining}
-          initialRetry={manualState.retryAfterMinutes}
-        />
+        {/* PO Manual Adjustment: enter on the dashboard (UI Input — pushed to BigQuery) or view
+            the data already synced back from BigQuery. */}
+        <div className="segment fb-seg" style={{ marginBottom: 12 }}>
+          <button className={poMode === 'input' ? 'active' : ''} onClick={() => setPoMode('input')}>UI Input</button>
+          <button className={poMode === 'synced' ? 'active' : ''} onClick={() => setPoMode('synced')}>Synced data</button>
+        </div>
+        <div hidden={poMode !== 'input'}><ManualAdjustmentInput editable={editable} /></div>
+        <div hidden={poMode !== 'synced'}>
+          <Panel
+            source="po"
+            cols={MANUAL_COLS}
+            initialRows={manualRows}
+            initialRemaining={manualState.remaining}
+            initialRetry={manualState.retryAfterMinutes}
+          />
+        </div>
       </div>
       <div hidden={tab !== 'cutting'}>
         {/* Cutting Register: enter on the dashboard (UI Input / Bulk Update) or view the
