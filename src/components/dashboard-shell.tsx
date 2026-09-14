@@ -616,9 +616,16 @@ function DashboardTab({
         p != null && p.x >= today.getTime() - 45 * dayMs && p.x <= today.getTime() + 90 * dayMs,
     );
   const hasEddScatter = eddScatter.length > 0;
-  // Distinct vendors drive the plot height so the category (Y) labels never
-  // collide — the plot grows per vendor and scrolls inside the panel.
-  const eddVendorCount = new Set(eddScatter.map((p) => p.vendor)).size;
+  // Y is a numeric row index from ONE canonical vendor list (not a category axis):
+  // with many dots per vendor, a category axis positions dots by data index while
+  // labelling rows by unique vendor, so marks landed on the wrong vendor row.
+  // Vendors are sorted so the axis order is stable across refreshes.
+  const eddVendors = [...new Set(eddScatter.map((p) => p.vendor))].sort((a, b) => a.localeCompare(b));
+  const eddVendorIndex = new Map(eddVendors.map((v, i) => [v, i] as const));
+  const eddPoints = eddScatter.map((p) => ({ ...p, y: eddVendorIndex.get(p.vendor) ?? 0 }));
+  // Distinct vendors drive the plot height so the (Y) labels never collide —
+  // the plot grows per vendor and scrolls inside the panel.
+  const eddVendorCount = eddVendors.length;
   // Item 3 — expected vs actual delivery volume by week, with the gap between the
   // two shaded (base = the lower line, band = |expected−actual| stacked on top).
   const eva = (expectedVsActual ?? []).map((d) => ({
@@ -1293,8 +1300,13 @@ function DashboardTab({
                 fontSize={10}
               />
               <YAxis
-                type="category"
-                dataKey="vendor"
+                type="number"
+                dataKey="y"
+                domain={[-0.5, Math.max(0, eddVendors.length - 0.5)]}
+                ticks={eddVendors.map((_, i) => i)}
+                tickFormatter={(i: number) => eddVendors[i] ?? ""}
+                reversed
+                allowDecimals={false}
                 width={130}
                 tickLine={false}
                 fontSize={10}
@@ -1333,8 +1345,8 @@ function DashboardTab({
                   );
                 }}
               />
-              <Scatter data={eddScatter} fillOpacity={0.78}>
-                {eddScatter.map((p, i) => (
+              <Scatter data={eddPoints} fillOpacity={0.78}>
+                {eddPoints.map((p, i) => (
                   <Cell key={i} fill={productColor(p.productCode)} />
                 ))}
               </Scatter>
