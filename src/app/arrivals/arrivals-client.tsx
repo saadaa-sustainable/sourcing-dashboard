@@ -27,6 +27,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
   const columns: Column<ArrivalRow>[] = [
     {
       key: 'source',
+      source: 'computed',
       label: 'Source',
       kind: 'text',
       filter: 'select',
@@ -34,6 +35,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     },
     {
       key: 'expected_month',
+      source: 'computed',
       label: 'Month',
       kind: 'text',
       filter: 'select',
@@ -42,14 +44,15 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     },
     {
       key: 'product_variant',
+      source: 'easyecom',
       label: 'Product',
       kind: 'mono',
       filter: 'text',
       accessor: (r) => r.product_variant ?? r.product_code ?? '—',
     },
-    { key: 'category', label: 'Category', kind: 'text', filter: 'select', accessor: (r) => r.category ?? '—' },
-    { key: 'vendor_name', label: 'Vendor', kind: 'text', filter: 'select', accessor: (r) => r.vendor_name ?? '—' },
-    { key: 'po_ref_num', label: 'PO ref', kind: 'mono', accessor: (r) => r.po_ref_num ?? r.po_number ?? '—' },
+    { key: 'category', label: 'Category', kind: 'text', filter: 'select', source: 'easyecom', accessor: (r) => r.category ?? '—' },
+    { key: 'vendor_name', label: 'Vendor', kind: 'text', filter: 'select', source: 'easyecom', accessor: (r) => r.vendor_name ?? '—' },
+    { key: 'po_ref_num', label: 'PO ref', kind: 'mono', source: 'easyecom', accessor: (r) => r.po_ref_num ?? r.po_number ?? '—' },
     {
       key: 'expected_qty',
       label: 'Expected',
@@ -68,6 +71,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     },
     {
       key: 'received_qty',
+      source: 'easyecom',
       label: 'Received',
       kind: 'num',
       accessor: (r) => num(r.received_qty),
@@ -76,6 +80,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     },
     {
       key: 'received_weeks',
+      source: 'easyecom',
       label: 'Received week(s)',
       kind: 'text',
       accessor: (r) => r.received_weeks ?? '',
@@ -84,6 +89,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     },
     {
       key: 'variance',
+      source: 'computed',
       label: 'Variance',
       kind: 'num',
       accessor: (r) => num(r.variance),
