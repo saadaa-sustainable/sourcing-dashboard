@@ -1035,6 +1035,29 @@ function TimeBuckets({
   );
 }
 
+/** Job / FOB / E-FOB quantity split for a set of plan lines (each line splits across the three). */
+function poTypeSplit(rows: Draft[]) {
+  return rows.reduce(
+    (a, r) => ({
+      job: a.job + (Number(r.job_work_qty) || 0),
+      fob: a.fob + (Number(r.fob_qty) || 0),
+      efob: a.efob + (Number(r.efob_qty) || 0),
+    }),
+    { job: 0, fob: 0, efob: 0 },
+  );
+}
+
+/** Compact "Job · FOB · E-FOB" chips — how much of the planned qty is proposed per PO type. */
+function PoTypeSplit({ split }: { split: { job: number; fob: number; efob: number } }) {
+  return (
+    <span className="wf-plan-split" title="Qty proposed per PO type">
+      <span><b>Job</b>{fmt.format(split.job)}</span>
+      <span><b>FOB</b>{fmt.format(split.fob)}</span>
+      <span><b>E-FOB</b>{fmt.format(split.efob)}</span>
+    </span>
+  );
+}
+
 function PlanView({
   groups,
   totals,
@@ -1082,6 +1105,10 @@ function PlanView({
           <span className="metric-label">% bought</span>
           <strong>{pctBought}%</strong>
           <Progress pct={pctBought} />
+        </div>
+        <div className="metric-card">
+          <span className="metric-label">Qty proposed by PO type</span>
+          <PoTypeSplit split={poTypeSplit(groups.flatMap(([, items]) => items.map((it) => it.row)))} />
         </div>
       </div>
 
@@ -1140,6 +1167,7 @@ function PlanView({
                 <span className="wf-plan-group-name">{fabric}</span>
                 <span className="wf-subtle">{items.length} products</span>
                 <span className="wf-plan-group-stat">{fmt.format(gt.qty)} pcs</span>
+                <PoTypeSplit split={poTypeSplit(items.map((it) => it.row))} />
                 <span className="wf-plan-group-stat">{money.format(gt.value)}</span>
                 <span className="wf-plan-group-bar">
                   <Progress pct={gPct} />
@@ -1152,6 +1180,7 @@ function PlanView({
                       <span className="mono wf-plan-code">{it.row.product_code}</span>
                       <span className="wf-subtle">{it.productStatus}</span>
                       <span className="num">{fmt.format(it.totalQty)} pcs</span>
+                      <PoTypeSplit split={poTypeSplit([it.row])} />
                       <span className="num">
                         {it.missingCost ? (
                           <span className="wf-over-tag">no approved cost</span>
