@@ -38,7 +38,7 @@ const GROUPS: { title: string; blurb: string; keys: string[] }[] = [
   },
   {
     title: 'Data & sync',
-    blurb: 'When a synced feed is considered stale on the Sync Health card.',
+    blurb: 'Hours without a refresh before a daily feed counts as stale — on the Sync Health page and the dashboard Data & sync card.',
     keys: ['sync_stale_hours'],
   },
 ];

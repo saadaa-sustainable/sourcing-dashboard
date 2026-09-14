@@ -11,13 +11,17 @@ export { FEEDBACK_KIND_LABEL, FEEDBACK_STATUS_LABEL, FEEDBACK_SEVERITY_LABEL } f
  * shows all of it to admins (the developer inbox) and just the caller's own reports
  * to everyone else. Screenshots are NOT loaded here — only when a thread is opened.
  */
-export async function loadFeedbackList(viewerEmail: string): Promise<FeedbackListItem[]> {
+export async function loadFeedbackList(viewerEmail: string, isAdmin = false): Promise<FeedbackListItem[]> {
   const supabase = await createClient();
+  // Non-admins get ONLY their own reports from the server — the whole board must
+  // never travel to the browser just to be hidden client-side.
+  let q = supabase
+    .from('sd_feedback')
+    .select('id, kind, title, severity, status, page_path, related_ref, tags, assignee, resolution, submitted_by, submitted_at, updated_at')
+    .order('updated_at', { ascending: false });
+  if (!isAdmin) q = q.eq('submitted_by', viewerEmail);
   const [{ data: rows }, { data: msgs }, { data: votes }] = await Promise.all([
-    supabase
-      .from('sd_feedback')
-      .select('id, kind, title, severity, status, page_path, related_ref, tags, assignee, resolution, submitted_by, submitted_at, updated_at')
-      .order('updated_at', { ascending: false }),
+    q,
     supabase.from('sd_feedback_message').select('feedback_id, screenshot'),
     supabase.from('sd_feedback_vote').select('feedback_id, voter_email'),
   ]);

@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import { buildTrackerRows } from '@/lib/business-logic';
 import { loadDashboardData } from '@/lib/data';
 import { monthStart, weekStart } from '../approval';
@@ -76,18 +76,26 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
       .gte('approved_at', wkStart),
     // Arrivals status (this month) — what the team expected in the Receivable Plan
     // for delivery this month vs what GRN recorded as received this month.
-    supabase
-      .from('sd_receivable_input')
-      .select('qty_expected_this_week')
-      .gte('delivery_date_this_week', planMonth)
-      .lt('delivery_date_this_week', monthEnd)
-      .limit(PAGE_SIZE),
-    supabase
-      .from('sd_ee_grn')
-      .select('received_quantity')
-      .gte('grn_created_at', planMonth)
-      .lt('grn_created_at', monthEnd)
-      .limit(PAGE_SIZE),
+    // Paged (GRN is line-level and a month runs well past 1000 rows). Planned counts
+    // only expectations the team actually put forward (submitted/approved), not
+    // drafts or rejected rows.
+    pageAll<{ qty_expected_this_week: number | null }>(() =>
+      supabase
+        .from('sd_receivable_input')
+        .select('qty_expected_this_week')
+        .in('status', ['submitted', 'pending_l2', 'approved'])
+        .gte('delivery_date_this_week', planMonth)
+        .lt('delivery_date_this_week', monthEnd)
+        .order('row_key'),
+    ),
+    pageAll<{ received_quantity: number | null }>(() =>
+      supabase
+        .from('sd_ee_grn')
+        .select('received_quantity')
+        .gte('grn_created_at', planMonth)
+        .lt('grn_created_at', monthEnd)
+        .order('id'),
+    ),
     loadDashboardData(),
   ]);
 
@@ -119,8 +127,8 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     qty: issuanceRows.reduce((s, r) => s + (Number(r.po_qty) || 0), 0),
   };
 
-  const expectedRows = (expected.data ?? []) as { qty_expected_this_week: number | null }[];
-  const receivedRows = (received.data ?? []) as { received_quantity: number | null }[];
+  const expectedRows = expected;
+  const receivedRows = received;
   const inwardTotals = {
     planned: expectedRows.reduce((s, r) => s + (Number(r.qty_expected_this_week) || 0), 0),
     actual: receivedRows.reduce((s, r) => s + (Number(r.received_quantity) || 0), 0),

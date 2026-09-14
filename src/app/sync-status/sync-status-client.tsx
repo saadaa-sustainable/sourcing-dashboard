@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Notice } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
 import type { SyncStatusRow } from '@/lib/forms/types';
@@ -27,10 +28,13 @@ function ago(iso: string | null): { label: string; title: string } {
 }
 
 type Health = 'fresh' | 'stale' | 'unknown';
-function health(row: SyncStatusRow): Health {
+// Rules Master `sync_stale_hours` is the default; the per-pipeline map only tightens
+// it for feeds that refresh more often (a 5-min sheet is stale after an hour).
+function health(row: SyncStatusRow, staleAfter: number): Health {
   if (!row.last_refreshed) return 'unknown';
   const hours = (Date.now() - new Date(row.last_refreshed).getTime()) / 3.6e6;
-  return hours <= (STALE_AFTER_HOURS[row.pipeline] ?? 30) ? 'fresh' : 'stale';
+  const limit = Math.min(STALE_AFTER_HOURS[row.pipeline] ?? staleAfter, staleAfter);
+  return hours <= limit ? 'fresh' : 'stale';
 }
 
 const BADGE: Record<Health, { text: string; bg: string; fg: string }> = {
@@ -39,7 +43,7 @@ const BADGE: Record<Health, { text: string; bg: string; fg: string }> = {
   unknown: { text: 'Unknown', bg: '#f0ede6', fg: '#6e695e' },
 };
 
-const COLS: Column<SyncStatusRow>[] = [
+const makeCols = (staleAfter: number): Column<SyncStatusRow>[] => [
   { key: 'source', label: 'Source' },
   {
     key: 'fetched_from',
@@ -62,10 +66,10 @@ const COLS: Column<SyncStatusRow>[] = [
   {
     key: 'status',
     label: 'Status',
-    info: 'Fresh = refreshed within its expected window. Google Sheets stale after 1h; twice-daily BigQuery (GRN) after 15h; daily BigQuery / EasyEcom after 30h. Unknown = the source carries no sync timestamp.',
-    accessor: (r) => BADGE[health(r)].text,
+    info: `Fresh = refreshed within its expected window. Google Sheets stale after 1h; twice-daily BigQuery (GRN) after 15h; daily feeds after ${staleAfter}h (Rules Master → sync_stale_hours). Unknown = the source carries no sync timestamp.`,
+    accessor: (r) => BADGE[health(r, staleAfter)].text,
     render: (r) => {
-      const b = BADGE[health(r)];
+      const b = BADGE[health(r, staleAfter)];
       return (
         <span style={{ background: b.bg, color: b.fg, padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600 }}>
           {b.text}
@@ -75,8 +79,9 @@ const COLS: Column<SyncStatusRow>[] = [
   },
 ];
 
-export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
-  const stale = rows.filter((r) => health(r) === 'stale');
+export function SyncStatusClient({ rows, staleAfterHours = 30 }: { rows: SyncStatusRow[]; staleAfterHours?: number }) {
+  const stale = rows.filter((r) => health(r, staleAfterHours) === 'stale');
+  const cols = useMemo(() => makeCols(staleAfterHours), [staleAfterHours]);
 
   return (
     <>
@@ -92,7 +97,7 @@ export function SyncStatusClient({ rows }: { rows: SyncStatusRow[] }) {
 
       <FilterTable
         rows={rows}
-        columns={COLS}
+        columns={cols}
         rowKey={(r) => r.source}
         unit="sources"
         searchPlaceholder="Source, pipeline…"

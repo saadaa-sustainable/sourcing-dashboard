@@ -1,6 +1,7 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import { productClassOf } from '@/lib/doq-dashboard';
+import { daysBetween, istToday, parseIsoDate } from '@/lib/business-logic';
 import { loadApprovedStandardCosts } from './standard-cost';
 import type { AnalyticsExtras, AnalyticsRuleRow } from '../types';
 
@@ -126,11 +127,11 @@ export async function loadTnaSnapshots(): Promise<
     const { data } = await supabase
       .from('sd_tna_status_snapshot')
       .select('snapshot_date, on_time, high_risk, overdue, open_total')
-      .order('snapshot_date')
+      .order('snapshot_date', { ascending: false }) // the LATEST 120 days …
       .limit(120);
-    return (data ?? []) as {
+    return ((data ?? []) as {
       snapshot_date: string; on_time: number; high_risk: number; overdue: number; open_total: number;
-    }[];
+    }[]).reverse(); // … returned oldest-first for the chart
   } catch {
     return [];
   }
@@ -284,14 +285,17 @@ export async function loadAnalyticsExtras(
       bMin: rules.product_class_b_min ?? 7,
       cMin: rules.product_class_c_min ?? 3,
     };
-    const { data } = await supabase
-      .from('sd_replenishment')
-      .select('product_variant, product_code, product_name, current_stock, doq_45, ipdoq, oos_flag')
-      .limit(2000);
-    extras.stockoutGaps = ((data ?? []) as {
+    // Paged: "every variant" means every variant, not the first 1000 in arbitrary order.
+    const data = await pageAll<{
       product_variant: string; product_code: string | null; product_name: string | null;
       current_stock: number | null; doq_45: number | null; ipdoq: number | null; oos_flag: boolean | null;
-    }[])
+    }>(() =>
+      supabase
+        .from('sd_replenishment')
+        .select('product_variant, product_code, product_name, current_stock, doq_45, ipdoq, oos_flag')
+        .order('product_variant'),
+    );
+    extras.stockoutGaps = data
       .filter(
         (r) =>
           (Number(r.current_stock) || 0) <= 0 &&
@@ -472,20 +476,21 @@ export async function loadAnalyticsExtras(
   /* 1.7 PO Closure compliance vs the SLA. */
   try {
     const sla = rules.closure_sla_days ?? 15;
-    const { data } = await supabase
-      .from('sd_po_closure')
-      .select('easycom_completed_at, closed_at');
-    const rows = (data ?? []) as { easycom_completed_at: string | null; closed_at: string | null }[];
-    const dayMs = 86_400_000;
-    const now = Date.now();
+    // Same calendar-day rule as the PO Closure page (computeClosureCompliance):
+    // whole IST days between completion and close, breached when > SLA.
+    const rows = await pageAll<{ easycom_completed_at: string | null; closed_at: string | null }>(() =>
+      supabase.from('sd_po_closure').select('easycom_completed_at, closed_at').order('id'),
+    );
+    const today = istToday();
     let closedTotal = 0, closedWithinSla = 0, openBeyondSla = 0;
     rows.forEach((r) => {
-      const completed = r.easycom_completed_at ? Date.parse(r.easycom_completed_at) : NaN;
-      if (Number.isNaN(completed)) return;
-      if (r.closed_at) {
+      const completed = parseIsoDate(r.easycom_completed_at);
+      if (!completed) return;
+      const closed = parseIsoDate(r.closed_at);
+      if (closed) {
         closedTotal += 1;
-        if (Date.parse(r.closed_at) - completed <= sla * dayMs) closedWithinSla += 1;
-      } else if (now - completed > sla * dayMs) {
+        if (daysBetween(closed, completed) <= sla) closedWithinSla += 1;
+      } else if (daysBetween(today, completed) > sla) {
         openBeyondSla += 1;
       }
     });
@@ -496,14 +501,19 @@ export async function loadAnalyticsExtras(
   try {
     const stdCosts = await loadApprovedStandardCosts();
     const monthStartIso = months[0];
-    const { data } = await supabase
-      .from('sd_po_approval')
-      .select('po_ref_num, product_code, po_type, rate, po_qty, approved_at, po_issued_at')
-      .eq('status', 'approved');
-    const rows = (data ?? []) as {
+    // Month filter in the query (not after a capped read): only POs issued OR
+    // approved since month start can be "this month".
+    const rows = await pageAll<{
       po_ref_num: string | null; product_code: string | null; po_type: string | null;
       rate: number | null; po_qty: number | null; approved_at: string | null; po_issued_at: string | null;
-    }[];
+    }>(() =>
+      supabase
+        .from('sd_po_approval')
+        .select('po_ref_num, product_code, po_type, rate, po_qty, approved_at, po_issued_at')
+        .eq('status', 'approved')
+        .or(`po_issued_at.gte.${monthStartIso},approved_at.gte.${monthStartIso}`)
+        .order('id'),
+    );
     const variances = rows
       .filter((r) => {
         const when = r.po_issued_at ?? r.approved_at;
@@ -531,7 +541,7 @@ export async function loadAnalyticsExtras(
 
   /* 1.10 Discontinued-but-active integrity check. */
   try {
-    if (discontinuedCodes.size >= 0) {
+    if (discontinuedCodes.size > 0) {
       const offendersPo = openPos.filter((p) => discontinuedCodes.has(p.code));
       let planLineCount = 0;
       const { data: curPlan } = await supabase

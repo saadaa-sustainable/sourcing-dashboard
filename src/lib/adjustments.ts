@@ -151,12 +151,11 @@ export async function refreshState(userEmail: string, source: AdjustmentSource):
 }
 
 /**
- * Refresh = reload the latest cached rows, gated by the per-user/hour limit.
- *
- * Backfill method: BigQuery is pulled ONLY by the backfill loader (syncAllAdjustments,
- * run by sync-daily.mjs / the cron), which fills the Supabase snapshot tables. The web
- * runtime never queries BigQuery here, so Refresh works in prod without GCP creds — it
- * just re-reads whatever the last sync landed.
+ * Refresh = re-pull ONE source from BigQuery into its Supabase snapshot, then return
+ * the fresh rows — gated by the per-user/hour limit (that's why it's limited: each
+ * click is a warehouse query). The page promises "pull the newest rows", so a click
+ * must actually reach BigQuery; if the runtime has no warehouse credentials the
+ * cached snapshot is returned with an honest note instead of a silent no-op.
  */
 export async function refreshSource(userEmail: string, source: AdjustmentSource): Promise<RefreshResult> {
   const state = await refreshState(userEmail, source);
@@ -172,6 +171,13 @@ export async function refreshSource(userEmail: string, source: AdjustmentSource)
     };
   }
 
+  let pulledFromWarehouse = true;
+  try {
+    await syncOneAdjustment(source);
+  } catch (err) {
+    pulledFromWarehouse = false;
+    console.error('[adjustments] refresh could not reach BigQuery; serving the last snapshot:', err instanceof Error ? err.message : err);
+  }
   const rows = await loadCached(source);
 
   // Record the click (best-effort) so the per-hour cap is enforced across reloads.
@@ -186,7 +192,20 @@ export async function refreshSource(userEmail: string, source: AdjustmentSource)
     rows,
     remaining: state.remaining - 1,
     retryAfterMinutes: 0,
+    ...(pulledFromWarehouse
+      ? {}
+      : { error: 'Warehouse not reachable from here — showing the last synced snapshot (refreshes at 6 AM / 6 PM IST).' }),
   };
+}
+
+/** Re-pull a single source from BigQuery into its snapshot table. */
+export async function syncOneAdjustment(source: AdjustmentSource): Promise<number> {
+  const bq = makeBq();
+  const rows = (source === 'po'
+    ? await queryManual(bq)
+    : await queryCutting(bq)) as unknown as Record<string, unknown>[];
+  await replaceSnapshot(source, rows);
+  return rows.length;
 }
 
 /** Backend seed/refresh used by the daily sync — no rate limit, both sources. */

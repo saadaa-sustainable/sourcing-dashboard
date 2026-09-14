@@ -104,7 +104,7 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <VendorRow key={r.vendorCode || r.vendorName} r={r} />
+                <VendorRow key={`${r.vendorCode || r.vendorName}|${r.weave}`} r={r} />
               ))}
               {!rows.length && (
                 <tr><td colSpan={11} className="wf-empty-cell">No vendors with open work in this pool.</td></tr>

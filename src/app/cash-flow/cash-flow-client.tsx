@@ -45,11 +45,14 @@ export function CashFlowClient({
     () => months.filter((m) => m.due_month.slice(0, 7) >= thisMonth),
     [months, thisMonth],
   );
+  // Past-due = everything that fell due before this month and is not in the forward
+  // table: received AND still-projected obligations (an open PO whose due date has
+  // passed is still money owed).
   const overdue = useMemo(
     () =>
       months
         .filter((m) => m.due_month.slice(0, 7) < thisMonth)
-        .reduce((s, m) => s + m.received, 0),
+        .reduce((s, m) => s + m.total, 0),
     [months, thisMonth],
   );
   const maxTotal = Math.max(1, ...forward.map((m) => m.total));

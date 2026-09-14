@@ -22,13 +22,14 @@ export const dynamic = 'force-dynamic';
 export default async function BuyingPlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; type?: string }>;
+  searchParams: Promise<{ month?: string; type?: string; track?: string }>;
 }) {
   const params = await searchParams;
   const planMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '')
     ? params.month!
     : monthStart();
-  const planType: PlanType = params.type === 'material' ? 'material' : 'fg';
+  // `type` is canonical; `track` is accepted too (older approval links used it).
+  const planType: PlanType = (params.type ?? params.track) === 'material' ? 'material' : 'fg';
 
   let user;
   try {

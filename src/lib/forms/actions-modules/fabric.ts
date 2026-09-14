@@ -9,7 +9,7 @@ import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { notifyFabricRateSlack } from '@/lib/slack';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { canApprove, canEdit, canSubmit, monthStart, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -149,9 +149,9 @@ export async function submitFabricRate(formData: FormData): Promise<ActionResult
   if (!fabric_code) return fail('Fabric code is required.');
   const noChange = formData.get('no_change') === 'true';
 
-  // The month this submission covers: first of the current month (UTC).
-  const now = new Date();
-  const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  // The month this submission covers: first of the current month (IST, like the
+  // rest of the workflow dates).
+  const month = monthStart();
 
   const supabase = await supa();
   const { data: base } = await supabase
@@ -180,6 +180,10 @@ export async function submitFabricRate(formData: FormData): Promise<ActionResult
       .from('sd_fabric_cost_base')
       .upsert({ fabric_code, ...patch }, { onConflict: 'fabric_code' });
     if (upErr) return fail(`Could not update the live rate: ${upErr.message}`);
+    // The month's record carries BOTH rates as they stand after this submission —
+    // the untouched one is carried from the live base, not written as blank.
+    if (greyRate == null && base?.grey_rate != null) greyRate = Number(base.grey_rate);
+    if (finishedRate == null && base?.finished_fabric_cost != null) finishedRate = Number(base.finished_fabric_cost);
   }
 
   const { error } = await supabase.from('sd_fabric_rate_submission').upsert(

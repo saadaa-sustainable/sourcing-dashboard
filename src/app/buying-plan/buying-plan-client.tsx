@@ -130,6 +130,8 @@ export function BuyingPlanClient({
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
+  // Submitted / awaiting approval / approved: values are frozen at submission.
+  const planLocked = status === 'submitted' || status === 'pending_l2' || status === 'approved';
   const editable = canEdit(role, status);
 
   // Spec: every active product is listed; you zero out what you won't make.
@@ -177,16 +179,32 @@ export function BuyingPlanClient({
     const efobQty = num(row.efob_qty);
     const totalQty = jobQty + fobQty + efobQty;
     const cost = standardCosts[row.product_code];
-    // An ingested plan carries the sheet's own value / status / pending on the line —
-    // show those verbatim. Only fall back to the live computation (approved standard
-    // cost, replenishment, product master) when the line has no stored value.
+    // Value rule: while the plan is being edited (draft / rework) it follows the
+    // live latest-accepted rate; once submitted the value frozen at submission is
+    // shown verbatim, so later rate changes never rewrite an in-flight/approved
+    // plan. An ingested line with no live cost keeps its sheet value either way.
     const storedValue = row.standard_value ? Number(row.standard_value) : 0;
-    const valueToBeBought =
-      storedValue > 0
-        ? storedValue
-        : cost
-        ? jobQty * cost.job + fobQty * cost.fob + efobQty * cost.efob
-        : 0;
+    const liveValue = cost ? jobQty * cost.job + fobQty * cost.fob + efobQty * cost.efob : 0;
+    const useStored = storedValue > 0 && (planLocked || !cost);
+    const valueToBeBought = useStored ? storedValue : liveValue;
+    // Split by PO type for the value-by-type panel: live rates when live, else the
+    // frozen value apportioned by quantity share.
+    const byType = useStored
+      ? {
+          job: totalQty ? (storedValue * jobQty) / totalQty : 0,
+          fob: totalQty ? (storedValue * fobQty) / totalQty : 0,
+          efob: totalQty ? (storedValue * efobQty) / totalQty : 0,
+        }
+      : cost
+      ? { job: jobQty * cost.job, fob: fobQty * cost.fob, efob: efobQty * cost.efob }
+      : { job: 0, fob: 0, efob: 0 };
+    // A rate of 0 for a PO type that has quantity is as good as missing — flag it
+    // rather than silently valuing those pieces at ₹0.
+    const rateMissing =
+      !cost ||
+      (jobQty > 0 && !cost.job) ||
+      (fobQty > 0 && !cost.fob) ||
+      (efobQty > 0 && !cost.efob);
     const storedPending =
       row.pending_quantity !== '' && row.pending_quantity != null
         ? Number(row.pending_quantity)
@@ -199,7 +217,8 @@ export function BuyingPlanClient({
       totalQty,
       cost,
       // Flag only when there is neither a stored value nor an approved cost to value it.
-      missingCost: totalQty > 0 && storedValue <= 0 && !cost,
+      missingCost: totalQty > 0 && !useStored && rateMissing,
+      byType,
       valueToBeBought,
       pending,
       actualQty: actual.qty,
@@ -372,16 +391,13 @@ export function BuyingPlanClient({
     return [...m.entries()].filter(([, val]) => val > 0).sort((a, b) => b[1] - a[1]);
   })();
 
-  // Item 3 — planned value (₹) broken down by PO type: sum(qty × standard cost) per
-  // type. Its own dimension, alongside the qty-level time buckets. Only lines with an
-  // approved cost contribute (a stored blended value can't be split across types).
+  // Item 3 — planned value (₹) broken down by PO type. Uses the same per-line value
+  // as the headline total (frozen or live), so the three type cards reconcile to it.
   const valueByPoType = planned.reduce(
     (acc, v) => {
-      if (v.cost) {
-        acc.job += Number(v.row.job_work_qty) * v.cost.job;
-        acc.fob += Number(v.row.fob_qty) * v.cost.fob;
-        acc.efob += Number(v.row.efob_qty) * v.cost.efob;
-      }
+      acc.job += v.byType.job;
+      acc.fob += v.byType.fob;
+      acc.efob += v.byType.efob;
       return acc;
     },
     { job: 0, fob: 0, efob: 0 },
@@ -524,8 +540,12 @@ export function BuyingPlanClient({
     payload.set('lines', JSON.stringify(snapshot));
     start(async () => {
       const result = await saveBuyingPlan(payload);
-      if (result.ok) setMessage(result.message ?? 'Saved.');
-      else setError(result.error);
+      if (result.ok) {
+        setMessage(result.message ?? 'Saved.');
+        // First save of a month creates the plan — refresh so the server-provided
+        // plan (id / status) arrives and Submit becomes available.
+        if (!plan?.id) reloadWithToast(result.message ?? 'Saved.');
+      } else setError(result.error);
     });
   }
 

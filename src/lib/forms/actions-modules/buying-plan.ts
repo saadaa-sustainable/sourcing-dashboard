@@ -67,6 +67,12 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
         : 'You do not have permission to edit the buying plan.',
     );
   }
+  // A plan sitting in the approval queue is what the approver is reading — saving
+  // over it would replace every line (new ids) under them and void line approvals.
+  // Edits go through Rework, which hands the plan back to the team.
+  if (status === 'submitted' || status === 'pending_l2') {
+    return fail('This plan is awaiting approval. Ask the approver to send it back for rework to edit it.');
+  }
 
   let planId = existing?.id as number | undefined;
   if (!planId) {
@@ -87,17 +93,24 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
   // Knitted lines). Any changed or new line resets to pending (null).
   const { data: prior } = await supabase
     .from('sd_buying_plan_line')
-    .select('product_code, job_work_qty, fob_qty, efob_qty, line_status, rework_notes')
+    .select('product_code, job_work_qty, fob_qty, efob_qty, colour, uom, material_type, line_status, rework_notes')
     .eq('plan_id', planId);
   const priorByCode = new Map<
     string,
-    { job: number; fob: number; efob: number; line_status: SdStatus | null; rework_notes: string | null }
+    {
+      job: number; fob: number; efob: number;
+      colour: string | null; uom: string | null; material_type: string | null;
+      line_status: SdStatus | null; rework_notes: string | null;
+    }
   >();
   for (const p of (prior ?? []) as Record<string, unknown>[]) {
     priorByCode.set(String(p.product_code), {
       job: Number(p.job_work_qty || 0),
       fob: Number(p.fob_qty || 0),
       efob: Number(p.efob_qty || 0),
+      colour: (p.colour ?? null) as string | null,
+      uom: (p.uom ?? null) as string | null,
+      material_type: (p.material_type ?? null) as string | null,
       line_status: (p.line_status ?? null) as SdStatus | null,
       rework_notes: (p.rework_notes ?? null) as string | null,
     });
@@ -117,8 +130,14 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
       const fob = Number(line.fob_qty ?? 0) || 0;
       const efob = Number(line.efob_qty ?? 0) || 0;
       const before = priorByCode.get(code);
+      const colour = line.colour ? String(line.colour) : null;
+      const uom = line.uom ? String(line.uom) : null;
+      const materialType = line.material_type ? String(line.material_type) : null;
+      // A line keeps its approval only if nothing the approver looked at changed —
+      // quantities, and on the material track also colour / UOM / material type.
       const unchanged =
-        before && before.job === job && before.fob === fob && before.efob === efob;
+        before && before.job === job && before.fob === fob && before.efob === efob &&
+        before.colour === colour && before.uom === uom && before.material_type === materialType;
       return {
         plan_id: planId,
         product_code: code,
@@ -135,7 +154,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
           line.standard_value === '' || line.standard_value == null
             ? null
             : Number(line.standard_value),
-        uom: line.uom ? String(line.uom) : null,
+        uom,
         line_status: unchanged ? before!.line_status : null,
         rework_notes: unchanged ? before!.rework_notes : null,
         // Material track only (FG leaves these null): Job-Work rate, free remark,
@@ -143,8 +162,8 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
         job_rate:
           line.job_rate === '' || line.job_rate == null ? null : Number(line.job_rate),
         remark: line.remark ? String(line.remark) : null,
-        material_type: line.material_type ? String(line.material_type) : null,
-        colour: line.colour ? String(line.colour) : null,
+        material_type: materialType,
+        colour,
       };
     });
 
@@ -172,7 +191,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
 
   revalidatePath('/buying-plan');
   revalidatePath('/standard-cost');
-  return done(`Saved ${payload.length} product lines.`);
+  return { ok: true, message: `Saved ${payload.length} product lines.`, id: planId };
 }
 
 export async function submitBuyingPlan(formData: FormData): Promise<ActionResult> {
@@ -280,7 +299,7 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
     'buying_plan',
     String(planId),
     `Buying plan ${String(plan.plan_month).slice(0, 7)}`,
-    'draft',
+    plan.status as SdStatus,
     next,
     user.email,
   );
@@ -356,13 +375,18 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
   const from = plan.status as SdStatus;
   if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
 
-  // Approve the selected lines, scoped to this plan as a safety measure.
-  const { error: lineErr } = await supabase
+  // Approve the selected lines, scoped to this plan as a safety measure. The
+  // returned ids tell us whether the lines still exist (a re-save replaces them).
+  const { data: touched, error: lineErr } = await supabase
     .from('sd_buying_plan_line')
     .update({ line_status: 'approved', rework_notes: null })
     .eq('plan_id', planId)
-    .in('id', lineIds);
+    .in('id', lineIds)
+    .select('id');
   if (lineErr) return fail(lineErr.message);
+  if (!touched?.length) {
+    return fail('Those lines no longer exist — the plan was re-saved. Reload and review the current lines.');
+  }
 
   // Re-read every line to decide the header: it flips to approved only once all
   // non-zero lines are approved.

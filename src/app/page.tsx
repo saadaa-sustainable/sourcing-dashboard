@@ -42,12 +42,16 @@ export default async function Home() {
     // Cross-tab card sections (replenishment gaps, plan realization, closure
     // SLA, cost variance, discontinued check) — each section best-effort.
     try {
+      // Only lines with quantity still to arrive count as "on order" — a fully
+      // received line must not mark a zero-stock variant as covered.
       analyticsExtras = await loadAnalyticsExtras(
-        dashboardData.pendingPos.map((p) => ({
-          code: (p.product_code ?? '').trim(),
-          variant: (p.product_variant ?? '').trim(),
-          qty: Number(p.pending_qty_actual) || 0,
-        })),
+        dashboardData.pendingPos
+          .filter((p) => (Number(p.pending_qty_actual) || 0) > 0)
+          .map((p) => ({
+            code: (p.product_code ?? '').trim(),
+            variant: (p.product_variant ?? '').trim(),
+            qty: Number(p.pending_qty_actual) || 0,
+          })),
         analyticsRules,
       );
     } catch { analyticsExtras = null; }

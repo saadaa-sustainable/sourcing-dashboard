@@ -36,8 +36,13 @@ export function ProductPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Codes are compared upper-cased everywhere (pick() upper-cases what it emits).
+  const excludeUp = useMemo(
+    () => (exclude ? new Set([...exclude].map((c) => c.toUpperCase())) : null),
+    [exclude],
+  );
   const matches = useMemo(() => {
-    const pool = exclude ? items.filter((i) => !exclude.has(i.product_code)) : items;
+    const pool = excludeUp ? items.filter((i) => !excludeUp.has(i.product_code.toUpperCase())) : items;
     const query = q.trim().toLowerCase();
     if (!query) return pool.slice(0, 50);
     return pool
@@ -47,7 +52,7 @@ export function ProductPicker({
           (i.product_name ?? '').toLowerCase().includes(query),
       )
       .slice(0, 50);
-  }, [q, items, exclude]);
+  }, [q, items, excludeUp]);
 
   // Anchor the fixed overlay to the input's current box.
   const place = () => {
@@ -90,7 +95,8 @@ export function ProductPicker({
   // (a brand-new product not yet in EasyEcom). Offered as the last row.
   const typed = q.trim().toUpperCase();
   const exactExists = typed !== '' && items.some((i) => i.product_code.toUpperCase() === typed);
-  const canAddTyped = allowFreeText && typed.length >= 3 && !exactExists;
+  // …and not one that's already on the sheet (exclude) — no "add" for a duplicate.
+  const canAddTyped = allowFreeText && typed.length >= 3 && !exactExists && !excludeUp?.has(typed);
 
   return (
     <div className="wf-picker" ref={rootRef}>

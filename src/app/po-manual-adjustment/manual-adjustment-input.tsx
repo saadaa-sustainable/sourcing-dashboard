@@ -40,7 +40,8 @@ export function ManualAdjustmentInput({ editable }: { editable: boolean }) {
   // Recent dashboard entries (with BigQuery sync state) — fetched on mount and after each save.
   useEffect(() => { void loadRecentManualAdjustments().then(setRecent); }, []);
 
-  const poType = po ? (po.po_ref_num.split('/')[1] ?? '').toUpperCase() : '';
+  // A PO can be keyed on its plain number when it has no reference yet.
+  const poType = po ? ((po.po_ref_num ?? '').split('/')[1] ?? '').toUpperCase() : '';
 
   function pickPo(o: CuttingPoOption) {
     setPo(o);

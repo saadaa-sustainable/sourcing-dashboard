@@ -38,8 +38,11 @@ export function PoClosureClient({
     let open = 0, breached = 0, amber = 0, closed = 0;
     for (const c of closures) {
       if (c.closed_at) closed += 1; else open += 1;
-      if (c.compliance.rag === 'red') breached += 1;
-      else if (c.compliance.rag === 'amber') amber += 1;
+      // "Breached" = past the 15-day total cap (same rule as the >15d filter). A
+      // red RAG can also mean one open LEG ran past 7 days — that's "at risk", not
+      // a breach, and is counted with amber so the tile and the filter agree.
+      if (c.compliance.status === 'breached') breached += 1;
+      else if (c.compliance.rag === 'red' || c.compliance.rag === 'amber') amber += 1;
     }
     return { open, breached, amber, closed };
   }, [closures]);

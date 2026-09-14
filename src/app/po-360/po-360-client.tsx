@@ -91,7 +91,7 @@ export function Po360Client({ data }: { data: PoHubData }) {
                 <th>EDD</th>
                 <th className="num">Delay</th>
                 <th>Status · blocking stage</th>
-                <th className="num">Cost Δ/unit</th>
+                <th className="num">Cost Δ (₹ total, top 3 this month)</th>
               </tr>
             </thead>
             <tbody>

@@ -22,6 +22,8 @@ export default async function UsersPage() {
   }
 
   if (!user) redirect('/login');
+  // Same guard as every other admin page (rules master, adoption, …).
+  if (user.role !== 'admin') redirect('/');
 
   const isAdmin = user.role === 'admin';
   const [users, roles, navOverrides] = isAdmin

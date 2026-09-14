@@ -114,6 +114,8 @@ type Acc = {
   oosCount: number;
   dohStockSum: number;
   dohIpSum: number;
+  /** SKUs with a defined DOH (doq > 0) — the DOH averages divide by this, not by SKU count. */
+  dohCount: number;
   leak: number;
 };
 
@@ -157,6 +159,8 @@ export function aggregateDoqWindow(
     const qty = Number(w?.[`${key}_qty`] ?? 0) || 0;
 
     const doq = avail > 0 ? qty / avail : 0;
+    // Days-of-cover is undefined with no sales in the window — such SKUs are left
+    // out of the DOH average (counted in dohCount), not averaged in as "0 days".
     const dohStock = doq > 0 ? (m.current_stock ?? 0) / doq : 0;
     const dohIp = doq > 0 ? (m.inprocess_stock ?? 0) / doq : 0;
     const leak = oos * (m.doq_45 ?? 0) * (m.sales_value ?? 0);
@@ -167,13 +171,17 @@ export function aggregateDoqWindow(
       oosCount: 0,
       dohStockSum: 0,
       dohIpSum: 0,
+      dohCount: 0,
       leak: 0,
     });
     a.doq += doq;
     a.oosDays += oos;
     if (oos > 0) a.oosCount += 1;
-    a.dohStockSum += dohStock;
-    a.dohIpSum += dohIp;
+    if (doq > 0) {
+      a.dohStockSum += dohStock;
+      a.dohIpSum += dohIp;
+      a.dohCount += 1;
+    }
     a.leak += leak;
   }
 
@@ -192,13 +200,13 @@ export function aggregateDoqWindow(
 
   const rows: DoqCategoryRow[] = [];
   const tot: Acc & { cnt: number; skuDays: number } = {
-    doq: 0, oosDays: 0, oosCount: 0, dohStockSum: 0, dohIpSum: 0, leak: 0,
+    doq: 0, oosDays: 0, oosCount: 0, dohStockSum: 0, dohIpSum: 0, dohCount: 0, leak: 0,
     cnt: 0, skuDays: 0,
   };
 
   for (const cat of cats) {
     const cnt = countMap[cat] ?? 0;
-    const a = byCat[cat] ?? { doq: 0, oosDays: 0, oosCount: 0, dohStockSum: 0, dohIpSum: 0, leak: 0 };
+    const a = byCat[cat] ?? { doq: 0, oosDays: 0, oosCount: 0, dohStockSum: 0, dohIpSum: 0, dohCount: 0, leak: 0 };
     const skuDays = cnt * N;
     const oosPct = skuDays > 0 ? a.oosDays / skuDays : 0;
     rows.push({
@@ -207,8 +215,8 @@ export function aggregateDoqWindow(
       pctSku: totalSku > 0 ? cnt / totalSku : 0,
       doq: Math.round(a.doq * 10) / 10,
       pctDoq: tableTotalDoq > 0 ? a.doq / tableTotalDoq : 0,
-      dohStock: cnt > 0 ? Math.round(a.dohStockSum / cnt) : 0,
-      dohInProcess: cnt > 0 ? Math.round(a.dohIpSum / cnt) : 0,
+      dohStock: a.dohCount > 0 ? Math.round(a.dohStockSum / a.dohCount) : 0,
+      dohInProcess: a.dohCount > 0 ? Math.round(a.dohIpSum / a.dohCount) : 0,
       oosSkuCount: a.oosCount,
       oosSkuPct: cnt > 0 ? a.oosCount / cnt : 0,
       salesLeakage: Math.round(a.leak),
@@ -223,6 +231,7 @@ export function aggregateDoqWindow(
     tot.oosCount += a.oosCount;
     tot.dohStockSum += a.dohStockSum;
     tot.dohIpSum += a.dohIpSum;
+    tot.dohCount += a.dohCount;
     tot.leak += a.leak;
     tot.skuDays += skuDays;
   }
@@ -234,8 +243,8 @@ export function aggregateDoqWindow(
     pctSku: totalSku > 0 ? tot.cnt / totalSku : 0,
     doq: Math.round(tot.doq * 10) / 10,
     pctDoq: tableTotalDoq > 0 ? tot.doq / tableTotalDoq : 0,
-    dohStock: tot.cnt > 0 ? Math.round(tot.dohStockSum / tot.cnt) : 0,
-    dohInProcess: tot.cnt > 0 ? Math.round(tot.dohIpSum / tot.cnt) : 0,
+    dohStock: tot.dohCount > 0 ? Math.round(tot.dohStockSum / tot.dohCount) : 0,
+    dohInProcess: tot.dohCount > 0 ? Math.round(tot.dohIpSum / tot.dohCount) : 0,
     oosSkuCount: tot.oosCount,
     oosSkuPct: tot.cnt > 0 ? tot.oosCount / tot.cnt : 0,
     salesLeakage: Math.round(tot.leak),

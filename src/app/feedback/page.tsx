@@ -23,8 +23,8 @@ export default async function FeedbackPage() {
 
   if (!user) redirect('/login');
 
-  const items = await loadFeedbackList(user.email);
   const isAdmin = user.role === 'admin';
+  const items = await loadFeedbackList(user.email, isAdmin);
 
   return (
     <FormLayout

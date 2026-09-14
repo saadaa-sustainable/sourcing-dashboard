@@ -39,6 +39,15 @@ export async function currentUser(): Promise<SdUser | null> {
     is_active: true,
   };
 
+  // A user switched off in the User Panel keeps a valid session but must lose the
+  // app: read-only viewer with an EMPTY page set (RLS already coalesces them to
+  // viewer; this makes the UI agree instead of rendering admin screens that fail).
+  if (user.is_active === false) {
+    user.role = 'viewer';
+    user.allowed_pages = [];
+    return user;
+  }
+
   // View access: union of pages across the user's custom roles (User Panel).
   // Admins and users with no custom roles are unrestricted (null).
   user.allowed_pages = null;

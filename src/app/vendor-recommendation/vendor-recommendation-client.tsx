@@ -72,8 +72,8 @@ const sortVal = (v: Scored, k: SortKey): number | string =>
   : k === 'completion' ? (v.completion_rate_pct ?? -1)
   : k === 'onTime' ? (v.on_time_rate_pct ?? -1)
   : k === 'delay' ? -(v.delay_rate_pct ?? 999)
-  : k === 'qcFail' ? -(v.qc_fail_rate_pct ?? -1)
-  : k === 'reject' ? -(v.grn_reject_rate_pct ?? -1)
+  : k === 'qcFail' ? -(v.qc_fail_rate_pct ?? 999) // no data sorts LAST, below a verified 0%
+  : k === 'reject' ? -(v.grn_reject_rate_pct ?? 999)
   : k === 'pos' ? v.pos_given
   : (v.last_po_date ?? '');
 
@@ -87,7 +87,7 @@ const HEADERS: { label: string; key?: SortKey; cls?: string; info?: string }[] =
   { label: 'Delay', key: 'delay', cls: 'num', info: 'Average delay in days across the vendor’s late POs.' },
   { label: 'QC-fail', key: 'qcFail', cls: 'num', info: 'Share of received quantity that failed quality check.' },
   { label: 'Rejection', key: 'reject', cls: 'num', info: 'Share of received quantity rejected or returned.' },
-  { label: 'Confidence', cls: 'num', info: 'How much history backs the score — more POs given means higher confidence.' },
+  { label: 'Confidence', cls: 'num', info: 'Rating coverage: the share of this vendor’s completed POs that carry a rating (High ≥ 80%, Medium ≥ 50%). PO volume itself is the “Completed / given” column.' },
   { label: 'POs', key: 'pos', cls: 'num', info: 'Number of POs the score is computed from.' },
   { label: 'Last PO', key: 'recent', cls: 'num', info: 'Days since the vendor’s most recent PO.' },
 ];
@@ -132,7 +132,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
         inbound QC at receipt (qc_fail ÷ qc-checked) — the direct vendor-quality signal, but it reflects
         the QC-checked subset (QC is selective), so treat high rates as a flag, not an absolute. Each
         penalty applies only above its reliability threshold. Hover any figure for detail; vendors with
-        fewer than {MIN_POS} POs are listed separately as thin data.
+        fewer than {minPos} POs are listed separately as thin data.
       </Notice>
 
       <div className="wf-toolbar wf-filter-bar">
@@ -211,7 +211,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
       {showThin && thin.length > 0 && (
         <div className="table-panel wf-grid-panel">
           <div className="table-meta">
-            <h3>Thin data — under {MIN_POS} POs given</h3>
+            <h3>Thin data — under {minPos} POs given</h3>
             <span>Not ranked; too few POs to judge reliability.</span>
           </div>
           <div className="table-scroll">

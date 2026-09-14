@@ -41,6 +41,11 @@ const COST_HISTORY_TABLE: Record<'fg' | 'material', string> = {
   material: 'sd_material_standard_cost_rate_history',
 };
 
+/** Clear the FG two-step confirmation stamps (fabric → CM) for a new round. */
+function resetConfirmations() {
+  return { fabric_confirmed_at: null, fabric_confirmed_by: null, cm_confirmed_at: null, cm_confirmed_by: null };
+}
+
 async function recordAcceptedRate(
   supabase: Awaited<ReturnType<typeof supa>>,
   track: 'fg' | 'material',
@@ -136,6 +141,9 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
     negotiation_notes: null,
     updated_at: new Date().toISOString(),
   };
+  // A fresh round starts the FG two-step sign-off over — otherwise the previous
+  // round's fabric/CM confirmations linger and the admin can never sign off again.
+  if (track === 'fg') Object.assign(patch, resetConfirmations());
 
   const { error } = await supabase.from(table).update(patch).eq('id', id);
   if (error) return fail(error.message);
@@ -187,6 +195,7 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
   if (!canAcceptProposal(user.role, row.neg_stage)) return fail('This is not an open proposal.');
   if (row.job_cost == null && row.fob_cost == null && row.efob_cost == null) {
     return fail('The proposal names no rate — set a target instead of accepting.');
@@ -236,6 +245,8 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
   if (patch.job_cost == null && patch.fob_cost == null && patch.efob_cost == null) {
     return fail('Enter at least one actual rate.');
   }
+  // New actual rates must be confirmed afresh (fabric, then CM).
+  if (track === 'fg') Object.assign(patch, resetConfirmations());
 
   const { error } = await supabase.from(table).update(patch).eq('id', id);
   if (error) return fail(error.message);
@@ -253,6 +264,7 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
   if (!canSignOff(user.role, row.neg_stage)) return fail('This is not awaiting sign-off.');
 
   const patch: Record<string, unknown> = {
@@ -361,10 +373,17 @@ export async function saveAnalyticsRule(formData: FormData): Promise<ActionResul
   if (value == null) return fail('Enter a value.');
 
   const supabase = await supa();
-  const { error } = await supabase
+  // Code-default rules have no DB row until first edited — insert in that case, so
+  // the first edit of e.g. margin_pct actually lands instead of updating 0 rows.
+  const { data: existing } = await supabase
     .from('sd_analytics_rule')
-    .update({ value, updated_by: user.email, updated_at: new Date().toISOString() })
-    .eq('rule_key', rule_key);
+    .select('rule_key')
+    .eq('rule_key', rule_key)
+    .maybeSingle();
+  const stamp = { value, updated_by: user.email, updated_at: new Date().toISOString() };
+  const { error } = existing
+    ? await supabase.from('sd_analytics_rule').update(stamp).eq('rule_key', rule_key)
+    : await supabase.from('sd_analytics_rule').insert({ rule_key, label: rule_key, ...stamp });
   if (error) return fail(`Could not save: ${error.message}`);
   revalidatePath('/buying-plan');
   revalidatePath('/rules-master');
@@ -432,10 +451,11 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
   const supabase = await supa();
   const { data: row } = await supabase
     .from('sd_standard_cost')
-    .select('id, product_code, status, neg_stage, fabric_confirmed_at, cm_confirmed_at, job_cost, fob_cost, efob_cost')
+    .select('id, product_code, status, neg_stage, frozen, fabric_confirmed_at, cm_confirmed_at, job_cost, fob_cost, efob_cost')
     .eq('id', id)
     .maybeSingle();
   if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
   if (!canConfirmCm(user.role, row.neg_stage as string | null, !!row.fabric_confirmed_at, !!row.cm_confirmed_at)) {
     return fail('Confirm the fabric rate first.');
   }

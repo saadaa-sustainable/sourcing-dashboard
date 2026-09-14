@@ -9,6 +9,7 @@ import {
 import { loadApprovalContext } from '@/lib/approval-context.server';
 import { productCodeFromLineLabel } from '@/lib/approval-context';
 import { ApprovalsClient } from './approvals-client';
+import { canView } from '@/lib/views';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,8 @@ export default async function ApprovalsPage() {
   }
 
   if (!user) redirect('/login');
-  if (user.role !== 'admin') redirect('/');
+  // Team users approve routine (L1) items here too; the queue filters per role.
+  if (user.role === 'viewer' || !canView('/approvals', user.role, user.allowed_pages ?? null)) redirect('/');
 
   const [{ items, log }, stats] = await Promise.all([
     loadApprovalQueue(),

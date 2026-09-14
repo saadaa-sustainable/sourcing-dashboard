@@ -203,6 +203,8 @@ export type VendorOtifRow = {
   vendorCode: string | null;
   vendorName: string;
   pos: number;
+  /** POs with a committed / expected date — the On-Time and OTIF denominator. */
+  datedPos: number;
   onTimePos: number;
   inFullPos: number;
   otifPos: number;

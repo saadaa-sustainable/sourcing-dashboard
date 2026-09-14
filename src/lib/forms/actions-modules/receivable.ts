@@ -42,10 +42,14 @@ export async function submitReceivablePlan(remarks?: string): Promise<ActionResu
   const note = String(remarks ?? '').trim() || null;
   const now = new Date().toISOString();
   const supabase = await supa();
+  // Draft AND reworked rows go up (a row the approver sent back must be
+  // re-submittable), and only rows that actually carry a plan (a qty or a
+  // receiving week/month) — a row whose inputs were cleared has nothing to approve.
   const { data, error } = await supabase
     .from('sd_receivable_input')
     .update({ status: 'submitted', submitted_by: user.email, submitted_at: now, submit_notes: note })
-    .eq('status', 'draft')
+    .in('status', ['draft', 'rework'])
+    .or('qty_expected_this_week.not.is.null,delivery_date_this_week.not.is.null')
     .select('row_key');
   if (error) return fail(error.message);
   const count = data?.length ?? 0;
@@ -91,9 +95,19 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
 
   const approvedMonth = (existing?.approved_month as string | null) ?? null;
   const monthOf = (iso: string | null) => (iso ? `${iso.slice(0, 7)}-01` : null);
-  const qtyUnchanged = qty === ((existing?.qty_expected_this_week as number | null) ?? null);
+  // numeric columns come back from PostgREST as strings — normalise before comparing.
+  const qtyUnchanged = qty === numOrNull(existing?.qty_expected_this_week);
+  // A week counts as "within" the approved month if any of its days fall in that
+  // month (the stored date is the Monday; the week runs to Sunday). Boundary weeks
+  // like 28 Sep – 4 Oct therefore qualify for both September and October.
+  const sundayOf = (mondayIso: string) => {
+    const d = new Date(`${mondayIso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 6);
+    return d.toISOString().slice(0, 10);
+  };
   const weekWithinApprovedMonth =
-    granularity === 'week' && !!approvedMonth && !!deliveryDate && monthOf(deliveryDate) === approvedMonth;
+    granularity === 'week' && !!approvedMonth && !!deliveryDate &&
+    (monthOf(deliveryDate) === approvedMonth || monthOf(sundayOf(deliveryDate)) === approvedMonth);
 
   // Stay approved only when the sole change is a week inside the already-approved
   // month (quantity untouched); otherwise the edit needs approval afresh.
@@ -110,6 +124,10 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
       receiving_granularity: granularity,
       qty_expected_this_week: qty,
       status,
+      // The month stamp only survives while the row stays approved on that month —
+      // otherwise it would keep unlocking free week changes in a month the approver
+      // never looked at after a later re-approval on a different week/month.
+      approved_month: keepApproved ? approvedMonth : null,
       updated_by: user.email,
       updated_at: new Date().toISOString(),
     },

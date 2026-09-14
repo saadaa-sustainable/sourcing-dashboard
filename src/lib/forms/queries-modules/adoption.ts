@@ -30,14 +30,14 @@ const MODULE_LABEL: Record<string, string> = {
   material_cost: 'Material Cost',
   po_approval: 'PO Approval',
   buying_plan: 'Buying Plan',
-  po_closure: 'PO Closure',
-  cutting_register: 'Cutting Register',
-  feedback: 'Feedback',
-  receivable: 'Receivable',
-  vendor_capacity: 'Vendor Capacity',
-  product_master: 'Product Master',
+  discontinue: 'Discontinue',
+  receivable_plan: 'Receivable Plan',
   inward_plan: 'Inward Plan',
+  cutting_register: 'Cutting Register',
 };
+// Modules that write to the approval log (sd_approval_log.entity_type) — seeded at
+// zero so a quiet module still shows up. Cutting Register is counted from its table.
+const LOGGED_MODULES = ['standard_cost', 'material_cost', 'po_approval', 'buying_plan', 'discontinue', 'receivable_plan', 'inward_plan'];
 const labelOf = (k: string) => MODULE_LABEL[k] ?? k.replace(/_/g, ' ');
 
 export async function loadAdoption(): Promise<AdoptionData> {
@@ -69,9 +69,12 @@ export async function loadAdoption(): Promise<AdoptionData> {
     if (data.length < PAGE_SIZE) break;
   }
 
-  // Aggregate per user and per module from the log.
+  // Aggregate per user and per module from the log. Every known workflow module is
+  // seeded at zero first — otherwise a module nobody touched in the window vanishes
+  // from the list and the "0 entries" tile reads healthy exactly when it shouldn't.
   const byUser = new Map<string, { a7: number; a30: number; last: string | null }>();
   const byModule = new Map<string, { e7: number; e30: number }>();
+  for (const key of LOGGED_MODULES) byModule.set(key, { e7: 0, e30: 0 });
   for (const l of logs) {
     const within7 = l.created_at >= iso7;
     const em = (l.actor_email ?? '').toLowerCase();

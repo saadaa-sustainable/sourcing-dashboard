@@ -78,8 +78,18 @@ export async function loadVendorHub(windowDays = 180): Promise<VendorHubData> {
     })
     .sort((a, b) => b.openValue - a.openValue);
 
-  const top3 = rows.slice(0, 3).reduce((s, r) => s + r.openValue, 0);
-  const rated = rows.filter((r) => r.ratedPos > 0);
+  // Rollups are per vendor × weave; the summary is per VENDOR (a dual-weave vendor
+  // is one vendor, one OTIF record, one concentration slot).
+  const byVendor = new Map<string, { openValue: number; otifPct: number | null; ratedPos: number }>();
+  for (const r of rows) {
+    const k = String(r.vendorCode || r.vendorName);
+    const cur = byVendor.get(k);
+    if (cur) cur.openValue += r.openValue;
+    else byVendor.set(k, { openValue: r.openValue, otifPct: r.otifPct, ratedPos: r.ratedPos });
+  }
+  const vendors = [...byVendor.values()].sort((a, b) => b.openValue - a.openValue);
+  const top3 = vendors.slice(0, 3).reduce((s, r) => s + r.openValue, 0);
+  const rated = vendors.filter((r) => r.ratedPos > 0);
   const otifNumer = rated.reduce((s, r) => s + (r.otifPct ?? 0) * r.ratedPos, 0);
   const otifDenom = rated.reduce((s, r) => s + r.ratedPos, 0);
   const worst = rows
@@ -93,7 +103,7 @@ export async function loadVendorHub(windowDays = 180): Promise<VendorHubData> {
     windowDays,
     rows,
     summary: {
-      vendors: rows.length,
+      vendors: byVendor.size,
       top3ConcentrationPct: totalOpenValue > 0 ? Math.round((top3 / totalOpenValue) * 100) : 0,
       avgOtifPct: otifDenom > 0 ? otifNumer / otifDenom : null,
       worstDelay: worst,

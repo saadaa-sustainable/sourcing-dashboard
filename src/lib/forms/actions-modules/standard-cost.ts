@@ -245,10 +245,20 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
     .from('sd_cmtp_component')
     .select('category, label, amount')
     .eq('product_code', product_code);
-  const lineKey = (cat: string, label: string | null) => cat + ' :: ' + (label ?? '');
+  // Keys carry an occurrence index so two identical head+sub-item lines (e.g. a
+  // duplicated "Labour :: Karigar") diff as two lines, not one — otherwise adding a
+  // duplicate doubles the CM total with no reason and no revision row.
+  const keyCounts = new Map<string, number>();
+  const lineKey = (cat: string, label: string | null) => {
+    const base = cat + ' :: ' + (label ?? '');
+    const n = keyCounts.get(base) ?? 0;
+    keyCounts.set(base, n + 1);
+    return n ? `${base} #${n + 1}` : base;
+  };
   const oldByKey = new Map<string, number | null>(
     (existing ?? []).map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
   );
+  keyCounts.clear();
   const amtEq = (a: number | null, b: number | null) =>
     (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < 0.005);
   type LineChange = { category: string; label: string | null; old: number | null; next: number | null };
@@ -388,7 +398,7 @@ export async function submitStandardCost(formData: FormData): Promise<ActionResu
     'standard_cost',
     String(id),
     `Standard cost — ${row.product_code}`,
-    'draft',
+    row.status as SdStatus,
     next,
     user.email,
   );
@@ -430,12 +440,12 @@ export async function saveMaterialCost(formData: FormData): Promise<ActionResult
     );
   }
 
-  const patch = {
-    product_code,
-    job_cost: numOrNull(formData.get('job_cost')),
-    fob_cost: numOrNull(formData.get('fob_cost')),
-    updated_at: new Date().toISOString(),
-  };
+  // Only touch a rate when the form actually sent it — re-adding an existing code
+  // from the "Add a material code" box must not null out its rates (FG twin does
+  // the same).
+  const patch: Record<string, unknown> = { product_code, updated_at: new Date().toISOString() };
+  if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));
+  if (formData.has('fob_cost')) patch.fob_cost = numOrNull(formData.get('fob_cost'));
   const { data, error } = await supabase
     .from('sd_material_standard_cost')
     .upsert(patch, { onConflict: 'product_code' })
@@ -489,7 +499,7 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
     'material_cost',
     String(id),
     `Material cost — ${row.product_code}`,
-    'draft',
+    row.status as SdStatus,
     next,
     user.email,
   );

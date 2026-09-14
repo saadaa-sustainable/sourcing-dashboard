@@ -23,7 +23,7 @@ export type PoHubRow = {
   delayDays: number;
   stage: string;
   status: InternalStatus;
-  costVarianceDelta: number | null; // ₹/unit above standard, where flagged this month
+  costVarianceDelta: number | null; // ₹ TOTAL above standard (rate gap × qty) — only the top-3 flagged POs this month carry it
 };
 
 export type PoHubData = {
@@ -93,22 +93,32 @@ export async function loadPoHub(): Promise<PoHubData> {
 
   const openValue = rows.reduce((s, r) => s + r.pendingValue, 0);
   const atRisk = rows.filter((r) => r.status !== 'On Track');
-  const onTrack = rows.filter((r) => r.status === 'On Track').length;
-  const highRisk = rows.filter((r) => r.status === 'High Risk').length;
-  const overdue = rows.filter((r) => r.status === 'Overdue').length;
+  // Counts are per PO (distinct reference), not per tracker line (PO × product ×
+  // EDD) — matches the Dashboard's "Open POs". A PO is at risk if ANY of its
+  // lines is; on track only when all lines are.
+  const poRefs = new Set(rows.map((r) => r.poRef));
+  const riskByPo = new Map<string, 'On Track' | 'High Risk' | 'Overdue'>();
+  for (const r of rows) {
+    const cur = riskByPo.get(r.poRef);
+    const rank = (s: string) => (s === 'Overdue' ? 2 : s === 'High Risk' ? 1 : 0);
+    if (!cur || rank(r.status) > rank(cur)) riskByPo.set(r.poRef, r.status as 'On Track' | 'High Risk' | 'Overdue');
+  }
+  const onTrack = [...riskByPo.values()].filter((s) => s === 'On Track').length;
+  const highRisk = [...riskByPo.values()].filter((s) => s === 'High Risk').length;
+  const overdue = [...riskByPo.values()].filter((s) => s === 'Overdue').length;
   const closure = extras?.closure ?? null;
   const issued = extras?.issuedLastWeek ?? null;
 
   return {
     summary: {
-      openPos: rows.length,
+      openPos: poRefs.size,
       openValue,
       atRiskValue: atRisk.reduce((s, r) => s + r.pendingValue, 0),
-      atRiskCount: atRisk.length,
+      atRiskCount: new Set(atRisk.map((r) => r.poRef)).size,
       onTrack,
       highRisk,
       overdue,
-      tnaOnTimePct: rows.length ? Math.round((onTrack / rows.length) * 100) : 0,
+      tnaOnTimePct: poRefs.size ? Math.round((onTrack / poRefs.size) * 100) : 0,
       costVarianceCount: extras?.costVariance?.count ?? 0,
       costVarianceImpact: extras?.costVariance?.impact ?? 0,
       closureWithinSlaPct:

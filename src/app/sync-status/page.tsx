@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadAnalyticsRules,
   loadSyncStatus,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -26,7 +27,7 @@ export default async function SyncStatusPage() {
 
   if (!user) redirect('/login');
 
-  const rows = await loadSyncStatus();
+  const [rows, rules] = await Promise.all([loadSyncStatus(), loadAnalyticsRules()]);
 
   return (
     <FormLayout
@@ -37,7 +38,7 @@ export default async function SyncStatusPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <SyncStatusClient rows={rows} />
+      <SyncStatusClient rows={rows} staleAfterHours={rules.sync_stale_hours ?? 30} />
     </FormLayout>
   );
 }

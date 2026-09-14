@@ -733,8 +733,9 @@ function PoRow({
   });
   const setT = (k: keyof typeof tna, v: string) => setTna((s) => ({ ...s, [k]: v }));
 
-  // Colour/size line items — editable until the PO is approved.
-  const linesEditable = po.status !== 'approved' && canIssue;
+  // Colour/size line items — editable while the PO is being drafted or reworked
+  // (server enforces the same: queued/approved POs lock their lines).
+  const linesEditable = (po.status === 'draft' || po.status === 'rework') && canIssue;
   const [linesOpen, setLinesOpen] = useState(false);
   const [lineRows, setLineRows] = useState(
     lines.map((l) => ({
@@ -877,7 +878,7 @@ function PoRow({
         </td>
         <td>
           {error && <small className="wf-subtle wf-error-text">{error}</small>}
-          {po.status === 'draft' && canSubmit(role, po.status) && (
+          {canSubmit(role, po.status) && (
             <button
               type="button"
               className="wf-btn wf-btn-primary wf-btn-sm"

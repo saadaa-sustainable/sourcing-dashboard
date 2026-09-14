@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
   computeInternalStatus,
   daysBetween,
@@ -61,16 +61,13 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
   const supabase = await client();
 
   // 1) Team expectations from the Receivable Plan inputs (qty + week).
-  const inputs: Record<string, unknown>[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data } = await supabase
+  // Ordered so the pages don't overlap/skip (range() without ORDER BY isn't stable).
+  const inputs = await pageAll<Record<string, unknown>>(() =>
+    supabase
       .from('sd_receivable_input')
       .select('row_key, po_number, product_variant, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, status')
-      .range(from, from + PAGE_SIZE - 1);
-    if (!data?.length) break;
-    inputs.push(...(data as Record<string, unknown>[]));
-    if (data.length < PAGE_SIZE) break;
-  }
+      .order('row_key'),
+  );
   // Note: do NOT early-return when there are no live inputs — the approved
   // historical plan (below) must still show.
   const filled = inputs.filter((i) => i.qty_expected_this_week != null || i.delivery_date_this_week != null);
@@ -96,11 +93,17 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
   for (let i = 0; i < poNos.length; i += 200) {
     const chunk = poNos.slice(i, i + 200);
     if (!chunk.length) continue;
-    const { data } = await supabase
-      .from('sd_ee_grn')
-      .select('po_number, sku, received_quantity, grn_created_at')
-      .in('po_number', chunk);
-    for (const g of (data ?? []) as { po_number: string; sku: string | null; received_quantity: number | null; grn_created_at: string | null }[]) {
+    // GRN is line-level (PO × SKU × size × GRN) — a 200-PO chunk can exceed one
+    // page, so page the response too or receipts silently go missing.
+    const data = await pageAll<{ po_number: string; sku: string | null; received_quantity: number | null; grn_created_at: string | null }>(() =>
+      supabase
+        .from('sd_ee_grn')
+        .select('po_number, sku, received_quantity, grn_created_at')
+        .in('po_number', chunk)
+        .order('po_number')
+        .order('id'),
+    );
+    for (const g of data) {
       const key = `${g.po_number}|${variantOfSku(String(g.sku ?? ''))}`;
       const agg = grnByKey.get(key) ?? { qty: 0, last: null, weeks: new Set<string>() };
       agg.qty += Number(g.received_quantity) || 0;
@@ -150,8 +153,13 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
   });
 
   // Append the approved historical plan (e.g. the August sheet in sd_inward_plan_entry),
-  // PO-level, so completed months still show planned-vs-received in one place.
-  const historical = await loadHistoricalArrivalRows(supabase, catByCode);
+  // PO-level, so completed months still show planned-vs-received in one place. A PO
+  // that already has live (colour-level) rows is skipped here — otherwise its full
+  // receipt would be counted twice, once per colour and once for the whole PO.
+  const liveRefs = new Set(rows.map((r) => (r.po_ref_num ?? '').trim()).filter(Boolean));
+  const historical = (await loadHistoricalArrivalRows(supabase, catByCode)).filter(
+    (h) => !h.po_ref_num || !liveRefs.has(h.po_ref_num.trim()),
+  );
 
   const all = [...rows, ...historical];
   all.sort(
@@ -170,11 +178,13 @@ async function loadHistoricalArrivalRows(
   supabase: Awaited<ReturnType<typeof client>>,
   catByCode: Map<string, string | null>,
 ): Promise<ArrivalRow[]> {
-  const { data: entries } = await supabase
-    .from('sd_inward_plan_entry')
-    .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, remarks, mt_comments, approval_status')
-    .ilike('approval_status', 'approved%');
-  const rows = (entries ?? []) as Record<string, unknown>[];
+  const rows = await pageAll<Record<string, unknown>>(() =>
+    supabase
+      .from('sd_inward_plan_entry')
+      .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, remarks, mt_comments, approval_status')
+      .ilike('approval_status', 'approved%')
+      .order('id'),
+  );
   if (!rows.length) return [];
 
   // GRN receipts by po_ref_num (the sheet's po_no is the PO reference).
@@ -183,11 +193,15 @@ async function loadHistoricalArrivalRows(
   for (let i = 0; i < refs.length; i += 200) {
     const chunk = refs.slice(i, i + 200);
     if (!chunk.length) continue;
-    const { data } = await supabase
-      .from('sd_ee_grn')
-      .select('po_ref_num, received_quantity, grn_created_at')
-      .in('po_ref_num', chunk);
-    for (const g of (data ?? []) as { po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }[]) {
+    const data = await pageAll<{ po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }>(() =>
+      supabase
+        .from('sd_ee_grn')
+        .select('po_ref_num, received_quantity, grn_created_at')
+        .in('po_ref_num', chunk)
+        .order('po_ref_num')
+        .order('id'),
+    );
+    for (const g of data) {
       const ref = String(g.po_ref_num ?? '').trim();
       if (!ref) continue;
       const agg = grnByRef.get(ref) ?? { qty: 0, last: null, weeks: new Set<string>() };
@@ -254,12 +268,15 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
     if (data.length < PAGE_SIZE) break;
   }
 
-  const { data: inputs } = await supabase
-    .from('sd_receivable_input')
-    .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at, status, approved_month');
-  const inputByKey = new Map(
-    ((inputs ?? []) as Record<string, unknown>[]).map((i) => [String(i.row_key), i]),
+  // Paged: past 1000 input rows an unpaged read silently drops the rest, and the
+  // team would then re-save over a blank baseline.
+  const inputs = await pageAll<Record<string, unknown>>(() =>
+    supabase
+      .from('sd_receivable_input')
+      .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at, status, approved_month')
+      .order('row_key'),
   );
+  const inputByKey = new Map(inputs.map((i) => [String(i.row_key), i]));
 
   // Live TNA/risk status per PO — planned dates from tna_tracker + form actuals,
   // keyed by PO ref (tna.po_no). Same source and rule as the Open PO Tracker.
@@ -270,8 +287,8 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
   const today = istToday();
 
   // Current stock split by size, from the inventory snapshot. Its SKUs are
-  // <product_variant><size> (e.g. SDVCTWH + XS), so size = the SKU tail after
-  // the variant prefix. Fetch only the variants present in the plan.
+  // <product_variant>_<size> (e.g. SDVCTWH_XS), so size = the SKU tail after
+  // the variant prefix and separator. Fetch only the variants present in the plan.
   const stockByVariant = await loadStockByVariantSize(
     supabase,
     [...new Set(rows.map((r) => String(r.product_variant ?? '')).filter(Boolean))],
@@ -325,7 +342,8 @@ async function loadStockByVariantSize(
       const sku = String(iv.sku ?? '');
       const stock = Number(iv.current_stock) || 0;
       if (!variant || !stock || !sku.startsWith(variant)) continue;
-      const key = SIZE_LABEL_TO_KEY[sku.slice(variant.length).toUpperCase()];
+      // Strip the separator between variant and size (SDALPNB_XS → XS).
+      const key = SIZE_LABEL_TO_KEY[sku.slice(variant.length).replace(/^[_\-\s]+/, '').toUpperCase()];
       if (!key) continue;
       const rec = byVariant.get(variant) ?? {};
       rec[key] = (rec[key] ?? 0) + stock;
@@ -351,6 +369,8 @@ export async function loadInwardPlan(): Promise<InwardPlanGroup[]> {
       )
       .eq('po_status_code', 3)
       .gt('pending_qty', 0)
+      .order('po_number')
+      .order('product_variant')
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`sd_po_lines_enriched: ${error.message}`);
     if (!data?.length) break;

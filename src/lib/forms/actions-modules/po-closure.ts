@@ -76,11 +76,15 @@ export async function submitSourcingLeg(formData: FormData): Promise<ActionResul
   const supabase = await supa();
   const { data: cl } = await supabase
     .from('sd_po_closure')
-    .select('id, easycom_completed_at, sourcing_status')
+    .select('id, easycom_completed_at, sourcing_status, closure_initiated_at')
     .eq('id', id)
     .maybeSingle();
   if (!cl) return fail('Closure not found.');
   if (!cl.easycom_completed_at) return fail('This PO is not Completed yet.');
+  // The legs run in order: initiate → sourcing → finance. Submitting the sourcing
+  // leg on an un-initiated closure would corrupt the leg timeline (the UI already
+  // disables the button; this is the server-side guarantee).
+  if (!cl.closure_initiated_at) return fail('Initiate the closure first.');
 
   // Surplus = actual − BOM (only when both are present), valued at the product's
   // fabric standard cost (product → sd_standard_cost.fabric_code → finished cost).

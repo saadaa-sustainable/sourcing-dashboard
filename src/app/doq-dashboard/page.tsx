@@ -7,6 +7,7 @@ import {
   loadDoqWindows,
   loadOosCalculation,
   loadOosExclusions,
+  loadPmLaunchPrice,
   loadSkuClassInputs,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -44,14 +45,18 @@ export default async function DoqDashboardPage() {
   if (!user) redirect('/login');
   if (!canView('/doq-dashboard', user.role, user.allowed_pages ?? null)) redirect('/');
 
-  const [windows, meta, oosMeta, exclusions, classInputs, rules] = await Promise.all([
+  const [windows, meta, oosRaw, exclusions, classInputs, rules, pm] = await Promise.all([
     loadDoqWindows(),
     loadDoqWindowMeta(),
     loadOosCalculation(),
     loadOosExclusions(),
     loadSkuClassInputs(),
     loadAnalyticsRules(),
+    loadPmLaunchPrice(),
   ]);
+  // Same selling-price rule as OOS Calculation: Shopify SP, else product-master MRP —
+  // so Sales Leakage reconciles between the two pages.
+  const oosMeta = oosRaw.map((m) => ({ ...m, sales_value: m.sales_value ?? pm[m.sku]?.mrp ?? null }));
 
   const excluded = new Set(exclusions.map((e) => e.sku.toUpperCase()));
 
@@ -64,10 +69,11 @@ export default async function DoqDashboardPage() {
   const classBySku: Record<string, string> = {};
   for (const m of oosMeta) {
     const ci = classInputs[m.sku];
+    // `||`: the class-input map seeds SKUs at 0, so a 0 must fall back to the OOS row.
     const ipdoq = computeSkuIpdoq(
-      ci?.doq45 ?? m.doq_45 ?? 0,
+      ci?.doq45 || m.doq_45 || 0,
       ci?.doq365 ?? 0,
-      ci?.oos45 ?? m.total_oos_days ?? 0,
+      ci?.oos45 || m.total_oos_days || 0,
       rules.oos_day_threshold ?? 30,
       rules.ipdoq_floor ?? 0.25,
     );

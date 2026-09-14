@@ -201,7 +201,7 @@ export async function loadMyDashboard(
       reworkNotes: p.rework_notes,
       reworkedBy: p.reworked_by,
       reworkedAt: p.reworked_at,
-      href: `/buying-plan?month=${p.plan_month}${track === 'material' ? '&track=material' : ''}`,
+      href: `/buying-plan?month=${p.plan_month}${track === 'material' ? '&type=material' : ''}`,
     };
   });
 
@@ -233,6 +233,7 @@ export async function loadApprovalQueue(): Promise<{
     { data: discontinues },
     { data: pos },
     { data: fgCostReqs },
+    { data: matCostReqs },
     { data: log },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
@@ -244,6 +245,12 @@ export async function loadApprovalQueue(): Promise<{
     supabase
       .from('sd_standard_cost')
       .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, updated_at')
+      .eq('hidden', false)
+      .in('neg_stage', ['proposed', 'rate_submitted']),
+    supabase
+      .from('sd_material_standard_cost')
+      .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, updated_at')
+      .eq('hidden', false)
       .in('neg_stage', ['proposed', 'rate_submitted']),
     supabase
       .from('sd_approval_log')
@@ -286,7 +293,7 @@ export async function loadApprovalQueue(): Promise<{
     const isMaterial = plan.plan_type === 'material';
     const { data: lines } = await supabase
       .from('sd_buying_plan_line')
-      .select('id, product_code, fabric_type, material_type, line_status, job_work_qty, fob_qty, efob_qty')
+      .select('id, product_code, fabric_type, material_type, line_status, job_work_qty, fob_qty, efob_qty, standard_value')
       .eq('plan_id', plan.id);
     const lineRows = (lines ?? []) as (BuyingPlanLine & { material_type: string | null })[];
     const qty = lineRows.reduce(
@@ -308,7 +315,7 @@ export async function loadApprovalQueue(): Promise<{
       requiredRole: routeApproval('buying_plan', qty),
       submittedBy: plan.submitted_by,
       submittedAt: plan.submitted_at,
-      href: `/buying-plan?month=${plan.plan_month}${isMaterial ? '&track=material' : ''}`,
+      href: `/buying-plan?month=${plan.plan_month}${isMaterial ? '&type=material' : ''}`,
       lines: lineRows.map((l) => {
         const job = Number(l.job_work_qty || 0);
         const fob = Number(l.fob_qty || 0);
@@ -317,15 +324,19 @@ export async function loadApprovalQueue(): Promise<{
         // Material lines value against the material standard cost (job / purchase,
         // no EFOB) and group by material type; FG lines value against the FG
         // standard cost and group by live weave.
+        // Value the line the way the submitter saw it: the standard_value frozen at
+        // submission wins; the live rate is only a fallback for lines that had no
+        // accepted rate to freeze.
+        const frozen = Number(l.standard_value ?? 0) || 0;
         let value: number;
         let fabricType: string | null;
         if (isMaterial) {
           const cost = matCosts[l.product_code ?? ''];
-          value = cost ? job * cost.job + fob * cost.fob : 0;
+          value = frozen > 0 ? frozen : cost ? job * cost.job + fob * cost.fob : 0;
           fabricType = MATERIAL_GROUP[l.material_type ?? ''] ?? 'Material';
         } else {
           const cost = stdCosts[l.product_code ?? ''];
-          value = cost ? job * cost.job + fob * cost.fob + efob * cost.efob : 0;
+          value = frozen > 0 ? frozen : cost ? job * cost.job + fob * cost.fob + efob * cost.efob : 0;
           fabricType = (l.product_code ? weaveByCode[l.product_code] : undefined) ?? l.fabric_type ?? null;
         }
         return {
@@ -358,33 +369,40 @@ export async function loadApprovalQueue(): Promise<{
   // Standard-cost negotiation items awaiting the admin. Actioned on /standard-cost
   // (accept / reject / set target / sign off) — surfaced here as a link-out. Status
   // is set to pending_l2 so the shared "awaiting me" (admin) filter picks them up.
-  for (const c of (fgCostReqs ?? []) as {
+  type CostReq = {
     id: number; product_code: string; neg_stage: string;
     job_cost: number | null; fob_cost: number | null; efob_cost: number | null;
     proposed_cost: number | null; updated_at: string | null;
-  }[]) {
-    const rates = [
-      c.job_cost != null ? `Job ${c.job_cost}` : null,
-      c.fob_cost != null ? `FOB ${c.fob_cost}` : null,
-      c.efob_cost != null ? `E-FOB ${c.efob_cost}` : null,
-      c.proposed_cost != null ? `expected ${c.proposed_cost}` : null,
-    ].filter(Boolean).join(' · ');
-    const proposed = c.neg_stage === 'proposed';
-    items.push({
-      entityType: 'standard_cost',
-      entityId: String(c.id),
-      label: `Standard cost — ${c.product_code}`,
-      sublabel:
-        (proposed ? 'Rate proposed — accept, reject or set a target' : 'Actual rate submitted — sign off') +
-        (rates ? ` · ${rates}` : ''),
-      status: 'pending_l2', // cost always needs admin (routeApproval)
-      quantity: 0,
-      requiredRole: 'admin',
-      submittedBy: null,
-      submittedAt: c.updated_at,
-      href: `/standard-cost?open=${encodeURIComponent(c.product_code)}`,
-    });
-  }
+  };
+  // Both tracks: FG rates read Job / FOB / E-FOB; material rates read FOB Fabric /
+  // Billing / Standard Fabric (same columns, different meaning).
+  const pushCostItems = (rows: CostReq[] | null | undefined, material: boolean) => {
+    for (const c of (rows ?? []) as CostReq[]) {
+      const rates = [
+        c.job_cost != null ? `${material ? 'FOB Fabric' : 'Job'} ${c.job_cost}` : null,
+        c.fob_cost != null ? `${material ? 'Billing' : 'FOB'} ${c.fob_cost}` : null,
+        c.efob_cost != null ? `${material ? 'Standard Fabric' : 'E-FOB'} ${c.efob_cost}` : null,
+        c.proposed_cost != null ? `expected ${c.proposed_cost}` : null,
+      ].filter(Boolean).join(' · ');
+      const proposed = c.neg_stage === 'proposed';
+      items.push({
+        entityType: 'standard_cost',
+        entityId: `${material ? 'm' : 'f'}${c.id}`,
+        label: `${material ? 'Material' : 'Standard'} cost — ${c.product_code}`,
+        sublabel:
+          (proposed ? 'Rate proposed — accept, reject or set a target' : 'Actual rate submitted — sign off') +
+          (rates ? ` · ${rates}` : ''),
+        status: 'pending_l2', // cost always needs admin (routeApproval)
+        quantity: 0,
+        requiredRole: 'admin',
+        submittedBy: null,
+        submittedAt: c.updated_at,
+        href: `/standard-cost?${material ? 'track=material&' : ''}open=${encodeURIComponent(c.product_code)}`,
+      });
+    }
+  };
+  pushCostItems(fgCostReqs as CostReq[] | null, false);
+  pushCostItems(matCostReqs as CostReq[] | null, true);
 
   if ((pos ?? []).length) {
     const poList = (pos ?? []) as PoApproval[];

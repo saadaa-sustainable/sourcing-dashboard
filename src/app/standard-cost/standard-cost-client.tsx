@@ -1382,18 +1382,29 @@ function CmtpBreakdown({
   // change (not on first entry). Snapshot the amounts as loaded, keyed by head+sub.
   const [reason, setReason] = useState('');
   const hadData = cmtp.length > 0;
-  const initialAmts = useMemo(() => {
+  // Keys carry an occurrence index so a duplicated head+sub-item counts as a
+  // second line (mirrors the server diff) — otherwise a duplicate slips through
+  // as "unchanged" while doubling the CM total.
+  const keyed = (list: { category: string; label: string | null; amount: string }[]) => {
+    const seen = new Map<string, number>();
     const m = new Map<string, string>();
-    for (const c of cmtp) m.set(`${c.category} :: ${c.label ?? ''}`, c.amount != null ? String(c.amount) : '');
+    for (const c of list) {
+      const base = `${c.category} :: ${c.label ?? ''}`;
+      const n = seen.get(base) ?? 0;
+      seen.set(base, n + 1);
+      m.set(n ? `${base} #${n + 1}` : base, c.amount);
+    }
     return m;
-  }, [cmtp]);
+  };
+  const initialAmts = useMemo(
+    () => keyed(cmtp.map((c) => ({ category: c.category, label: c.label, amount: c.amount != null ? String(c.amount) : '' }))),
+    [cmtp],
+  );
   const isRevision = useMemo(() => {
     if (!hadData) return false;
-    const now = new Map<string, string>();
-    for (const r of rows) {
-      if (!r.category || (!r.label && !r.amount)) continue;
-      now.set(`${r.category} :: ${r.label}`, r.amount);
-    }
+    const now = keyed(
+      rows.filter((r) => r.category && (r.label || r.amount)).map((r) => ({ category: r.category, label: r.label, amount: r.amount })),
+    );
     if (now.size !== initialAmts.size) return true;
     for (const [k, v] of now) {
       const old = initialAmts.get(k);

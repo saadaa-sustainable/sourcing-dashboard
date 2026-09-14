@@ -22,3 +22,21 @@ export async function client() {
   if (!hasSupabaseEnv()) throw new NotConfiguredError();
   return createClient();
 }
+
+/**
+ * Page through a PostgREST query until it runs dry. `build` must return a fresh
+ * query each call (a builder can't be re-ranged), ordered deterministically so
+ * pages don't overlap. Use it for any table that can grow past PAGE_SIZE rows.
+ */
+export async function pageAll<T>(
+  build: () => { range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null }> },
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await build().range(from, from + PAGE_SIZE - 1);
+    if (!data?.length) break;
+    out.push(...(data as T[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return out;
+}

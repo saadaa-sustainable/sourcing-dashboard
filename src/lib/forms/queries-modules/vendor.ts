@@ -63,7 +63,7 @@ export async function loadVendorOtif(
 
   const vendors: VendorOtifRow[] = ((data ?? []) as Array<{
     vendor_code: string | null; vendor_name: string | null;
-    pos: number | null; on_time_pos: number | null; in_full_pos: number | null; otif_pos: number | null;
+    pos: number | null; dated_pos?: number | null; on_time_pos: number | null; in_full_pos: number | null; otif_pos: number | null;
     on_time_pct: number | null; fill_pct: number | null; otif_pct: number | null;
   }>).map((r) => {
     const c = cp.get(vkey(r.vendor_code, r.vendor_name));
@@ -71,6 +71,7 @@ export async function loadVendorOtif(
       vendorCode: r.vendor_code,
       vendorName: r.vendor_name ?? '—',
       pos: Number(r.pos) || 0,
+      datedPos: Number(r.dated_pos ?? r.pos) || 0,
       onTimePos: Number(r.on_time_pos) || 0,
       inFullPos: Number(r.in_full_pos) || 0,
       otifPos: Number(r.otif_pos) || 0,

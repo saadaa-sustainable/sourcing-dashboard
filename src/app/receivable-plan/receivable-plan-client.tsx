@@ -475,11 +475,20 @@ function ReceivableRow({
   const approvedMonthLabel = row.approved_month ? monthLabelOf(row.approved_month) : null;
   const qtyUnchanged = qty === (row.qty_expected_this_week?.toString() ?? '');
   const pickMonth = pick ? firstOfMonth(pick.slice(1)) : null;
+  // A week is "within" the approved month if its Monday OR its Sunday falls in it
+  // (same rule as the server), so boundary weeks qualify for either month.
+  const pickSundayMonth = pick.startsWith('w')
+    ? (() => {
+        const d = new Date(`${pick.slice(1)}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + 6);
+        return firstOfMonth(d.toISOString().slice(0, 10));
+      })()
+    : null;
   const staysApproved =
     row.input_status === 'approved' &&
     pick.startsWith('w') &&
     !!row.approved_month &&
-    pickMonth === row.approved_month &&
+    (pickMonth === row.approved_month || pickSundayMonth === row.approved_month) &&
     qtyUnchanged;
   const willNeedApproval = dirty && !staysApproved;
 

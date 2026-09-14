@@ -139,7 +139,8 @@ const money = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
 });
-const today = istToday();
+// "Today" is re-read on every render (via istToday()) — a dashboard left open
+// overnight must roll its Overdue / Due-today logic to the new date without a reload.
 const norm = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
 // Stable colour per product code (hashed hue) — the EDD scatter's colour
@@ -564,11 +565,15 @@ function DashboardTab({
   const rows = useMemo(
     () =>
       data.pendingPos.filter(
+        // Weave of the PRODUCT (master weave), falling back to the vendor's type —
+        // same rule the tracker and vendor rollups use, so all tabs agree.
         (row) =>
-          bucket === "All" || resolveVendor(row, lookups).bucket === bucket,
+          bucket === "All" ||
+          (row.master_weave ?? resolveVendor(row, lookups).bucket) === bucket,
       ),
     [data.pendingPos, bucket, lookups],
   );
+  const today = istToday();
   const open = rows.filter(isOpenPo);
   const delayed = open.filter((row) => isDelayedPo(row, today));
   const highRisk = open.filter((row) => isHighRiskLine(row, lookups.tnaByPo, today));
@@ -1420,6 +1425,7 @@ function TrackerTab({
   /** Item 6 — seed the vendor filter when arrived-at from a vendor-chart click. */
   initialVendorCode?: string;
 }) {
+  const today = istToday();
   const all = useMemo(
     () =>
       buildTrackerRows(
@@ -1431,7 +1437,7 @@ function TrackerTab({
         data.stageInspections,
         { includeClosurePending: true },
       ),
-    [data],
+    [data, today],
   );
   const [filters, set] = useState({
     vendor: "",
@@ -1517,14 +1523,14 @@ function TrackerTab({
       <div className="metric-grid compact">
         <Card
           label="Open PO lines"
-          value={fmt.format(all.length)}
-          info="Open purchase-order lines in the tracker (Approved, not yet completed)."
+          value={fmt.format(all.filter((r) => r.pendingQty > 0).length)}
+          info="Open purchase-order lines with quantity still to arrive (Approved, not fully received). Fully-received lines awaiting closure on EasyCom are listed in the table but not counted here."
         />
         <Card
           label="Delayed lines"
-          value={fmt.format(all.filter((r) => r.delayDays > 0).length)}
+          value={fmt.format(all.filter((r) => r.pendingQty > 0 && r.delayDays > 0).length)}
           tone="orange"
-          info="Open lines already past their expected delivery date."
+          info="Open lines (quantity still pending) already past their expected delivery date."
         />
         <Card
           label="Missing TNA"
@@ -2062,6 +2068,7 @@ function VendorTable({
 }
 
 function VendorTab({ data }: { data: DashboardData }) {
+  const today = istToday();
   // Item 4 — period for the PDF export: All time / YTD / a specific quarter.
   // Filters the underlying POs by po_date before the rollups the report exports.
   const [period, setPeriod] = useState<'all' | 'ytd' | 'q1' | 'q2' | 'q3' | 'q4'>('all');
@@ -2109,9 +2116,10 @@ function VendorTab({ data }: { data: DashboardData }) {
   const zero = data.vendorTypes.filter(
     (v) => norm(v.status) === "active" && !openCodes.has(norm(v.vendor_code)),
   );
-  const types = unique(data.pendingPos.map((r) => r.po_type ?? "Unknown"));
+  // Same period as the rollups — otherwise a Q1 view shows all-time type columns.
+  const types = unique(periodPos.map((r) => r.po_type ?? "Unknown"));
   const typeQty = (vendorCode: string, t: string) =>
-    data.pendingPos
+    periodPos
       .filter(
         (p) =>
           isOpenPo(p) &&
@@ -2121,7 +2129,10 @@ function VendorTab({ data }: { data: DashboardData }) {
       .reduce((s, p) => s + p.pending_qty_actual, 0);
 
   // Capacity-load donut: vendors bucketed by open-qty ÷ modelled monthly capacity.
-  const totalCap = rows.reduce((s, r) => s + r.capacityPerMonth, 0);
+  // Capacity is vendor-level; a vendor split across Woven + Knit rows carries the
+  // same figure on each row, so count it once per vendor.
+  const totalCap = [...new Map(rows.map((r) => [norm(r.vendorCode) || r.vendorName, r.capacityPerMonth])).values()]
+    .reduce((s, c) => s + c, 0);
   const totalOpen = rows.reduce((s, r) => s + r.openQty, 0);
   const overallUtil = totalCap ? Math.round((totalOpen / totalCap) * 100) : 0;
   const utilBands = (() => {
@@ -2368,6 +2379,7 @@ function VendorTab({ data }: { data: DashboardData }) {
 }
 
 function VendorTypeCharts({ data }: { data: DashboardData }) {
+  const today = istToday();
   const all = useMemo(
     () =>
       buildVendorRollups(
@@ -2488,6 +2500,7 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
   );
 }
 function MerchantTab({ data }: { data: DashboardData }) {
+  const today = istToday();
   const vendors = useMemo(
     () =>
       buildVendorRollups(
@@ -2734,6 +2747,7 @@ function MerchantTab({ data }: { data: DashboardData }) {
 }
 
 function ProductTab({ data }: { data: DashboardData }) {
+  const today = istToday();
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
     [data],
@@ -2938,6 +2952,7 @@ function ProductTab({ data }: { data: DashboardData }) {
 }
 
 function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
+  const today = istToday();
   const tracker = useMemo(
     () =>
       buildTrackerRows(
@@ -2949,15 +2964,19 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
       ),
     [data],
   );
+  // Open lines due within the next 365 days — overdue lines included (they are
+  // still arriving), which is what makes the Delay column meaningful.
   const inProcess365 = tracker.filter((row) => {
     if (!row.edd) return false;
     const eddDate = new Date(row.edd);
     const daysUntilEdd = Math.floor(
       (eddDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
-    return daysUntilEdd <= 365 && daysUntilEdd >= 0;
+    return daysUntilEdd <= 365;
   });
-  const productOOS = Object.values(
+  // Products whose PO lines are fully received (nothing left on order) — ranked by
+  // how many such lines, most first. The KPI counts all of them; the chart shows 20.
+  const productOOSAll = Object.values(
     data.pendingPos
       .filter((p) => p.pending_qty_actual === 0)
       .reduce<
@@ -2973,7 +2992,8 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
         acc[key].lastVendor = row.vendor_name || "Unknown";
         return acc;
       }, {}),
-  ).slice(0, 20);
+  ).sort((a, b) => b.count - a.count);
+  const productOOS = productOOSAll.slice(0, 20);
 
   const inProcessData = inProcess365.slice(0, 15).map((row) => ({
     productCode: row.productCode,
@@ -2992,15 +3012,15 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           note="Expected within 365 days"
           tone="teal"
           big
-          info="Distinct SKUs with pending PO quantity expected to arrive within the next 365 days."
+          info="Open PO lines (PO × product × EDD) with pending quantity due within the next 365 days, including lines already overdue."
         />
         <Card
-          label="Out of Stock"
-          value={fmt.format(productOOS.length)}
+          label="Nothing on order"
+          value={fmt.format(productOOSAll.length)}
           note="0 pending quantity"
           tone="orange"
           big
-          info="SKUs currently at zero pending quantity — nothing on order to replenish them."
+          info="Product codes whose PO lines are fully received — nothing left on order to replenish them. Not a stock figure; see OOS Calculation for actual stockouts."
         />
       </div>
       <div className="chart-grid">
@@ -3048,8 +3068,8 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           )}
         </ChartCard>
         <ChartCard
-          title="Out of Stock products by occurrence count"
-          info="SKUs that have gone out of stock most often, by number of recorded occurrences — the repeat offenders to prioritise."
+          title="Nothing on order — products by fully-received PO lines"
+          info="Product codes with the most PO lines fully received and nothing left on order, top 20 — candidates to check for replenishment."
           download={{
             filename: "out-of-stock",
             headers: ["Product code", "Count", "Last vendor"],
@@ -3123,6 +3143,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
 }
 
 function MatrixTab({ data }: { data: DashboardData }) {
+  const today = istToday();
   // Item 4 — default MUST be product code (see MATRIX_DEFAULT_MODE + matrix-defaults.test.ts).
   const [mode, setMode] = useState<"variant" | "product">(MATRIX_DEFAULT_MODE);
   // Item 5 — collapse vendor columns that are all-zero in the current view; on by default.

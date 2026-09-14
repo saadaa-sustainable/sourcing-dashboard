@@ -18,8 +18,11 @@ export async function loadReplenishment(): Promise<ReplenishmentRow[]> {
     const { data, error } = await supabase
       .from('sd_replenishment')
       .select('*')
-      .gt('rop_30', 0)
+      // The page shows 30 / 60 / 90-day cover: a colour that only needs a 60/90-day
+      // buy (rop_30 = 0) must still be listed.
+      .or('rop_30.gt.0,rop_60.gt.0,rop_90.gt.0')
       .order('rop_30', { ascending: false })
+      .order('rop_90', { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`sd_replenishment: ${error.message}`);
     if (!data?.length) break;

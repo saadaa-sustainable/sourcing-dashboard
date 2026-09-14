@@ -43,7 +43,6 @@ export default async function MasterPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab: tabParam } = await searchParams;
-  const tab = MASTER_TABS.some((t) => t.id === tabParam) ? tabParam! : 'product';
 
   let user;
   try {
@@ -63,6 +62,10 @@ export default async function MasterPage({
 
   const role = user.role;
   const allowedPages = user.allowed_pages ?? null;
+  // Land on the requested tab, else the FIRST master this user can actually view
+  // (a role granted only Fabric Cost must not open on a "no access" Product tab).
+  const firstViewable = MASTER_TABS.find((t) => canView(t.route, role, allowedPages)) ?? MASTER_TABS[0];
+  const tab = MASTER_TABS.some((t) => t.id === tabParam) ? tabParam! : firstViewable.id;
   const active = MASTER_TABS.find((t) => t.id === tab)!;
   const editable = canEdit(role, 'draft');
 

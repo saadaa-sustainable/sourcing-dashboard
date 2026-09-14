@@ -450,7 +450,7 @@ export function AnalyticsCards({
             {gaps == null
               ? "Coverage data pending"
               : gaps.length
-                ? `${gaps.length === 8 ? "8+" : gaps.length} variants uncovered`
+                ? `${gaps.length >= 8 ? "8+" : gaps.length} variants uncovered`
                 : "Demand covered"}
           </span>
         </div>

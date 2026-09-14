@@ -53,6 +53,8 @@ type Row = {
   purchase_qty: string; // Purchase / FOB (buying outright) quantity
   uom: string;
   remark: string;
+  /** Value frozen at submission (server-owned; carried through so the view can show it). */
+  standard_value: string;
 };
 
 // Legacy material lines predate material_type — treat them as raw.
@@ -70,6 +72,7 @@ function toRow(l: BuyingPlanLine): Row {
     purchase_qty: l.fob_qty?.toString() ?? '',
     uom: l.uom ?? 'metres',
     remark: l.remark ?? '',
+    standard_value: l.standard_value?.toString() ?? '',
   };
 }
 
@@ -98,6 +101,8 @@ export function MaterialPlanClient({
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
+  // Submitted / awaiting approval / approved: values are frozen at submission.
+  const planLocked = status === 'submitted' || status === 'pending_l2' || status === 'approved';
   const editable = canEdit(role, status);
   const [rows, setRows] = useState<Row[]>(() => lines.map(toRow));
   const [message, setMessage] = useState<string | null>(null);
@@ -120,15 +125,25 @@ export function MaterialPlanClient({
     const cost = materialCosts[r.material_code];
     const jobQty = num(r.job_qty);
     const purchaseQty = num(r.purchase_qty);
-    const jobValue = jobQty * (cost?.job ?? 0);
-    const purchaseValue = purchaseQty * (cost?.fob ?? 0);
+    const totalQty = jobQty + purchaseQty;
+    // Same rule as the FG track: live latest-accepted rate while editing; once
+    // submitted, the value frozen at submission (standard_value) is shown verbatim.
+    const storedValue = r.standard_value ? Number(r.standard_value) : 0;
+    const useStored = storedValue > 0 && (planLocked || !cost);
+    const jobValue = useStored
+      ? (totalQty ? (storedValue * jobQty) / totalQty : 0)
+      : jobQty * (cost?.job ?? 0);
+    const purchaseValue = useStored
+      ? (totalQty ? (storedValue * purchaseQty) / totalQty : 0)
+      : purchaseQty * (cost?.fob ?? 0);
+    const rateMissing = !cost || (jobQty > 0 && !cost.job) || (purchaseQty > 0 && !cost.fob);
     return {
       row: r,
       cost: cost ?? null,
       jobValue,
       purchaseValue,
       value: jobValue + purchaseValue,
-      missingCost: (jobQty > 0 || purchaseQty > 0) && !cost,
+      missingCost: totalQty > 0 && !useStored && rateMissing,
       // Effective colour for display: the per-line pick, else the code's master colour.
       colour: r.colour || codeMap.get(r.material_code)?.colour || null,
     };
@@ -171,6 +186,7 @@ export function MaterialPlanClient({
         purchase_qty: '',
         uom: 'metres',
         remark: '',
+        standard_value: '',
       },
     ]);
     setAddCode('');
@@ -240,6 +256,7 @@ export function MaterialPlanClient({
           purchase_qty: '',
           uom: meta?.material_type === 'trim' ? 'pcs' : 'metres',
           remark: '',
+          standard_value: '',
         };
         map.set(code, {
           ...base,
@@ -278,8 +295,11 @@ export function MaterialPlanClient({
     payload.set('lines', JSON.stringify(snapshot));
     start(async () => {
       const result = await saveBuyingPlan(payload);
-      if (result.ok) setMessage(result.message ?? 'Saved.');
-      else setError(result.error);
+      if (result.ok) {
+        setMessage(result.message ?? 'Saved.');
+        // First save of a month creates the plan — refresh so Submit becomes available.
+        if (!plan?.id) reloadWithToast(result.message ?? 'Saved.');
+      } else setError(result.error);
     });
   }
 

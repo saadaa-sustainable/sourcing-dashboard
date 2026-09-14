@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { FilterTable, type Column } from '@/components/filter-table';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
 
@@ -13,16 +13,18 @@ const dateLabel = (v: string | null) =>
 const num = (v: number | null) => Number(v) || 0;
 
 export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
-  // Planned (team's Receivable-Plan expectation) vs actual (GRN receipts) across the view.
+  // The headline cards follow the table's filters (month / vendor / source…), so a
+  // filtered month shows that month's expected vs received, not the all-time totals.
+  const [visible, setVisible] = useState<ArrivalRow[]>(rows);
   const totals = useMemo(() => {
     let planned = 0;
     let actual = 0;
-    for (const r of rows) {
+    for (const r of visible) {
       planned += num(r.expected_qty);
       actual += num(r.received_qty);
     }
     return { planned, actual, pct: planned > 0 ? Math.round((actual / planned) * 100) : null };
-  }, [rows]);
+  }, [visible]);
 
   const columns: Column<ArrivalRow>[] = [
     {
@@ -110,7 +112,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       accessor: (r) => r.remarks ?? '',
       render: (r) => r.remarks ?? '—',
-      info: 'Team / review remarks captured with the plan.',
+      info: 'Remarks from the approved historical plan sheet (live Receivable Plan rows carry their submit remark in the approval history instead).',
     },
   ];
 
@@ -137,6 +139,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
           columns={columns}
           rowKey={(r) => r.row_key}
           defaultSource="supabase"
+          onVisibleRows={setVisible}
           unit="lines"
           searchPlaceholder="Product, vendor, PO ref…"
           emptyText="No arrival lines match your filters."

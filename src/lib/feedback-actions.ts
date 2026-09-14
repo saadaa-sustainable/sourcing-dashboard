@@ -14,6 +14,26 @@ const STATUSES = ['new', 'acknowledged', 'in_progress', 'resolved', 'wont_fix'];
 // A compressed screenshot is ~50–300 KB of base64; cap generously and reject the rest.
 const MAX_SHOT = 3_500_000;
 
+/**
+ * Admins see every report; everyone else only their own. Applied to every
+ * per-report read/write so a report id alone never opens someone else's thread
+ * (threads carry screenshots of restricted pages).
+ */
+async function canSeeReport(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  user: { email: string; role: string },
+  feedbackId: number,
+): Promise<boolean> {
+  if (user.role === 'admin') return true;
+  const { data } = await supabase
+    .from('sd_feedback')
+    .select('id')
+    .eq('id', feedbackId)
+    .eq('submitted_by', user.email)
+    .maybeSingle();
+  return !!data;
+}
+
 function cleanShot(v: FormDataEntryValue | null): string | null {
   const s = typeof v === 'string' ? v.trim() : '';
   if (!s || !s.startsWith('data:image/')) return null;
@@ -96,6 +116,7 @@ export async function replyFeedback(formData: FormData): Promise<ActionResult> {
   if (!body && !screenshot) return { ok: false, error: 'Write a reply or attach a screenshot.' };
 
   const supabase = await createClient();
+  if (!(await canSeeReport(supabase, user, feedback_id))) return { ok: false, error: 'Report not found.' };
   const { error } = await supabase
     .from('sd_feedback_message')
     .insert({ feedback_id, author_email: user.email, body: body || null, screenshot });
@@ -179,6 +200,7 @@ export async function getFeedbackThread(feedbackId: number): Promise<{ messages:
   const user = await currentUser();
   if (!user) return { messages: [] };
   const supabase = await createClient();
+  if (!(await canSeeReport(supabase, user, feedbackId))) return { messages: [] };
   const { data } = await supabase
     .from('sd_feedback_message')
     .select('id, feedback_id, author_email, body, screenshot, created_at')

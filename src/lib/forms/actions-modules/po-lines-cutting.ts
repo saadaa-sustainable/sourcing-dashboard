@@ -59,11 +59,30 @@ export async function savePoLines(formData: FormData): Promise<ActionResult> {
   const { data: po } = await supabase.from('sd_po_approval').select('status').eq('id', poId).maybeSingle();
   if (!po) return fail('PO not found.');
   if (po.status === 'approved') return fail('An approved PO cannot have its lines changed.');
+  // While the PO sits in the approval queue its quantity is what the approver is
+  // deciding on (and what routed it to team vs admin) — changing lines then would
+  // bypass the escalation rule. Edits go through Rework.
+  if (po.status === 'submitted' || po.status === 'pending_l2') {
+    return fail('This PO is awaiting approval — ask the approver to send it back for rework to change its lines.');
+  }
+  // Carry each line's rework flag + reason across the replace (matched on
+  // colour + size) so the approver's notes survive the team's fix-up save.
+  const { data: prior } = await supabase
+    .from('sd_po_approval_line')
+    .select('product_variant, size, line_status, rework_notes')
+    .eq('po_id', poId);
+  const priorByKey = new Map(
+    ((prior ?? []) as { product_variant: string | null; size: string | null; line_status: string | null; rework_notes: string | null }[])
+      .map((l) => [`${l.product_variant ?? ''}|${l.size ?? ''}`, l] as const),
+  );
   await supabase.from('sd_po_approval_line').delete().eq('po_id', poId);
   if (clean.length) {
     const { error } = await supabase
       .from('sd_po_approval_line')
-      .insert(clean.map((l) => ({ po_id: poId, ...l })));
+      .insert(clean.map((l) => {
+        const was = priorByKey.get(`${l.product_variant ?? ''}|${l.size ?? ''}`);
+        return { po_id: poId, ...l, line_status: was?.line_status ?? null, rework_notes: was?.rework_notes ?? null };
+      }));
     if (error) return fail(error.message);
   }
   // PO qty is the sum of the size lines — never typed by hand.
@@ -264,10 +283,15 @@ export async function bulkSaveCuttingRegister(formData: FormData): Promise<Actio
 
   const clean = rows
     .map((r) => {
-      const po = String(r.po_number ?? r.po_ref_num ?? '').trim();
+      // `||` not `??`: a template row with an EMPTY po_number cell must fall through
+      // to po_ref_num instead of being dropped. The reference (FY../TYPE/PRODUCT/VENDOR-SEQ)
+      // is the key everything downstream parses; the plain PO number stays separate.
+      const ref = String(r.po_ref_num || '').trim();
+      const num = String(r.po_number || '').trim();
+      const po = ref || num;
       return {
         po_ref_num: po,
-        po_number: po || null,
+        po_number: num || null,
         product_code: po ? productFromPoRef(po) : null,
         vendor_code: textOrNull(r.vendor_code),
         fabric_sku_code: textOrNull(r.fabric_sku_code),

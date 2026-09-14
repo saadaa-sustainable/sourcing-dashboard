@@ -17,17 +17,21 @@ export function VendorOtifClient({
   // Overall rates across every received PO in the window (weighted by PO count).
   const totals = useMemo(() => {
     let pos = 0;
+    let dated = 0;
     let onTime = 0;
     let inFull = 0;
     let otif = 0;
     for (const v of vendors) {
       pos += v.pos;
+      dated += v.datedPos;
       onTime += v.onTimePos;
       inFull += v.inFullPos;
       otif += v.otifPos;
     }
-    const rate = (n: number) => (pos > 0 ? Math.round((n / pos) * 100) : 0);
-    return { pos, onTimePct: rate(onTime), fillPct: rate(inFull), otifPct: rate(otif) };
+    // On-time / OTIF are judged only over POs that have a committed date; fill
+    // rate over every received PO (same denominators as the per-vendor rows).
+    const over = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
+    return { pos, dated, onTimePct: over(onTime, dated), fillPct: over(inFull, pos), otifPct: over(otif, dated) };
   }, [vendors]);
 
   const columns: Column<VendorOtifRow>[] = [

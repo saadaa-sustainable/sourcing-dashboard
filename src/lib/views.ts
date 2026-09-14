@@ -36,6 +36,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
   // Company-wide arrival view — visible to every signed-in SAADAA user (see canView).
   { path: '/arrivals', label: 'Arrivals', group: 'Workspace' },
+  { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
   { path: '/ppm-prep', label: 'PPM Prep', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/doq-dashboard', label: 'DOQ Dashboard', group: 'Workspace' },
@@ -61,7 +62,9 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/receivable-plan', label: 'Receivable Plan', group: 'Workflows' },
   { path: '/cash-flow', label: 'Cash Flow', group: 'Workflows', adminOnly: true },
   { path: '/discontinue', label: 'Discontinued Products View', group: 'Workflows' },
-  { path: '/approvals', label: 'Approvals', group: 'Workflows', adminOnly: true },
+  // Not admin-only: routine items (small FG buying plans / POs) route to the TEAM
+  // level, and this queue is the only place PO decisions are taken.
+  { path: '/approvals', label: 'Approvals', group: 'Workflows' },
   // Data & Admin — masters and datasets.
   // One "Master" hub gathers the individual masters below as inner tabs; the
   // per-master routes stay registered (reachable + grantable) and the hub shows

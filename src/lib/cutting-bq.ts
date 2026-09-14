@@ -164,7 +164,14 @@ export async function pushCuttingRegisterRow(id: number): Promise<boolean> {
   if (!hasSupabaseAdminEnv()) return false;
   try {
     const admin = createAdminClient();
-    const { data } = await admin.from('sd_cutting_register').select(SELECT_COLS).eq('id', id).maybeSingle();
+    // Only rows not yet stamped — a retry after a successful insert whose stamp
+    // failed must not push the row into the warehouse a second time.
+    const { data } = await admin
+      .from('sd_cutting_register')
+      .select(SELECT_COLS)
+      .eq('id', id)
+      .is('bq_synced_at', null)
+      .maybeSingle();
     if (!data) return false;
     await pushCuttingRowsToBq([data as unknown as CuttingSourceRow]);
     await admin.from('sd_cutting_register').update({ bq_synced_at: new Date().toISOString() }).eq('id', id);

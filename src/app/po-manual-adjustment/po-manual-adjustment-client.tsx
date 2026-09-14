@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { refreshAdjustmentAction } from '@/lib/adjustments-actions';
+import { signCuttingApproval } from '@/lib/forms/actions';
 import { REFRESH_LIMIT_PER_HOUR, type AdjustmentSource } from '@/lib/adjustments-types';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { CuttingRegisterInput, CuttingBulkUpdate } from './cutting-input';
@@ -46,17 +47,41 @@ const CUTTING_COLS: Col[] = [
   { key: 'ingestion_by', label: 'By' },
 ];
 
-function fmt(value: unknown, kind?: Col['kind']): React.ReactNode {
-  if (value == null || value === '') return '—';
-  if (kind === 'datetime') return String(value).replace('T', ' ').slice(0, 16);
-  if (kind === 'date') return String(value).slice(0, 10);
-  if (kind === 'link') {
+/**
+ * Approval-sheet cell: the value is either a full URL (portal uploads) or a Supabase
+ * Storage object path (dashboard uploads, e.g. cutting/<uuid>.jpg) — the latter needs
+ * a short-lived signed URL, exactly like the Cutting Register page does.
+ */
+function ApprovalLink({ value }: { value: string }) {
+  const [busy, setBusy] = useState(false);
+  if (/^https?:\/\//i.test(value)) {
     return (
-      <a href={String(value)} target="_blank" rel="noopener noreferrer">
+      <a href={value} target="_blank" rel="noopener noreferrer">
         open
       </a>
     );
   }
+  async function open() {
+    setBusy(true);
+    try {
+      const res = await signCuttingApproval(value);
+      if ('url' in res) window.open(res.url, '_blank', 'noopener,noreferrer');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={open}>
+      {busy ? '…' : 'open'}
+    </button>
+  );
+}
+
+function fmt(value: unknown, kind?: Col['kind']): React.ReactNode {
+  if (value == null || value === '') return '—';
+  if (kind === 'datetime') return String(value).replace('T', ' ').slice(0, 16);
+  if (kind === 'date') return String(value).slice(0, 10);
+  if (kind === 'link') return <ApprovalLink value={String(value)} />;
   return String(value);
 }
 
@@ -92,6 +117,7 @@ function Panel({
       if (res.ok) {
         setRows(res.rows);
         setNote(`Reloaded · ${res.rows.length} rows · ${res.remaining} refresh${res.remaining === 1 ? '' : 'es'} left this hour`);
+        if (res.error) setError(res.error); // ok but served from the snapshot — say so
       } else {
         setError(res.error ?? 'Refresh failed.');
       }

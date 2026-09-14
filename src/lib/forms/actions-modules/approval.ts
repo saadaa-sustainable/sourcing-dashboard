@@ -183,10 +183,14 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
 
   const now = new Date().toISOString();
+  // Scope every line update to THIS record — a stale/crafted line id must never
+  // flag a line that belongs to another PO / plan.
+  const parentCol = entityType === 'po_approval' ? 'po_id' : 'plan_id';
   for (const d of decisions) {
     await supabase
       .from(lineTable)
       .update({ line_status: 'rework', rework_notes: d.note.trim() })
+      .eq(parentCol, entityId)
       .eq('id', Number(d.lineId));
   }
   const summary = `${decisions.length} line(s) sent for rework`;
@@ -255,6 +259,16 @@ async function decideReceivablePlanBulk(
       .eq('status', from)
       .eq('receiving_granularity', 'month');
     monthRows = (data ?? []) as typeof monthRows;
+  }
+
+  // Week-granularity rows being approved are approved for THAT week only: clear any
+  // stale month stamp from an earlier round so it can't unlock other weeks.
+  if (decision === 'approve') {
+    await supabase
+      .from('sd_receivable_input')
+      .update({ approved_month: null })
+      .eq('status', from)
+      .neq('receiving_granularity', 'month');
   }
 
   const { error } = await supabase

@@ -18,8 +18,22 @@ const key = (value: string | null | undefined) => text(value).toLowerCase();
 const number = (value: number | null | undefined) => Number.isFinite(value) ? Number(value) : 0;
 const unique = <T,>(items: T[]) => [...new Set(items)];
 
+/**
+ * Calendar date of a stored value, as UTC midnight of that date. Plain dates
+ * (YYYY-MM-DD) are IST business dates already. Timestamps (timestamptz, e.g.
+ * "2026-09-14T19:30:00Z") are converted to their IST calendar date first — a PO
+ * completed at 01:00 IST on the 15th must count as the 15th, not the 14th.
+ */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
 export function parseIsoDate(value: string | null | undefined): Date | null {
   if (!value) return null;
+  if (value.length > 10 && /[T ]\d{2}:\d{2}/.test(value)) {
+    const t = Date.parse(value);
+    if (Number.isNaN(t)) return null;
+    const ist = new Date(t + IST_OFFSET_MS);
+    return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
+  }
   const date = new Date(`${value.slice(0, 10)}T00:00:00Z`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -34,7 +48,6 @@ export function daysBetween(later: Date, earlier: Date) {
 // behind between 00:00 and 05:30 IST and would mis-flag same-day events and delay
 // boundaries. Returned as UTC midnight of the IST date so it lines up with
 // parseIsoDate, which anchors every stored date at 00:00Z.
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 export function istToday(now = new Date()): Date {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));

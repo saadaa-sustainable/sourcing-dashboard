@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import type {
   StandardCost,
   CostStandards,
@@ -52,14 +52,10 @@ export async function loadCostStandards(): Promise<CostStandards> {
 /** Colour/size cost detail lines (all products), for the Standard Cost expand panels. */
 export async function loadStandardCostLines(): Promise<StandardCostLine[]> {
   const supabase = await client();
-  const { data } = await supabase
-    .from('sd_standard_cost_line')
-    .select('*')
-    .order('product_code')
-    .order('colour')
-    .order('size')
-    .limit(PAGE_SIZE);
-  return (data ?? []) as StandardCostLine[];
+  // ~9 size rows per product — grows past a single page quickly, so page it.
+  return pageAll<StandardCostLine>(() =>
+    supabase.from('sd_standard_cost_line').select('*').order('product_code').order('colour').order('size').order('id'),
+  );
 }
 
 /** product_code → standard CM (CMTP total), to pre-fill the PO cost pivot. */
@@ -80,13 +76,10 @@ export async function loadStandardCmByCode(): Promise<Record<string, number>> {
 /** CMTP cost-breakdown line items (all products), for the Standard Cost CMTP view. */
 export async function loadCmtpComponents(): Promise<CmtpComponent[]> {
   const supabase = await client();
-  const { data } = await supabase
-    .from('sd_cmtp_component')
-    .select('*')
-    .order('product_code')
-    .order('position')
-    .limit(PAGE_SIZE);
-  return (data ?? []) as CmtpComponent[];
+  // 6+ heads per product — page it so products late in the alphabet never load blank.
+  return pageAll<CmtpComponent>(() =>
+    supabase.from('sd_cmtp_component').select('*').order('product_code').order('position').order('id'),
+  );
 }
 
 /**
@@ -122,20 +115,37 @@ export async function loadMaterialStandardCosts(): Promise<StandardCost[]> {
   return (data ?? []) as StandardCost[];
 }
 
-/** Approved material rates → Map material_code → { job (Job Work), fob (Purchase) }. */
+/**
+ * Live material rates → Map material_code → { job (Job Work), fob (Purchase) }.
+ * Same rule as the FG track: the LATEST ACCEPTED rate from the material
+ * rate-history table wins, so a material being re-proposed (its working row drops
+ * back to draft with the new proposal's figures) keeps its current accepted rate
+ * until the new one is signed off. Approved working rows are the fallback.
+ */
 export async function loadApprovedMaterialCosts(): Promise<
   Record<string, { job: number; fob: number }>
 > {
   const supabase = await client();
+  const map: Record<string, { job: number; fob: number }> = {};
+  type Hist = { product_code: string; job_cost: number | null; fob_cost: number | null };
+  const hist = await pageAll<Hist>(() =>
+    supabase
+      .from('sd_material_standard_cost_rate_history')
+      .select('product_code, job_cost, fob_cost')
+      .order('accepted_at', { ascending: false })
+      .order('id', { ascending: false }),
+  );
+  for (const r of hist) {
+    if (map[r.product_code]) continue; // newest first — first seen is the live rate
+    map[r.product_code] = { job: Number(r.job_cost) || 0, fob: Number(r.fob_cost) || 0 };
+  }
   const { data } = await supabase
     .from('sd_material_standard_cost')
     .select('product_code, job_cost, fob_cost, status')
     .eq('status', 'approved')
     .limit(PAGE_SIZE);
-  const map: Record<string, { job: number; fob: number }> = {};
-  (
-    (data ?? []) as { product_code: string; job_cost: number | null; fob_cost: number | null }[]
-  ).forEach((r) => {
+  ((data ?? []) as Hist[]).forEach((r) => {
+    if (map[r.product_code]) return;
     map[r.product_code] = { job: Number(r.job_cost) || 0, fob: Number(r.fob_cost) || 0 };
   });
   return map;

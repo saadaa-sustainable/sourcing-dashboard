@@ -211,6 +211,7 @@ export function FilterTable<T>({
   toolbarExtra,
   download,
   defaultSource,
+  onVisibleRows,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -226,6 +227,8 @@ export function FilterTable<T>({
   download?: { filename: string; pdf?: { title: string; note?: string } };
   /** Source applied to every column that doesn't set its own — for single-source tables. */
   defaultSource?: DataSourceKey;
+  /** Called whenever the visible (filtered + sorted) row set changes — for headline totals that must follow the filters. */
+  onVisibleRows?: (rows: T[]) => void;
 }) {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [search, setSearch] = useState('');
@@ -291,7 +294,9 @@ export function FilterTable<T>({
         if (col.kind === 'num') {
           const m = f.match(/^\s*(>=|<=|>|<|=)?\s*(-?\d[\d.,]*)\s*$/);
           if (m) {
-            const num = Number(asText(v).replace(/,/g, ''));
+            const cellText = asText(v).trim();
+            if (cellText === '') return false; // blank is not 0 — never matches a numeric filter
+            const num = Number(cellText.replace(/,/g, ''));
             const target = Number(m[2].replace(/,/g, ''));
             if (Number.isNaN(num)) return false;
             const op = m[1] || '=';
@@ -325,6 +330,11 @@ export function FilterTable<T>({
       return asText(av).localeCompare(asText(bv), undefined, { numeric: true }) * dir;
     });
   }, [filtered, sort, columns]);
+
+  useEffect(() => {
+    onVisibleRows?.(sorted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sorted]);
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const p = Math.min(page, pageCount - 1);
@@ -511,7 +521,7 @@ export function FilterTable<T>({
                         type="button"
                         className="wf-btn wf-btn-ghost"
                         style={{ marginLeft: 8 }}
-                        onClick={() => { setSearch(''); setColFilters({}); setSort(null); setPage(0); }}
+                        onClick={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
                       >
                         Clear filters
                       </button>

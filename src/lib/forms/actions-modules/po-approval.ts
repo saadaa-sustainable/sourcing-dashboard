@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
-import { computeClosureCompliance } from '@/lib/business-logic';
+import { computeClosureCompliance, istToday } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
@@ -43,7 +43,7 @@ function readPoFields(formData: FormData) {
   return {
     po_type: (PO_TYPES.includes(rawType as PoType) ? rawType : null) as PoType | null,
     product_code: textOrNull(formData.get('product_code')),
-    po_ref_num: textOrNull(formData.get('po_ref_num')),
+    po_ref_num: textOrNull(formData.get('po_ref_num'))?.toUpperCase() ?? null,
     vendor_code: textOrNull(formData.get('vendor_code')),
     vendor_name: textOrNull(formData.get('vendor_name')),
     tna_sheet_url: textOrNull(formData.get('tna_sheet_url')),
@@ -123,10 +123,12 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   // is the hard guarantee; this check gives a clear message before we hit it).
   // Blank/null refs (drafts without a reference yet) are exempt.
   if (fields.po_ref_num) {
+    // Case-insensitive: "…/sdalp/ven-01" and "…/SDALP/VEN-01" are the same PO. The
+    // reference is stored upper-cased (readPoFields) so the DB index agrees too.
     let dupQ = supabase
       .from('sd_po_approval')
       .select('id')
-      .eq('po_ref_num', fields.po_ref_num)
+      .ilike('po_ref_num', escapeLike(fields.po_ref_num))
       .limit(1);
     if (id) dupQ = dupQ.neq('id', id);
     const { data: dups } = await dupQ;
@@ -138,14 +140,20 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   }
 
   if (id) {
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from('sd_po_approval')
       .update(fields)
       .eq('id', id)
-      .in('status', ['draft', 'rework']);
+      .in('status', ['draft', 'rework'])
+      .select('id');
     if (error) {
       if (error.code === '23505') return fail(`PO reference "${fields.po_ref_num}" is already used. Reference numbers must be unique.`);
       return fail(`Could not save: ${error.message}`);
+    }
+    // The guarded update matched nothing — the PO left draft/rework meanwhile.
+    // Never report "Saved." for a write that changed no row.
+    if (!updated?.length) {
+      return fail('This PO is no longer editable (it has been submitted, approved or rejected). Reload to see its current state.');
     }
     revalidatePath('/po-approval');
     return { ok: true, message: 'Saved.', id };
@@ -205,6 +213,11 @@ async function assertApprovedStandardCost(
   return null;
 }
 
+/** Escape LIKE wildcards so an ilike() equality test matches the literal reference. */
+function escapeLike(s: string): string {
+  return s.split('\\').join('\\\\').split('%').join('\\%').split('_').join('\\_');
+}
+
 export async function submitPoApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -241,11 +254,12 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
 
   const now = new Date();
   // Total days as REQUESTED at submission: requested first-delivery minus today.
-  // Locked here so it doesn't drift with the eventual approval date.
+  // Locked here so it doesn't drift with the eventual approval date. "Today" is
+  // the IST calendar date (the delivery date is an IST date too).
   let requestedTotalDays: number | null = null;
   if (po.critical_path_first_delivery) {
     const target = new Date(`${po.critical_path_first_delivery}T00:00:00Z`).getTime();
-    const start = new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z').getTime();
+    const start = istToday(now).getTime();
     requestedTotalDays = Math.round((target - start) / 86_400_000);
   }
 
@@ -268,7 +282,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
     'po_approval',
     String(id),
     `PO ${po.po_ref_num ?? `#${id}`} · ${po.category} · ${po.product_code ?? ''}`.trim(),
-    'draft',
+    po.status as SdStatus,
     next,
     user.email,
   );

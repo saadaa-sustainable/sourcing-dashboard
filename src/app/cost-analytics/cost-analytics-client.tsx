@@ -54,14 +54,18 @@ function groupBy(rows: CostAnalyticsRow[], dim: Dim): Group[] {
     map.set(k, g);
   }
   for (const g of map.values()) {
-    const withDelta = g.rows.filter((r) => r.delta != null);
-    g.avgDelta = withDelta.length
-      ? withDelta.reduce((s, r) => s + (r.delta ?? 0), 0) / withDelta.length
-      : null;
-    const withPct = g.rows.filter((r) => r.deltaPct != null);
-    g.avgDeltaPct = withPct.length
-      ? withPct.reduce((s, r) => s + (r.deltaPct ?? 0), 0) / withPct.length
-      : null;
+    // Quantity-weighted (sum of delta x qty / sum of qty): a 10,000-pc PO must outweigh
+    // a 10-pc one, so the average agrees in sign with the total delta value beside it.
+    const wavg = (pick: (r: (typeof g.rows)[number]) => number | null) => {
+      const use = g.rows.filter((r) => pick(r) != null);
+      if (!use.length) return null;
+      const q = use.reduce((s, r) => s + (r.qty || 0), 0);
+      return q > 0
+        ? use.reduce((s, r) => s + (pick(r) ?? 0) * (r.qty || 0), 0) / q
+        : use.reduce((s, r) => s + (pick(r) ?? 0), 0) / use.length;
+    };
+    g.avgDelta = wavg((r) => r.delta);
+    g.avgDeltaPct = wavg((r) => r.deltaPct);
   }
   return [...map.values()].sort((a, b) => Math.abs(b.deltaValue) - Math.abs(a.deltaValue));
 }
@@ -134,7 +138,7 @@ function StdActualLens({ rows }: { rows: CostAnalyticsRow[] }) {
                     <td><strong>{g.label}</strong></td>
                     <td className="num">{g.count}</td>
                     <td className={`num ${tone(g.avgDelta)}`}>{num1(g.avgDelta)}</td>
-                    <td className={`num ${tone(g.avgDelta)}`}>{pct(g.avgDeltaPct)}</td>
+                    <td className={`num ${tone(g.avgDeltaPct)}`}>{pct(g.avgDeltaPct)}</td>
                     <td className={`num ${tone(g.deltaValue)}`}>{money(g.deltaValue)}</td>
                     <td>
                       {g.over + g.under === 0 ? (

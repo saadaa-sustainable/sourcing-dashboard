@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { monthStart } from '@/lib/forms/approval';
 
 /**
  * Item 5 — monthly fabric-rate submission status. For each fabric in the cost base,
@@ -23,10 +24,9 @@ export type FabricRateSubmissionState = {
   pendingCount: number;
 };
 
-function currentMonthStart(): string {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
-}
+// IST month, same helper the submit action uses — so the page and the action
+// agree on which month a submission belongs to around midnight on the 1st.
+const currentMonthStart = (): string => monthStart();
 
 export async function loadFabricRateSubmissionState(): Promise<FabricRateSubmissionState> {
   const supabase = await createClient();

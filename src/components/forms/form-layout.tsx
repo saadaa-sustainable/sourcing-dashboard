@@ -58,7 +58,7 @@ export function FormLayout({
             <div className="wf-head-actions">
               <FormHelp route={helpRoute ?? active} title={title} />
               {role === 'admin' && <FeedbackBell />}
-              {role === 'admin' && <ApprovalsBell />}
+              {role !== 'viewer' && <ApprovalsBell />}
               <span className="wf-role">{ROLE_LABEL[role]}</span>
               {actions}
               {userEmail && (
