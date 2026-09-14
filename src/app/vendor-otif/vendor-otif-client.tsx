@@ -32,9 +32,10 @@ export function VendorOtifClient({
 
   const columns: Column<VendorOtifRow>[] = [
     { key: 'vendorName', label: 'Vendor', kind: 'text', filter: 'text' },
-    { key: 'pos', label: 'POs', kind: 'num', accessor: (r) => r.pos },
+    { key: 'pos', label: 'POs', kind: 'num', source: 'computed', accessor: (r) => r.pos },
     {
       key: 'criticalPathPct',
+      source: 'computed',
       label: 'Critical Path %',
       kind: 'num',
       accessor: (r) => r.criticalPathPct ?? -1,
@@ -44,6 +45,7 @@ export function VendorOtifClient({
     },
     {
       key: 'onTimePct',
+      source: 'computed',
       label: 'On-Time %',
       kind: 'num',
       accessor: (r) => r.onTimePct,
@@ -52,6 +54,7 @@ export function VendorOtifClient({
     },
     {
       key: 'fillPct',
+      source: 'computed',
       label: 'Fill %',
       kind: 'num',
       accessor: (r) => r.fillPct,
@@ -60,6 +63,7 @@ export function VendorOtifClient({
     },
     {
       key: 'otifPct',
+      source: 'computed',
       label: 'OTIF %',
       kind: 'num',
       accessor: (r) => r.otifPct,

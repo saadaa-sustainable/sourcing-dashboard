@@ -168,20 +168,20 @@ function ApprovalCell({ path }: { path: string | null }) {
 }
 
 const ENTRY_COLS: Column<CuttingRegister>[] = [
-  { key: 'cutting_date', label: 'Cut date', accessor: (e) => e.cutting_date ?? '', render: (e) => fmtDate(e.cutting_date) },
-  { key: 'fabric_sku_code', label: 'Fabric SKU', kind: 'mono', render: (e) => e.fabric_sku_code ?? '—' },
-  { key: 'po', label: 'PO ref', kind: 'mono', accessor: (e) => e.po_ref_num || e.po_number || '', render: (e) => e.po_ref_num || e.po_number || '—' },
-  { key: 'vendor_code', label: 'Vendor', render: (e) => e.vendor_code ?? '—' },
-  { key: 'item_code', label: 'Item', kind: 'mono', render: (e) => e.item_code ?? e.product_code ?? '—' },
-  { key: 'size', label: 'Size', render: (e) => e.size ?? '—' },
-  { key: 'cutting_qty', label: 'Cut qty', kind: 'num', render: (e) => disp(e.cutting_qty) },
+  { key: 'cutting_date', label: 'Cut date', accessor: (e) => e.cutting_date ?? '', render: (e) => fmtDate(e.cutting_date), source: 'supabase' },
+  { key: 'fabric_sku_code', label: 'Fabric SKU', kind: 'mono', render: (e) => e.fabric_sku_code ?? '—', source: 'supabase' },
+  { key: 'po', label: 'PO ref', kind: 'mono', accessor: (e) => e.po_ref_num || e.po_number || '', render: (e) => e.po_ref_num || e.po_number || '—', source: 'easyecom' },
+  { key: 'vendor_code', label: 'Vendor', render: (e) => e.vendor_code ?? '—', source: 'easyecom' },
+  { key: 'item_code', label: 'Item', kind: 'mono', render: (e) => e.item_code ?? e.product_code ?? '—', source: 'easyecom' },
+  { key: 'size', label: 'Size', render: (e) => e.size ?? '—', source: 'supabase' },
+  { key: 'cutting_qty', label: 'Cut qty', kind: 'num', render: (e) => disp(e.cutting_qty), source: 'supabase' },
   { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', kind: 'num', render: (e) => disp(e.avg_fabric_consumption_approved) },
   { key: 'width_of_fabric', label: 'Width', render: (e) => e.width_of_fabric ?? '—' },
-  { key: 'fabric_consumed', label: 'Consumed', kind: 'num', render: (e) => disp(e.fabric_consumed) },
-  { key: 'cutting_approval_sheet', label: 'Approval', render: (e) => <ApprovalCell path={e.cutting_approval_sheet} /> },
-  { key: 'remarks', label: 'Remarks', render: (e) => e.remarks ?? '—' },
-  { key: 'submitted_via', label: 'Via', render: (e) => (e.submitted_via === 'dynamic_link' ? 'link' : e.submitted_via) },
-  { key: 'by', label: 'By', accessor: (e) => e.submitted_by_name || e.submitted_by_email || '', render: (e) => e.submitted_by_name || e.submitted_by_email || '—' },
+  { key: 'fabric_consumed', label: 'Consumed', kind: 'num', render: (e) => disp(e.fabric_consumed), source: 'supabase' },
+  { key: 'cutting_approval_sheet', label: 'Approval', render: (e) => <ApprovalCell path={e.cutting_approval_sheet} />, source: 'supabase' },
+  { key: 'remarks', label: 'Remarks', render: (e) => e.remarks ?? '—', source: 'supabase' },
+  { key: 'submitted_via', label: 'Via', render: (e) => (e.submitted_via === 'dynamic_link' ? 'link' : e.submitted_via), source: 'supabase' },
+  { key: 'by', label: 'By', accessor: (e) => e.submitted_by_name || e.submitted_by_email || '', render: (e) => e.submitted_by_name || e.submitted_by_email || '—', source: 'supabase' },
 ];
 
 function EntriesTable({ entries }: { entries: CuttingRegister[] }) {

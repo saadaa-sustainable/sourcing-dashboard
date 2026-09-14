@@ -56,6 +56,7 @@ const SOURCING_COLS: Column<SourcingPoRow>[] = [
   },
   {
     key: 'tnaStage',
+    source: 'form',
     label: 'TNA',
     kind: 'text',
     filter: 'select',

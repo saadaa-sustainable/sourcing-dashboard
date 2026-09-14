@@ -2921,7 +2921,7 @@ function ProductTab({ data }: { data: DashboardData }) {
           rows={summary}
           columns={[
             { key: "productCode", label: "Product code" },
-            { key: "variants", label: "Variants", kind: "num", accessor: (r) => r.variants.size, render: (r) => r.variants.size },
+            { key: "variants", label: "Variants", kind: "num", source: "computed", accessor: (r) => r.variants.size, render: (r) => r.variants.size },
             { key: "qty", label: "Pending qty", kind: "num" },
             { key: "value", label: "Pending value", kind: "num", render: (r) => money.format(r.value) },
           ]}
@@ -3105,7 +3105,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
             { key: "pendingQty", label: "Qty", kind: "num" },
             { key: "edd", label: "EDD", accessor: (r) => r.edd ?? "", render: (r) => r.edd ?? "No EDD" },
             {
-              key: "delayDays", label: "Delay days", kind: "num",
+              key: "delayDays", label: "Delay days", kind: "num", source: "computed",
               accessor: (r) => r.delayDays ?? 0,
               render: (r) => (r.delayDays ? <span className="badge danger">{r.delayDays}d</span> : <span className="badge success">On time</span>),
             },

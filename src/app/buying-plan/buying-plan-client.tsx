@@ -236,33 +236,34 @@ export function BuyingPlanClient({
       : t === 'fob'
         ? Number(v.row.fob_qty)
         : Number(v.row.efob_qty);
-  const inputRows = view.filter(
-    (v) =>
-      (!inputFabric || v.fabricType === inputFabric) &&
-      (!inputStatus || v.productStatus === inputStatus) &&
-      (!inputPoType || poTypeQty(v, inputPoType) > 0) &&
-      (!inputSearchQ || v.row.product_code.toLowerCase().includes(inputSearchQ)),
-  );
+  // One predicate for both modes: the same filters narrow the Input table, the
+  // grouped View, and the View's plan-detail table (edits still target row.key).
+  const matchesFilters = (v: ViewItem) =>
+    (!inputFabric || v.fabricType === inputFabric) &&
+    (!inputStatus || v.productStatus === inputStatus) &&
+    (!inputPoType || poTypeQty(v, inputPoType) > 0) &&
+    (!inputSearchQ || v.row.product_code.toLowerCase().includes(inputSearchQ));
+  const inputRows = view.filter(matchesFilters);
 
   // The full sheet, line-for-line — every column the buying-plan sheet has, verbatim,
   // with per-column filters + sort (via FilterTable). Rates come from the stored line.
   const rate = (s: string) => (s === '' || s == null ? null : Number(s));
   const sheetCols: Column<ViewItem>[] = [
-    { key: 'code', label: 'Product code', kind: 'mono', accessor: (v) => v.row.product_code },
-    { key: 'category', label: 'Category', kind: 'text', accessor: (v) => v.fabricType },
+    { key: 'code', label: 'Product code', kind: 'mono', source: 'easyecom', accessor: (v) => v.row.product_code },
+    { key: 'category', label: 'Category', kind: 'text', source: 'easyecom', accessor: (v) => v.fabricType },
     { key: 'fob_efob_rate', label: 'Buy value (FOB/E-FOB)', kind: 'num',
       accessor: (v) => rate(v.row.fob_efob_rate),
       render: (v) => (rate(v.row.fob_efob_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.fob_efob_rate))) },
     { key: 'job_rate', label: 'Buy value (Job)', kind: 'num',
       accessor: (v) => rate(v.row.job_rate),
       render: (v) => (rate(v.row.job_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.job_rate))) },
-    { key: 'status', label: 'Product State', kind: 'text', accessor: (v) => v.productStatus },
-    { key: 'pending', label: 'Pending qty', kind: 'num', accessor: (v) => v.pending },
+    { key: 'status', label: 'Product State', kind: 'text', source: 'easyecom', accessor: (v) => v.productStatus },
+    { key: 'pending', label: 'Pending qty', kind: 'num', source: 'bigquery', accessor: (v) => v.pending },
     { key: 'job', label: 'Job', kind: 'num', accessor: (v) => Number(v.row.job_work_qty) },
     { key: 'efob', label: 'E-FOB', kind: 'num', accessor: (v) => Number(v.row.efob_qty) },
     { key: 'fob', label: 'FOB', kind: 'num', accessor: (v) => Number(v.row.fob_qty) },
-    { key: 'total_qty', label: 'Total qty', kind: 'num', accessor: (v) => v.totalQty },
-    { key: 'total_value', label: 'Total value', kind: 'num', accessor: (v) => v.valueToBeBought,
+    { key: 'total_qty', label: 'Total qty', kind: 'num', source: 'computed', accessor: (v) => v.totalQty },
+    { key: 'total_value', label: 'Total value', kind: 'num', source: 'computed', accessor: (v) => v.valueToBeBought,
       render: (v) => (v.valueToBeBought ? money.format(v.valueToBeBought) : <span className="wf-subtle">—</span>) },
     { key: 'actual', label: 'Actual qty', kind: 'num', accessor: (v) => v.actualQty },
     { key: 'approval', label: 'Approval', kind: 'text', accessor: (v) => v.row.line_status || '—' },
@@ -279,7 +280,7 @@ export function BuyingPlanClient({
     { key: 'efob', label: 'E-FOB', ruleKey: 'lead_days_efob', days: leadDays.efob, qty: coverage(leadDays.efob) },
     { key: 'fob', label: 'FOB', ruleKey: 'lead_days_fob', days: leadDays.fob, qty: coverage(leadDays.fob) },
   ];
-  const viewRows = planned;
+  const viewRows = planned.filter(matchesFilters);
   const groupKey = (item: ViewItem) =>
     groupBy === 'category'
       ? item.category
@@ -298,6 +299,58 @@ export function BuyingPlanClient({
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   })();
+
+  // Filter bar shared by the View and Input modes (same state, so filters persist
+  // when switching) — the team gets the same product / state / PO-type filters in View.
+  const filterBar = (
+    <div className="wf-toolbar wf-filter-bar">
+      <input
+        className="wf-search"
+        placeholder="Filter product code…"
+        value={inputSearch}
+        onChange={(e) => setInputSearch(e.target.value)}
+      />
+      <label className="wf-inline-field">
+        Woven / Knitted
+        <select value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
+          <option value="">All</option>
+          {fabricOptions.map((f) => (
+            <option key={f} value={f}>{f}</option>
+          ))}
+        </select>
+      </label>
+      <label className="wf-inline-field">
+        Product State
+        <select value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
+          <option value="">All</option>
+          {statusOptions.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </label>
+      <label className="wf-inline-field">
+        PO type
+        <select value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
+          <option value="">All</option>
+          <option value="job">Job Work</option>
+          <option value="fob">FOB</option>
+          <option value="efob">E-FOB</option>
+        </select>
+      </label>
+      <span className="wf-subtle">
+        {mode === 'view' ? `${viewRows.length} of ${planned.length}` : `${inputRows.length} of ${view.length}`} shown
+        {(inputFabric || inputStatus || inputPoType || inputSearchQ) && (
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm"
+            onClick={() => { setInputFabric(''); setInputStatus(''); setInputPoType(''); setInputSearch(''); }}
+          >
+            Clear
+          </button>
+        )}
+      </span>
+    </div>
+  );
   const plannedTotals = planned.reduce(
     (acc, item) => ({
       qty: acc.qty + item.totalQty,
@@ -600,6 +653,7 @@ export function BuyingPlanClient({
         <>
         <TimeBuckets buckets={buckets} isAdmin={role === 'admin'} />
         <ValueByPoType value={valueByPoType} total={valueByPoTypeTotal} />
+        {filterBar}
         <PlanView
           groups={groups}
           totals={plannedTotals}
@@ -615,7 +669,7 @@ export function BuyingPlanClient({
           <span className="wf-subtle">{view.length} products · filter or sort any column</span>
         </div>
         <FilterTable
-          rows={view}
+          rows={view.filter(matchesFilters)}
           columns={sheetCols}
           rowKey={(v) => v.row.key}
           defaultSource="supabase"
@@ -629,53 +683,7 @@ export function BuyingPlanClient({
 
       {mode === 'input' && (
       <>
-      <div className="wf-toolbar wf-filter-bar">
-        <input
-          className="wf-search"
-          placeholder="Filter product code…"
-          value={inputSearch}
-          onChange={(e) => setInputSearch(e.target.value)}
-        />
-        <label className="wf-inline-field">
-          Woven / Knitted
-          <select value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
-            <option value="">All</option>
-            {fabricOptions.map((f) => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
-        </label>
-        <label className="wf-inline-field">
-          Product State
-          <select value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
-            <option value="">All</option>
-            {statusOptions.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </label>
-        <label className="wf-inline-field">
-          PO type
-          <select value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
-            <option value="">All</option>
-            <option value="job">Job Work</option>
-            <option value="fob">FOB</option>
-            <option value="efob">E-FOB</option>
-          </select>
-        </label>
-        <span className="wf-subtle">
-          {inputRows.length} of {view.length} shown
-          {(inputFabric || inputStatus || inputPoType || inputSearchQ) && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm"
-              onClick={() => { setInputFabric(''); setInputStatus(''); setInputPoType(''); setInputSearch(''); }}
-            >
-              Clear
-            </button>
-          )}
-        </span>
-      </div>
+      {filterBar}
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
           <table className="wide-table wf-grid">
