@@ -74,8 +74,8 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/arrivals', label: 'Arrivals', Icon: PackageCheck },
   { href: '/ppm-prep', label: 'PPM Prep', Icon: CalendarClock },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
-  { href: '/doq-dashboard', label: 'DOQ Dashboard', Icon: CalendarClock },
-  { href: '/oos-calculation', label: 'OOS Calculation', Icon: PackageX },
+  { href: '/doq-dashboard', label: 'OOS Dashboard', Icon: CalendarClock },
+  { href: '/oos-calculation', label: 'DOQ Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/cost-analytics', label: 'Cost Analytics', Icon: IndianRupee },
   // Off by default (folded elsewhere) — an admin can surface them via User Panel → Tabs.

@@ -1509,13 +1509,13 @@ export function AnalyticsCards({
               icon={PackageX}
               tone={!oosSum ? "neutral" : oosSum.zeroStock > 0 ? "amber" : "green"}
               status={!oosSum ? "WAITING" : `${fmt.format(oosSum.zeroStock)} SKUS`}
-              cta="Open OOS Calculation"
+              cta="Open DOQ Calculation"
               span={6}
               href="/oos-calculation"
-              info={`SKUs in the OOS Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
+              info={`SKUs in the DOQ Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
             >
               {!oosSum ? (
-                <NoData text="OOS Calculation data is not available." />
+                <NoData text="DOQ Calculation data is not available." />
               ) : (
                 <div className="ana-plan-hero">
                   <div>

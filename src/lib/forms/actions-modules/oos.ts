@@ -50,7 +50,7 @@ export async function addOosExclusion(formData: FormData): Promise<ActionResult>
   if (error) return fail(`Could not exclude: ${error.message}`);
   revalidatePath('/oos-calculation');
   revalidatePath('/doq-dashboard');
-  return done(`${sku} excluded from the OOS calculation.`);
+  return done(`${sku} excluded from the DOQ calculation.`);
 }
 
 /** Team/admin: bring a SKU back into the OOS Calculation view. */
@@ -66,7 +66,7 @@ export async function removeOosExclusion(formData: FormData): Promise<ActionResu
   if (error) return fail(`Could not remove: ${error.message}`);
   revalidatePath('/oos-calculation');
   revalidatePath('/doq-dashboard');
-  return done(`${sku} restored to the OOS calculation.`);
+  return done(`${sku} restored to the DOQ calculation.`);
 }
 
 /* ================================================================== */

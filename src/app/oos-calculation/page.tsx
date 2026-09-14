@@ -22,7 +22,7 @@ export default async function OosCalculationPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="OOS Calculation" active="/oos-calculation" role="viewer">
+        <FormLayout title="DOQ Calculation" active="/oos-calculation" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -71,7 +71,7 @@ export default async function OosCalculationPage() {
 
   return (
     <FormLayout
-      title="OOS Calculation"
+      title="DOQ Calculation"
       subtitle="Per-SKU DOQ / out-of-stock view over a 45-day window — DOQ (velocity), available days, OOS days, days-on-hand, selling price and sales leakage."
       active="/oos-calculation"
       role={user.role}

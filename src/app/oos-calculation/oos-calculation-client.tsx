@@ -152,7 +152,7 @@ export function OosCalculationClient({
 
       <div className="role-tabs" role="tablist" aria-label="OOS views">
         <button role="tab" aria-selected={tab === 'calc'} className={tab === 'calc' ? 'active' : ''} onClick={() => setTab('calc')}>
-          OOS Calculation
+          DOQ Calculation
         </button>
         <button role="tab" aria-selected={tab === 'excluded'} className={tab === 'excluded' ? 'active' : ''} onClick={() => setTab('excluded')}>
           Excluded SKUs ({exclusions.length})
@@ -191,7 +191,7 @@ export function OosCalculationClient({
               <button type="button" className="wf-btn wf-btn-primary" disabled={busy || !sku.trim()} onClick={add}>
                 Exclude SKU
               </button>
-              <InfoDot text="Excluded SKUs are hidden from the OOS Calculation tab (and its totals/exports). Restore one at any time — the data updates on the spot." />
+              <InfoDot text="Excluded SKUs are hidden from the DOQ Calculation tab (and its totals/exports). Restore one at any time — the data updates on the spot." />
             </div>
           )}
           <FilterTable

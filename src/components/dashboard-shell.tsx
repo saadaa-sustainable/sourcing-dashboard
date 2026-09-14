@@ -3020,7 +3020,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           note="0 pending quantity"
           tone="orange"
           big
-          info="Product codes whose PO lines are fully received — nothing left on order to replenish them. Not a stock figure; see OOS Calculation for actual stockouts."
+          info="Product codes whose PO lines are fully received — nothing left on order to replenish them. Not a stock figure; see DOQ Calculation for actual stockouts."
         />
       </div>
       <div className="chart-grid">

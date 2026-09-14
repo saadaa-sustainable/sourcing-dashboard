@@ -56,7 +56,7 @@ export function Product360Client({ data }: { data: ProductHubData }) {
           <div className="ca-kpi">
             <span className="ca-kpi-label">Stock data as of <InfoDot text="The snapshot date of the inventory/OOS feed these stock figures are computed from." /></span>
             <strong style={{ fontSize: 14 }}>{s.dataAsOf}</strong>
-            <small>OOS calculation feed</small>
+            <small>DOQ calculation feed</small>
           </div>
         )}
       </div>

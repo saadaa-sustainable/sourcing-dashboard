@@ -185,7 +185,7 @@ function ExclusionManager({ exclusions, editable }: { exclusions: OosSkuExclusio
     <details className="panel" style={{ padding: '12px 16px', marginBottom: 14 }} open={editable && exclusions.length === 0}>
       <summary style={{ cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Ban size={15} /> Excluded SKUs ({exclusions.length})
-        <InfoDot text="These SKUs are removed from every table on this page (and the OOS Calculation view). Add or remove any time — the tables update on save." />
+        <InfoDot text="These SKUs are removed from every table on this page (and the DOQ Calculation view). Add or remove any time — the tables update on save." />
       </summary>
 
       <div style={{ marginTop: 12 }}>
@@ -266,7 +266,7 @@ export function DoqDashboardClient({
         {exclusions.length > 0 && (
           <span className="wf-chip">
             {exclusions.length} SKU{exclusions.length > 1 ? 's' : ''} excluded
-            <InfoDot text="Excluded SKUs are left out of every window below. Manage the list in the Excluded SKUs panel — it's shared with the OOS Calculation view." />
+            <InfoDot text="Excluded SKUs are left out of every window below. Manage the list in the Excluded SKUs panel — it's shared with the DOQ Calculation view." />
           </span>
         )}
       </div>

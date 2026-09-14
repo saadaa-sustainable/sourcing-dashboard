@@ -34,7 +34,7 @@ export default async function DoqDashboardPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="DOQ Dashboard" active="/doq-dashboard" role="viewer">
+        <FormLayout title="OOS Dashboard" active="/doq-dashboard" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -99,7 +99,7 @@ export default async function DoqDashboardPage() {
 
   return (
     <FormLayout
-      title="DOQ Dashboard"
+      title="OOS Dashboard"
       subtitle="The DOQ window view — daily demand rate, days-on-hand, OOS days and sales leakage by product state, over yesterday / weekly / 7-day / all-time windows. Ported formula-for-formula from the DOQ sheet."
       active="/doq-dashboard"
       role={user.role}
