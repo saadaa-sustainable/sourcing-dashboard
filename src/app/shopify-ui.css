@@ -545,3 +545,274 @@
   .ui-shopify .metric-card,
   .ui-shopify .metric-card.big { min-height: 98px; }
 }
+
+/* ============================================================================
+   Approved dashboard trio: presentation only.
+
+   These selectors target the existing Main Dashboard, My Dashboard and Open PO
+   Tracker markup. They do not introduce, remove or reorder any controls, data,
+   labels or interactions.
+   ========================================================================== */
+
+/* Main Dashboard: contain the existing decision views in one compact surface. */
+.ui-shopify .ana-board {
+  gap: 0;
+  margin-bottom: 14px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.ui-shopify .ana-brief {
+  align-items: flex-start;
+  padding: 16px 17px 13px;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+.ui-shopify .ana-brief-copy { min-width: 0; }
+.ui-shopify .ana-eyebrow {
+  margin-bottom: 3px;
+  color: var(--purple);
+  font-size: 8.5px;
+  letter-spacing: .08em;
+}
+.ui-shopify .ana-brief h2 {
+  color: var(--ink-1);
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -.015em;
+}
+.ui-shopify .ana-brief p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+.ui-shopify .ana-signal-strip { gap: 6px; }
+.ui-shopify .ana-signal {
+  min-height: 26px;
+  padding: 5px 8px;
+  color: #4f5357;
+  background: #f7f7f8;
+  border-color: #dfe1e3;
+  font-size: 8.5px;
+}
+.ui-shopify .ana-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  padding: 8px;
+  background: #fafafa;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.ui-shopify .ana-tabs button {
+  justify-content: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 8px;
+  color: #696d71;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 700;
+}
+.ui-shopify .ana-tabs button > span {
+  width: auto;
+  height: auto;
+  color: #9a9da0;
+  background: transparent;
+  border-radius: 0;
+}
+.ui-shopify .ana-tabs button:hover {
+  color: var(--ink-1);
+  background: #f0f0f1;
+}
+.ui-shopify .ana-tabs button.active {
+  color: #111;
+  background: #fff;
+  box-shadow: 0 0 0 1px #d8dadc, 0 1px 2px rgba(0, 0, 0, .05);
+}
+.ui-shopify .ana-tabs button.active > span {
+  color: #74777a;
+  background: transparent;
+}
+.ui-shopify .ana-tab-panel {
+  min-height: 0;
+  padding: 12px;
+}
+.ui-shopify .ana-grid { gap: 10px; }
+.ui-shopify .ana-card {
+  padding: 13px 13px 0;
+  border-color: var(--line);
+  border-radius: 9px;
+  box-shadow: none;
+}
+.ui-shopify .ana-card.clickable:hover {
+  transform: none;
+  border-color: var(--line-strong);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, .06);
+}
+.ui-shopify .ana-icon {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+  border-radius: 7px;
+}
+.ui-shopify .ana-label { color: #5c6064; font-size: 9px; letter-spacing: .025em; }
+.ui-shopify .ana-state { border: 0; font-size: 7.5px; }
+.ui-shopify .ana-body { padding: 13px 0 11px; }
+.ui-shopify .ana-value-xl { font-size: clamp(25px, 2.2vw, 32px); }
+.ui-shopify .ana-footer {
+  min-height: 34px;
+  padding: 9px 0 10px;
+  color: var(--blue);
+  border-color: var(--line-2);
+  font-size: 8.5px;
+}
+.ui-shopify .metric-grid.dashboard-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* My Dashboard: the two existing approval queues become balanced Shopify cards. */
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-rework-notice {
+  margin-bottom: 14px;
+  padding: 13px 14px;
+  color: #705f32;
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  border-left: 3px solid #d69900;
+  border-radius: 10px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-rework-head {
+  color: #755b14;
+  font-size: 11px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-rework-list {
+  margin-top: 8px;
+  gap: 7px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-rework-list li {
+  padding-top: 7px;
+  border-color: rgba(138, 97, 22, .16);
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-rework-remark {
+  color: #705f32;
+  font-size: 10px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-my-approvals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-my-approvals > section {
+  min-width: 0;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-section-title {
+  min-height: 47px;
+  margin: 0;
+  padding: 12px 15px;
+  color: var(--ink-1);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-mini-queue {
+  gap: 0;
+  padding: 1px 14px;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-mini-queue li {
+  padding: 11px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-mini-queue li:last-child {
+  border-bottom: 0;
+}
+
+/* Open PO Tracker: twelve-column filter grid prevents full-width dropdown rows. */
+.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .search-field {
+  grid-column: span 4;
+  width: 100%;
+  min-width: 0;
+}
+.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field {
+  grid-column: span 2;
+  width: 100%;
+  min-width: 0;
+}
+.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field:nth-child(n + 6) {
+  grid-column: span 3;
+}
+.ui-shopify .content:has(> .tracker-status-tabs) > .tracker-status-tabs {
+  width: 100%;
+  border-radius: 10px;
+}
+.ui-shopify .content:has(> .tracker-status-tabs) > .table-panel .table-meta {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ui-shopify .content:has(> .tracker-status-tabs) .gap-chip { margin-left: 0; }
+.ui-shopify .content:has(> .tracker-status-tabs) .table-meta-actions { margin-left: auto; }
+.ui-shopify .content:has(> .tracker-status-tabs) > .wf-closure-panel {
+  padding: 10px 13px;
+  border-color: var(--warning-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 1180px) {
+  .ui-shopify .metric-grid.dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .search-field {
+    grid-column: span 6;
+  }
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field,
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field:nth-child(n + 6) {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .ui-shopify .ana-brief { flex-direction: column; }
+  .ui-shopify .ana-signal-strip { display: flex; }
+  .ui-shopify .ana-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-shopify .ana-tabs button:last-child { grid-column: 1 / -1; }
+  .ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-my-approvals {
+    grid-template-columns: 1fr;
+  }
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .search-field,
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field,
+  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field:nth-child(n + 6) {
+    grid-column: span 6;
+  }
+  .ui-shopify .content:has(> .tracker-status-tabs) > .table-panel .table-meta-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 560px) {
+  .ui-shopify .metric-grid.dashboard-metrics { grid-template-columns: 1fr; }
+}
