@@ -41,7 +41,7 @@ export default async function BuyingPlanPage({
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Buying Plan" active="/buying-plan" role="viewer" shopifyUi>
+        <FormLayout title="Buying Plan" active="/buying-plan" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -66,7 +66,6 @@ export default async function BuyingPlanPage({
       title="Buying Plan"
       subtitle={subtitle}
       active="/buying-plan"
-      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

@@ -17,7 +17,7 @@ export default async function DiscontinuePage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Discontinued Products View" active="/discontinue" role="viewer" shopifyUi>
+        <FormLayout title="Discontinued Products View" active="/discontinue" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -37,7 +37,6 @@ export default async function DiscontinuePage() {
       title="Discontinued Products View"
       subtitle="Variant-level discontinue approval, plus the available-inventory ageing & liquidation view."
       active="/discontinue"
-      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

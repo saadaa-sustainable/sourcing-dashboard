@@ -1,10 +1,10 @@
 /* ============================================================================
    Shopify-inspired production refresh.
 
-   This layer is intentionally scoped to `.ui-shopify`: the approved screens can
-   move to the new system without changing data components, server actions, or the
-   remaining application routes. It is imported after the existing global/workflow
-   styles so the rollout stays reversible and easy to audit.
+   This layer is intentionally scoped to the two existing `.ui-shopify` application
+   shells. It changes presentation only: no data components, labels, tabs, actions,
+   defaults, permissions, or route behavior. It is imported after the existing
+   global/workflow styles so the rollout stays reversible and easy to audit.
    ========================================================================== */
 
 .app-shell.ui-shopify {
@@ -160,15 +160,6 @@
   gap: 18px;
   border: 0;
   align-items: flex-start;
-}
-.ui-shopify .wf-eyebrow {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--ink-4);
-  font-size: 9.5px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
 }
 .app-shell.ui-shopify .wf-page > .wf-head h1 {
   margin: 0;
@@ -483,7 +474,7 @@
 .ui-shopify .wf-queue-card { padding: 13px; }
 .ui-shopify .wf-queue-meta > div { padding: 8px; border-radius: 8px; background: #f8f8f8; }
 
-/* Dashboard-specific page frame and its visible sub-tab strip. */
+/* Dashboard-specific page frame. */
 .ui-shopify > main > header {
   position: static;
   width: min(1500px, 100%);
@@ -508,14 +499,6 @@
   line-height: 1.18;
   font-weight: 680;
 }
-.ui-shopify .dashboard-subtitle {
-  display: block;
-  max-width: 850px;
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
-}
 .ui-shopify .content {
   width: min(1500px, 100%);
   max-width: none;
@@ -523,32 +506,6 @@
   padding: 0 28px 64px;
 }
 .ui-shopify > main > .notice { width: auto; max-width: 1444px; margin: 0 auto 14px; }
-.ui-shopify .dashboard-tabs {
-  width: max-content;
-  max-width: 100%;
-  display: flex;
-  gap: 3px;
-  overflow-x: auto;
-  margin-bottom: 14px;
-  padding: 4px;
-  border-radius: 9px;
-  background: #ececec;
-}
-.ui-shopify .dashboard-tabs button {
-  flex: 0 0 auto;
-  padding: 6px 10px;
-  color: #62666a;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  font-size: 10.5px;
-}
-.ui-shopify .dashboard-tabs button.active {
-  color: #111;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0,0,0,.1);
-  font-weight: 700;
-}
 .ui-shopify .bento-grid,
 .ui-shopify .chart-grid { gap: 14px; margin-bottom: 14px; }
 .ui-shopify .chart-panel { padding: 0 0 14px; }
@@ -556,9 +513,6 @@
 .ui-shopify .chart-area { padding-inline: 15px; }
 .ui-shopify .stat-tile,
 .ui-shopify .rank-row { border-color: var(--line); background: #fff; }
-
-/* The OOS summary cards are derived from the selected live window. */
-.ui-shopify .shopify-window-metrics { margin: 0; }
 
 @media (max-width: 1180px) {
   .ui-shopify .metric-grid.compact,

@@ -100,7 +100,6 @@ export function PoApprovalClient({
   role: SdRole;
 }) {
   const editable = canEdit(role, 'draft');
-  const [screen, setScreen] = useState<'request' | 'submissions'>('request');
   const [form, setForm] = useState({ ...BLANK });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -200,43 +199,20 @@ export function PoApprovalClient({
 
   return (
     <>
-      <div className="role-tabs" role="tablist" aria-label="PO approval sections">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={screen === 'request'}
-          className={screen === 'request' ? 'active' : ''}
-          onClick={() => setScreen('request')}
-        >
-          New PO request
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={screen === 'submissions'}
-          className={screen === 'submissions' ? 'active' : ''}
-          onClick={() => setScreen('submissions')}
-        >
-          Submissions · {pos.length}
-        </button>
-      </div>
-
-      {screen === 'request' && (
-        <Notice tone="info">
-          The approval gate before a PO is issued on EasyCom — every PO is written and
-          visible, with the vendor’s live capacity on the approver’s card. After
-          approval, enter the EasyCom PO number to tie it back to real data.
-        </Notice>
-      )}
+      <Notice tone="info">
+        The approval gate before a PO is issued on EasyCom — every PO written and
+        visible, with the vendor’s live capacity on the approver’s card. After
+        approval, enter the EasyCom PO number to tie it back to real data.
+      </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {screen === 'submissions' && <ReportingScreen pos={pos} />}
+      <ReportingScreen pos={pos} />
 
-      {screen === 'request' && <CycleKpis cycle={cycle} />}
+      <CycleKpis cycle={cycle} />
 
-      {screen === 'request' && editable && (
+      {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
             <h3>
@@ -512,7 +488,7 @@ export function PoApprovalClient({
         </div>
       )}
 
-      {screen === 'submissions' && <div className="table-panel">
+      <div className="table-panel">
         <div className="table-meta">
           <h3>Purchase orders</h3>
           <span>{pos.length} total</span>
@@ -557,11 +533,11 @@ export function PoApprovalClient({
             </tbody>
           </table>
         </div>
-      </div>}
+      </div>
 
-      {screen === 'submissions' && <PoSubmissionTable submissions={submissions} editable={editable} />}
+      <PoSubmissionTable submissions={submissions} editable={editable} />
 
-      {screen === 'request' && editable && leadtimes && <TnaLeadtimesPanel leadtimes={leadtimes} />}
+      {editable && leadtimes && <TnaLeadtimesPanel leadtimes={leadtimes} />}
     </>
   );
 }

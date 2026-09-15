@@ -10,18 +10,6 @@ import { FeatureBadgeLive } from '@/components/feature-badge-live';
 import { ReportButton } from '@/components/forms/report-button';
 import type { SdRole, SdStatus } from '@/lib/forms/types';
 
-const UI_SECTION_LABELS: Record<string, string> = {
-  '/buying-plan': 'Planning',
-  '/standard-cost': 'Planning',
-  '/vendor-capacity': 'Planning',
-  '/po-approval': 'PO workflow',
-  '/receivable-plan': 'PO workflow',
-  '/approvals': 'Governance & data',
-  '/po-manual-adjustment': 'Governance & data',
-  '/discontinue': 'Governance & data',
-  '/doq-dashboard': 'Workspace · inventory health',
-};
-
 export function FormLayout({
   title,
   subtitle,
@@ -32,7 +20,6 @@ export function FormLayout({
   allowedPages = null,
   actions,
   accent,
-  shopifyUi = false,
   children,
 }: {
   title: string;
@@ -52,19 +39,16 @@ export function FormLayout({
   // A per-screen accent so distinct processes (PO vs Standard Cost vs …) read as
   // visually different pages, not the same form.
   accent?: 'blue' | 'purple' | 'teal' | 'orange';
-  /** Apply the approved compact Shopify-inspired visual system to this route. */
-  shopifyUi?: boolean;
   children: React.ReactNode;
 }) {
   const accessible = canView(active, role, allowedPages);
   return (
-    <div className={`app-shell${shopifyUi ? ' ui-shopify' : ''}`}>
+    <div className="app-shell ui-shopify">
       <SideNav activeWorkflow={active} userEmail={userEmail} role={role} allowedPages={allowedPages} />
       <main>
         <div className={`wf-page${accent ? ` wf-accent wf-accent-${accent}` : ''}`}>
           <header className="wf-head">
             <div>
-              {shopifyUi && <span className="wf-eyebrow">{UI_SECTION_LABELS[active] ?? 'Sourcing intelligence'}</span>}
               <h1 className="wf-title-row">
                 {title}
                 <FeatureBadgeLive path={active} />

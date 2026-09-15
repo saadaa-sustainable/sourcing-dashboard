@@ -20,7 +20,7 @@ export default async function PoApprovalPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="PO Approval" active="/po-approval" role="viewer" shopifyUi>
+        <FormLayout title="PO Approval" active="/po-approval" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -50,7 +50,6 @@ export default async function PoApprovalPage() {
       title="PO Approval"
       subtitle="Raise a purchase order for approval, route by value, then issue against a real EasyCom PO."
       active="/po-approval"
-      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

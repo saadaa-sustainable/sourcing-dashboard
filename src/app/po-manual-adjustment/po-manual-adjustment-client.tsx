@@ -10,7 +10,6 @@ import { CuttingRegisterInput, CuttingBulkUpdate } from './cutting-input';
 import { ManualAdjustmentInput } from './manual-adjustment-input';
 
 type Row = Record<string, unknown>;
-const numberFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 type Col = {
   key: string;
   label: string;
@@ -187,62 +186,12 @@ export function PoManualAdjustmentClient({
   cuttingState: { remaining: number; retryAfterMinutes: number };
   editable: boolean;
 }) {
-  // This route is linked in the approved rollout as Manual Data Ingestion →
-  // Cutting Register, so open the requested working surface first. The PO
-  // adjustment tab stays one click away and remains mounted after switching.
-  const [tab, setTab] = useState<AdjustmentSource>('cutting');
+  const [tab, setTab] = useState<AdjustmentSource>('po');
   const [cutMode, setCutMode] = useState<'input' | 'bulk' | 'synced'>('input');
   const [poMode, setPoMode] = useState<'input' | 'synced'>('input');
-  const cuttingSummary = useMemo(
-    () =>
-      cuttingRows.reduce<{
-        consumed: number;
-        overBom: number;
-        missingProof: number;
-      }>(
-        (sum, row) => {
-          const quantity = Number(row.cutting_qty ?? 0);
-          const consumed = Number(row.fabric_consumed ?? 0);
-          const approvedAverage = Number(row.avg_fabric_consumption_approved ?? 0);
-          return {
-            consumed: sum.consumed + consumed,
-            overBom:
-              sum.overBom +
-              (quantity > 0 && approvedAverage > 0 && consumed > quantity * approvedAverage ? 1 : 0),
-            missingProof: sum.missingProof + (row.cutting_approval_sheet ? 0 : 1),
-          };
-        },
-        { consumed: 0, overBom: 0, missingProof: 0 },
-      ),
-    [cuttingRows],
-  );
 
   return (
     <div className="wf-stack">
-      {tab === 'cutting' && (
-        <div className="metric-grid compact">
-          <div className="metric-card tone-teal">
-            <span className="metric-label">Cutting entries</span>
-            <strong>{numberFmt.format(cuttingRows.length)}</strong>
-            <small>synced warehouse rows</small>
-          </div>
-          <div className="metric-card tone-blue">
-            <span className="metric-label">Fabric consumed</span>
-            <strong>{numberFmt.format(cuttingSummary.consumed)}</strong>
-            <small>across synced entries</small>
-          </div>
-          <div className="metric-card tone-red">
-            <span className="metric-label">Over BOM</span>
-            <strong>{numberFmt.format(cuttingSummary.overBom)}</strong>
-            <small>consumption exceptions</small>
-          </div>
-          <div className="metric-card tone-orange">
-            <span className="metric-label">Missing proof</span>
-            <strong>{numberFmt.format(cuttingSummary.missingProof)}</strong>
-            <small>approval sheets</small>
-          </div>
-        </div>
-      )}
       <div className="wf-notice wf-notice-info">
         <strong>Enter data right here</strong> — use <strong>UI Input</strong> on either tab; entries
         push to the warehouse (BigQuery) automatically within ~5 minutes. <strong>Synced data</strong>{' '}

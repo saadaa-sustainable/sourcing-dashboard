@@ -23,7 +23,7 @@ export default async function VendorCapacityPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Vendor Capacity" active="/vendor-capacity" role="viewer" shopifyUi>
+        <FormLayout title="Vendor Capacity" active="/vendor-capacity" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -88,7 +88,6 @@ export default async function VendorCapacityPage() {
       title="Vendor Capacity"
       subtitle="Per-vendor capacity for active vendors — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only."
       active="/vendor-capacity"
-      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

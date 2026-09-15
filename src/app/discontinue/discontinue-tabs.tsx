@@ -24,9 +24,7 @@ export function DiscontinueTabs({
   invRows: DiscontinuedInventoryRow[];
   salesByVariant: Record<string, number>;
 }) {
-  // The navigation destination is the inventory-facing Discontinued Products
-  // View; requests remain available as the adjacent workflow tab.
-  const [view, setView] = useState<'requests' | 'inventory'>('inventory');
+  const [view, setView] = useState<'requests' | 'inventory'>('requests');
   return (
     <>
       <div className="segment wf-segment" style={{ marginBottom: 16 }}>

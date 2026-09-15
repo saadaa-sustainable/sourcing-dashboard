@@ -170,9 +170,6 @@ function EntryTab({
 
   const overCount = decorated.filter(({ vendor }) => poCapacityOf(vendor) - vendor.inProcessQty < 0).length;
   const staleCount = decorated.filter((d) => d.isStale).length;
-  const activeCapacity = decorated.reduce((sum, { vendor }) => sum + poCapacityOf(vendor), 0);
-  const openOrderBook = decorated.reduce((sum, { vendor }) => sum + vendor.inProcessQty, 0);
-  const utilisation = activeCapacity ? Math.round((openOrderBook / activeCapacity) * 100) : 0;
 
   const q = search.trim().toLowerCase();
   const filtered = decorated
@@ -191,29 +188,6 @@ function EntryTab({
 
   return (
     <>
-      <div className="metric-grid compact">
-        <div className="metric-card tone-teal">
-          <span className="metric-label">Active capacity</span>
-          <strong>{fmt.format(activeCapacity)}</strong>
-          <small>pcs per month</small>
-        </div>
-        <div className="metric-card tone-blue">
-          <span className="metric-label">Open order book</span>
-          <strong>{fmt.format(openOrderBook)}</strong>
-          <small>{utilisation}% utilisation</small>
-        </div>
-        <div className="metric-card tone-red">
-          <span className="metric-label">Over capacity</span>
-          <strong>{overCount}</strong>
-          <small>vendors above 100%</small>
-        </div>
-        <div className="metric-card tone-orange">
-          <span className="metric-label">Stale updates</span>
-          <strong>{staleCount}</strong>
-          <small>older than {STALE_DAYS} days</small>
-        </div>
-      </div>
-
       <div className="wf-toolbar">
         <div className="wf-toolbar-left">
           <Field label="Search vendor">

@@ -41,7 +41,7 @@ export default async function StandardCostPage({
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Standard Cost" active="/standard-cost" role="viewer" shopifyUi>
+        <FormLayout title="Standard Cost" active="/standard-cost" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -107,7 +107,6 @@ export default async function StandardCostPage({
           : 'Final job / FOB / E-FOB rates per product. Approved rates drive the Buying Plan value; frozen at first PO issuance.'
       }
       active="/standard-cost"
-      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
