@@ -56,8 +56,34 @@ export function NpdBudgetCard({
     });
   }
 
+  // No cap yet → a single banner (the reference layout), not an empty panel.
+  if (!hasCap && !editing) {
+    return (
+      <div className="bp-banner">
+        <div>
+          <strong>NPD budget isn’t set for this month.</strong>
+          <span>
+            Set a cap to track new product development spend against plan.
+            {budget.spentCount + budget.pendingCount > 0 && (
+              <>
+                {' '}So far: {money.format(budget.spent)} committed
+                {budget.pendingCount > 0 ? `, ${money.format(budget.pending)} in approval` : ''}.
+              </>
+            )}
+            {!isAdmin && ' An admin sets the cap from Sourcing.'}
+          </span>
+        </div>
+        {isAdmin && (
+          <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setEditing(true)}>
+            <Pencil size={12} /> Set cap
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="panel wf-npd-budget">
+    <div className="panel wf-npd-budget bp-card bp-cardbody">
       <div className="wf-npd-head">
         <span className="wf-npd-title">
           <Sparkles size={14} strokeWidth={2} /> NPD budget — this month

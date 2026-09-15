@@ -1,0 +1,112 @@
+/* ==========================================================================
+   Buying Plan — card-based layout (Polaris-style composition on the house tokens).
+   Scoped to bp-* classes; the rest of the app is untouched. Colours come from the
+   canonical tokens in globals.css (accent yellow, ecru lines, success/warning/danger)
+   so the page reads as part of the dashboard, not a foreign skin.
+   ========================================================================== */
+
+/* Page bar: month · status · View/Input on the left, actions on the right. */
+.bp-pagebar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.bp-pagebar-left, .bp-pagebar-right { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.bp-pagebar .wf-btn { white-space: nowrap; }
+
+/* Track tabs (Finished goods / Fabric-Material / Analysis) — segmented pill. */
+.bp-tabs { display: inline-flex; gap: 4px; padding: 4px; background: var(--bg-surface, #ececec); border: 1px solid var(--line, #e7e2d2); border-radius: 9px; margin-bottom: 14px; }
+.bp-tab { padding: 6px 12px; font-size: 12px; border-radius: 6px; color: var(--ink-3, #6e695e); text-decoration: none; font-weight: 500; }
+.bp-tab:hover { color: var(--ink-1, #161513); }
+.bp-tab.active { background: #fff; color: var(--ink-1, #161513); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); font-weight: 600; }
+
+/* Banner (NPD budget not set). */
+.bp-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--warning-bg, #faf1dc); border: 1px solid var(--warning-border, #e8c87a); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
+.bp-banner strong { font-size: 13px; display: block; color: var(--ink-1, #161513); }
+.bp-banner span { font-size: 12px; color: var(--warning-text, #b57514); }
+
+/* Two-column layout: main stack + 340px right column. */
+.bp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+.bp-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* Cards. */
+.bp-card { background: var(--bg-surface-2, #fff); border: 1px solid var(--line, #e7e2d2); border-radius: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06); margin: 0; min-width: 0; }
+.bp-cardhead { padding: 12px 16px; border-bottom: 1px solid var(--line, #e7e2d2); display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bp-cardhead h2 { font-size: 14px; margin: 0; font-weight: 650; color: var(--ink-1, #161513); }
+.bp-cardhead .wf-subtle { display: inline; }
+.bp-cardbody { padding: 16px; }
+.bp-cardbody-flush { padding: 0; }
+.bp-cardbody-flush .table-panel { border: 0; border-radius: 0 0 12px 12px; box-shadow: none; margin: 0; }
+.bp-rightcol .bp-cardbody { padding: 14px; }
+.bp-actions { display: flex; gap: 8px; }
+
+/* Metric tiles. */
+.bp-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.bp-metric { padding: 14px; border: 1px solid var(--line, #e7e2d2); border-radius: 10px; background: #fff; min-width: 0; }
+.bp-metric .label { font-size: 11px; color: var(--ink-3, #6e695e); font-weight: 600; }
+.bp-metric .value { font-size: 22px; font-weight: 650; margin-top: 6px; line-height: 1.2; color: var(--ink-1, #161513); font-variant-numeric: tabular-nums; }
+.bp-metric .sub { font-size: 11px; color: var(--ink-3, #6e695e); margin-top: 4px; }
+
+/* Progress bar (green = bought share). */
+.bp-progress { height: 7px; background: #e7e8e9; border-radius: 999px; overflow: hidden; margin-top: 10px; }
+.bp-progress.m0 { margin: 0; }
+.bp-progress span { display: block; height: 100%; background: var(--success-border, #3d9e6b); border-radius: 999px; }
+
+/* Sticky filter toolbar. */
+.bp-sticky { position: sticky; top: 0; z-index: 5; background: rgba(250, 248, 245, 0.94); backdrop-filter: blur(8px); padding: 4px 0; }
+.bp-toolbar-card { padding: 10px 12px; }
+.bp-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bp-search { flex: 1; min-width: 200px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 8px 10px; font-size: 12px; background: #fff; font: inherit; }
+.bp-toolbar select { border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 8px 28px 8px 10px; background: #fff; font-size: 12px; color: var(--ink-2, #494640); font-family: inherit; }
+.bp-toolbar-count { font-size: 11.5px; color: var(--ink-3, #6e695e); display: inline-flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
+
+/* Grouped plan: category block with header row + product rows. */
+.bp-category { border: 1px solid var(--line, #e7e2d2); border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+.bp-category:last-child { margin-bottom: 0; }
+.bp-cathead, .bp-skurow { display: grid; grid-template-columns: 1.1fr 0.6fr 0.6fr 0.9fr 0.8fr 0.55fr; gap: 12px; align-items: center; }
+.bp-cathead { width: 100%; padding: 12px 14px; background: var(--bg-surface, #fbfbfb); border: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.bp-cathead:hover { background: var(--bg-tint, #f6f3f1); }
+.bp-catname b { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.bp-catname span { font-size: 11px; color: var(--ink-3, #6e695e); }
+.bp-num b { display: block; font-size: 13px; font-variant-numeric: tabular-nums; }
+.bp-num span { font-size: 10px; color: var(--ink-3, #6e695e); }
+.bp-skurow { padding: 10px 14px; border-top: 1px solid var(--line, #e7e2d2); font-size: 12px; background: #fff; }
+.bp-skurow:hover { background: var(--bg-tint, #fafafa); }
+.bp-sku b { font-size: 12px; }
+.bp-sku span { display: block; font-size: 10px; color: var(--ink-3, #6e695e); margin-top: 2px; }
+.bp-split { font-size: 11px; color: var(--ink-3, #6e695e); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bp-summary-sub { display: block; font-size: 10px; color: var(--ink-4, #9a9384); margin-top: 2px; font-weight: 400; }
+
+/* Badges. */
+.bp-badge { display: inline-flex; align-items: center; padding: 4px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.bp-badge.red { background: var(--danger-bg, #fdecea); color: var(--danger-text, #c0392b); }
+.bp-badge.green { background: var(--success-bg, #ecf1e9); color: var(--success-text, #4f7c4d); }
+.bp-badge.yellow { background: var(--warning-bg, #faf1dc); color: var(--warning-text, #b57514); }
+.bp-badge.gray { background: var(--bg-surface, #f3f1ec); color: var(--ink-3, #6e695e); }
+
+/* Right column: attention + summary rows. */
+.bp-attention { display: flex; flex-direction: column; gap: 10px; }
+.bp-issue { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line, #e7e2d2); border-radius: 9px; }
+.bp-issue .left { display: flex; gap: 9px; align-items: center; min-width: 0; }
+.bp-issue b { font-size: 12px; display: block; }
+.bp-issue span { font-size: 10px; color: var(--ink-3, #6e695e); }
+.bp-issue strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.bp-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.bp-dot.red { background: var(--danger-text, #c0392b); }
+.bp-dot.yellow { background: #d89b00; }
+.bp-dot.green { background: var(--success-border, #3d9e6b); }
+.bp-summaryrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line, #e7e2d2); font-size: 12px; }
+.bp-summaryrow:last-child { border-bottom: 0; }
+.bp-summaryrow > span { color: var(--ink-2, #494640); }
+.bp-summaryrow > b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Input mode: the editable grid lives flush inside its card. */
+.bp-input-panel { margin: 0; }
+
+@media (max-width: 1200px) {
+  .bp-layout { grid-template-columns: 1fr; }
+  .bp-rightcol { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .bp-metrics { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 860px) {
+  .bp-rightcol { grid-template-columns: 1fr; }
+  .bp-metrics { grid-template-columns: 1fr; }
+  .bp-cathead, .bp-skurow { grid-template-columns: 1fr 0.6fr 0.6fr; }
+  .bp-cathead > *:nth-child(n + 4), .bp-skurow > *:nth-child(n + 4) { display: none; }
+}

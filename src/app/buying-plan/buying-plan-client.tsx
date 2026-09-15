@@ -158,6 +158,7 @@ export function BuyingPlanClient({
   const [inputStatus, setInputStatus] = useState('');
   const [inputPoType, setInputPoType] = useState('');
   const [inputSearch, setInputSearch] = useState('');
+  const [inputCategory, setInputCategory] = useState('');
   // View-mode grouping dimension (spec §2 — category, not product code, by default).
   const [groupBy, setGroupBy] = useState<'category' | 'subcategory' | 'weave' | 'code'>('category');
 
@@ -259,6 +260,7 @@ export function BuyingPlanClient({
   // grouped View, and the View's plan-detail table (edits still target row.key).
   const matchesFilters = (v: ViewItem) =>
     (!inputFabric || v.fabricType === inputFabric) &&
+    (!inputCategory || v.category === inputCategory) &&
     (!inputStatus || v.productStatus === inputStatus) &&
     (!inputPoType || poTypeQty(v, inputPoType) > 0) &&
     (!inputSearchQ || v.row.product_code.toLowerCase().includes(inputSearchQ));
@@ -319,57 +321,17 @@ export function BuyingPlanClient({
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   })();
 
-  // Filter bar shared by the View and Input modes (same state, so filters persist
-  // when switching) — the team gets the same product / state / PO-type filters in View.
-  const filterBar = (
-    <div className="wf-toolbar wf-filter-bar">
-      <input
-        className="wf-search"
-        placeholder="Filter product code…"
-        value={inputSearch}
-        onChange={(e) => setInputSearch(e.target.value)}
-      />
-      <label className="wf-inline-field">
-        Woven / Knitted
-        <select value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
-          <option value="">All</option>
-          {fabricOptions.map((f) => (
-            <option key={f} value={f}>{f}</option>
-          ))}
-        </select>
-      </label>
-      <label className="wf-inline-field">
-        Product State
-        <select value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
-          <option value="">All</option>
-          {statusOptions.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </label>
-      <label className="wf-inline-field">
-        PO type
-        <select value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
-          <option value="">All</option>
-          <option value="job">Job Work</option>
-          <option value="fob">FOB</option>
-          <option value="efob">E-FOB</option>
-        </select>
-      </label>
-      <span className="wf-subtle">
-        {mode === 'view' ? `${viewRows.length} of ${planned.length}` : `${inputRows.length} of ${view.length}`} shown
-        {(inputFabric || inputStatus || inputPoType || inputSearchQ) && (
-          <button
-            type="button"
-            className="wf-btn wf-btn-ghost wf-btn-sm"
-            onClick={() => { setInputFabric(''); setInputStatus(''); setInputPoType(''); setInputSearch(''); }}
-          >
-            Clear
-          </button>
-        )}
-      </span>
-    </div>
-  );
+  // Filters are shared by the View and Input modes (same state, so they persist when
+  // switching). Garment-category options come from the catalog — the View groups by them.
+  const categoryOptions = [...new Set(view.map((v) => v.category))].sort();
+  const hasFilters = Boolean(inputFabric || inputStatus || inputPoType || inputCategory || inputSearchQ);
+  const clearFilters = () => {
+    setInputFabric('');
+    setInputStatus('');
+    setInputPoType('');
+    setInputCategory('');
+    setInputSearch('');
+  };
   const plannedTotals = planned.reduce(
     (acc, item) => ({
       qty: acc.qty + item.totalQty,
@@ -565,15 +527,102 @@ export function BuyingPlanClient({
     });
   }
 
+  // "Needs attention" — the four honest signals the plan itself carries. No thresholds
+  // invented: each is a plain count of lines in a definite state.
+  const attention = {
+    missingCost: view.filter((v) => v.missingCost).length,
+    approvalPending:
+      planLocked && status !== 'approved'
+        ? planned.filter((v) => v.row.line_status !== 'approved').length
+        : 0,
+    notStarted: planned.filter((v) => v.actualQty === 0).length,
+    overPlan: planned.filter((v) => v.overPlan).length,
+  };
+  const attentionTotal =
+    attention.missingCost + attention.approvalPending + attention.notStarted + attention.overPlan;
+
+  // Export = the Plan-detail table, respecting the current filters.
+  function exportCsv() {
+    const rows = view.filter(matchesFilters).map((v) => [
+      v.row.product_code,
+      v.category,
+      v.productStatus,
+      String(v.totalQty),
+      String(Math.round(v.valueToBeBought)),
+      v.row.job_work_qty,
+      v.row.efob_qty,
+      v.row.fob_qty,
+      String(v.actualQty),
+      `${v.pctComplete}%`,
+      v.row.line_status || '',
+    ]);
+    downloadCsv(
+      `buying-plan-${planMonth.slice(0, 7)}.csv`,
+      ['product_code', 'category', 'state', 'plan_qty', 'plan_value', 'job', 'efob', 'fob', 'actual_qty', 'bought_pct', 'approval'],
+      rows,
+    );
+  }
+
+  const shownCount = mode === 'view' ? viewRows.length : inputRows.length;
+  const totalCount = mode === 'view' ? planned.length : view.length;
+
+  // Shared filter toolbar (sticky card). Group-by only applies to the grouped View.
+  const toolbar = (
+    <div className="bp-toolbar">
+      <input
+        className="bp-search"
+        placeholder="Search product code…"
+        value={inputSearch}
+        onChange={(e) => setInputSearch(e.target.value)}
+      />
+      <select aria-label="Category" value={inputCategory} onChange={(e) => setInputCategory(e.target.value)}>
+        <option value="">Category: All</option>
+        {categoryOptions.map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+      </select>
+      <select aria-label="Woven or knitted" value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
+        <option value="">Woven / Knitted: All</option>
+        {fabricOptions.map((f) => (
+          <option key={f} value={f}>{f}</option>
+        ))}
+      </select>
+      <select aria-label="Product state" value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
+        <option value="">State: All</option>
+        {statusOptions.map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+      <select aria-label="PO type" value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
+        <option value="">PO type: All</option>
+        <option value="job">Job Work</option>
+        <option value="fob">FOB</option>
+        <option value="efob">E-FOB</option>
+      </select>
+      {mode === 'view' && (
+        <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}>
+          <option value="category">Group by: Category</option>
+          <option value="subcategory">Group by: Sub-category</option>
+          <option value="weave">Group by: Woven / Knitted</option>
+          <option value="code">Group by: Product code</option>
+        </select>
+      )}
+      <span className="bp-toolbar-count">
+        {shownCount} of {totalCount} shown
+        {hasFilters && (
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={clearFilters}>
+            Clear
+          </button>
+        )}
+      </span>
+    </div>
+  );
+
   return (
     <>
-      <MacroSnapshot
-        demandQty={totalPending}
-        blendedValue={plannedTotals.value}
-        byCategory={blendedByCategory}
-      />
-      <div className="wf-toolbar">
-        <div className="wf-toolbar-left">
+      {/* Page bar: month · status · View/Input on the left; actions on the right. */}
+      <div className="bp-pagebar">
+        <div className="bp-pagebar-left">
           <Field label="Month">
             <select
               value={planMonth}
@@ -593,251 +642,57 @@ export function BuyingPlanClient({
           </Field>
           <StatusBadge status={status} edited={plan?.edited_before_approval} />
           <div className="segment wf-segment">
-            <button
-              type="button"
-              className={mode === 'view' ? 'active' : ''}
-              onClick={() => setMode('view')}
-            >
+            <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
             </button>
-            <button
-              type="button"
-              className={mode === 'input' ? 'active' : ''}
-              onClick={() => setMode('input')}
-            >
+            <button type="button" className={mode === 'input' ? 'active' : ''} onClick={() => setMode('input')}>
               <ClipboardList size={14} /> Input
             </button>
           </div>
         </div>
 
-        {editable && mode === 'input' && (
-          <div className="wf-toolbar-right">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void onCsvFile(file);
-                event.target.value = '';
-              }}
-            />
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={downloadTemplate}>
-              <Download size={15} /> Template
-            </button>
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              onClick={() => fileRef.current?.click()}
-              title="Import a product_code, po_type, qty CSV"
-            >
-              <Upload size={15} /> Import CSV
-            </button>
-            <ProductPicker
-              items={restrictPicker ? pickerItems : catalog}
-              exclude={used}
-              allowFreeText={!restrictPicker}
-              onPick={(code) => addRow(code)}
-              placeholder={restrictPicker ? 'Add product — from Standard Cost…' : 'Add product — search code or name…'}
-            />
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              onClick={addAll}
-              disabled={!available.length}
-            >
-              <Plus size={15} /> Add all
-            </button>
-          </div>
-        )}
-      </div>
-
-      {!isPlanWindowOpen(planMonth) && (
-        <Notice tone="warn">
-          The window for {monthLabel(planMonth)} opens seven days before the month
-          starts. You can still draft ahead.
-        </Notice>
-      )}
-
-      {plan?.rejection_notes && status === 'rejected' && (
-        <Notice tone="error">
-          <strong>Rejected.</strong> {plan.rejection_notes}
-        </Notice>
-      )}
-
-      {message && <Notice tone="ok">{message}</Notice>}
-      {error && <Notice tone="error">{error}</Notice>}
-
-      {mode === 'view' && (
-        <>
-        <TimeBuckets buckets={buckets} isAdmin={role === 'admin'} />
-        <ValueByPoType value={valueByPoType} total={valueByPoTypeTotal} />
-        {filterBar}
-        <PlanView
-          groups={groups}
-          totals={plannedTotals}
-          pctBought={pctBought}
-          collapsed={collapsed}
-          setCollapsed={setCollapsed}
-          plannedCount={planned.length}
-          groupBy={groupBy}
-          setGroupBy={setGroupBy}
-        />
-        <div className="wf-section-head" style={{ marginTop: 18 }}>
-          <h3>Plan detail — every line, as on the sheet</h3>
-          <span className="wf-subtle">{view.length} products · filter or sort any column</span>
-        </div>
-        <FilterTable
-          rows={view.filter(matchesFilters)}
-          columns={sheetCols}
-          rowKey={(v) => v.row.key}
-          defaultSource="supabase"
-          unit="lines"
-          pageSize={100}
-          searchPlaceholder="Product code or status"
-          emptyText="No lines in this plan."
-        />
-        </>
-      )}
-
-      {mode === 'input' && (
-      <>
-      {filterBar}
-      <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wide-table wf-grid">
-            <thead>
-              <tr>
-                <th>Product code</th>
-                <th>Product State</th>
-                <th>Woven / Knitted</th>
-                <th className="num wf-cell-calc">Pending qty</th>
-                <th className="num input-col wf-cell-input">Job work qty</th>
-                <th className="num input-col wf-cell-input">FOB qty</th>
-                <th className="num input-col wf-cell-input">E-FOB qty</th>
-                <th className="num wf-cell-calc">Total quantity</th>
-                <th className="num wf-cell-calc">
-                  Standard cost<small className="wf-subtle">Job · FOB · E-FOB</small>
-                </th>
-                <th className="num wf-cell-calc">Value to be bought</th>
-                <th className="num wf-cell-calc">Actual issued quantity</th>
-                <th className="num wf-cell-calc">Actual issued value</th>
-                <th className="input-col wf-cell-input">Remark</th>
-                {editable && <th aria-label="Remove" />}
-              </tr>
-            </thead>
-            <tbody>
-              {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, actualQty, actualValue, overPlan }) => (
-                <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
-                  <td className="mono">{row.product_code}</td>
-                  <td>{productStatus}</td>
-                  <td>{fabricType}</td>
-                  <td className="num wf-cell-calc">
-                    {pending != null ? fmt.format(pending) : '—'}
-                  </td>
-                  {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
-                    <td key={field} className="num input-col wf-cell-input">
-                      <input
-                        type="number"
-                        min={0}
-                        value={row[field]}
-                        disabled={!editable}
-                        onChange={(event) => patch(row.key, field, event.target.value)}
-                      />
-                    </td>
-                  ))}
-                  <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
-                  <td className="num wf-cell-calc">
-                    {cost ? (
-                      <div className="wf-cost-triple">
-                        <span><b>Job</b> {fmt.format(cost.job)}</span>
-                        <span><b>FOB</b> {fmt.format(cost.fob)}</span>
-                        <span><b>E-FOB</b> {fmt.format(cost.efob)}</span>
-                      </div>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="num wf-cell-calc">
-                    {missingCost ? (
-                      <span className="wf-over-tag">no approved cost</span>
-                    ) : (
-                      money.format(valueToBeBought)
-                    )}
-                  </td>
-                  <td className="num wf-cell-calc">
-                    {fmt.format(actualQty)}
-                    {overPlan && <span className="wf-over-tag">over plan</span>}
-                  </td>
-                  <td className="num wf-cell-calc">{money.format(actualValue)}</td>
-                  <td className="input-col">
-                    <input
-                      value={row.remark}
-                      disabled={!editable}
-                      placeholder="optional"
-                      onChange={(event) => patch(row.key, 'remark', event.target.value)}
-                    />
-                  </td>
-                  {editable && (
-                    <td>
-                      <button
-                        type="button"
-                        className="wf-icon-btn"
-                        aria-label={`Remove ${row.product_code}`}
-                        onClick={() =>
-                          setRows((current) =>
-                            current.filter((item) => item.key !== row.key),
-                          )
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              {!inputRows.length && (
-                <tr>
-                  <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
-                    {view.length
-                      ? 'No products match the filters.'
-                      : 'No product codes added yet. Discontinued variants are excluded automatically.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {view.length > 0 && (
-              <tfoot>
-                <tr>
-                  <td colSpan={7}>Total</td>
-                  <td className="num strong">{fmt.format(totals.qty)}</td>
-                  <td />
-                  <td className="num strong">{money.format(totals.value)}</td>
-                  <td className="num strong">{fmt.format(totals.actualQty)}</td>
-                  <td className="num strong">{money.format(totals.actualValue)}</td>
-                  <td />
-                  {editable && <td />}
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      </div>
-
-      <div className="wf-footer-bar">
-        <p className="wf-footer-note">
-          Allocation may exceed pending quantity — FOB orders run ahead of demand
-          because the vendor holds the stock.
-        </p>
-        <div className="wf-footer-actions">
-          {editable && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              onClick={save}
-              disabled={pending}
-            >
+        <div className="bp-pagebar-right">
+          {editable && mode === 'input' && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void onCsvFile(file);
+                  event.target.value = '';
+                }}
+              />
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={downloadTemplate}>
+                <Download size={15} /> Template
+              </button>
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost"
+                onClick={() => fileRef.current?.click()}
+                title="Import a product_code, po_type, qty CSV"
+              >
+                <Upload size={15} /> Import CSV
+              </button>
+              <ProductPicker
+                items={restrictPicker ? pickerItems : catalog}
+                exclude={used}
+                allowFreeText={!restrictPicker}
+                onPick={(code) => addRow(code)}
+                placeholder={restrictPicker ? 'Add product — from Standard Cost…' : 'Add product — search code or name…'}
+              />
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={addAll} disabled={!available.length}>
+                <Plus size={15} /> Add all
+              </button>
+            </>
+          )}
+          <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
+            <Download size={15} /> Export
+          </button>
+          {editable && mode === 'input' && (
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
               <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
             </button>
           )}
@@ -847,23 +702,225 @@ export function BuyingPlanClient({
               className="wf-btn wf-btn-primary"
               onClick={submit}
               disabled={pending || !plan?.id}
+              title={!plan?.id ? 'Save the plan first' : undefined}
             >
               <Send size={15} /> Submit for approval
             </button>
           )}
-          {canApprove(role, status) && plan && (
-            <ApprovalBar
-              entityType="buying_plan"
-              entityId={String(plan.id)}
-              entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
-              onDone={(result) => {
-                if (result.ok) reloadWithToast();
-              }}
-            />
-          )}
         </div>
       </div>
-      </>
+
+      {!isPlanWindowOpen(planMonth) && (
+        <Notice tone="warn">
+          The window for {monthLabel(planMonth)} opens seven days before the month starts. You can still draft ahead.
+        </Notice>
+      )}
+      {plan?.rejection_notes && status === 'rejected' && (
+        <Notice tone="error">
+          <strong>Rejected.</strong> {plan.rejection_notes}
+        </Notice>
+      )}
+      {message && <Notice tone="ok">{message}</Notice>}
+      {error && <Notice tone="error">{error}</Notice>}
+
+      {mode === 'view' && (
+        <div className="bp-layout">
+          <div className="bp-stack">
+            <OverviewCard
+              pctBought={pctBought}
+              issuedQty={plannedTotals.actualQty}
+              plannedQty={plannedTotals.qty}
+              plannedValue={plannedTotals.value}
+              demandQty={totalPending}
+              issuedValue={plannedTotals.actualValue}
+              byCategory={blendedByCategory}
+            />
+
+            <div className="bp-sticky">
+              <div className="bp-card bp-toolbar-card">{toolbar}</div>
+            </div>
+
+            <PlanGroups
+              groups={groups}
+              groupBy={groupBy}
+              collapsed={collapsed}
+              setCollapsed={setCollapsed}
+              plannedCount={planned.length}
+            />
+
+            <section className="bp-card">
+              <div className="bp-cardhead">
+                <h2>Plan detail</h2>
+                <span className="wf-subtle">{view.length} products · every line as on the sheet · filter or sort any column</span>
+              </div>
+              <div className="bp-cardbody bp-cardbody-flush">
+                <FilterTable
+                  rows={view.filter(matchesFilters)}
+                  columns={sheetCols}
+                  rowKey={(v) => v.row.key}
+                  defaultSource="supabase"
+                  unit="lines"
+                  pageSize={100}
+                  searchPlaceholder="Product code or status"
+                  emptyText="No lines in this plan."
+                  download={{ filename: `buying-plan-${planMonth.slice(0, 7)}` }}
+                />
+              </div>
+            </section>
+          </div>
+
+          <div className="bp-stack bp-rightcol">
+            <AttentionCard counts={attention} total={attentionTotal} />
+            <LeadTimesCard buckets={buckets} isAdmin={role === 'admin'} />
+            <ValueByTypeCard
+              value={valueByPoType}
+              total={valueByPoTypeTotal}
+              split={poTypeSplit(planned.map((v) => v.row))}
+            />
+          </div>
+        </div>
+      )}
+
+      {mode === 'input' && (
+        <>
+          <div className="bp-sticky">
+            <div className="bp-card bp-toolbar-card">{toolbar}</div>
+          </div>
+          <section className="bp-card">
+            <div className="bp-cardhead">
+              <h2>Fill the plan</h2>
+              <span className="wf-subtle">
+                Every active product is listed — zero out what you will not make. Allocation may exceed pending
+                quantity: FOB orders run ahead of demand because the vendor holds the stock.
+              </span>
+            </div>
+            <div className="bp-cardbody bp-cardbody-flush">
+              <div className="table-panel wf-grid-panel bp-input-panel">
+                <div className="table-scroll">
+                  <table className="wide-table wf-grid">
+                    <thead>
+                      <tr>
+                        <th>Product code</th>
+                        <th>Product State</th>
+                        <th>Woven / Knitted</th>
+                        <th className="num wf-cell-calc">Pending qty</th>
+                        <th className="num input-col wf-cell-input">Job work qty</th>
+                        <th className="num input-col wf-cell-input">FOB qty</th>
+                        <th className="num input-col wf-cell-input">E-FOB qty</th>
+                        <th className="num wf-cell-calc">Total quantity</th>
+                        <th className="num wf-cell-calc">
+                          Standard cost<small className="wf-subtle">Job · FOB · E-FOB</small>
+                        </th>
+                        <th className="num wf-cell-calc">Value to be bought</th>
+                        <th className="num wf-cell-calc">Actual issued quantity</th>
+                        <th className="num wf-cell-calc">Actual issued value</th>
+                        <th className="input-col wf-cell-input">Remark</th>
+                        {editable && <th aria-label="Remove" />}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, actualQty, actualValue, overPlan }) => (
+                        <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
+                          <td className="mono">{row.product_code}</td>
+                          <td>{productStatus}</td>
+                          <td>{fabricType}</td>
+                          <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : '—'}</td>
+                          {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
+                            <td key={field} className="num input-col wf-cell-input">
+                              <input
+                                type="number"
+                                min={0}
+                                value={row[field]}
+                                disabled={!editable}
+                                onChange={(event) => patch(row.key, field, event.target.value)}
+                              />
+                            </td>
+                          ))}
+                          <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
+                          <td className="num wf-cell-calc">
+                            {cost ? (
+                              <div className="wf-cost-triple">
+                                <span><b>Job</b> {fmt.format(cost.job)}</span>
+                                <span><b>FOB</b> {fmt.format(cost.fob)}</span>
+                                <span><b>E-FOB</b> {fmt.format(cost.efob)}</span>
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="num wf-cell-calc">
+                            {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(valueToBeBought)}
+                          </td>
+                          <td className="num wf-cell-calc">
+                            {fmt.format(actualQty)}
+                            {overPlan && <span className="wf-over-tag">over plan</span>}
+                          </td>
+                          <td className="num wf-cell-calc">{money.format(actualValue)}</td>
+                          <td className="input-col">
+                            <input
+                              value={row.remark}
+                              disabled={!editable}
+                              placeholder="optional"
+                              onChange={(event) => patch(row.key, 'remark', event.target.value)}
+                            />
+                          </td>
+                          {editable && (
+                            <td>
+                              <button
+                                type="button"
+                                className="wf-icon-btn"
+                                aria-label={`Remove ${row.product_code}`}
+                                onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {!inputRows.length && (
+                        <tr>
+                          <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
+                            {view.length
+                              ? 'No products match the filters.'
+                              : 'No product codes added yet. Discontinued variants are excluded automatically.'}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                    {view.length > 0 && (
+                      <tfoot>
+                        <tr>
+                          <td colSpan={7}>Total</td>
+                          <td className="num strong">{fmt.format(totals.qty)}</td>
+                          <td />
+                          <td className="num strong">{money.format(totals.value)}</td>
+                          <td className="num strong">{fmt.format(totals.actualQty)}</td>
+                          <td className="num strong">{money.format(totals.actualValue)}</td>
+                          <td />
+                          {editable && <td />}
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {canApprove(role, status) && plan && (
+            <div className="bp-card bp-cardbody">
+              <ApprovalBar
+                entityType="buying_plan"
+                entityId={String(plan.id)}
+                entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+                onDone={(result) => {
+                  if (result.ok) reloadWithToast();
+                }}
+              />
+            </div>
+          )}
+        </>
       )}
     </>
   );
@@ -881,119 +938,140 @@ type ViewItemFull = {
   pctComplete: number;
   fabricType: string;
   productStatus: string;
+  category: string;
+  subCategory: string;
   overPlan: boolean;
 };
 
-function Progress({ pct }: { pct: number }) {
+function Progress({ pct, flush = false }: { pct: number; flush?: boolean }) {
   return (
-    <div className="wf-progress">
-      <div
-        className="wf-progress-fill"
-        style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
-      />
+    <div className={`bp-progress${flush ? ' m0' : ''}`}>
+      <span style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
     </div>
   );
 }
 
+function Badge({ tone, children }: { tone: 'green' | 'yellow' | 'red' | 'gray'; children: React.ReactNode }) {
+  return <span className={`bp-badge ${tone}`}>{children}</span>;
+}
+
+// Compact rupee for tiles: ₹1.53 Cr / ₹49.86 L / ₹94,500.
+function inr(v: number) {
+  const abs = Math.abs(v);
+  if (abs >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`;
+  return money.format(v);
+}
+
 /**
- * §1 — leadership macro snapshot: the four glance questions above the line-item
- * table. Sales-based figures (run rate, last-3-month) are shown as "not wired"
- * rather than faked — the Quantity-Sold→DOQ feed isn't live yet (Mahesh's flag).
- * Demand projection (from ROP/DOQ) and the total blended request (real plan value,
- * broken down by category) are surfaced from data that already exists.
+ * Plan overview — the four glance figures. Buying progress (issued vs planned pcs),
+ * total plan value, demand projection (30-day ROP/DOQ) and issued value. Sales-based
+ * figures (run rate, last-3-month) are still not wired, so they are stated as a gap
+ * rather than shown as empty tiles.
  */
-function MacroSnapshot({
+function OverviewCard({
+  pctBought,
+  issuedQty,
+  plannedQty,
+  plannedValue,
   demandQty,
-  blendedValue,
+  issuedValue,
   byCategory,
 }: {
+  pctBought: number;
+  issuedQty: number;
+  plannedQty: number;
+  plannedValue: number;
   demandQty: number;
-  blendedValue: number;
+  issuedValue: number;
   byCategory: [string, number][];
 }) {
+  const remaining = Math.max(0, plannedQty - issuedQty);
   return (
-    <div className="wf-macro">
-      <div className="wf-macro-card wf-macro-gap">
-        <span className="wf-macro-q">Run rate — revenue / qty sold</span>
-        <strong className="wf-macro-val">—</strong>
-        <span className="wf-subtle">sales feed not wired yet</span>
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Plan overview</h2>
+        <span className="wf-subtle">Run rate and last-3-month average: sales feed not wired yet</span>
       </div>
-      <div className="wf-macro-card wf-macro-gap">
-        <span className="wf-macro-q">Last-3-month average</span>
-        <strong className="wf-macro-val">—</strong>
-        <span className="wf-subtle">sales feed not wired yet</span>
-      </div>
-      <div className="wf-macro-card">
-        <span className="wf-macro-q">Demand projection</span>
-        <strong className="wf-macro-val">{fmt.format(demandQty)} pcs</strong>
-        <span className="wf-subtle">30-day, from ROP / DOQ</span>
-      </div>
-      <div className="wf-macro-card wf-macro-wide">
-        <span className="wf-macro-q">Total blended request (this plan)</span>
-        <strong className="wf-macro-val">{money.format(blendedValue)}</strong>
-        <span className="wf-macro-cats">
-          {byCategory.length ? (
-            byCategory.map(([cat, val]) => (
-              <span key={cat} className="wf-macro-chip">{cat} · {money.format(val)}</span>
-            ))
-          ) : (
-            <span className="wf-subtle">no planned value yet</span>
-          )}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/**
- * §7 — coverage by PO-type lead time. Three windows (Job/EFOB/FOB) show the pieces
- * needed to cover each lead time, so leadership can size the split at freeze time.
- * Day-counts come from the editable Rules Master (sd_analytics_rule); admins edit
- * them inline.
- */
-/**
- * Item 3 — planned value (₹) by PO type. Its own dimension alongside the qty-level
- * coverage buckets: sum(qty × standard cost) for Job Work / E-FOB / FOB, plus the total.
- */
-function ValueByPoType({
-  value,
-  total,
-}: {
-  value: { job: number; fob: number; efob: number };
-  total: number;
-}) {
-  const rows = [
-    { key: 'job', label: 'Job Work', amount: value.job },
-    { key: 'efob', label: 'E-FOB', amount: value.efob },
-    { key: 'fob', label: 'FOB', amount: value.fob },
-  ];
-  return (
-    <div className="wf-buckets">
-      <div className="wf-buckets-head">
-        <h3>Planned value by PO type</h3>
-        <span className="wf-subtle">₹ to be bought per type · qty × approved standard cost</span>
-      </div>
-      <div className="wf-buckets-row">
-        {rows.map((r) => (
-          <div className="wf-bucket-card" key={r.key}>
-            <span className="wf-bucket-type">{r.label}</span>
-            <strong className="wf-bucket-qty">{r.amount ? money.format(r.amount) : '—'}</strong>
-            <span className="wf-bucket-days">
-              {total > 0 ? `${Math.round((r.amount / total) * 100)}% of plan value` : 'no priced lines'}
-            </span>
+      <div className="bp-cardbody">
+        <div className="bp-metrics">
+          <div className="bp-metric">
+            <div className="label">Buying progress</div>
+            <div className="value">{pctBought}%</div>
+            <div className="sub">{fmt.format(issuedQty)} of {fmt.format(plannedQty)} pcs issued</div>
+            <Progress pct={pctBought} />
           </div>
-        ))}
-        <div className="wf-bucket-card" key="total">
-          <span className="wf-bucket-type">Total</span>
-          <strong className="wf-bucket-qty">{total ? money.format(total) : '—'}</strong>
-          <span className="wf-bucket-days">all PO types</span>
+          <div className="bp-metric">
+            <div className="label">Total plan value</div>
+            <div className="value">{plannedValue ? inr(plannedValue) : '—'}</div>
+            <div className="sub">
+              {fmt.format(plannedQty)} pcs
+              {byCategory.length > 0 && ` · ${byCategory.slice(0, 2).map(([c, v]) => `${c} ${inr(v)}`).join(' · ')}`}
+            </div>
+          </div>
+          <div className="bp-metric">
+            <div className="label">Demand projection</div>
+            <div className="value">{fmt.format(demandQty)} pcs</div>
+            <div className="sub">30-day, from ROP / DOQ</div>
+          </div>
+          <div className="bp-metric">
+            <div className="label">Issued value</div>
+            <div className="value">{issuedValue ? inr(issuedValue) : '—'}</div>
+            <div className="sub">{fmt.format(remaining)} pcs remaining</div>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
-function TimeBuckets({
+function AttentionCard({
+  counts,
+  total,
+}: {
+  counts: { missingCost: number; approvalPending: number; notStarted: number; overPlan: number };
+  total: number;
+}) {
+  const items: { key: string; dot: 'red' | 'yellow' | 'green'; title: string; sub: string; n: number }[] = [
+    { key: 'cost', dot: 'red', title: 'Missing approved cost', sub: 'Blocks plan value visibility', n: counts.missingCost },
+    { key: 'approval', dot: 'yellow', title: 'Approval pending', sub: 'Lines waiting for action', n: counts.approvalPending },
+    { key: 'over', dot: 'red', title: 'Over plan', sub: 'Issued above the planned qty', n: counts.overPlan },
+    { key: 'start', dot: 'yellow', title: 'Not started', sub: 'Planned, nothing issued yet', n: counts.notStarted },
+  ];
+  const live = items.filter((i) => i.n > 0);
+  return (
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Needs attention</h2>
+        <Badge tone={total ? 'red' : 'green'}>{total ? `${total} item${total === 1 ? '' : 's'}` : 'All clear'}</Badge>
+      </div>
+      <div className="bp-cardbody bp-attention">
+        {live.length ? (
+          live.map((i) => (
+            <div className="bp-issue" key={i.key}>
+              <div className="left">
+                <span className={`bp-dot ${i.dot}`} />
+                <div>
+                  <b>{i.title}</b>
+                  <span>{i.sub}</span>
+                </div>
+              </div>
+              <strong>{i.n}</strong>
+            </div>
+          ))
+        ) : (
+          <span className="wf-subtle">Nothing flagged for this plan.</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * PO lead times (Rules Master day-counts; admins edit inline) with the pieces needed
+ * to cover each window — demand from the 30-day ROP.
+ */
+function LeadTimesCard({
   buckets,
   isAdmin,
 }: {
@@ -1016,25 +1094,21 @@ function TimeBuckets({
   }
 
   return (
-    <div className="wf-buckets">
-      <div className="wf-buckets-head">
-        <h3>Coverage by PO-type lead time</h3>
-        <span className="wf-subtle">pieces needed to cover each window · demand from 30-day ROP</span>
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>PO lead times</h2>
+        <span className="wf-subtle">coverage from 30-day ROP</span>
       </div>
-      <div className="wf-buckets-row">
+      <div className="bp-cardbody">
         {buckets.map((b) => (
-          <div className="wf-bucket-card" key={b.key}>
-            <span className="wf-bucket-type">{b.label}</span>
-            <strong className="wf-bucket-qty">{fmt.format(b.qty)} pcs</strong>
+          <div className="bp-summaryrow" key={b.key}>
+            <span>
+              {b.label}
+              <small className="bp-summary-sub">{fmt.format(b.qty)} pcs to cover</small>
+            </span>
             {editing === b.key ? (
               <span className="wf-issue-row">
-                <input
-                  className="wf-mini-input"
-                  type="number"
-                  min={1}
-                  value={val}
-                  onChange={(e) => setVal(e.target.value)}
-                />
+                <input className="wf-mini-input" type="number" min={1} value={val} onChange={(e) => setVal(e.target.value)} />
                 <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => save(b.ruleKey)}>
                   Save
                 </button>
@@ -1043,23 +1117,24 @@ function TimeBuckets({
                 </button>
               </span>
             ) : (
-              <span className="wf-bucket-days">
-                {b.days}-day window
+              <b>
+                {b.days} days
                 {isAdmin && (
                   <button
                     type="button"
                     className="wf-btn wf-btn-ghost wf-btn-sm"
+                    style={{ marginLeft: 8 }}
                     onClick={() => { setEditing(b.key); setVal(String(b.days)); }}
                   >
-                    edit
+                    Edit
                   </button>
                 )}
-              </span>
+              </b>
             )}
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1075,162 +1150,165 @@ function poTypeSplit(rows: Draft[]) {
   );
 }
 
-/** Compact "Job · FOB · E-FOB" chips — how much of the planned qty is proposed per PO type. */
-function PoTypeSplit({ split }: { split: { job: number; fob: number; efob: number } }) {
+/** "JOB 675 · E-FOB 255" — only the PO types that carry quantity. */
+function splitText(split: { job: number; fob: number; efob: number }) {
+  const parts: string[] = [];
+  if (split.job) parts.push(`JOB ${fmt.format(split.job)}`);
+  if (split.efob) parts.push(`E-FOB ${fmt.format(split.efob)}`);
+  if (split.fob) parts.push(`FOB ${fmt.format(split.fob)}`);
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+/**
+ * Planned value by PO type — ₹ to be bought per type with its share of the plan value,
+ * plus the quantity proposed per type. Same per-line value as the headline total, so
+ * the rows reconcile to it.
+ */
+function ValueByTypeCard({
+  value,
+  total,
+  split,
+}: {
+  value: { job: number; fob: number; efob: number };
+  total: number;
+  split: { job: number; fob: number; efob: number };
+}) {
+  const rows = [
+    { key: 'job', label: 'JOB', amount: value.job, qty: split.job },
+    { key: 'efob', label: 'E-FOB', amount: value.efob, qty: split.efob },
+    { key: 'fob', label: 'FOB', amount: value.fob, qty: split.fob },
+  ];
   return (
-    <span className="wf-plan-split" title="Qty proposed per PO type">
-      <span><b>Job</b>{fmt.format(split.job)}</span>
-      <span><b>FOB</b>{fmt.format(split.fob)}</span>
-      <span><b>E-FOB</b>{fmt.format(split.efob)}</span>
-    </span>
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Planned value by PO type</h2>
+        <span className="wf-subtle">qty × approved standard cost</span>
+      </div>
+      <div className="bp-cardbody">
+        {rows.map((r) => (
+          <div className="bp-summaryrow" key={r.key}>
+            <span>
+              {r.label}
+              <small className="bp-summary-sub">
+                {fmt.format(r.qty)} pcs{total > 0 && r.amount ? ` · ${Math.round((r.amount / total) * 100)}% of value` : ''}
+              </small>
+            </span>
+            <b>{r.amount ? inr(r.amount) : '—'}</b>
+          </div>
+        ))}
+        <div className="bp-summaryrow">
+          <span>Total</span>
+          <b>{total ? inr(total) : '—'}</b>
+        </div>
+      </div>
+    </section>
   );
 }
 
-function PlanView({
+const GROUP_LABEL: Record<'category' | 'subcategory' | 'weave' | 'code', string> = {
+  category: 'category',
+  subcategory: 'sub-category',
+  weave: 'woven / knitted',
+  code: 'product code',
+};
+
+/** Grouped plan: one collapsible block per group with plan qty/value, progress and per-product rows. */
+function PlanGroups({
   groups,
-  totals,
-  pctBought,
+  groupBy,
   collapsed,
   setCollapsed,
   plannedCount,
-  groupBy,
-  setGroupBy,
 }: {
   groups: [string, ViewItemFull[]][];
-  totals: { qty: number; value: number; actualQty: number; actualValue: number };
-  pctBought: number;
+  groupBy: 'category' | 'subcategory' | 'weave' | 'code';
   collapsed: Record<string, boolean>;
   setCollapsed: (updater: (c: Record<string, boolean>) => Record<string, boolean>) => void;
   plannedCount: number;
-  groupBy: 'category' | 'subcategory' | 'weave' | 'code';
-  setGroupBy: (v: 'category' | 'subcategory' | 'weave' | 'code') => void;
 }) {
-  if (!plannedCount) {
-    return (
-      <div className="empty-state">
-        <p>Nothing planned yet — switch to Input to fill this month’s buying plan.</p>
-      </div>
-    );
-  }
-
   return (
-    <>
-      <div className="metric-grid wf-metric-grid">
-        <div className="metric-card">
-          <span className="metric-label">Total buying qty</span>
-          <strong>{fmt.format(totals.qty)}</strong>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Total value to buy</span>
-          <strong>{money.format(totals.value)}</strong>
-        </div>
-        <div className="metric-card tone-teal">
-          <span className="metric-label">Issued (actual)</span>
-          <strong>{fmt.format(totals.actualQty)}</strong>
-          <small>{money.format(totals.actualValue)}</small>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">% bought</span>
-          <strong>{pctBought}%</strong>
-          <Progress pct={pctBought} />
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Qty proposed by PO type</span>
-          <PoTypeSplit split={poTypeSplit(groups.flatMap(([, items]) => items.map((it) => it.row)))} />
-        </div>
-      </div>
-
-      <div className="wf-toolbar">
-        <label className="wf-inline-field">
-          Group by
-          <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}>
-            <option value="category">Category</option>
-            <option value="subcategory">Sub-category</option>
-            <option value="weave">Woven / Knitted</option>
-            <option value="code">Product code</option>
-          </select>
-        </label>
-        <div className="wf-toolbar-right">
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Buying plan by {GROUP_LABEL[groupBy]}</h2>
+        <div className="bp-actions">
           <button
             type="button"
             className="wf-btn wf-btn-ghost wf-btn-sm"
-            onClick={() =>
-              setCollapsed(() => Object.fromEntries(groups.map(([f]) => [f, true])))
-            }
+            onClick={() => setCollapsed(() => Object.fromEntries(groups.map(([g]) => [g, true])))}
           >
             Collapse all
           </button>
-          <button
-            type="button"
-            className="wf-btn wf-btn-ghost wf-btn-sm"
-            onClick={() => setCollapsed(() => ({}))}
-          >
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setCollapsed(() => ({}))}>
             Expand all
           </button>
         </div>
       </div>
-
-      <div className="wf-plan-groups">
-        {groups.map(([fabric, items]) => {
-          const gt = items.reduce(
-            (a, it) => ({
-              qty: a.qty + it.totalQty,
-              value: a.value + it.valueToBeBought,
-              actualQty: a.actualQty + it.actualQty,
-            }),
-            { qty: 0, value: 0, actualQty: 0 },
-          );
-          const gPct = gt.qty > 0 ? Math.round((gt.actualQty / gt.qty) * 100) : 0;
-          const isCollapsed = collapsed[fabric];
-          return (
-            <div className="wf-plan-group" key={fabric}>
-              <button
-                type="button"
-                className="wf-plan-group-head"
-                onClick={() =>
-                  setCollapsed((c) => ({ ...c, [fabric]: !c[fabric] }))
-                }
-              >
-                {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                <span className="wf-plan-group-name">{fabric}</span>
-                <span className="wf-subtle">{items.length} products</span>
-                <span className="wf-plan-group-stat">{fmt.format(gt.qty)} pcs</span>
-                <PoTypeSplit split={poTypeSplit(items.map((it) => it.row))} />
-                <span className="wf-plan-group-stat">{money.format(gt.value)}</span>
-                <span className="wf-plan-group-bar">
-                  <Progress pct={gPct} />
-                </span>
-              </button>
-              {!isCollapsed && (
-                <div className="wf-plan-group-body">
-                  {items.map((it) => (
-                    <div className="wf-plan-line" key={it.row.key}>
-                      <span className="mono wf-plan-code">{it.row.product_code}</span>
-                      <span className="wf-subtle">{it.productStatus}</span>
-                      <span className="num">{fmt.format(it.totalQty)} pcs</span>
-                      <PoTypeSplit split={poTypeSplit([it.row])} />
-                      <span className="num">
-                        {it.missingCost ? (
-                          <span className="wf-over-tag">no approved cost</span>
-                        ) : (
-                          money.format(it.valueToBeBought)
-                        )}
-                      </span>
-                      <span className="wf-plan-line-bar">
-                        <Progress pct={it.pctComplete} />
-                      </span>
-                      <span className="num wf-subtle">{it.pctComplete}%</span>
-                      <span className="num wf-subtle">
-                        {it.remaining > 0 ? `${fmt.format(it.remaining)} left` : 'done'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div className="bp-cardbody">
+        {!plannedCount ? (
+          <div className="empty-state">
+            <p>Nothing planned yet — switch to Input to fill this month’s buying plan.</p>
+          </div>
+        ) : !groups.length ? (
+          <div className="wf-subtle">No products match the filters.</div>
+        ) : (
+          groups.map(([name, items]) => {
+            const gt = items.reduce(
+              (a, it) => ({ qty: a.qty + it.totalQty, value: a.value + it.valueToBeBought, actualQty: a.actualQty + it.actualQty }),
+              { qty: 0, value: 0, actualQty: 0 },
+            );
+            const gPct = gt.qty > 0 ? Math.min(100, Math.round((gt.actualQty / gt.qty) * 100)) : 0;
+            const isCollapsed = collapsed[name];
+            const tone: 'green' | 'yellow' | 'gray' = gPct >= 50 ? 'green' : gPct > 0 ? 'yellow' : 'gray';
+            return (
+              <div className="bp-category" key={name}>
+                <button type="button" className="bp-cathead" onClick={() => setCollapsed((c) => ({ ...c, [name]: !c[name] }))}>
+                  <div className="bp-catname">
+                    <b>
+                      {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />} {name}
+                    </b>
+                    <span>{items.length} product{items.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="bp-num"><b>{fmt.format(gt.qty)} pcs</b><span>Plan qty</span></div>
+                  <div className="bp-num"><b>{gt.value ? inr(gt.value) : '—'}</b><span>Plan value</span></div>
+                  <div className="bp-split">{splitText(poTypeSplit(items.map((it) => it.row)))}</div>
+                  <div><Progress pct={gPct} flush /></div>
+                  <div><Badge tone={tone}>{gPct}%</Badge></div>
+                </button>
+                {!isCollapsed &&
+                  items.map((it) => {
+                    const badge = it.missingCost
+                      ? { tone: 'red' as const, text: 'Cost missing' }
+                      : it.overPlan
+                        ? { tone: 'red' as const, text: 'Over plan' }
+                        : it.pctComplete >= 100
+                          ? { tone: 'green' as const, text: 'Fully bought' }
+                          : it.pctComplete > 0
+                            ? { tone: 'yellow' as const, text: `${it.pctComplete}% bought` }
+                            : { tone: 'gray' as const, text: '0% bought' };
+                    return (
+                      <div className="bp-skurow" key={it.row.key}>
+                        <div className="bp-sku">
+                          <b className="mono">{it.row.product_code}</b>
+                          <span>{it.productStatus}</span>
+                        </div>
+                        <div>{fmt.format(it.totalQty)} pcs</div>
+                        <div>{it.missingCost ? <span className="wf-subtle">—</span> : money.format(it.valueToBeBought)}</div>
+                        <div className="bp-split">{splitText(poTypeSplit([it.row]))}</div>
+                        <div>
+                          <Progress pct={it.pctComplete} flush />
+                          <small className="bp-summary-sub">
+                            {fmt.format(it.actualQty)} issued{it.remaining > 0 ? ` · ${fmt.format(it.remaining)} left` : ''}
+                          </small>
+                        </div>
+                        <div><Badge tone={badge.tone}>{badge.text}</Badge></div>
+                      </div>
+                    );
+                  })}
+              </div>
+            );
+          })
+        )}
       </div>
-    </>
+    </section>
   );
 }
