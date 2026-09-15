@@ -22,7 +22,7 @@ const STATUS_LABEL: Record<BuyingPlanAnalysisStatus, string> = {
   short: 'Issued below approved',
   unissued: 'Approved, not issued',
   not_planned: 'Not in plan',
-  not_approved: 'In plan, never approved',
+  not_approved: 'In plan, no approved qty',
 };
 
 // Highlight colours: red = exception (a) not budgeted, amber = exception (b) over-issued.
@@ -166,7 +166,7 @@ export function BuyingPlanAnalysisClient({ analysis }: { analysis: BuyingPlanAna
           Issued but NOT budgeted — {exceptions.notBudgeted.length} product{exceptions.notBudgeted.length === 1 ? '' : 's'}
         </div>
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
-          POs issued for products that are not in the {monthLabel(planMonth)} buying plan, or are in the plan but were never approved. Why were these issued?
+          POs issued for products that are not in the {monthLabel(planMonth)} buying plan, or are in the plan with no approved quantity (never approved, or approved at zero). Why were these issued?
         </p>
         {exceptions.notBudgeted.length === 0 ? (
           <div className="wf-subtle">None — every issued product was budgeted and approved.</div>

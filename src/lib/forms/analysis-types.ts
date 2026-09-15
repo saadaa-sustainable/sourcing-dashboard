@@ -24,7 +24,7 @@ export type BuyingPlanAnalysisStatus =
   | 'short' // issued < approved, something issued
   | 'unissued' // approved, nothing issued
   | 'not_planned' // issued, product absent from the plan (exception a)
-  | 'not_approved'; // issued, in the plan but the line was never approved (exception a)
+  | 'not_approved'; // issued, in the plan but with no approved quantity — line never approved, or approved at zero (exception a)
 
 export type BuyingPlanAnalysisProduct = {
   product_code: string;

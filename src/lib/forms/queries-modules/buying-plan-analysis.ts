@@ -28,6 +28,13 @@ const poTypeOfRef = (ref: string | null) => {
   return t ? t.trim().toUpperCase() : null;
 };
 
+// standard_value on a submitted/approved FG line is the line's FROZEN TOTAL value (qty × rate
+// at submit — e.g. SUZNS Aug-26: qty 3,925 × ₹500 = 1,962,500 is what is stored), whereas an
+// unsubmitted line may still carry the per-unit rate. A total is never smaller than the
+// quantity (that would mean a rate under ₹1), so: value ≥ qty ⇒ already a total; otherwise it
+// is a per-unit rate and we multiply. Zero quantity carries no value regardless.
+const lineValue = (qty: number, sv: number) => (qty > 0 ? (sv >= qty ? sv : qty * sv) : 0);
+
 const nextMonthOf = (isoMonth: string) => {
   const [y, m] = isoMonth.split('-').map(Number);
   const ny = m === 12 ? y + 1 : y;
@@ -95,7 +102,7 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart()): Promise<
     planned.set(code, {
       approved: prev.approved || approved,
       qty: prev.qty + (approved ? qty : 0),
-      value: prev.value + (approved ? qty * Number(l.standard_value || 0) : 0),
+      value: prev.value + (approved ? lineValue(qty, Number(l.standard_value || 0)) : 0),
       cells: prev.cells + (approved ? [job, fob, efob].filter((q) => q > 0).length : 0),
     });
   }
@@ -150,9 +157,15 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart()): Promise<
     issued.set(code, cur);
   }
 
-  // Per-product rows = approved-plan products ∪ issued products.
+  // A line "carries a budget" only when it is approved AND has a quantity. An approved
+  // line with zero qty authorises nothing, so anything issued against it is "not
+  // budgeted" (exception a), not "issued above approved" (exception b) — otherwise
+  // "approved 0, issued 500" would masquerade as an over-issue.
+  const hasBudget = (p: Planned | undefined) => Boolean(p?.approved) && (p?.qty ?? 0) > 0;
+
+  // Per-product rows = budgeted-plan products ∪ issued products.
   const codes = new Set<string>();
-  for (const [code, p] of planned) if (p.approved) codes.add(code);
+  for (const [code, p] of planned) if (hasBudget(p)) codes.add(code);
   for (const code of issued.keys()) codes.add(code);
 
   const products: BuyingPlanAnalysisProduct[] = [];
@@ -169,7 +182,7 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart()): Promise<
   for (const code of codes) {
     const p = planned.get(code);
     const i = issued.get(code);
-    const pApproved = Boolean(p?.approved);
+    const pApproved = hasBudget(p);
     const pq = pApproved ? p!.qty : 0;
     const pv = pApproved ? p!.value : 0;
     const iq = i?.qty ?? 0;
