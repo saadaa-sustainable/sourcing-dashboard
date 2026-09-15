@@ -739,26 +739,71 @@
   border-bottom: 0;
 }
 
-/* Open PO Tracker: twelve-column filter grid prevents full-width dropdown rows. */
-.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar {
+/* Open PO Tracker: primary filters stay visible; secondary filters expand in place. */
+.ui-shopify .tracker-filter-bar {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(110px, 1fr)) auto;
   align-items: end;
   gap: 8px;
   padding: 10px 14px;
 }
-.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .search-field {
-  grid-column: span 4;
+.ui-shopify .tracker-filter-bar > .search-field,
+.ui-shopify .tracker-filter-bar > .field {
   width: 100%;
   min-width: 0;
 }
-.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field {
-  grid-column: span 2;
+.ui-shopify .tracker-more-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  color: #303030;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .03);
+  font-size: 10.5px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+.ui-shopify .tracker-more-button:hover,
+.ui-shopify .tracker-more-button.active {
+  color: #111;
+  background: #f1f2f3;
+  border-color: #aeb2b5;
+}
+.ui-shopify .tracker-more-button:focus-visible {
+  outline: 2px solid rgba(0, 128, 96, .24);
+  outline-offset: 2px;
+}
+.ui-shopify .tracker-more-count {
+  min-width: 17px;
+  height: 17px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 5px;
+  color: #fff;
+  background: var(--ink-1);
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+}
+.ui-shopify .tracker-more-filters {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.ui-shopify .tracker-more-filters[hidden] {
+  display: none;
+}
+.ui-shopify .tracker-more-filters > .field {
   width: 100%;
   min-width: 0;
-}
-.ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field:nth-child(n + 6) {
-  grid-column: span 3;
 }
 .ui-shopify .content:has(> .tracker-status-tabs) > .tracker-status-tabs {
   width: 100%;
@@ -781,15 +826,18 @@
   .ui-shopify .metric-grid.dashboard-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .ui-shopify .tracker-filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .search-field {
-    grid-column: span 6;
+  .ui-shopify .tracker-filter-bar > .search-field,
+  .ui-shopify .tracker-more-filters {
+    grid-column: 1 / -1;
   }
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field,
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field:nth-child(n + 6) {
-    grid-column: span 2;
+  .ui-shopify .tracker-more-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -801,10 +849,16 @@
   .ui-shopify .wf-page:has(.role-tabs[aria-label="My Dashboard views"]) .wf-my-approvals {
     grid-template-columns: 1fr;
   }
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .search-field,
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field,
-  .ui-shopify .content:has(> .tracker-status-tabs) > .filter-bar > .field:nth-child(n + 6) {
-    grid-column: span 6;
+  .ui-shopify .tracker-filter-bar {
+    grid-template-columns: 1fr;
+  }
+  .ui-shopify .tracker-filter-bar > .search-field,
+  .ui-shopify .tracker-more-filters {
+    grid-column: auto;
+  }
+  .ui-shopify .tracker-more-button { width: 100%; }
+  .ui-shopify .tracker-more-filters {
+    grid-template-columns: 1fr;
   }
   .ui-shopify .content:has(> .tracker-status-tabs) > .table-panel .table-meta-actions {
     width: 100%;

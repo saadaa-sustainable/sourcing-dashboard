@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Lock,
   LogOut,
+  MoreHorizontal,
   PackageSearch,
   Search,
   X,
@@ -1465,6 +1466,13 @@ function TrackerTab({
   });
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
   const [missingOnly, setMissingOnly] = useState(false);
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const moreFilterCount = [
+    filters.vendor,
+    filters.product,
+    filters.easycom,
+    filters.bucket,
+  ].filter(Boolean).length;
   // Freeze panes: double-click a header to freeze every column up to it (sticky);
   // the rest scrolls. -1 = nothing frozen. Left offsets are measured from the headers.
   const headRowRef = useRef<HTMLTableRowElement>(null);
@@ -1557,7 +1565,7 @@ function TrackerTab({
           info="Total pending pieces across all open PO lines."
         />
       </div>
-      <div className="filter-bar">
+      <div className="filter-bar tracker-filter-bar">
         <label className="search-field">
           <Search size={16} />
           <input
@@ -1566,12 +1574,6 @@ function TrackerTab({
             onChange={(e) => set({ ...filters, search: e.target.value })}
           />
         </label>
-        <FilterSelect
-          label="Vendor"
-          value={filters.vendor}
-          options={unique(all.map((r) => r.vendorName))}
-          onChange={(v) => set({ ...filters, vendor: v })}
-        />
         <FilterSelect
           label="Vendor Code"
           value={filters.vendorCode}
@@ -1591,36 +1593,63 @@ function TrackerTab({
           onChange={(v) => set({ ...filters, type: v })}
         />
         <FilterSelect
-          label="Product"
-          value={filters.product}
-          options={unique(all.map((r) => r.productCode))}
-          onChange={(v) => set({ ...filters, product: v })}
-        />
-        <FilterSelect
           label="Merchant"
           value={filters.merchant}
           options={unique(all.map((r) => r.merchant))}
           onChange={(v) => set({ ...filters, merchant: v })}
         />
-        <FilterSelect
-          label="EasyCom"
-          value={filters.easycom}
-          options={["Approved", "Partially Received", "Closure Pending"]}
-          onChange={(v) => set({ ...filters, easycom: v })}
-        />
-        <FilterSelect
-          label="Days Overdue"
-          value={filters.bucket}
-          options={[
-            "Not Due",
-            "0-7 Days",
-            "8-15 Days",
-            "16-30 Days",
-            "30+ Days",
-            "No EDD",
-          ]}
-          onChange={(v) => set({ ...filters, bucket: v })}
-        />
+        <button
+          type="button"
+          className={moreFiltersOpen ? "tracker-more-button active" : "tracker-more-button"}
+          aria-expanded={moreFiltersOpen}
+          aria-controls="tracker-more-filters"
+          onClick={() => setMoreFiltersOpen((open) => !open)}
+        >
+          <MoreHorizontal size={15} aria-hidden="true" />
+          More filters
+          {moreFilterCount > 0 && (
+            <span className="tracker-more-count">{moreFilterCount}</span>
+          )}
+        </button>
+        <div
+          id="tracker-more-filters"
+          className="tracker-more-filters"
+          role="group"
+          aria-label="More filters"
+          hidden={!moreFiltersOpen}
+        >
+          <FilterSelect
+            label="Vendor"
+            value={filters.vendor}
+            options={unique(all.map((r) => r.vendorName))}
+            onChange={(v) => set({ ...filters, vendor: v })}
+          />
+          <FilterSelect
+            label="Product"
+            value={filters.product}
+            options={unique(all.map((r) => r.productCode))}
+            onChange={(v) => set({ ...filters, product: v })}
+          />
+          <FilterSelect
+            label="EasyCom"
+            value={filters.easycom}
+            options={["Approved", "Partially Received", "Closure Pending"]}
+            onChange={(v) => set({ ...filters, easycom: v })}
+          />
+          <FilterSelect
+            label="Days Overdue"
+            value={filters.bucket}
+            options={[
+              "Not Due",
+              "0-7 Days",
+              "8-15 Days",
+              "16-30 Days",
+              "30+ Days",
+              "No EDD",
+            ]}
+            onChange={(v) => set({ ...filters, bucket: v })}
+          />
+        </div>
       </div>
       <div className="segment tracker-status-tabs">
         <button
