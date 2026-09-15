@@ -870,3 +870,383 @@
 @media (max-width: 560px) {
   .ui-shopify .metric-grid.dashboard-metrics { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+   Approved focused workflow views: presentation only.
+
+   FormLayout adds one of the explicit `ui-view-*` classes only for the views
+   represented by the approved reference images. These rules never create,
+   remove, rename or reorder production content; they only refine the existing
+   controls, cards, tables and responsive composition.
+   ========================================================================== */
+
+.ui-shopify-focused .wf-body > .wf-toolbar {
+  min-height: 57px;
+  padding: 10px 14px;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.ui-shopify-focused .wf-body > .wf-toolbar > .segment,
+.ui-shopify-focused .wf-body > .wf-toolbar > .wf-toolbar-left,
+.ui-shopify-focused .wf-body > .wf-toolbar > .wf-toolbar-right {
+  margin-block: 0;
+}
+.ui-shopify-focused .wf-body > .wf-toolbar .wf-search {
+  min-width: min(260px, 100%);
+  flex: 1 1 260px;
+}
+.ui-shopify-focused .wf-body > .table-panel,
+.ui-shopify-focused .wf-body > .wf-grid-panel {
+  overflow: hidden;
+}
+.ui-shopify-focused .wf-body > .role-tabs,
+.ui-shopify-focused .wf-body > .segment {
+  margin-bottom: 0;
+}
+.ui-shopify-focused .wf-card-title {
+  color: var(--ink-1);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Approvals: one clear decision queue, with the record-type lens below it. */
+.ui-view-approvals .wf-body > .wf-toolbar {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ui-view-approvals .wf-body > .wf-toolbar > .segment:last-child {
+  width: 100%;
+  padding: 0;
+  overflow-x: auto;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+.ui-view-approvals .wf-body > .wf-toolbar > .segment:last-child button {
+  padding: 8px 11px;
+  border-radius: 6px 6px 0 0;
+}
+.ui-view-approvals .wf-body > .wf-toolbar > .segment:last-child button.active {
+  color: #006e52;
+  background: transparent;
+  box-shadow: inset 0 -2px #008060;
+}
+.ui-view-approvals .wf-queue {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.ui-view-approvals .wf-queue-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+.ui-view-approvals .wf-queue-meta > div {
+  min-width: 0;
+}
+.ui-view-approvals .wf-history-block {
+  overflow: hidden;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Buying Plan: keep the live, richer page while matching the approved density. */
+.ui-view-buying-plan .bp-pagebar {
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.ui-view-buying-plan .bp-pagebar .segment { margin-bottom: 0; }
+.ui-view-buying-plan .bp-pagebar-left,
+.ui-view-buying-plan .bp-pagebar-right { gap: 7px; }
+.ui-view-buying-plan .bp-banner {
+  border-color: #efd68e;
+  background: #fff5d9;
+}
+.ui-view-buying-plan .bp-metric {
+  position: relative;
+  min-height: 112px;
+  overflow: hidden;
+  border-color: var(--line);
+  box-shadow: none;
+}
+.ui-view-buying-plan .bp-metric::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #008060;
+}
+.ui-view-buying-plan .bp-metric:nth-child(2)::before { background: #6448d8; }
+.ui-view-buying-plan .bp-metric:nth-child(3)::before { background: #d69900; }
+.ui-view-buying-plan .bp-metric:nth-child(4)::before { background: #d72c0d; }
+.ui-view-buying-plan .bp-card,
+.ui-view-buying-plan .bp-category { border-color: var(--line); }
+.ui-view-buying-plan .bp-sticky {
+  background: color-mix(in srgb, var(--bg-app) 94%, transparent);
+}
+
+/* OOS Dashboard: freshness/exclusion context reads as a compact status band. */
+.ui-view-oos-dashboard .wf-body > .chip-row:first-child {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 13px;
+  background: #eaf4ff;
+  border: 1px solid #bfd9ef;
+  border-radius: 11px;
+}
+.ui-view-oos-dashboard .wf-body > .chip-row:first-child .wf-chip {
+  color: #3e6382;
+  background: rgba(255, 255, 255, .55);
+}
+.ui-view-oos-dashboard .wf-body > details.panel {
+  margin: 0 !important;
+  box-shadow: var(--shadow-sm);
+}
+.ui-view-oos-dashboard .wf-body > .role-tabs {
+  width: 100%;
+  margin: 0;
+}
+.ui-view-oos-dashboard .wf-body > section.table-panel {
+  margin: 0;
+}
+.ui-view-oos-dashboard .table-meta-actions .segment { margin: 0; }
+
+/* Standard Cost: compact add/search surfaces and a strong expandable table. */
+.ui-view-standard-cost .wf-body > .wf-form-panel {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.ui-view-standard-cost .wf-body > .wf-form-panel .wf-form-grid {
+  align-items: end;
+}
+.ui-view-standard-cost .wf-body > .wf-toolbar > .segment { margin: 0; }
+.ui-view-standard-cost .wf-cost-detail-row > td { background: #fafafa; }
+.ui-view-standard-cost .wf-cost-detail {
+  background: #fafafa;
+  border-top: 1px solid var(--line);
+}
+
+/* Vendor Capacity: a single compact control bar above the live entry table. */
+.ui-view-vendor-capacity .wf-body > .wf-toolbar {
+  align-items: flex-end;
+}
+.ui-view-vendor-capacity .wf-body > .wf-toolbar .wf-toolbar-left {
+  min-width: 0;
+  flex: 1 1 680px;
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) repeat(2, minmax(150px, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+}
+.ui-view-vendor-capacity .wf-body > .wf-toolbar .field,
+.ui-view-vendor-capacity .wf-body > .wf-toolbar select {
+  width: 100%;
+  min-width: 0;
+}
+.ui-view-vendor-capacity .wf-body > .wf-toolbar .wf-toolbar-right {
+  flex: 0 1 auto;
+}
+.ui-view-vendor-capacity .wf-body > .wf-footer-bar {
+  border-radius: 10px;
+}
+
+/* PO Approval: preserve the complete workflow, but clarify its visual stages. */
+.ui-view-po-approval .wf-report-grid {
+  gap: 14px;
+}
+.ui-view-po-approval .wf-report-card {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+.ui-view-po-approval .wf-report-card .panel-title {
+  min-height: 47px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.ui-view-po-approval .wf-report-list,
+.ui-view-po-approval .wf-report-empty { margin: 0; padding: 12px 15px; }
+.ui-view-po-approval .wf-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.ui-view-po-approval .wf-kpi {
+  position: relative;
+  min-width: 0;
+  min-height: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.ui-view-po-approval .wf-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: #2463a8;
+}
+.ui-view-po-approval .wf-kpi:nth-child(2)::before { background: #6448d8; }
+.ui-view-po-approval .wf-kpi:nth-child(3)::before { background: #008060; }
+.ui-view-po-approval .wf-kpi:nth-child(4)::before { background: #d69900; }
+.ui-view-po-approval .wf-kpi-note {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: -4px 0 0;
+  text-align: left;
+}
+.ui-view-po-approval .wf-body > .wf-form-panel {
+  border-left: 3px solid #2463a8;
+}
+
+/* Receivable Plan: keep operational filters compact and separate submission. */
+.ui-view-receivable-plan .wf-body > .wf-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) repeat(4, minmax(125px, 1fr)) auto auto;
+  align-items: center;
+}
+.ui-view-receivable-plan .wf-body > .wf-filter-bar > * {
+  min-width: 0;
+  width: 100%;
+}
+.ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-search:first-child {
+  grid-column: auto;
+}
+.ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-search[aria-label="Remark for the approver"] {
+  grid-column: 1 / -2;
+}
+.ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-chip,
+.ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-check {
+  width: auto;
+  justify-self: start;
+}
+.ui-view-receivable-plan .wf-body > .tracker-status-tabs {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.ui-view-receivable-plan .wf-body > .tracker-status-tabs button.active {
+  color: #006e52;
+  background: transparent;
+  box-shadow: inset 0 -2px #008060;
+}
+
+/* Manual Ingestion: nested tabs and the existing entry forms mirror the demo. */
+.ui-view-manual-ingestion .wf-body > .wf-stack { gap: 14px; }
+.ui-view-manual-ingestion .wf-body > .wf-stack > .wf-notice {
+  margin: 0;
+  border-left: 3px solid #2463a8;
+}
+.ui-view-manual-ingestion .wf-body > .wf-stack > .segment { margin: 0; }
+.ui-view-manual-ingestion .wf-body > .wf-stack > div:not([hidden]) > .fb-seg {
+  width: 100%;
+  margin-bottom: 14px !important;
+  padding: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.ui-view-manual-ingestion .wf-body > .wf-stack > div:not([hidden]) > .fb-seg button.active {
+  color: #006e52;
+  background: transparent;
+  box-shadow: inset 0 -2px #008060;
+}
+.ui-view-manual-ingestion .wf-body .wf-form-panel.wf-card {
+  margin-bottom: 0;
+  padding: 15px;
+}
+
+/* Discontinued inventory: keep all five real KPIs and the two real charts. */
+.ui-view-discontinue .wf-body > .metric-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.ui-view-discontinue .wf-body > .metric-grid .metric-card:nth-child(1) { --card-accent: #6448d8; }
+.ui-view-discontinue .wf-body > .metric-grid .metric-card:nth-child(2) { --card-accent: #2463a8; }
+.ui-view-discontinue .wf-body > .metric-grid .metric-card:nth-child(3) { --card-accent: #d72c0d; }
+.ui-view-discontinue .wf-body > .metric-grid .metric-card:nth-child(4) { --card-accent: #d69900; }
+.ui-view-discontinue .wf-body > .metric-grid .metric-card:nth-child(5) { --card-accent: #008060; }
+.ui-view-discontinue .wf-body > h2 {
+  margin: 0 !important;
+  color: var(--ink-1);
+  font-size: 15px;
+}
+.ui-view-discontinue .wf-body > .wf-toolbar .wf-search {
+  flex: 1 1 150px;
+}
+
+@media (max-width: 1180px) {
+  .ui-view-approvals .wf-queue-meta,
+  .ui-view-po-approval .wf-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ui-view-vendor-capacity .wf-body > .wf-toolbar .wf-toolbar-left {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-search:first-child,
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-search[aria-label="Remark for the approver"] {
+    grid-column: 1 / -1;
+  }
+  .ui-view-discontinue .wf-body > .metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .ui-shopify-focused .wf-body > .wf-toolbar,
+  .ui-view-vendor-capacity .wf-body > .wf-toolbar .wf-toolbar-left,
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .ui-shopify-focused .wf-body > .wf-toolbar > *,
+  .ui-view-vendor-capacity .wf-body > .wf-toolbar .wf-toolbar-left,
+  .ui-view-vendor-capacity .wf-body > .wf-toolbar .wf-toolbar-right,
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar > *,
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-search:first-child,
+  .ui-view-receivable-plan .wf-body > .wf-filter-bar > .wf-search[aria-label="Remark for the approver"] {
+    width: 100%;
+    min-width: 0;
+    grid-column: auto;
+  }
+  .ui-view-approvals .wf-queue-meta,
+  .ui-view-po-approval .wf-kpi-strip,
+  .ui-view-discontinue .wf-body > .metric-grid {
+    grid-template-columns: 1fr;
+  }
+  .ui-view-po-approval .wf-report-grid { grid-template-columns: 1fr; }
+  .ui-view-po-approval .wf-kpi-note { grid-column: auto; }
+  .ui-view-buying-plan .bp-pagebar-left,
+  .ui-view-buying-plan .bp-pagebar-right { width: 100%; }
+  .ui-view-buying-plan .bp-pagebar-right .wf-btn { flex: 1 1 auto; }
+}

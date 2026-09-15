@@ -10,6 +10,18 @@ import { FeatureBadgeLive } from '@/components/feature-badge-live';
 import { ReportButton } from '@/components/forms/report-button';
 import type { SdRole, SdStatus } from '@/lib/forms/types';
 
+const FOCUSED_UI_VIEW_CLASS: Record<string, string> = {
+  '/approvals': 'ui-view-approvals',
+  '/buying-plan': 'ui-view-buying-plan',
+  '/discontinue': 'ui-view-discontinue',
+  '/doq-dashboard': 'ui-view-oos-dashboard',
+  '/po-approval': 'ui-view-po-approval',
+  '/po-manual-adjustment': 'ui-view-manual-ingestion',
+  '/receivable-plan': 'ui-view-receivable-plan',
+  '/standard-cost': 'ui-view-standard-cost',
+  '/vendor-capacity': 'ui-view-vendor-capacity',
+};
+
 export function FormLayout({
   title,
   subtitle,
@@ -42,8 +54,11 @@ export function FormLayout({
   children: React.ReactNode;
 }) {
   const accessible = canView(active, role, allowedPages);
+  const focusedUiClass = FOCUSED_UI_VIEW_CLASS[active];
   return (
-    <div className="app-shell ui-shopify">
+    <div
+      className={`app-shell ui-shopify${focusedUiClass ? ` ui-shopify-focused ${focusedUiClass}` : ''}`}
+    >
       <SideNav activeWorkflow={active} userEmail={userEmail} role={role} allowedPages={allowedPages} />
       <main>
         <div className={`wf-page${accent ? ` wf-accent wf-accent-${accent}` : ''}`}>
