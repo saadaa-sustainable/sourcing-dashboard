@@ -2,24 +2,9 @@
 
 import { canView } from '@/lib/views';
 import type { SdRole } from '@/lib/forms/types';
-
-export type MasterTab = {
-  id: string;
-  label: string;
-  /** The original standalone route — used for the access check + help content. */
-  route: string;
-};
-
-// Every master, in reading order. `route` is the legacy per-master page (kept
-// reachable) and drives both the access check and the help panel.
-export const MASTER_TABS: MasterTab[] = [
-  { id: 'product', label: 'Product', route: '/product-master' },
-  { id: 'category', label: 'Category', route: '/category-mapping' },
-  { id: 'vendor', label: 'Vendor', route: '/vendor-master' },
-  { id: 'fabric', label: 'Fabric', route: '/fabric-master' },
-  { id: 'material', label: 'Material', route: '/material-master' },
-  { id: 'fabric-cost', label: 'Fabric Cost', route: '/fabric-cost' },
-];
+// The registry lives in a plain module — never export non-component values from
+// this 'use client' file (the server page would receive a client-reference proxy).
+import { MASTER_TABS } from './master-tabs.config';
 
 export function MasterTabs({
   active,

@@ -20,7 +20,8 @@ import { MaterialMasterClient } from '../material-master/material-master-client'
 import { CategoryMappingClient } from '../category-mapping/category-mapping-client';
 import { FabricCostClient } from '../fabric-cost/fabric-cost-client';
 import { FabricRateSubmissionPanel } from '@/components/forms/fabric-rate-submission-panel';
-import { MasterTabs, MASTER_TABS } from './master-tabs';
+import { MasterTabs } from './master-tabs';
+import { MASTER_TABS } from './master-tabs.config';
 
 export const dynamic = 'force-dynamic';
 
