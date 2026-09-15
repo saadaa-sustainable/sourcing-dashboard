@@ -6,6 +6,7 @@ import {
   loadActualsByProduct,
   loadAnalyticsRules,
   loadBuyingPlan,
+  loadBuyingPlanAnalysis,
   loadMaterialPlan,
   loadNpdBudget,
   loadProductCatalog,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/forms/queries';
 import { loadStandardCostProductOptions } from '@/lib/temp-product.server';
 import { BuyingPlanClient } from './buying-plan-client';
+import { BuyingPlanAnalysisClient } from './buying-plan-analysis-client';
 import { MaterialPlanClient } from './material-plan-client';
 import { NpdBudgetCard } from './npd-budget-card';
 import { PlanTypeTabs, type PlanType } from './plan-type-tabs';
@@ -29,7 +31,9 @@ export default async function BuyingPlanPage({
     ? params.month!
     : monthStart();
   // `type` is canonical; `track` is accepted too (older approval links used it).
-  const planType: PlanType = (params.type ?? params.track) === 'material' ? 'material' : 'fg';
+  const requested = params.type ?? params.track;
+  const planType: PlanType =
+    requested === 'material' ? 'material' : requested === 'analysis' ? 'analysis' : 'fg';
 
   let user;
   try {
@@ -50,9 +54,12 @@ export default async function BuyingPlanPage({
     redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
 
-  const subtitle = `Monthly buying budget — ${monthLabel(planMonth)}. ${
-    planType === 'material' ? 'Fabric / material track.' : 'Finished-goods track.'
-  } Submitted for approval before POs are issued.`;
+  const subtitle =
+    planType === 'analysis'
+      ? `Buying Plan Analysis — ${monthLabel(planMonth)}. Approved plan vs POs actually issued: quantity, value and PO-count variance, excess / short, and the exceptions (issued but not budgeted; issued above approved).`
+      : `Monthly buying budget — ${monthLabel(planMonth)}. ${
+          planType === 'material' ? 'Fabric / material track.' : 'Finished-goods track.'
+        } Submitted for approval before POs are issued.`;
 
   return (
     <FormLayout
@@ -64,7 +71,9 @@ export default async function BuyingPlanPage({
       allowedPages={user.allowed_pages ?? null}
     >
       <PlanTypeTabs planMonth={planMonth} planType={planType} />
-      {planType === 'material' ? (
+      {planType === 'analysis' ? (
+        <AnalysisTrack planMonth={planMonth} />
+      ) : planType === 'material' ? (
         <MaterialTrack planMonth={planMonth} role={user.role} />
       ) : (
         <FgTrack planMonth={planMonth} role={user.role} />
@@ -126,4 +135,12 @@ async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'vi
       role={role}
     />
   );
+}
+
+// Buying Plan Analysis: month-filtered variance between the approved FG plan and the
+// POs actually issued (real EasyEcom POs), plus the two exception lists. Read-only,
+// derived at request time — no data of its own.
+async function AnalysisTrack({ planMonth }: { planMonth: string }) {
+  const analysis = await loadBuyingPlanAnalysis(planMonth);
+  return <BuyingPlanAnalysisClient analysis={analysis} />;
 }

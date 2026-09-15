@@ -1,4 +1,4 @@
-export type PlanType = 'fg' | 'material';
+export type PlanType = 'fg' | 'material' | 'analysis';
 
 export function PlanTypeTabs({
   planMonth,
@@ -19,6 +19,7 @@ export function PlanTypeTabs({
     <div className="wf-plan-tabs">
       {tab('fg', 'Finished Goods')}
       {tab('material', 'Fabric / Material')}
+      {tab('analysis', 'Analysis')}
     </div>
   );
 }

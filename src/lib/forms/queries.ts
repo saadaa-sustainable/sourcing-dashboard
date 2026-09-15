@@ -19,6 +19,7 @@ export * from './queries-modules/standard-cost';
 export * from './queries-modules/po-closure';
 export * from './queries-modules/vendor';
 export * from './queries-modules/buying-plan';
+export * from './queries-modules/buying-plan-analysis';
 export * from './queries-modules/inward-receivable';
 export * from './queries-modules/po-approval';
 export * from './queries-modules/approvals';
