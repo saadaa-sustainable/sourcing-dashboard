@@ -690,9 +690,7 @@ const BqSync_ = (function () {
     for (const r of rows) r.synced_at = synced_at;
     supa('delete', 'sd_ee_vendor_master?synced_at=gte.1970-01-01T00:00:00Z');
     for (let i = 0; i < rows.length; i += BATCH) supa('post', 'sd_ee_vendor_master', rows.slice(i, i + BATCH));
-    return { synced: rows.length, deleted: rows.length };
-  }
-
+    return { synced: rows.length, deleted: rows.length
   // ---------------- Trigger bodies ----------------
 
   function throwIfErrors(errors) {

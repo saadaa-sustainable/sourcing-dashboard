@@ -125,7 +125,17 @@ export function StandardCostClient({
   const [newCode, setNewCode] = useState('');
   const [tempName, setTempName] = useState('');
 
-  const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
+  const { signedOff, missingCost, frozenCount } = useMemo(() => {
+    let signed = 0;
+    let missing = 0;
+    let frozen = 0;
+    for (const cost of costs) {
+      if (cost.neg_stage === 'signed_off' || cost.status === 'approved') signed += 1;
+      if (cost.job_cost == null && cost.fob_cost == null && cost.efob_cost == null) missing += 1;
+      if (cost.frozen) frozen += 1;
+    }
+    return { signedOff: signed, missingCost: missing, frozenCount: frozen };
+  }, [costs]);
 
   const linesByCode = useMemo(() => {
     const m = new Map<string, StandardCostLine[]>();
@@ -218,6 +228,29 @@ export function StandardCostClient({
 
   return (
     <>
+      <div className="metric-grid compact">
+        <div className="metric-card tone-teal">
+          <span className="metric-label">Costed {isMat ? 'materials' : 'products'}</span>
+          <strong>{costs.length - missingCost}</strong>
+          <small>{costs.length ? `${Math.round(((costs.length - missingCost) / costs.length) * 100)}% coverage` : 'No rows yet'}</small>
+        </div>
+        <div className="metric-card tone-red">
+          <span className="metric-label">Missing cost</span>
+          <strong>{missingCost}</strong>
+          <small>needs a rate before planning</small>
+        </div>
+        <div className="metric-card tone-orange">
+          <span className="metric-label">Awaiting my action</span>
+          <strong>{awaitingCount}</strong>
+          <small>{role === 'admin' ? 'approval decisions' : 'team inputs'}</small>
+        </div>
+        <div className="metric-card tone-purple">
+          <span className="metric-label">Frozen by PO</span>
+          <strong>{frozenCount}</strong>
+          <small>{signedOff} signed off</small>
+        </div>
+      </div>
+
       <Notice tone="info">
         Cost is <strong>negotiated</strong>, not just approved: team{' '}
         <strong>proposes</strong> (fill the {jobLabel} / {fobLabel} / {efobLabel} rate that

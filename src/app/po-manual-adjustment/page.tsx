@@ -18,7 +18,7 @@ export default async function PoManualAdjustmentPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Manual Data Ingestion" active="/po-manual-adjustment" role="viewer">
+        <FormLayout title="Manual Data Ingestion" active="/po-manual-adjustment" role="viewer" shopifyUi>
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -42,6 +42,7 @@ export default async function PoManualAdjustmentPage() {
       title="Manual Data Ingestion"
       subtitle="Enter PO manual adjustments and cutting-register data here — they push to the warehouse (BigQuery) automatically. Synced data + Refresh (2×/hour per table) confirm an entry has landed."
       active="/po-manual-adjustment"
+      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

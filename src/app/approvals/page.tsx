@@ -20,7 +20,7 @@ export default async function ApprovalsPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Approvals" active="/approvals" role="viewer">
+        <FormLayout title="Approvals" active="/approvals" role="viewer" shopifyUi>
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -49,6 +49,7 @@ export default async function ApprovalsPage() {
       title="Approvals"
       subtitle="Buying plans and discontinue requests waiting on a decision."
       active="/approvals"
+      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

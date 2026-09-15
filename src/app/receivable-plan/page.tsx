@@ -26,7 +26,7 @@ export default async function ReceivablePlanPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Receivable Plan" active="/receivable-plan" role="viewer">
+        <FormLayout title="Receivable Plan" active="/receivable-plan" role="viewer" shopifyUi>
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -44,6 +44,7 @@ export default async function ReceivablePlanPage() {
       title="Receivable Plan"
       subtitle="Open POs pivoted to size level, with DOQ, stock and OOS — plus this week's expected delivery."
       active="/receivable-plan"
+      shopifyUi
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}

@@ -140,7 +140,20 @@ export function ReceivablePlanClient({
   }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd]);
 
   const sort = useColumnSort<ReceivablePlanRow>();
-  const oosCount = rows.filter((r) => r.oos_flag).length;
+  const { oosCount, expectedThisWeek, approvalPending } = useMemo(() => {
+    let oos = 0;
+    let expected = 0;
+    let pending = 0;
+    for (const row of rows) {
+      if (row.oos_flag) oos += 1;
+      const date = row.delivery_date_this_week;
+      if (date && date >= weekStart && date <= weekEnd) {
+        expected += Number(row.qty_expected_this_week ?? 0);
+      }
+      if (row.input_status === 'pending_l2') pending += 1;
+    }
+    return { oosCount: oos, expectedThisWeek: expected, approvalPending: pending };
+  }, [rows, weekStart, weekEnd]);
 
   // Most-recent weekly-input save across all rows — the "last updated" stamp.
   const lastUpdated = useMemo(() => {
@@ -151,7 +164,7 @@ export function ReceivablePlanClient({
   return (
     <>
       <Notice tone="info">
-        Each row is one colour on an open PO, split by size. Pick when it's expected — either a{' '}
+        Each row is one colour on an open PO, split by size. Pick when it&apos;s expected — either a{' '}
         <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
         know — and the <strong>qty expected</strong>, then submit for approval. <strong>Once a
         month is approved</strong> you can switch to any week within it without re-approval; filling
@@ -164,6 +177,29 @@ export function ReceivablePlanClient({
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
+
+      <div className="metric-grid compact">
+        <div className="metric-card tone-blue">
+          <span className="metric-label">Open lines</span>
+          <strong>{fmt.format(rows.length)}</strong>
+          <small>colour-level PO rows</small>
+        </div>
+        <div className="metric-card tone-teal">
+          <span className="metric-label">Expected this week</span>
+          <strong>{fmt.format(expectedThisWeek)}</strong>
+          <small>pcs in the selected week</small>
+        </div>
+        <div className="metric-card tone-orange">
+          <span className="metric-label">Approval pending</span>
+          <strong>{fmt.format(approvalPending)}</strong>
+          <small>changed lines</small>
+        </div>
+        <div className="metric-card tone-red">
+          <span className="metric-label">OOS linked</span>
+          <strong>{fmt.format(oosCount)}</strong>
+          <small>inventory SKUs</small>
+        </div>
+      </div>
 
       <div className="wf-toolbar wf-filter-bar">
         <input

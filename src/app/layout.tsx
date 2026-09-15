@@ -4,6 +4,7 @@ import './globals.css';
 import './workflows.css';
 import './analytics-cards.css';
 import './buying-plan.css';
+import './shopify-ui.css';
 import { ToastHost } from '@/components/toast-host';
 import { NumberInputGuard } from '@/components/number-input-guard';
 import { NavOverridesProvider } from '@/components/nav-overrides';

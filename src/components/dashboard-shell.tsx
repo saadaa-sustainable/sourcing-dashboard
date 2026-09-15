@@ -3436,13 +3436,16 @@ export function DashboardShell({
   const current = tabs.find(([id]) => id === tab)!;
   const helpItems: HelpItem[] = simpleGlossary[tab] ?? [];
   return (
-    <div className="app-shell">
+    <div className="app-shell ui-shopify">
       <SideNav activeTab={tab} onTab={setTab} userEmail={userEmail} role={role} allowedPages={allowedPages} />
       <main>
         <header>
           <div>
             <p>Sourcing dashboard</p>
             <h1>{current[1]}</h1>
+            <span className="dashboard-subtitle">
+              Buying, delivery, cost, capacity and exceptions in one decision-first workspace.
+            </span>
           </div>
           <div className="header-actions">
             <button className="help-button" onClick={() => setInfo(true)}>
@@ -3471,6 +3474,23 @@ export function DashboardShell({
           </div>
         ))}
         <div className="content">
+          <div className="dashboard-tabs" role="tablist" aria-label="Dashboard views">
+            {tabs
+              .filter(([id]) => id !== 'urgent-replenish')
+              .filter(([id]) => canView(`tab:${id}`, role, allowedPages))
+              .map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  className={tab === id ? 'active' : ''}
+                  onClick={() => setTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+          </div>
           {tab === "dashboard" && (
             <>
               {/* Cross-tab decision cards — the "so what" layer above the KPIs. */}

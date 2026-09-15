@@ -255,6 +255,24 @@ export function DoqDashboardClient({
   const kicker = w
     ? `${w.label} · ${w.ndays} day${w.ndays > 1 ? 's' : ''}`
     : 'awaiting first sync';
+  const selectedRows = tables[win]?.[weave] ?? [];
+  const windowSummary = selectedRows.reduce(
+    (sum, row) => ({
+      skuCount: sum.skuCount + row.skuCount,
+      oosSkuCount: sum.oosSkuCount + row.oosSkuCount,
+      salesLeakage: sum.salesLeakage + row.salesLeakage,
+      skuDays: sum.skuDays + row.skuDays,
+      oosDays: sum.oosDays + row.oosDays,
+      dohWeighted: sum.dohWeighted + row.dohStock * row.skuCount,
+    }),
+    { skuCount: 0, oosSkuCount: 0, salesLeakage: 0, skuDays: 0, oosDays: 0, dohWeighted: 0 },
+  );
+  const inStockRate = windowSummary.skuDays
+    ? (windowSummary.skuDays - windowSummary.oosDays) / windowSummary.skuDays
+    : 0;
+  const averageDoh = windowSummary.skuCount
+    ? windowSummary.dohWeighted / windowSummary.skuCount
+    : 0;
 
   return (
     <>
@@ -288,22 +306,50 @@ export function DoqDashboardClient({
         ))}
       </div>
 
+      <div className="segment shopify-weave-tabs" role="tablist" aria-label="Fabric pool">
+        {DOQ_WEAVES.map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={weave === v}
+            className={weave === v ? 'active' : ''}
+            onClick={() => setWeave(v)}
+          >
+            {v === 'All' ? 'All fabrics' : v}
+          </button>
+        ))}
+      </div>
+
+      <div className="metric-grid compact shopify-window-metrics">
+        <div className="metric-card tone-red">
+          <span className="metric-label">OOS SKUs</span>
+          <strong>{fmt.format(windowSummary.oosSkuCount)}</strong>
+          <small>{windowSummary.skuCount ? pct(windowSummary.oosSkuCount / windowSummary.skuCount) : '0.00%'} of selected SKUs</small>
+        </div>
+        <div className="metric-card tone-orange">
+          <span className="metric-label">Sales leakage</span>
+          <strong>₹{fmt.format(windowSummary.salesLeakage)}</strong>
+          <small>{WINDOW_TITLES[win].toLowerCase()} window</small>
+        </div>
+        <div className="metric-card tone-teal">
+          <span className="metric-label">In-stock rate</span>
+          <strong>{pct(inStockRate)}</strong>
+          <small>selected fabric pool</small>
+        </div>
+        <div className="metric-card tone-blue">
+          <span className="metric-label">Average DOH</span>
+          <strong>{fmt.format(averageDoh)} days</strong>
+          <small>current-stock basis</small>
+        </div>
+      </div>
+
       <WindowTable
         kicker={kicker}
         title={`${WINDOW_TITLES[win]} — by Product Status`}
         info="The summary breakdown: SKUs grouped by their Product State."
         rows={tables[win]?.[weave] ?? []}
         csvName={`doq-dashboard-${win}-${weave.toLowerCase()}-status`}
-        actions={
-          /* weave filter, mirroring the sheet's Woven / Knit tabs */
-          <span className="segment" style={{ margin: 0 }}>
-            {DOQ_WEAVES.map((v) => (
-              <button key={v} className={weave === v ? 'active' : ''} onClick={() => setWeave(v)}>
-                {v}
-              </button>
-            ))}
-          </span>
-        }
       />
 
       <WindowTable

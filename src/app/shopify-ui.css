@@ -1,0 +1,593 @@
+/* ============================================================================
+   Shopify-inspired production refresh.
+
+   This layer is intentionally scoped to `.ui-shopify`: the approved screens can
+   move to the new system without changing data components, server actions, or the
+   remaining application routes. It is imported after the existing global/workflow
+   styles so the rollout stays reversible and easy to audit.
+   ========================================================================== */
+
+.app-shell.ui-shopify {
+  --bg: #f6f6f7;
+  --bg-app: #f6f6f7;
+  --bg-surface: #ececec;
+  --bg-surface-2: #ffffff;
+  --bg-tint: #fafafa;
+  --panel: #ffffff;
+  --panel-solid: #ffffff;
+  --ink: #202223;
+  --ink-1: #202223;
+  --ink-2: #4a4f53;
+  --ink-3: #6d7175;
+  --ink-4: #8c9196;
+  --muted: #6d7175;
+  --line: #e1e3e5;
+  --line-2: #eceeef;
+  --line-strong: #c9cccf;
+  --accent: #008060;
+  --accent-hover: #006e52;
+  --accent-strong: #006e52;
+  --accent-soft: #e4f5ef;
+  --purple: #6448d8;
+  --purple-dark: #3f2d92;
+  --purple-soft: #f1edff;
+  --teal: #008060;
+  --blue: #2463a8;
+  --orange: #8a6116;
+  --red: #d72c0d;
+  --success-text: #006e52;
+  --success-bg: #e4f5ef;
+  --success-border: #9fd9c8;
+  --warning-text: #8a6116;
+  --warning-bg: #fff5d9;
+  --warning-border: #efd68e;
+  --danger-text: #d72c0d;
+  --danger-bg: #fff0f0;
+  --danger-border: #efb6ac;
+  --info-text: #2463a8;
+  --info-bg: #eaf4ff;
+  --info-border: #bfd9ef;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .05), 0 1px 3px rgba(0, 0, 0, .08);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 1px 3px rgba(0, 0, 0, .08);
+  color: var(--ink-1);
+  background: var(--bg-app);
+}
+
+.ui-shopify > main,
+.ui-shopify .wf-page {
+  background: var(--bg-app);
+}
+
+/* Compact white navigation rail. */
+.ui-shopify .sidebar {
+  width: 246px;
+  padding: 0;
+  color: var(--ink-2);
+  background: #fff;
+  border-right: 1px solid var(--line);
+  box-shadow: none;
+}
+.ui-shopify .sidebar::before { display: none; }
+.ui-shopify .brand { gap: 10px; padding: 15px 14px 11px; }
+.ui-shopify .brand-mark {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #111;
+  box-shadow: none;
+  font-size: 14px;
+}
+.ui-shopify .brand strong {
+  color: #111;
+  font-size: 13.5px;
+  letter-spacing: .02em;
+}
+.ui-shopify .brand span { margin-top: 1px; color: var(--muted); font-size: 10px; }
+.ui-shopify .sidebar nav {
+  gap: 1px;
+  padding: 0 8px 14px;
+  scrollbar-color: #c9cccf transparent;
+}
+.ui-shopify .sidebar nav::before {
+  padding: 8px 9px 5px;
+  color: var(--ink-4);
+  font-size: 9px;
+  letter-spacing: .09em;
+}
+.ui-shopify .sidebar nav button,
+.ui-shopify .sidebar nav a,
+.ui-shopify .sidebar-foot button {
+  min-height: 34px;
+  padding: 6px 9px;
+  gap: 9px;
+  border: 0;
+  border-radius: 8px;
+  color: #4a4f53;
+  font-size: 11.5px;
+  transition: color .15s ease, background .15s ease;
+}
+.ui-shopify .sidebar nav button svg,
+.ui-shopify .sidebar nav a svg { width: 15px; height: 15px; color: #73777a; }
+.ui-shopify .sidebar nav button:hover,
+.ui-shopify .sidebar nav a:hover {
+  color: #111;
+  background: #f4f4f4;
+  transform: none;
+}
+.ui-shopify .sidebar nav button.active,
+.ui-shopify .sidebar nav a.active,
+.ui-shopify .sidebar nav button.active:hover,
+.ui-shopify .sidebar nav a.active:hover {
+  color: #111;
+  background: #e9e9e9;
+  border: 0;
+  box-shadow: none;
+  font-weight: 700;
+}
+.ui-shopify .sidebar nav button.active svg,
+.ui-shopify .sidebar nav a.active svg { color: #111; }
+.ui-shopify .wf-nav-divider {
+  margin: 14px 9px 5px;
+  padding: 0;
+  color: var(--ink-4);
+  font-size: 9px;
+  letter-spacing: .09em;
+}
+.ui-shopify .sidebar-foot { padding: 12px 14px; border-color: var(--line); }
+.ui-shopify .sidebar-foot small { margin: 8px 0 0; color: var(--muted); }
+.ui-shopify .status-dot { color: var(--muted); }
+.ui-shopify .status-dot i {
+  background: #008060;
+  box-shadow: 0 0 0 3px #e4f5ef;
+}
+.ui-shopify > main { margin-left: 246px; }
+
+/* Production page frame and header. */
+.ui-shopify .wf-page {
+  width: min(1500px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 23px 28px 64px;
+  gap: 16px;
+}
+.ui-shopify .wf-page > .wf-head,
+.app-shell.ui-shopify .wf-page > .wf-head {
+  min-height: 0;
+  padding: 0;
+  gap: 18px;
+  border: 0;
+  align-items: flex-start;
+}
+.ui-shopify .wf-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--ink-4);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.app-shell.ui-shopify .wf-page > .wf-head h1 {
+  margin: 0;
+  color: var(--ink-1);
+  font-size: clamp(22px, 2.2vw, 27px);
+  line-height: 1.18;
+  font-weight: 680;
+  letter-spacing: -.025em;
+}
+.app-shell.ui-shopify .wf-page > .wf-head p.wf-sub {
+  max-width: 860px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.ui-shopify .wf-head-actions { gap: 7px; }
+.ui-shopify .wf-role {
+  min-height: 34px;
+  padding: 0 9px;
+  color: #5742aa;
+  background: #f1edff;
+  border-color: #d9d2ff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+}
+.ui-shopify .help-button,
+.ui-shopify .icon-button,
+.ui-shopify .account-signout {
+  min-height: 34px;
+  padding: 7px 10px;
+  color: #303030;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+  font-size: 11px;
+  font-weight: 680;
+}
+.ui-shopify .help-button:hover,
+.ui-shopify .icon-button:hover,
+.ui-shopify .account-signout:hover {
+  color: #111;
+  background: #f8f8f8;
+  border-color: #aeb2b5;
+  box-shadow: none;
+  transform: none;
+}
+.ui-shopify .help-button svg { color: #53575a; }
+.ui-shopify .account-email { max-width: 160px; color: var(--muted); font-size: 10px; }
+.ui-shopify .wf-body { gap: 14px; }
+
+/* Actions, inputs and notices. */
+.ui-shopify .wf-btn {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 680;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+  transform: none;
+}
+.ui-shopify .wf-btn:hover:not(:disabled) { transform: none; }
+.ui-shopify .wf-btn-primary {
+  color: #fff;
+  background: #171717;
+  border-color: #171717;
+  box-shadow: none;
+}
+.ui-shopify .wf-btn-primary:hover:not(:disabled) { background: #303030; box-shadow: none; }
+.ui-shopify .wf-btn-ghost { color: #303030; background: #fff; border-color: var(--line-strong); }
+.ui-shopify .wf-btn-ghost:hover:not(:disabled) { background: #f8f8f8; border-color: #aeb2b5; }
+.ui-shopify .wf-btn-danger { color: #fff; background: #d72c0d; border-color: #c62c10; }
+.ui-shopify .wf-btn-sm { min-height: 29px; padding: 5px 8px; font-size: 10px; }
+.ui-shopify .wf-page input:not([type="checkbox"]),
+.ui-shopify .wf-page select,
+.ui-shopify .wf-page textarea,
+.ui-shopify .wf-search {
+  min-height: 35px;
+  padding: 7px 9px;
+  color: #43474a;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 11px;
+}
+.ui-shopify .wf-page input:not([type="checkbox"]):focus,
+.ui-shopify .wf-page select:focus,
+.ui-shopify .wf-page textarea:focus {
+  border-color: #8c9196;
+  box-shadow: 0 0 0 2px rgba(0,128,96,.1);
+}
+.ui-shopify .wf-page input:disabled,
+.ui-shopify .wf-page select:disabled,
+.ui-shopify .wf-page textarea:disabled { color: #8c9196; background: #f3f4f4; }
+.ui-shopify .wf-page .field > span {
+  min-height: 0;
+  color: #4a4f53 !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  letter-spacing: 0 !important;
+}
+.ui-shopify .wf-page .field > span small { color: var(--muted); font-size: 9.5px; }
+.ui-shopify .wf-notice {
+  padding: 11px 13px;
+  border-radius: 11px;
+  box-shadow: none;
+  font-size: 11px;
+}
+.ui-shopify .wf-notice-info { color: #3e6382; background: #eaf4ff; border-color: #bfd9ef; }
+.ui-shopify .wf-notice-warn { color: #705f32; background: #fff5d9; border-color: #efd68e; }
+.ui-shopify .wf-notice-error { color: #7b4035; background: #fff0f0; border-color: #efb6ac; }
+.ui-shopify .wf-notice-ok { color: #365b50; background: #e4f5ef; border-color: #9fd9c8; }
+
+/* Segmented controls: neutral track + white selected item. */
+.ui-shopify .segment,
+.ui-shopify .role-tabs,
+.ui-shopify .wf-plan-tabs,
+.ui-shopify .bp-tabs {
+  width: max-content;
+  max-width: 100%;
+  min-height: 0;
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+  padding: 4px;
+  background: #ececec;
+  border: 0;
+  border-radius: 9px;
+  box-shadow: none;
+  scrollbar-width: thin;
+}
+.ui-shopify .segment button,
+.ui-shopify .role-tabs button,
+.ui-shopify .wf-plan-tab,
+.ui-shopify .bp-tab {
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  color: #62666a;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ui-shopify .segment button.active,
+.ui-shopify .role-tabs button.active,
+.ui-shopify .wf-plan-tab.active,
+.ui-shopify .bp-tab.active {
+  color: #111;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.1);
+  font-weight: 700;
+}
+.ui-shopify .fb-seg { padding: 4px; }
+
+/* Cards, metrics and status language. */
+.ui-shopify .panel,
+.ui-shopify .table-panel,
+.ui-shopify .wf-body > .panel,
+.ui-shopify .wf-form-panel,
+.ui-shopify .wf-grid-panel,
+.ui-shopify .wf-queue-card,
+.ui-shopify .wf-report-card,
+.ui-shopify .wf-plan-group,
+.ui-shopify .wf-card {
+  color: var(--ink-1);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: none;
+}
+.ui-shopify .panel-title,
+.ui-shopify .table-meta {
+  min-height: 47px;
+  height: auto;
+  padding: 12px 15px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.ui-shopify .panel-title h3,
+.ui-shopify .table-meta h3 { color: var(--ink-1); font-size: 13px; font-weight: 700; }
+.ui-shopify .panel-kicker { color: var(--muted) !important; font-size: 9px !important; letter-spacing: .04em; }
+.ui-shopify .metric-grid { gap: 14px; margin-bottom: 14px; }
+.ui-shopify .metric-grid.compact,
+.ui-shopify .metric-grid.dashboard-metrics,
+.ui-shopify .wf-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ui-shopify .metric-card,
+.ui-shopify .metric-card.big,
+.ui-shopify .metric-grid.summary .metric-card {
+  min-height: 112px;
+  padding: 14px;
+  color: var(--ink-1);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: none;
+  transform: none;
+}
+.ui-shopify .metric-card::before {
+  width: 3px;
+  height: auto;
+  inset: 0 auto 0 0;
+  border-radius: 10px 0 0 10px;
+  opacity: 1;
+  background: var(--card-accent, #008060);
+  box-shadow: none;
+}
+.ui-shopify .metric-card:hover,
+.ui-shopify .metric-card:disabled:hover { border-color: var(--line); box-shadow: none; transform: none; }
+.ui-shopify .metric-icon { display: none !important; }
+.ui-shopify .metric-label {
+  color: var(--muted) !important;
+  font-size: 10px !important;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ui-shopify .metric-card strong,
+.ui-shopify .metric-card.big strong,
+.ui-shopify .metric-grid.dashboard-metrics .metric-card.big strong,
+.ui-shopify .metric-grid.dashboard-metrics .metric-card strong {
+  margin: 7px 0 0;
+  color: var(--ink-1);
+  font-size: 21px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+.ui-shopify .metric-card small,
+.ui-shopify .metric-card.big small,
+.ui-shopify .metric-grid.dashboard-metrics .metric-card.big small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 400;
+}
+.ui-shopify .tone-purple { --card-accent: #6448d8; --card-soft: #f1edff; }
+.ui-shopify .tone-teal { --card-accent: #008060; --card-soft: #e4f5ef; }
+.ui-shopify .tone-blue { --card-accent: #2463a8; --card-soft: #eaf4ff; }
+.ui-shopify .tone-orange { --card-accent: #d69900; --card-soft: #fff5d9; }
+.ui-shopify .tone-red { --card-accent: #d72c0d; --card-soft: #fff0f0; }
+.ui-shopify .wf-status,
+.ui-shopify .badge,
+.ui-shopify .wf-chip {
+  border: 0;
+  border-radius: 999px;
+  box-shadow: none;
+  font-size: 9px;
+  font-weight: 800;
+}
+.ui-shopify .wf-chip { color: var(--muted); background: #f1f2f3; }
+.ui-shopify .badge.success,
+.ui-shopify .wf-status.tone-green { color: #006e52; background: #e4f5ef; }
+.ui-shopify .badge.warn,
+.ui-shopify .wf-status.tone-amber { color: #8a6116; background: #fff5d9; }
+.ui-shopify .badge.danger,
+.ui-shopify .wf-status.tone-red { color: #d72c0d; background: #fff0f0; }
+.ui-shopify .badge.info,
+.ui-shopify .wf-status.tone-blue { color: #2463a8; background: #eaf4ff; }
+
+/* Dense toolbars and tables. */
+.ui-shopify .filter-bar,
+.ui-shopify .wf-filter-bar {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.ui-shopify .search-field { min-height: 35px; border-color: var(--line-strong); border-radius: 8px; box-shadow: none; }
+.ui-shopify .wf-toolbar { gap: 8px; }
+.ui-shopify .wf-toolbar-left,
+.ui-shopify .wf-toolbar-right { gap: 7px; }
+.ui-shopify .table-scroll { scrollbar-color: #c9cccf transparent; }
+.ui-shopify table { font-size: 11px; }
+.ui-shopify th,
+.ui-shopify td { padding: 9px 11px; border-color: var(--line); }
+.ui-shopify thead th,
+.ui-shopify .wf-grid th {
+  height: 38px;
+  color: var(--muted);
+  background: #fafafa;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+.ui-shopify .wf-grid td { height: 50px; font-size: 11px; }
+.ui-shopify tbody tr:hover,
+.ui-shopify .wf-grid tbody tr:hover { background: #fafafa; }
+.ui-shopify .wf-grid tfoot td { background: #fafafa; border-top-color: var(--line-strong); }
+.ui-shopify .wf-row-over { background: #fffafa !important; }
+.ui-shopify .wf-row-stale { background: #fffdf7 !important; }
+.ui-shopify .wf-progress,
+.ui-shopify .coverage-bar { background: #e7e8e9; }
+.ui-shopify .wf-progress-fill,
+.ui-shopify .coverage-bar i { background: #008060; }
+.ui-shopify .wf-progress-over { background: #d69900; }
+.ui-shopify .wf-footer-bar { background: #fafafa; border-color: var(--line); }
+.ui-shopify .wf-plan-group-head { background: #fafafa; }
+.ui-shopify .wf-plan-group-head:hover { background: #f4f4f4; }
+.ui-shopify .wf-queue { display: flex; flex-direction: column; gap: 10px; }
+.ui-shopify .wf-queue-card { padding: 13px; }
+.ui-shopify .wf-queue-meta > div { padding: 8px; border-radius: 8px; background: #f8f8f8; }
+
+/* Dashboard-specific page frame and its visible sub-tab strip. */
+.ui-shopify > main > header {
+  position: static;
+  width: min(1500px, 100%);
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 23px 28px 14px;
+  align-items: flex-start;
+  background: var(--bg-app);
+  border: 0;
+  backdrop-filter: none;
+}
+.ui-shopify > main > header p {
+  margin: 0 0 5px;
+  color: var(--ink-4);
+  font-size: 9.5px;
+  letter-spacing: .08em;
+}
+.ui-shopify > main > header h1 {
+  color: var(--ink-1);
+  font-size: clamp(22px, 2.2vw, 27px);
+  line-height: 1.18;
+  font-weight: 680;
+}
+.ui-shopify .dashboard-subtitle {
+  display: block;
+  max-width: 850px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.ui-shopify .content {
+  width: min(1500px, 100%);
+  max-width: none;
+  margin: 0 auto;
+  padding: 0 28px 64px;
+}
+.ui-shopify > main > .notice { width: auto; max-width: 1444px; margin: 0 auto 14px; }
+.ui-shopify .dashboard-tabs {
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  gap: 3px;
+  overflow-x: auto;
+  margin-bottom: 14px;
+  padding: 4px;
+  border-radius: 9px;
+  background: #ececec;
+}
+.ui-shopify .dashboard-tabs button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  color: #62666a;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 10.5px;
+}
+.ui-shopify .dashboard-tabs button.active {
+  color: #111;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.1);
+  font-weight: 700;
+}
+.ui-shopify .bento-grid,
+.ui-shopify .chart-grid { gap: 14px; margin-bottom: 14px; }
+.ui-shopify .chart-panel { padding: 0 0 14px; }
+.ui-shopify .chart-panel .panel-title { padding: 12px 15px; }
+.ui-shopify .chart-area { padding-inline: 15px; }
+.ui-shopify .stat-tile,
+.ui-shopify .rank-row { border-color: var(--line); background: #fff; }
+
+/* The OOS summary cards are derived from the selected live window. */
+.ui-shopify .shopify-window-metrics { margin: 0; }
+
+@media (max-width: 1180px) {
+  .ui-shopify .metric-grid.compact,
+  .ui-shopify .metric-grid.dashboard-metrics,
+  .ui-shopify .wf-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .ui-shopify .sidebar { width: min(310px, 88vw); }
+  .ui-shopify > main { margin-left: 0; }
+  .ui-shopify .wf-page { padding: 65px 14px 54px; }
+  .ui-shopify > main > header { padding: 65px 14px 14px; }
+  .ui-shopify .content { padding: 0 14px 54px; }
+  .ui-shopify > main > .notice { margin: 0 14px 14px; }
+  .ui-shopify .wf-page > .wf-head { flex-direction: column; }
+  .ui-shopify .wf-head-actions { width: 100%; justify-content: flex-start; }
+  .ui-shopify > main > header .header-actions { width: 100%; justify-content: flex-start; }
+  .ui-shopify > main > header { flex-direction: column; gap: 14px; }
+  .ui-shopify > main > header p { display: block; }
+  .ui-shopify .account-email { display: none; }
+  .ui-shopify .wf-form-grid,
+  .ui-shopify .wf-form-grid:has(> :nth-child(5):last-child) { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .ui-shopify .metric-grid,
+  .ui-shopify .metric-grid.compact,
+  .ui-shopify .metric-grid.dashboard-metrics,
+  .ui-shopify .wf-metric-grid { grid-template-columns: 1fr; }
+  .ui-shopify .metric-card,
+  .ui-shopify .metric-card.big { min-height: 98px; }
+}
