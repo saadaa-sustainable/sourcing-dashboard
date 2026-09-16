@@ -828,7 +828,18 @@
 }
 
 /* ---- Standard Cost: undocumented gap flag + expandable cost detail ---- */
-.wf-cost-code { display: inline-flex; align-items: center; gap: 4px; }
+.wf-cost-code {
+  /* Block-level so the code, the name and the cost-base button stack. Some rows carry a
+     typed-in product name in the code field, so let those wrap rather than clip: a
+     truncated code is unreadable, and ellipsis does not apply to flex text anyway. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 /* Product name under the code in the Finished Goods cost grid. */
 .wf-cost-name { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--ink-3, #6e695e); line-height: 1.3; }
 .wf-expand-btn {
@@ -1225,10 +1236,13 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* Opens the cost base (CMTP / Fabric / Final / Rate history) for the row. Named rather
    than a bare chevron, and sized to stay inside the pinned product column. */
 .wf-cost-base-btn {
-  display: inline-flex;
+  /* Block-level so it always starts its own line, under BOTH the code and the name —
+     as inline-flex it rode up beside the code whenever a product had no name. */
+  display: flex;
+  width: fit-content;
   align-items: center;
   gap: 4px;
-  margin-top: 5px;
+  margin-top: 7px;
   padding: 3px 8px 3px 5px;
   font: inherit;
   font-size: 11px;
