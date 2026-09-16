@@ -122,10 +122,13 @@ export async function loadMaterialStandardCosts(): Promise<StandardCost[]> {
  * back to draft with the new proposal's figures) keeps its current accepted rate
  * until the new one is signed off. Approved working rows are the fallback.
  */
-export async function loadApprovedMaterialCosts(): Promise<
+export async function loadApprovedMaterialCosts(
+  /** Optional client override — the month-end auto-submit runs with the service role (no session). */
+  db?: Awaited<ReturnType<typeof client>>,
+): Promise<
   Record<string, { job: number; fob: number }>
 > {
-  const supabase = await client();
+  const supabase = db ?? (await client());
   const map: Record<string, { job: number; fob: number }> = {};
   type Hist = { product_code: string; job_cost: number | null; fob_cost: number | null };
   const hist = await pageAll<Hist>(() =>
@@ -159,10 +162,13 @@ export async function loadApprovedMaterialCosts(): Promise<
  * back to any approved working row that predates the history (defensive; the
  * migration backfills all approved rows, so this should be empty).
  */
-export async function loadApprovedStandardCosts(): Promise<
+export async function loadApprovedStandardCosts(
+  /** Optional client override — the month-end auto-submit runs with the service role (no session). */
+  db?: Awaited<ReturnType<typeof client>>,
+): Promise<
   Record<string, { job: number; fob: number; efob: number }>
 > {
-  const supabase = await client();
+  const supabase = db ?? (await client());
   const map: Record<string, { job: number; fob: number; efob: number }> = {};
 
   // History rows, newest first — first seen per code wins (its latest accepted rate).

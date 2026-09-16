@@ -246,8 +246,11 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart(), db?: Anal
     Math.min(28, Math.round(Number(ruleRow?.value ?? ANALYTICS_RULE_DEFAULTS.plan_approval_deadline_day ?? 7))),
   );
   const frozen = isPlanFrozen(planMonth);
+  // The deadline measures the first ADMIN DECISION (approve / reject / rework), not
+  // approval alone — a rejection or rework by the 7th is action taken in time.
+  const firstActionAt = plan ? await loadPlanFirstActionAt(plan.id, supabase) : null;
   const compliance = planComplianceStatus(
-    plan ? { submitted_at: plan.submitted_at, approved_at: plan.approved_at } : null,
+    plan ? { submitted_at: plan.submitted_at, approved_at: plan.approved_at, action_at: firstActionAt } : null,
     planMonth,
     deadlineDay,
   );
@@ -286,6 +289,7 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart(), db?: Anal
     frozenSince: frozen ? addMonths(planMonth, 1) : null,
     submittedAt: plan?.submitted_at ?? null,
     approvedAt: plan?.approved_at ?? null,
+    firstActionAt,
     compliance: { deadline: compliance.deadline, deadlineDay, status: compliance.status, daysLate: compliance.daysLate },
     approvalKind,
     firstTimeRate,
@@ -334,4 +338,22 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart(), db?: Anal
     },
     lifecycle,
   };
+}
+
+/**
+ * When did an admin first ACT on this plan (approve / reject / send for rework)? From the
+ * approval log — the plan row itself only stamps approved_at. Null when no decision yet.
+ */
+export async function loadPlanFirstActionAt(planId: number, db?: AnalysisDb): Promise<string | null> {
+  const supabase = db ?? (await client());
+  const { data } = await supabase
+    .from('sd_approval_log')
+    .select('created_at')
+    .eq('entity_type', 'buying_plan')
+    .eq('entity_id', String(planId))
+    .in('to_status', ['approved', 'rejected', 'rework'])
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.created_at ? String(data.created_at) : null;
 }

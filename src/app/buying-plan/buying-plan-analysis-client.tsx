@@ -67,6 +67,10 @@ function LifecycleCard({ lifecycle: lc, planMonth }: { lifecycle: BuyingPlanAnal
       <div className="bp-cardbody">
         <div className="bp-summaryrow"><span>Deadline</span><b>{c.deadlineDay}th of the month · {dl}</b></div>
         <div className="bp-summaryrow"><span>Submitted</span><b>{fmtTs(lc.submittedAt)}</b></div>
+        <div className="bp-summaryrow">
+          <span>First admin action<small className="bp-summary-sub">approve / reject / rework — what the deadline measures</small></span>
+          <b>{fmtTs(lc.firstActionAt)}</b>
+        </div>
         <div className="bp-summaryrow"><span>Approved</span><b>{fmtTs(lc.approvedAt)}</b></div>
         <div className="bp-summaryrow"><span>Approval quality</span><b><span className={`bp-badge ${kind[lc.approvalKind].tone}`}>{kind[lc.approvalKind].text}</span></b></div>
         <div className="bp-summaryrow">

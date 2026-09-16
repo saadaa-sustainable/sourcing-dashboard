@@ -64,6 +64,8 @@ export type BuyingPlanLifecycle = {
   frozenSince: string | null; // ISO date of the freeze (1st of the next month) when frozen
   submittedAt: string | null;
   approvedAt: string | null;
+  /** First admin decision on this submission (approve / reject / rework) — what the deadline measures. */
+  firstActionAt: string | null;
   compliance: {
     deadline: string; // ISO instant
     deadlineDay: number; // Rules Master: plan_approval_deadline_day

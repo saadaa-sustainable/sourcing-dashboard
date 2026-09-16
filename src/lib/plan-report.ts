@@ -99,7 +99,7 @@ export function renderPlanReportPdf(a: BuyingPlanAnalysis): Buffer {
     body: [
       ['Plan status', a.hasPlan ? `${a.planStatus} · ${a.approvedLines} of ${a.totalLines} lines approved` : 'No plan for this month'],
       ['Deadline', `${lc.compliance.deadlineDay}th of the month (${new Date(lc.compliance.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })})`],
-      ['Submitted / approved', `${fmtTs(lc.submittedAt)}  /  ${fmtTs(lc.approvedAt)}`],
+      ['Submitted / first admin action / approved', `${fmtTs(lc.submittedAt)}  /  ${fmtTs(lc.firstActionAt)}  /  ${fmtTs(lc.approvedAt)}`],
       ['Compliance', complianceLine(a)],
       ['Approval quality', approvalKind],
       ['First-time approval rate', lc.firstTimeRate.approved ? `${lc.firstTimeRate.firstTime} of ${lc.firstTimeRate.approved} plans (${Math.round((lc.firstTimeRate.firstTime / lc.firstTimeRate.approved) * 100)}%) — ${lc.firstTimeRate.months.join(', ')}` : 'no approved plans in the window'],

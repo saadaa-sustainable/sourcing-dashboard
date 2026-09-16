@@ -1,6 +1,7 @@
 'use server';
 
 import { isPlanFrozen } from '../approval';
+import { submitPlanCore } from '@/lib/plan-submit';
 
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
@@ -222,97 +223,11 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
     return fail('This plan cannot be submitted from its current state.');
   }
 
-  const { data: lines } = await supabase
-    .from('sd_buying_plan_line')
-    .select('id, product_code, job_work_qty, fob_qty, efob_qty, standard_value, line_status')
-    .eq('plan_id', planId);
-  const lineRows = (lines ?? []) as {
-    id: number;
-    product_code: string;
-    job_work_qty: number;
-    fob_qty: number;
-    efob_qty: number;
-    standard_value: number | null;
-    line_status: SdStatus | null;
-  }[];
-  const qty = lineRows.reduce(
-    (sum, l) =>
-      sum +
-      Number(l.job_work_qty || 0) +
-      Number(l.fob_qty || 0) +
-      Number(l.efob_qty || 0),
-    0,
-  );
-  if (qty <= 0) return fail('Allocate at least one quantity before submitting.');
-
-  const next = statusOnSubmit('buying_plan', qty);
-
-  // Guarded update: if another user already moved it, zero rows match.
-  const { data: updated, error } = await supabase
-    .from('sd_buying_plan')
-    .update({
-      status: next,
-      submitted_by: user.email,
-      submitted_at: new Date().toISOString(),
-      rejection_notes: null,
-    })
-    .eq('id', planId)
-    .in('status', ['draft', 'rework'])
-    .select('id');
-  if (error) return fail(error.message);
-  if (!updated?.length) return fail('Already submitted by someone else.');
-
-  // Freeze the standard value per line at submission — from the CURRENT accepted
-  // rates. After this, later rate changes never rewrite an in-flight/approved
-  // plan; before submission the plan reflected the live latest-accepted rate.
-  const isMaterial = (plan as { plan_type?: string }).plan_type === 'material';
-  const fgCosts = isMaterial ? {} : await loadApprovedStandardCosts();
-  const matCosts = isMaterial ? await loadApprovedMaterialCosts() : {};
-  for (const l of lineRows) {
-    const job = Number(l.job_work_qty || 0);
-    const fob = Number(l.fob_qty || 0);
-    const efob = Number(l.efob_qty || 0);
-    if (job + fob + efob <= 0) continue;
-    let value = 0;
-    if (isMaterial) {
-      const c = matCosts[l.product_code];
-      if (!c) continue; // no accepted rate to freeze — leave as-is (still values live)
-      value = job * c.job + fob * c.fob;
-    } else {
-      const c = fgCosts[l.product_code];
-      if (!c) continue;
-      value = job * c.job + fob * c.fob + efob * c.efob;
-    }
-    if (value > 0) {
-      await supabase.from('sd_buying_plan_line').update({ standard_value: value }).eq('id', l.id);
-    }
-  }
-
-  // Per-line approval set: only non-zero lines need a decision, and any line
-  // already approved (preserved across a rework) stays approved. Zero-qty lines
-  // are cleared so partial/blank rows never sit in the approver's queue.
-  const toPending: number[] = [];
-  const toClear: number[] = [];
-  for (const l of lineRows) {
-    const lineQty = Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0);
-    if (lineQty <= 0) toClear.push(l.id);
-    else if (l.line_status !== 'approved') toPending.push(l.id);
-  }
-  if (toPending.length) {
-    await supabase.from('sd_buying_plan_line').update({ line_status: next, rework_notes: null }).in('id', toPending);
-  }
-  if (toClear.length) {
-    await supabase.from('sd_buying_plan_line').update({ line_status: null, rework_notes: null }).in('id', toClear);
-  }
-
-  await writeLog(
-    'buying_plan',
-    String(planId),
-    `Buying plan ${String(plan.plan_month).slice(0, 7)}`,
-    plan.status as SdStatus,
-    next,
-    user.email,
-  );
+  // The submit itself (quantity check, routing, per-line value freeze, line approval
+  // set, audit log) is the shared core — the same routine the month-end auto-submit
+  // runs — so a manual and an automatic submission are indistinguishable downstream.
+  const res = await submitPlanCore(supabase, planId, { email: user.email });
+  if (!res.ok) return fail(res.error);
   revalidatePath('/buying-plan');
   revalidatePath('/approvals');
   return done('Submitted for approval.');

@@ -192,13 +192,14 @@ export type PlanCompliance = {
 };
 
 /**
- * Was the plan approved by the deadline? If not, WHO was late: the submission side
- * (not even submitted by the deadline) or the approval side (submitted in time but
- * approved late / still awaiting approval). An unapproved plan past the deadline is a
- * live breach that grows until it is approved.
+ * Did an admin ACT on the plan (approve / reject / send for rework) by the deadline? If
+ * not, WHO was late: the submission side (not even submitted by the deadline) or the
+ * approval side (submitted in time but no decision by then). `action_at` is the first
+ * admin decision (from the approval log); `approved_at` is the fallback. A plan with no
+ * decision past the deadline is a live breach that grows until someone acts.
  */
 export function planComplianceStatus(
-  plan: { submitted_at: string | null; approved_at: string | null } | null,
+  plan: { submitted_at: string | null; approved_at: string | null; action_at?: string | null } | null,
   planMonth: string,
   deadlineDay = 7,
   today = new Date(),
@@ -206,7 +207,8 @@ export function planComplianceStatus(
   const deadline = planApprovalDeadline(planMonth, deadlineDay);
   const dl = deadline.getTime();
   const submitted = plan?.submitted_at ? Date.parse(plan.submitted_at) : null;
-  const approved = plan?.approved_at ? Date.parse(plan.approved_at) : null;
+  const firstAction = plan?.action_at ? Date.parse(plan.action_at) : plan?.approved_at ? Date.parse(plan.approved_at) : null;
+  const approved = firstAction;
   const daysAfter = (t: number) => Math.max(0, Math.floor((t - dl) / 86_400_000));
   const base = { deadline: deadline.toISOString(), deadlineDay };
   if (approved != null) {

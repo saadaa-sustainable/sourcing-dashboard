@@ -3,6 +3,10 @@
   "regions": ["bom1"],
   "crons": [
     {
+      "path": "/api/cron/plan-auto-submit",
+      "schedule": "0 18 28-31 * *"
+    },
+    {
       "path": "/api/cron/month-close",
       "schedule": "30 3 1 * *"
     }

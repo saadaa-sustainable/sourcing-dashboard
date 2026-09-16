@@ -147,6 +147,27 @@ export async function notifyPlanReportSlack(n: PlanReportNotice): Promise<boolea
   return true;
 }
 
+// ── Month-end auto-submit of next month's plan ───────────────────────────────
+export async function notifyPlanAutoSubmitSlack(n: {
+  monthLabel: string;
+  outcome: 'submitted' | 'no_plan' | 'empty';
+  detail: string;
+  planMonth?: string;
+}): Promise<void> {
+  const head =
+    n.outcome === 'submitted'
+      ? `📤 *Buying plan auto-submitted* — ${n.monthLabel}`
+      : `⚠️ *Buying plan NOT auto-submitted* — ${n.monthLabel}`;
+  const text = [
+    head,
+    n.detail,
+    n.outcome === 'submitted'
+      ? link('/approvals', 'Approve it before the deadline →')
+      : link(`/buying-plan${n.planMonth ? `?month=${n.planMonth}` : ''}`, 'Open the Buying Plan →'),
+  ].join('\n');
+  await postSlack(opsWebhook(), text);
+}
+
 // ── Post-approval / post-freeze amendment request ────────────────────────────
 export async function notifyPlanAmendmentSlack(n: {
   monthLabel: string;
