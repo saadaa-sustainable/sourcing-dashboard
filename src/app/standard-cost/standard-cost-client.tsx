@@ -1636,6 +1636,9 @@ function CmtpBreakdown({
         (e.g. buttoning under Product Trims for shirts).
       </p>
 
+      {/* Heads tile across the full panel width. Stacked in one narrow column they left
+          the right half of the screen empty and pushed Finishing below the fold. */}
+      <div className="wf-cmtp-heads">
       {categories.map((cat) => {
         const head = CMTP_HEADS.find((h) => h.key === cat);
         const catRows = rows.filter((r) => r.category === cat);
@@ -1737,6 +1740,7 @@ function CmtpBreakdown({
           </div>
         );
       })}
+      </div>
 
       {editable && (
         <div className="wf-cmtp-newhead">

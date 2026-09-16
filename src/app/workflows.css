@@ -957,7 +957,9 @@ th.wf-yarn-col { color: #2f6bbf; }
 .wf-history-view { margin-top: 6px; }
 
 /* ---- CM cost matrix: black (input) / green (computed) cells + document view ---- */
-.wf-cost-matrix { max-width: 520px; }
+/* Per-size consumption matrix: same problem as the CMTP heads — a 520px cap squeezed the
+   size columns while the rest of the panel sat empty. */
+.wf-cost-matrix { max-width: 980px; }
 /* computed = green, input = dark/neutral — his "black & green" separation */
 .wf-cell-calc { background: #e7f6ea; color: #2f6b3a; font-weight: 600; }
 th.wf-cell-calc { background: #d7efdc; color: #2f6b3a; }
@@ -1134,7 +1136,18 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-cost-param-note { margin: 4px 0 0; font-size: 11px; }
 
 /* ---- CMTP breakdown: category heads → line items → CM total ---- */
-.wf-cmtp { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.wf-cmtp { display: flex; flex-direction: column; gap: 10px; }
+/* The cost heads tile instead of stacking in one 560px column, so a wide screen shows
+   several heads at once rather than a long scroll beside an empty right half. */
+.wf-cmtp-heads {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+.wf-cmtp > p.wf-subtle,
+.wf-cmtp-newhead,
+.wf-cmtp-total { max-width: 760px; }
 .wf-cmtp-head {
   border: 1px solid #ece7d9; border-radius: 10px; background: #fff; padding: 8px 10px;
   display: flex; flex-direction: column; gap: 6px;
