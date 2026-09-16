@@ -171,6 +171,36 @@ function EntryTab({
   const overCount = decorated.filter(({ vendor }) => poCapacityOf(vendor) - vendor.inProcessQty < 0).length;
   const staleCount = decorated.filter((d) => d.isStale).length;
 
+  /**
+   * Network totals, so the page opens with the answer rather than 60 rows to add up.
+   * Uses the same arithmetic as a row: capacity/month = machines x karigar, PO capacity
+   * applies the type multiplier, load is in-process against PO capacity.
+   */
+  const totals = useMemo(() => {
+    let poCapacity = 0;
+    let inProcess = 0;
+    let over = 0;
+    let allocated = 0;
+    for (const d of decorated) {
+      const cfg = typeConfig(d.vendor.vendor_type);
+      const machines = d.vendor.current?.machines_allocated ?? 0;
+      const karigar = d.vendor.current?.active_karigar ?? 0;
+      const cap = Math.round(machines * karigar * (cfg?.multiplier ?? 1));
+      poCapacity += cap;
+      inProcess += d.vendor.inProcessQty;
+      if (cap > 0) allocated += 1;
+      if (cap - d.vendor.inProcessQty < 0) over += 1;
+    }
+    return {
+      poCapacity,
+      inProcess,
+      over,
+      allocated,
+      util: poCapacity > 0 ? Math.round((inProcess / poCapacity) * 100) : null,
+      months: poCapacity > 0 ? inProcess / poCapacity : null,
+    };
+  }, [decorated]);
+
   const q = search.trim().toLowerCase();
   const filtered = decorated
     .filter(({ vendor }) =>
@@ -237,12 +267,49 @@ function EntryTab({
         </div>
       </div>
 
+      <div className="vc-summary" aria-label="Network capacity at a glance">
+        <div className="vc-sum">
+          <span>Vendors</span>
+          <strong>{decorated.length}</strong>
+          <small>{totals.allocated} with capacity allocated</small>
+        </div>
+        <div className="vc-sum">
+          <span>PO capacity</span>
+          <strong>{fmt.format(totals.poCapacity)}</strong>
+          <small>pieces a month, all vendors</small>
+        </div>
+        <div className="vc-sum">
+          <span>In process</span>
+          <strong>{fmt.format(totals.inProcess)}</strong>
+          <small>
+            {totals.months == null
+              ? 'pending on open POs'
+              : `${totals.months.toFixed(1)} months of work on hand`}
+          </small>
+        </div>
+        <div className={`vc-sum${totals.over > 0 ? ' is-warn' : ''}`}>
+          <span>Booked out</span>
+          <strong>{totals.util == null ? '—' : `${totals.util}%`}</strong>
+          <small>
+            {totals.over > 0 ? `${totals.over} vendors past a month of capacity` : 'none past capacity'}
+          </small>
+        </div>
+        <div className={`vc-sum${staleCount > 0 ? ' is-warn' : ''}`}>
+          <span>Stale</span>
+          <strong>{staleCount}</strong>
+          <small>not updated in {STALE_DAYS} days</small>
+        </div>
+      </div>
+
       <Notice tone="info">
         Only <strong>two fields are ever typed</strong>:{' '}
         <span className="wf-live-tag">LIVE</span> Machines allocated and Karigar allocated.
         Everything in an <span className="wf-computed-tag">orange</span> cell is computed —
         Capacity/month = Machines × Karigar, PO capacity = Capacity/month × type multiplier,
-        Available = PO capacity − in-process. First machines and Type are{' '}
+        Available = PO capacity - in-process. In-process is the pending quantity on{' '}
+        <strong>every open PO</strong>, whatever month it is due, so a vendor showing{' '}
+        <strong>over</strong> is carrying more than one month of work, not necessarily in
+        trouble - the months-of-work figure is the fairer read. First machines and Type are{' '}
         <span className="wf-fixed-tag">
           <Lock size={10} /> FIXED
         </span>{' '}
@@ -252,28 +319,24 @@ function EntryTab({
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
-          <table className="wide-table wf-grid">
+          {/* Thirteen columns ran off the screen and took the vendor with them. The same
+              figures, grouped by the question they answer: what is allocated, what that
+              buys, and how loaded the vendor is. Vendor stays pinned while you scroll. */}
+          <table className="wide-table wf-grid wf-pin-first vc-table">
             <thead>
               <tr>
                 <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')}</th>
                 <th {...sort.th('type', (d) => d.vendor.vendor_type)}>
                   Type <span className="wf-fixed-tag"><Lock size={9} /></span> {sort.ind('type')}
                 </th>
-                <th className="num input-col" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>
-                  Machines allocated <span className="wf-live-tag">LIVE</span> {sort.ind('machines')}
+                <th className="input-col" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>
+                  Allocated <span className="wf-live-tag">LIVE</span> {sort.ind('machines')}
                 </th>
-                <th className="num input-col" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>
-                  Karigar allocated <span className="wf-live-tag">LIVE</span> {sort.ind('karigar')}
+                <th className="num" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>
+                  Capacity {sort.ind('karigar')}
                 </th>
-                <th className="num">Capacity / month</th>
-                <th className="num">
-                  First machines <span className="wf-fixed-tag"><Lock size={9} /></span>
-                </th>
-                <th className="num">PO capacity</th>
                 <th className="num">In process</th>
-                <th className="num">Available</th>
-                <th className="num">Machine util</th>
-                <th className="num">Capacity util</th>
+                <th className="vc-load-col">Load</th>
                 <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')}</th>
                 {editable && <th aria-label="Save" />}
               </tr>
@@ -291,7 +354,7 @@ function EntryTab({
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
+                  <td colSpan={editable ? 8 : 7} className="wf-empty-cell">
                     {staleOnly
                       ? 'No stale vendors — everyone is up to date.'
                       : 'No vendors match your filters.'}
@@ -353,6 +416,10 @@ function CapacityRow({
   const overProduction = available < 0;
   const machineUtil = machines > 0 ? Math.round((karigar / machines) * 100) : null;
   const capacityUtil = poCapacity > 0 ? Math.round((vendor.inProcessQty / poCapacity) * 100) : null;
+  // In-process is pending quantity across ALL open POs, whatever month they are due, while
+  // PO capacity is one month's worth. Saying how many months of work that is beats a bare
+  // negative number that makes every busy vendor look like a failure.
+  const monthsOfWork = poCapacity > 0 ? vendor.inProcessQty / poCapacity : null;
 
   function set(field: keyof typeof fields, value: string) {
     setFields((cur) => ({ ...cur, [field]: value }));
@@ -383,29 +450,70 @@ function CapacityRow({
         <span className="wf-fixed-value">{config?.label ?? (vendor.vendor_type || '—')}</span>
         <small className="wf-subtle">×{multiplier} · stock {stockDays}d</small>
       </td>
-      {(['machines_allocated', 'active_karigar'] as const).map((field) => (
-        <td key={field} className="num input-col">
-          <input
-            type="number"
-            min={0}
-            value={fields[field]}
-            disabled={!editable}
-            onChange={(event) => set(field, event.target.value)}
-          />
-        </td>
-      ))}
-      <td className="num wf-computed">{fmt.format(capacityMonth)}</td>
-      <td className="num wf-fixed-value">
-        {vendor.machinesAtOnboarding ? fmt.format(vendor.machinesAtOnboarding) : '—'}
+      {/* Both typed fields in one cell, side by side and labelled, with the machine
+          utilisation they imply underneath. */}
+      <td className="input-col vc-alloc">
+        <div className="vc-alloc-pair">
+          {([
+            ['machines_allocated', 'Machines'],
+            ['active_karigar', 'Karigar'],
+          ] as const).map(([field, label]) => (
+            <label key={field}>
+              <span>{label}</span>
+              <input
+                type="number"
+                min={0}
+                value={fields[field]}
+                disabled={!editable}
+                onChange={(event) => set(field, event.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+        <small className="wf-subtle">
+          {machineUtil == null ? 'no machines allocated' : `${machineUtil}% machine util`}
+          {vendor.machinesAtOnboarding
+            ? ` · ${fmt.format(vendor.machinesAtOnboarding)} at onboarding`
+            : ''}
+        </small>
       </td>
-      <td className="num wf-computed">{fmt.format(poCapacity)}</td>
-      <td className="num">{fmt.format(vendor.inProcessQty)}</td>
-      <td className="num wf-computed strong">
-        {fmt.format(available)}
-        {overProduction && <span className="wf-over-tag">over</span>}
+      <td className="num vc-stack">
+        <strong className="wf-computed">{fmt.format(poCapacity)}</strong>
+        <small className="wf-subtle">
+          PO capacity · {fmt.format(capacityMonth)}/mo × {multiplier}
+        </small>
       </td>
-      <td className="num wf-computed">{machineUtil == null ? '—' : `${machineUtil}%`}</td>
-      <td className="num wf-computed">{capacityUtil == null ? '—' : `${capacityUtil}%`}</td>
+      <td className="num vc-stack">
+        <strong>{fmt.format(vendor.inProcessQty)}</strong>
+        <small className="wf-subtle">
+          {monthsOfWork == null
+            ? 'pending on open POs'
+            : `${monthsOfWork.toFixed(1)} months of work`}
+        </small>
+      </td>
+      {/* Utilisation as a bar: which vendors are full should be a glance, not a subtraction. */}
+      <td className="vc-load-col">
+        <div
+          className="vc-load"
+          title={`${fmt.format(vendor.inProcessQty)} in process against ${fmt.format(poCapacity)} PO capacity`}
+        >
+          <div
+            className={`vc-load-bar${
+              overProduction ? ' is-over' : capacityUtil != null && capacityUtil >= 80 ? ' is-high' : ''
+            }`}
+          >
+            <i style={{ width: `${Math.min(100, capacityUtil ?? 0)}%` }} />
+          </div>
+          <span className="vc-load-num">
+            <strong>{capacityUtil == null ? '—' : `${capacityUtil}%`}</strong>
+            {overProduction ? (
+              <em className="wf-over-tag">{fmt.format(Math.abs(available))} over</em>
+            ) : (
+              <em className="wf-subtle">{fmt.format(available)} free</em>
+            )}
+          </span>
+        </div>
+      </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}
         {isStale && !dirty && <span className="wf-over-tag">stale</span>}
