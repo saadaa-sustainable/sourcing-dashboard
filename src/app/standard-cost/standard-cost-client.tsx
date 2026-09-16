@@ -833,7 +833,7 @@ function CostRow({
             </small>
           )}
         </span>
-        {name && <small className="wf-cost-name">{name}</small>}
+        {name && <small className="wf-cost-name" title={name}>{name}</small>}
         {!isMat && !cost.documented && stage == null && (
           <span className="wf-gap-tag">Undocumented — data gap</span>
         )}
@@ -918,7 +918,7 @@ function CostRow({
           {canPropose(role, stage) && !cost.frozen && (
             <div className="wf-issue-row wf-issue-row-wrap">
               <span className="wf-subtle wf-propose-hint">
-                Fill the {jobLabel} / {fobLabel} / {efobLabel} rate(s) that apply →
+                Fill the {jobLabel} / {fobLabel} / {efobLabel} rate(s) that apply, then propose.
               </span>
               <input
                 className="wf-mini-input"
