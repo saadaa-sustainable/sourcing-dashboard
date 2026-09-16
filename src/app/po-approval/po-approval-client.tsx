@@ -1,9 +1,10 @@
 'use client';
 
-import { Fragment, useMemo, useState, useTransition } from 'react';
+import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, FileCheck, Layers, Save, Send, X } from 'lucide-react';
 import {
+  checkPlanMembership,
   confirmTna,
   issuePoApproval,
   savePoApproval,
@@ -25,6 +26,7 @@ import type {
   SdRole,
   TnaLeadtimes,
 } from '@/lib/forms/types';
+import type { PlanMembership } from '@/lib/forms/analysis-types';
 
 const PO_TYPES: { value: PoType; label: string }[] = [
   { value: 'FOB', label: 'FOB' },
@@ -62,7 +64,12 @@ const BLANK = {
   critical_path_first_delivery: '',
   // The plan month this PO draws on — defaults to the current month (closed months are locked).
   buying_plan_no: monthStart().slice(0, 7),
+  // Optional: why this PO is outside the buying plan (ad-hoc), e.g. urgent replenishment.
+  ad_hoc_reason: '',
 };
+
+// Quick reasons for an ad-hoc (outside-the-plan) PO; "Other" lets the team type their own.
+const AD_HOC_REASONS = ['Urgent replenishment', 'Stock ran out', 'New product / NPD', 'Customer or channel order', 'Plan missed this product'];
 
 const catLabel = (c: PoCategory) =>
   c === 'fg' ? 'FG' : c === 'mat' ? 'MAT' : 'NPD';
@@ -197,6 +204,24 @@ export function PoApprovalClient({
   const activeCat = CATEGORIES.find((c) => c.value === form.category);
   // Standard CM for the typed product — pre-fills / hints the PO's CM (spec §5).
   const stdCmForProduct = form.product_code ? stdCm[form.product_code.trim()] : undefined;
+
+  // Spec item 6 — is this product in the linked month's buying plan? Display only: an
+  // outside-the-plan PO is an ad-hoc purchase and goes through approval like any other.
+  const [membership, setMembership] = useState<PlanMembership | null>(null);
+  useEffect(() => {
+    const code = form.product_code.trim();
+    if (!code) {
+      setMembership(null);
+      return;
+    }
+    const fd = new FormData();
+    fd.set('product_code', code);
+    fd.set('buying_plan_no', form.buying_plan_no);
+    const t = setTimeout(() => {
+      void checkPlanMembership(fd).then((m) => setMembership(m));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [form.product_code, form.buying_plan_no]);
 
   return (
     <>
@@ -484,6 +509,59 @@ export function PoApprovalClient({
                 )}
               </select>
             </Field>
+
+            {/* Spec item 6 — plan membership is shown, never enforced. */}
+            {form.product_code.trim() && membership && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                {membership.inPlan ? (
+                  <Notice tone="ok">
+                    <strong>{form.product_code.trim()} is in the {monthLabel(membership.planMonth)} buying plan</strong> — approved{' '}
+                    {membership.qty.total.toLocaleString('en-IN')} pcs
+                    {[
+                      membership.qty.job ? `JOB ${membership.qty.job.toLocaleString('en-IN')}` : '',
+                      membership.qty.efob ? `E-FOB ${membership.qty.efob.toLocaleString('en-IN')}` : '',
+                      membership.qty.fob ? `FOB ${membership.qty.fob.toLocaleString('en-IN')}` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                      .replace(/^(.)/, ' (') + (membership.qty.total ? ')' : '')}
+                    .
+                  </Notice>
+                ) : (
+                  <Notice tone="warn">
+                    <strong>
+                      {form.product_code.trim()} is outside the {monthLabel(membership.planMonth)} buying plan
+                      {membership.linePresent ? ' (listed, but no approved quantity)' : ''}
+                      {!membership.planExists ? ' (no plan exists for that month)' : ''}
+                    </strong>{' '}
+                    — this is an ad-hoc purchase. It goes through approval as usual; give the approver the reason.
+                  </Notice>
+                )}
+                {!membership.inPlan && (
+                  <Field label="Reason for the ad-hoc purchase" hint="optional — shown to the approver">
+                    <div className="wf-issue-row">
+                      <select
+                        value={AD_HOC_REASONS.includes(form.ad_hoc_reason) ? form.ad_hoc_reason : form.ad_hoc_reason ? '__other' : ''}
+                        onChange={(e) => set('ad_hoc_reason', e.target.value === '__other' ? ' ' : e.target.value)}
+                      >
+                        <option value="">— pick a reason —</option>
+                        {AD_HOC_REASONS.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                        <option value="__other">Other…</option>
+                      </select>
+                      {form.ad_hoc_reason && !AD_HOC_REASONS.includes(form.ad_hoc_reason) && (
+                        <input
+                          value={form.ad_hoc_reason.trim()}
+                          placeholder="type the reason"
+                          onChange={(e) => set('ad_hoc_reason', e.target.value || ' ')}
+                        />
+                      )}
+                    </div>
+                  </Field>
+                )}
+              </div>
+            )}
           </div>
           <div className="wf-footer-actions">
             <p className="wf-footer-note">
@@ -840,7 +918,20 @@ function PoRow({
         <td>
           <span className={`wf-cat-chip wf-cat-${po.category}`}>{catLabel(po.category)}</span>
         </td>
-        <td className="mono">{po.product_code ?? '—'}</td>
+        <td className="mono">
+          {po.product_code ?? '—'}
+          {/* Spec item 6: plan relationship, recorded at submission. Display only. */}
+          {po.in_buying_plan === true && (
+            <small className="wf-subtle" title={po.plan_qty_at_submit ? `Approved ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs in the ${po.buying_plan_no ?? ''} plan` : 'In the buying plan'}>
+              In plan{po.plan_qty_at_submit ? ` · ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs approved` : ''}
+            </small>
+          )}
+          {po.in_buying_plan === false && (
+            <small className="wf-over-tag" title={po.ad_hoc_reason ? `Outside the buying plan: ${po.ad_hoc_reason}` : 'Outside the buying plan (no reason given)'}>
+              Ad-hoc{po.ad_hoc_reason ? ` · ${po.ad_hoc_reason}` : ''}
+            </small>
+          )}
+        </td>
         <td>
           {po.vendor_code && po.vendor_name
             ? `${po.vendor_code.toUpperCase()} - ${po.vendor_name}`

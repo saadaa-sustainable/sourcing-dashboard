@@ -102,3 +102,18 @@ export type BuyingPlanAnalysis = {
   };
   lifecycle: BuyingPlanLifecycle;
 };
+
+/**
+ * Is a product in a month's buying plan? (spec item 6 — display only, never a gate.)
+ * "In plan" means an approved line with quantity; a line that exists but was never
+ * approved (or has zero qty) is reported as in the plan but not budgeted.
+ */
+export type PlanMembership = {
+  planMonth: string; // ISO first-of-month the check ran against
+  planExists: boolean; // a FG plan exists for that month
+  planStatus: SdStatus | null;
+  inPlan: boolean; // approved line with qty > 0
+  linePresent: boolean; // any line for the product (approved or not)
+  lineApproved: boolean;
+  qty: { job: number; fob: number; efob: number; total: number };
+};

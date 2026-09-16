@@ -1,6 +1,7 @@
 'use server';
 
 import { isPlanFrozen } from '../approval';
+import { loadPlanMembership } from '../queries-modules/buying-plan-analysis';
 
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
@@ -66,6 +67,8 @@ function readPoFields(formData: FormData) {
     cs_inline_qc_due: dateOrNull(formData.get('cs_inline_qc_due')),
     critical_path_first_delivery: dateOrNull(formData.get('critical_path_first_delivery')),
     buying_plan_no: textOrNull(formData.get('buying_plan_no')),
+    // Spec item 6: optional reason when the PO is outside the buying plan (ad-hoc).
+    ad_hoc_reason: textOrNull(formData.get('ad_hoc_reason')),
     category: (PO_CATEGORIES.includes(rawCat as PoCategory) ? rawCat : 'fg') as PoCategory,
   };
 }
@@ -236,13 +239,18 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, po_ref_num, category, product_code, po_qty, rate, critical_path_first_delivery')
+    .select('id, status, po_ref_num, category, product_code, po_qty, rate, critical_path_first_delivery, buying_plan_no, ad_hoc_reason')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
   if (!canSubmit(user.role, po.status as SdStatus)) {
     return fail('This PO cannot be submitted from its current state.');
   }
+
+  // Spec item 6 — the Buying Plan is NOT a gate. Record, at submission, whether the
+  // product is in the linked month's approved plan (and the plan qty at that moment) so
+  // the approver sees "in plan" or "ad-hoc" + the reason; approval proceeds either way.
+  const membership = await loadPlanMembership(po.product_code as string | null, po.buying_plan_no as string | null);
   const qty = Number(po.po_qty || 0);
   if (qty <= 0) return fail('Add the size lines — PO quantity is the sum of those.');
   if (po.rate == null) return fail('Fill the rate (alongside the cost sheet) before submitting.');
@@ -279,6 +287,8 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
       submitted_for_approval_at: now.toISOString(),
       requested_total_days: requestedTotalDays,
       rejection_notes: null,
+      in_buying_plan: membership.inPlan,
+      plan_qty_at_submit: membership.inPlan ? membership.qty.total : null,
     })
     .eq('id', id)
     .in('status', ['draft', 'rework'])
@@ -286,6 +296,9 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
 
+  const adHocNote = membership.inPlan
+    ? undefined
+    : `Ad-hoc — outside the ${membership.planMonth.slice(0, 7)} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ''}`;
   await writeLog(
     'po_approval',
     String(id),
@@ -293,6 +306,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
     po.status as SdStatus,
     next,
     user.email,
+    adHocNote,
   );
   revalidatePath('/po-approval');
   revalidatePath('/approvals');

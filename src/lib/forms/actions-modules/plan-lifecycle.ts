@@ -8,6 +8,8 @@ import { isPlanFrozen, monthLabel } from '../approval';
 import { currentUser } from '../queries';
 import { notifyPlanAmendmentSlack } from '@/lib/slack';
 import { generatePlanReport, signPlanReport } from '@/lib/plan-report';
+import { loadPlanMembership } from '../queries-modules/buying-plan-analysis';
+import type { PlanMembership } from '../analysis-types';
 import { type ActionResult, fail, done, supa, writeLog, textOrNull } from './_shared';
 
 /**
@@ -101,4 +103,17 @@ export async function getPlanReportUrl(storagePath: string): Promise<{ url: stri
   if (!path.startsWith('buying-plan/')) return { error: 'Unknown report.' };
   const url = await signPlanReport(path);
   return url ? { url } : { error: 'Could not create a download link.' };
+}
+
+/**
+ * Live "is this product in the plan?" check for the PO Approval form (spec item 6).
+ * Display only — the answer never blocks saving or submitting the PO.
+ */
+export async function checkPlanMembership(formData: FormData): Promise<PlanMembership | null> {
+  const user = await currentUser();
+  if (!user) return null;
+  const product = textOrNull(formData.get('product_code'));
+  const planRef = textOrNull(formData.get('buying_plan_no'));
+  if (!product) return null;
+  return loadPlanMembership(product, planRef);
 }

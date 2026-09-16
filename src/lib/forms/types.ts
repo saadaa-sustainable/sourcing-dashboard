@@ -1167,6 +1167,12 @@ export type PoApproval = {
   tna_confirmed: boolean;
   tna_confirmed_by: string | null;
   tna_confirmed_at: string | null;
+  // Buying-plan relationship (spec item 6) — display only, never a gate. Snapshotted at
+  // submission: was the product in the linked month's approved plan, with what qty, and
+  // (when outside it) the submitter's reason for the ad-hoc purchase.
+  in_buying_plan: boolean | null;
+  plan_qty_at_submit: number | null;
+  ad_hoc_reason: string | null;
   // issuance / DiGiO signing (phase 2 for the signed_* set)
   easycom_po_no: string | null;
   signed_po_document_url: string | null;

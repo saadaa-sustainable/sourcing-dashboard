@@ -376,3 +376,58 @@ export async function loadPlanFirstActionAt(planId: number, db?: AnalysisDb): Pr
   );
   return decision ? String(decision.created_at) : null;
 }
+
+/**
+ * Is this product in the linked month's finished-goods buying plan? Display only — PO
+ * Approval never blocks on it (spec item 6: anything beyond the plan is an ad-hoc
+ * purchase, allowed). `planRef` is the PO's buying_plan_no ('YYYY-MM'); anything else
+ * (legacy free text / blank) is checked against the current month.
+ */
+export async function loadPlanMembership(
+  productCode: string | null | undefined,
+  planRef: string | null | undefined,
+  db?: AnalysisDb,
+): Promise<import('../analysis-types').PlanMembership> {
+  const supabase = db ?? (await client());
+  const planMonth = planRef && /^\d{4}-\d{2}$/.test(planRef) ? `${planRef}-01` : monthStart();
+  const code = normCode(productCode);
+  const empty = { job: 0, fob: 0, efob: 0, total: 0 };
+
+  const { data: plan } = await supabase
+    .from('sd_buying_plan')
+    .select('id, status')
+    .eq('plan_month', planMonth)
+    .eq('plan_type', 'fg')
+    .maybeSingle();
+  if (!plan || !code) {
+    return { planMonth, planExists: Boolean(plan), planStatus: (plan?.status as BuyingPlan['status']) ?? null, inPlan: false, linePresent: false, lineApproved: false, qty: empty };
+  }
+
+  const { data: lines } = await supabase
+    .from('sd_buying_plan_line')
+    .select('product_code, job_work_qty, fob_qty, efob_qty, line_status')
+    .eq('plan_id', plan.id);
+  const mine = ((lines ?? []) as Pick<BuyingPlanLine, 'product_code' | 'job_work_qty' | 'fob_qty' | 'efob_qty' | 'line_status'>[])
+    .filter((l) => normCode(l.product_code) === code);
+  const approvedLine = (l: (typeof mine)[number]) =>
+    l.line_status === 'approved' || (plan.status === 'approved' && l.line_status == null);
+  const qty = mine.reduce(
+    (a, l) => {
+      if (!approvedLine(l)) return a;
+      const job = Number(l.job_work_qty || 0);
+      const fob = Number(l.fob_qty || 0);
+      const efob = Number(l.efob_qty || 0);
+      return { job: a.job + job, fob: a.fob + fob, efob: a.efob + efob, total: a.total + job + fob + efob };
+    },
+    { ...empty },
+  );
+  return {
+    planMonth,
+    planExists: true,
+    planStatus: plan.status as BuyingPlan['status'],
+    inPlan: qty.total > 0,
+    linePresent: mine.length > 0,
+    lineApproved: mine.some(approvedLine),
+    qty,
+  };
+}
