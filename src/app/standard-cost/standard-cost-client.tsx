@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import { ChevronDown, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
 import { downloadCsv } from '@/lib/download';
 import {
   acceptProposedCost,
@@ -823,9 +823,7 @@ function CostRow({
           )}
         </span>
         {name && <small className="wf-cost-name" title={name}>{name}</small>}
-        {/* The cost base (CMTP / Fabric / Final / Rate history) opens from a named button
-            under the code, not a bare chevron — the row is read as "this product, then its
-            cost base", and a chevron alone never said what it would reveal. */}
+        {/* Keep the four-tab detail trigger directly beneath the product name. */}
         {onToggle && (
           <button
             type="button"
@@ -833,7 +831,11 @@ function CostRow({
             aria-expanded={!!expanded}
             onClick={onToggle}
           >
-            Standard Cost Base
+            <svg className="wf-cost-base-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h11M4 17h6" />
+            </svg>
+            <span>Cost Details</span>
+            <ChevronDown className="wf-cost-base-chevron" size={14} aria-hidden="true" />
           </button>
         )}
         {!isMat && !cost.documented && stage == null && (

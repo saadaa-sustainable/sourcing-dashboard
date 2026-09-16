@@ -1233,34 +1233,44 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Opens the cost base (CMTP / Fabric / Final / Rate history) for the row. Named rather
-   than a bare chevron, and sized to stay inside the pinned product column. */
+/* Lightweight four-tab detail action below each Standard Cost product name. */
 .wf-cost-base-btn {
-  /* Block-level so it always starts its own line, under BOTH the code and the name —
-     as inline-flex it rode up beside the code whenever a product had no name. */
   display: flex;
   width: fit-content;
   align-items: center;
-  margin-top: 7px;
-  padding: 4px 11px;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 5px 2px;
   font: inherit;
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--ink-2, #3f3b33);
-  background: var(--surface-2, #f4f2ec);
-  border: 1px solid var(--line, #e7e2d2);
-  border-radius: 999px;
+  font-weight: 650;
+  color: #41525c;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
 }
-.wf-cost-base-btn:hover { background: var(--surface-3, #ebe8df); }
-.wf-cost-base-btn:focus-visible { outline: 2px solid rgba(59, 111, 212, 0.45); outline-offset: 1px; }
-.wf-cost-base-btn[aria-expanded='true'] {
-  color: #fff;
-  background: var(--ink-1, #1f1d19);
-  border-color: var(--ink-1, #1f1d19);
+.wf-cost-base-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
 }
+.wf-cost-base-chevron {
+  flex: none;
+  transition: transform 180ms ease;
+}
+.wf-cost-base-btn:hover { color: #111820; border-bottom-color: #8d989d; }
+.wf-cost-base-btn:focus-visible { outline: 2px solid rgba(59, 111, 203, 0.45); outline-offset: 2px; border-radius: 3px; }
+.wf-cost-base-btn[aria-expanded='true'] {
+  color: #13795b;
+  border-bottom-color: currentColor;
+}
+.wf-cost-base-btn[aria-expanded='true'] .wf-cost-base-chevron { transform: rotate(180deg); }
 .sc-fg-table th:first-child,
 .sc-fg-table td:first-child {
   position: sticky;
