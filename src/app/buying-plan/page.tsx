@@ -8,6 +8,7 @@ import {
   loadBuyingPlan,
   loadBuyingPlanAnalysis,
   loadMaterialPlan,
+  loadPlanFirstActionAt,
   loadNpdBudget,
   loadProductCatalog,
   NotConfiguredError,
@@ -100,6 +101,8 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
   // exist in Standard Cost (real + temp), instead of the full EasyEcom catalog.
   const restrictToStandardCost = (rules.restrict_plan_po_to_standard_cost ?? 1) >= 1;
   const pickerItems = restrictToStandardCost ? await loadStandardCostProductOptions() : catalog;
+  // First admin decision on the plan — the approval deadline measures this, not approval alone.
+  const firstActionAt = plan?.id ? await loadPlanFirstActionAt(plan.id) : null;
   return (
     <>
     <NpdBudgetCard budget={npdBudget} role={role} />
@@ -118,6 +121,7 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       npdBudgetSet={npdBudget.cap != null}
       leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
       deadlineDay={rules.plan_approval_deadline_day ?? 7}
+      firstActionAt={firstActionAt}
       role={role}
     />
     </>

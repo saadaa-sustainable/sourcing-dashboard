@@ -121,6 +121,7 @@ export function BuyingPlanClient({
   npdBudgetSet = true,
   leadDays = { job: 30, efob: 45, fob: 90 },
   deadlineDay = 7,
+  firstActionAt = null,
   role,
 }: {
   planMonth: string;
@@ -141,6 +142,8 @@ export function BuyingPlanClient({
   leadDays?: { job: number; efob: number; fob: number };
   /** Rules Master: day of the plan month by which the plan must be approved. */
   deadlineDay?: number;
+  /** First admin decision (approve / reject / rework) on this plan, from the approval log. */
+  firstActionAt?: string | null;
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
@@ -583,7 +586,11 @@ export function BuyingPlanClient({
   // Approval-deadline compliance (spec item 5) and the post-approval amendment request â€”
   // the sanctioned way to change an approved (or closed) plan: it drops to rework and
   // must be re-approved.
-  const compliance = planComplianceStatus(plan ? { submitted_at: plan.submitted_at, approved_at: plan.approved_at } : null, planMonth, deadlineDay);
+  const compliance = planComplianceStatus(
+    plan ? { submitted_at: plan.submitted_at, approved_at: plan.approved_at, action_at: firstActionAt } : null,
+    planMonth,
+    deadlineDay,
+  );
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendNote, setAmendNote] = useState('');
   const canAmend = status === 'approved' && role !== 'viewer' && Boolean(plan?.id);
