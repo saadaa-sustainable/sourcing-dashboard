@@ -1241,9 +1241,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   display: flex;
   width: fit-content;
   align-items: center;
-  gap: 4px;
   margin-top: 7px;
-  padding: 3px 8px 3px 5px;
+  padding: 4px 11px;
   font: inherit;
   font-size: 11px;
   font-weight: 600;

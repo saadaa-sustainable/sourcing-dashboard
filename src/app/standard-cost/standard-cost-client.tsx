@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { ChevronDown, ChevronRight, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import { Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
 import { downloadCsv } from '@/lib/download';
 import {
   acceptProposedCost,
@@ -833,7 +833,6 @@ function CostRow({
             aria-expanded={!!expanded}
             onClick={onToggle}
           >
-            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             Standard Cost Base
           </button>
         )}
