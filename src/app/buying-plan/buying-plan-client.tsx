@@ -584,7 +584,7 @@ export function BuyingPlanClient({
     );
   }
 
-  // Approval-deadline compliance (spec item 5) and the post-approval amendment request â€”
+  // Approval-deadline compliance (spec item 5) and the post-approval amendment request —
   // the sanctioned way to change an approved (or closed) plan: it drops to rework and
   // must be re-approved.
   const compliance = planComplianceStatus(
@@ -797,7 +797,7 @@ export function BuyingPlanClient({
 
       {frozen && (
         <Notice tone={status === 'rework' ? 'warn' : 'info'}>
-          <strong>{monthLabel(planMonth)} is closed.</strong> The plan froze at month-end: no direct edits and no POs can be linked to it. {status === 'rework' ? 'It is open for an approved amendment â€” make the change and resubmit for approval.' : status === 'approved' ? 'A missed product can still be added through Request amendment; the change must be approved again.' : 'It cannot be edited any more.'}
+          <strong>{monthLabel(planMonth)} is closed.</strong> The plan froze at month-end: no direct edits and no POs can be linked to it. {status === 'rework' ? 'It is open for an approved amendment — make the change and resubmit for approval.' : status === 'approved' ? 'A missed product can still be added through Request amendment; the change must be approved again.' : 'It cannot be edited any more.'}
         </Notice>
       )}
 
@@ -808,12 +808,12 @@ export function BuyingPlanClient({
             <InfoDot text="Reopens an approved plan as rework. The requested changes must be saved, resubmitted, and approved again." />
           </div>
           <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
-            For the case where something dropped out of view (a product never got its PO). The plan goes back to rework, you make the change, and it must be approved again â€” this counts against first-time approval.
+            For the case where something dropped out of view (a product never got its PO). The plan goes back to rework, you make the change, and it must be approved again — this counts against first-time approval.
           </p>
           <textarea
             value={amendNote}
             onChange={(e) => setAmendNote(e.target.value)}
-            placeholder="What needs to change and why â€” e.g. Maroon fabric line was missed; add 1,200 pcs FOB."
+            placeholder="What needs to change and why — e.g. Maroon fabric line was missed; add 1,200 pcs FOB."
             rows={3}
             style={{
               width: '100%',
@@ -826,7 +826,7 @@ export function BuyingPlanClient({
           />
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !amendNote.trim()} onClick={requestAmendment}>
-              {pending ? 'Sendingâ€¦' : 'Open for amendment'}
+              {pending ? 'Sending…' : 'Open for amendment'}
             </button>
             <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setAmendOpen(false)}>
               Cancel
@@ -923,7 +923,7 @@ export function BuyingPlanClient({
             </div>
             <div className="bp-metric">
               <div className="label">Plan value</div>
-              <div className="value">{totals.value ? inr(totals.value) : 'â€”'}</div>
+              <div className="value">{totals.value ? inr(totals.value) : '—'}</div>
               <div className="sub">{attention.missingCost ? `${attention.missingCost} line${attention.missingCost === 1 ? '' : 's'} missing approved cost` : 'All planned lines have an approved cost'}</div>
             </div>
             <div className="bp-metric">
@@ -965,7 +965,7 @@ export function BuyingPlanClient({
                           <th className="num wf-cell-calc">Total quantity</th>
                           <th className="num wf-cell-calc">
                             Standard cost
-                            <small className="wf-subtle">Job Â· E-FOB Â· FOB</small>
+                            <small className="wf-subtle">Job · E-FOB · FOB</small>
                           </th>
                           <th className="num wf-cell-calc">Value to be bought</th>
                           <th className="num wf-cell-calc">Actual issued quantity</th>
@@ -982,7 +982,7 @@ export function BuyingPlanClient({
                             <td>{category}</td>
                             <td>{productStatus}</td>
                             <td>{fabricType}</td>
-                            <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : 'â€”'}</td>
+                            <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : '—'}</td>
                             {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => (
                               <td key={field} className="num input-col wf-cell-input">
                                 <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(event) => patch(row.key, field, event.target.value)} />
@@ -1003,7 +1003,7 @@ export function BuyingPlanClient({
                                   </span>
                                 </div>
                               ) : (
-                                'â€”'
+                                '—'
                               )}
                             </td>
                             <td className="num wf-cell-calc">{missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(valueToBeBought)}</td>
@@ -1055,7 +1055,7 @@ export function BuyingPlanClient({
               <div className="bp-input-footer">
                 <div>
                   <strong>
-                    {fmt.format(totals.qty)} pcs Â· {totals.value ? inr(totals.value) : 'value pending'}
+                    {fmt.format(totals.qty)} pcs · {totals.value ? inr(totals.value) : 'value pending'}
                   </strong>
                   <span>
                     {planned.length} planned line
@@ -1065,7 +1065,7 @@ export function BuyingPlanClient({
                 <div className="bp-actions">
                   {editable && (
                     <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
-                      <Save size={15} /> {pending ? 'Savingâ€¦' : 'Save draft'}
+                      <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
                     </button>
                   )}
                   {canSubmit(role, status) && (
@@ -1143,7 +1143,7 @@ function BuyingPlanProductDrawer({ items, exclude, allowFreeText, onAdd, onAddAl
         <div className="bp-drawer-head">
           <div>
             <h2 id="bp-product-drawer-title">Add products</h2>
-            <span>Select one or more products for this monthâ€™s plan.</span>
+            <span>Select one or more products for this month’s plan.</span>
           </div>
           <button type="button" className="wf-icon-btn" onClick={onClose} aria-label="Close product picker">
             <X size={18} />
@@ -1160,7 +1160,7 @@ function BuyingPlanProductDrawer({ items, exclude, allowFreeText, onAdd, onAddAl
                 onAdd([code]);
                 onClose();
               }}
-              placeholder={allowFreeText ? 'Search code or product nameâ€¦' : 'Search approved-cost productsâ€¦'}
+              placeholder={allowFreeText ? 'Search code or product name…' : 'Search approved-cost products…'}
             />
           </div>
           <label className="bp-drawer-search">
@@ -1326,12 +1326,12 @@ function ComplianceChip({ c, frozen }: { c: PlanCompliance; frozen: boolean }) {
     },
     breach_submission: {
       tone: 'red',
-      text: `Breach Â· submission side Â· ${c.daysLate}d late`,
+      text: `Breach · submission side · ${c.daysLate}d late`,
       title: `Not submitted by the ${dl} deadline`,
     },
     breach_approval: {
       tone: 'red',
-      text: `Breach Â· approval side Â· ${c.daysLate}d late`,
+      text: `Breach · approval side · ${c.daysLate}d late`,
       title: `Submitted in time but not approved by ${dl}`,
     },
   };
@@ -1342,7 +1342,7 @@ function ComplianceChip({ c, frozen }: { c: PlanCompliance; frozen: boolean }) {
         {s.text}
       </span>
       {frozen && (
-        <span className="bp-badge gray" title="Month ended â€” plan is frozen">
+        <span className="bp-badge gray" title="Month ended — plan is frozen">
           Closed
         </span>
       )}
