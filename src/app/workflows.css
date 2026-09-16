@@ -1934,3 +1934,6 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   .sc-cards { padding: 12px; grid-template-columns: 1fr; }
   .sc-page-head { flex-direction: column; align-items: stretch; }
 }
+
+/* Rules tab: the capacity-formula card is held back until the calculation is corrected. */
+.vc-formula-hold { margin: 0; padding: 12px 14px; font-size: 12px; line-height: 1.5; max-width: 78ch; }

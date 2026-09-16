@@ -748,14 +748,36 @@ function RulesTab({
           ))}
         </div>
       </section>
+      {/*
+        The capacity-formula reference card is deliberately withheld.
+
+        Publishing "Monthly base = Machines x Karigar" on screen would turn a known bug into
+        documentation: on 14/09 a vendor with 40 machines and a stated 1,000/month was showing
+        a PO capacity of 2,500, and the agreed basis is capacity per DAY, not machines times
+        karigar. The calculation is fixed first, then documented here.
+
+        Two other things are unresolved and must be settled before this card returns:
+        - the fourth multiplier (E-FOB/FOB, x2.0) is still in the code constant while the
+          sd_vendor_type_multiplier master holds only job_work / efob / fob, and five vendors
+          are typed EFOB/FOB in the vendor master, so dropping it silently halves their capacity;
+        - lead times are admin-editable here while the multipliers are not, in the same panel.
+      */}
       <section className="vc-card">
-        <div className="vc-card-head"><div><h2>Capacity calculation</h2><p>Reference only · the vendor-type multipliers are not edited here</p></div></div>
-        <div className="vc-formula-grid">
-          <div><span>Monthly base</span><strong>Machines × Karigar</strong></div>
-          <div><span>Job work · E-FOB</span><strong>×{VENDOR_TYPE_MULTIPLIER.job_work.multiplier} · ×{VENDOR_TYPE_MULTIPLIER.efob.multiplier}</strong></div>
-          <div><span>FOB · E-FOB/FOB</span><strong>×{VENDOR_TYPE_MULTIPLIER.fob.multiplier} · ×{VENDOR_TYPE_MULTIPLIER.efob_fob.multiplier}</strong></div>
-          <div><span>Available</span><strong>PO capacity − In process</strong></div>
+        <div className="vc-card-head">
+          <div>
+            <h2>Capacity calculation</h2>
+            <p>Withheld until the calculation is corrected</p>
+          </div>
+          <span className="vc-pill">Pending fix</span>
         </div>
+        <p className="wf-subtle vc-formula-hold">
+          The capacity formula is not shown here yet. The current calculation is known to be
+          wrong — it was raised on 14/09, where a vendor with 40 machines and a stated
+          1,000/month came out at 2,500 PO capacity — and the agreed basis is capacity per day
+          rather than machines multiplied by karigar. Documenting the formula before fixing it
+          would make a bug look official, so this card returns once the calculation is corrected
+          and the vendor-type multipliers are confirmed.
+        </p>
       </section>
     </div>
   );
