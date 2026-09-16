@@ -125,8 +125,10 @@ export function StandardCostClient({
   const [filter, setFilter] = useState('');
   // A newly-added product opens straight into its cost format.
   const [expanded, setExpanded] = useState<string | null>(initialOpen);
+  const [drawerCode, setDrawerCode] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [stageFilter, setStageFilter] = useState('all');
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
   const [tempName, setTempName] = useState('');
@@ -171,21 +173,25 @@ export function StandardCostClient({
     });
   }, [costs, filter, mineOnly, myTurn, isMat, stageFilter, productNames]);
   const sort = useColumnSort<StandardCost>();
+  const selectedCost = !isMat ? costs.find((c) => c.product_code === drawerCode) : null;
 
   useEffect(() => {
-    if (!addOpen) return;
+    if (!selectedCost && !addOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    addCloseRef.current?.focus();
+    if (addOpen) addCloseRef.current?.focus();
+    else drawerCloseRef.current?.focus();
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setAddOpen(false);
+      if (event.key !== 'Escape') return;
+      if (addOpen) setAddOpen(false);
+      else setDrawerCode(null);
     };
     window.addEventListener('keydown', onEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onEscape);
     };
-  }, [addOpen]);
+  }, [selectedCost, addOpen]);
 
   function exportFinishedGoods() {
     downloadCsv(
@@ -455,7 +461,7 @@ export function StandardCostClient({
 
           <section className="sc-fg-sheet" aria-label="Finished Goods cost sheet">
             <div className="sc-fg-sheet-head">
-              <div><h2>Finished Goods cost sheet</h2><p>Choose a product to view its rate negotiation and full cost record.</p></div>
+              <div><h2>Finished Goods cost sheet</h2><p>Choose a product for rate negotiation, or expand its cost details.</p></div>
               <div className="sc-fg-head-actions">
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportFinishedGoods}>
                   <Download size={14} /> Export CSV
@@ -496,7 +502,7 @@ export function StandardCostClient({
                   {sort.apply(shown).map((cost) => (
                     <Fragment key={cost.product_code}>
                       <tr className={expanded === cost.product_code ? 'sc-fg-row-open' : undefined}>
-                        <td><button type="button" className="sc-fg-product" onClick={() => setExpanded(expanded === cost.product_code ? null : cost.product_code)} aria-expanded={expanded === cost.product_code} aria-label={`${expanded === cost.product_code ? 'Collapse' : 'Expand'} ${cost.product_code} cost details`}><span className="sc-fg-product-icon">▧</span><span><strong>{cost.product_code}</strong><small>{productNames.get(cost.product_code.toUpperCase()) || (tempProducts[cost.product_code]?.name ?? 'Product name unavailable')}{tempProducts[cost.product_code]?.status === 'active' ? ' · TEMP' : ''}</small></span></button></td>
+                        <td><button type="button" className="sc-fg-product" onClick={() => setDrawerCode(cost.product_code)} aria-label={`Open ${cost.product_code} rate negotiation`}><span className="sc-fg-product-icon">▧</span><span><strong>{cost.product_code}</strong><small>{productNames.get(cost.product_code.toUpperCase()) || (tempProducts[cost.product_code]?.name ?? 'Product name unavailable')}{tempProducts[cost.product_code]?.status === 'active' ? ' · TEMP' : ''}</small></span></button></td>
                         <td className="num">{rateDisplay(cost.proposed_cost)}</td><td className="num">{rateDisplay(cost.target_cost)}</td>
                         <td className="num">{rateDisplay(cost.job_cost)}</td><td className="num">{rateDisplay(cost.fob_cost)}</td><td className="num">{rateDisplay(cost.efob_cost)}</td>
                         <td><span className={`wf-status tone-${COST_STAGE_TONE[cost.neg_stage ?? ''] ?? 'purple'}`}>{COST_STAGE_LABEL[cost.neg_stage ?? ''] ?? 'Not started'}</span>{cost.frozen && <small className="sc-fg-frozen"><Lock size={11} /> Frozen</small>}</td>
@@ -504,14 +510,9 @@ export function StandardCostClient({
                         <td><button type="button" className="wf-expand-btn" onClick={() => setExpanded(expanded === cost.product_code ? null : cost.product_code)} aria-expanded={expanded === cost.product_code} aria-label={`${expanded === cost.product_code ? 'Collapse' : 'Expand'} ${cost.product_code} cost details`}>{expanded === cost.product_code ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td>
                       </tr>
                       {expanded === cost.product_code && (
-                        <tr className="sc-fg-inline-row">
+                        <tr className="sc-fg-inline-row" id={`sc-fg-detail-${cost.id}`}>
                           <td colSpan={9}>
                             <div className="sc-fg-inline-detail">
-                              <section className="sc-fg-detail-section">
-                                <div className="sc-fg-card-head"><h3>Rate negotiation</h3><span>{nextActor(cost.neg_stage)}</span></div>
-                                <div className="sc-fg-flow" aria-label="Cost negotiation stages"><span>Proposal</span><ChevronRight size={13} /><span>Target / rate</span><ChevronRight size={13} /><span>Fabric confirmation</span><ChevronRight size={13} /><span>CMTP sign-off</span></div>
-                                <table className="wf-grid sc-fg-rate-table"><tbody><CostRow cost={cost} role={role} track="fg" temp={tempProducts[cost.product_code]} mergeCandidates={catalog} /></tbody></table>
-                              </section>
                               <section className="sc-fg-detail-section sc-fg-detail-card">
                                 <CostDetail
                                   key={cost.product_code}
@@ -546,6 +547,25 @@ export function StandardCostClient({
             <div><h3>After sign-off</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
           </div>
           {standards && <StandardFieldsPanel standards={standards} editable={editable} />}
+
+          {selectedCost && (
+            <div className="sc-fg-drawer-layer">
+              <button type="button" className="sc-fg-scrim" onClick={() => setDrawerCode(null)} aria-label="Close rate negotiation" />
+              <div className="sc-fg-drawer" role="dialog" aria-modal="true" aria-labelledby="sc-fg-drawer-title">
+                <div className="sc-fg-drawer-head">
+                  <div><small>Finished Goods / Standard Cost</small><h2 id="sc-fg-drawer-title">{selectedCost.product_code} · {productNames.get(selectedCost.product_code.toUpperCase()) || tempProducts[selectedCost.product_code]?.name || 'Product'}</h2><p>Rate negotiation</p></div>
+                  <button type="button" className="sc-fg-close" ref={drawerCloseRef} onClick={() => setDrawerCode(null)} aria-label="Close rate negotiation"><X size={18} /></button>
+                </div>
+                <div className="sc-fg-drawer-body">
+                  <section className="sc-fg-drawer-card">
+                    <div className="sc-fg-card-head"><h3>Rate negotiation</h3><span>{nextActor(selectedCost.neg_stage)}</span></div>
+                    <div className="sc-fg-flow" aria-label="Cost negotiation stages"><span>Proposal</span><ChevronRight size={13} /><span>Target / rate</span><ChevronRight size={13} /><span>Fabric confirmation</span><ChevronRight size={13} /><span>CMTP sign-off</span></div>
+                    <table className="wf-grid sc-fg-rate-table"><tbody><CostRow cost={selectedCost} role={role} track="fg" temp={tempProducts[selectedCost.product_code]} mergeCandidates={catalog} /></tbody></table>
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
 
           {addOpen && editable && (
             <div className="sc-fg-add-layer" role="presentation" onKeyDown={(e) => { if (e.key === 'Escape') setAddOpen(false); }}>
