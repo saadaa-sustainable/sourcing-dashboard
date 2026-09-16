@@ -362,7 +362,7 @@ export function StandardCostClient({
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
-          <table className="wf-grid">
+          <table className="wf-grid wf-cost-sheet">
             <thead>
               <tr>
                 <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
@@ -479,7 +479,7 @@ export function StandardCostClient({
               </div>
             </div>
             <div className="table-scroll">
-              <table className="wf-grid sc-fg-table">
+              <table className="wf-grid sc-fg-table wf-cost-sheet">
                 <thead><tr>
                   <th {...sort.th('code', (c) => c.product_code)}>Product {sort.ind('code')}</th>
                   <th className="num" {...sort.th('proposed', (c) => c.proposed_cost)}>Proposed {sort.ind('proposed')}</th>
@@ -921,9 +921,6 @@ function CostRow({
 
           {canPropose(role, stage) && !cost.frozen && (
             <div className="wf-issue-row wf-issue-row-wrap">
-              <span className="wf-subtle wf-propose-hint">
-                Fill the {jobLabel} / {fobLabel} / {efobLabel} rate(s) that apply, then propose.
-              </span>
               <input
                 className="wf-mini-input"
                 type="number"
@@ -936,6 +933,7 @@ function CostRow({
                 type="button"
                 className="wf-btn wf-btn-primary wf-btn-sm"
                 disabled={busy}
+                title={`Fill the ${jobLabel} / ${fobLabel} / ${efobLabel} rate(s) that apply on this row, then Propose. The expected figure is optional.`}
                 onClick={() =>
                   act(proposeCost, {
                     proposed_cost: proposed,
