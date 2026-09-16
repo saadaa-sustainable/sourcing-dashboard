@@ -78,6 +78,10 @@ export function StandardCostDetailClient({
   const latest = history[0] ?? null;
   const updatedOn = longDate(latest?.accepted_at ?? cost.updated_at);
   const rateEditable = !cost.frozen && canEdit(role, 'draft');
+  // Nothing on this page is editable until "Edit cost" is pressed. Reading a cost record and
+  // changing one are different jobs, and a page full of live inputs invites the accidental
+  // edit. The role/frozen check still applies on top: pressing the button cannot grant rights.
+  const canChange = editing && rateEditable;
 
   return (
     <div className="sc-page">
@@ -174,6 +178,15 @@ export function StandardCostDetailClient({
       )}
 
       <section className="sc-page-detail" aria-label="Cost record">
+        <p className="sc-page-mode">
+          {canChange
+            ? 'Editing — change the cost sheet below, then save. Rate changes go through approval.'
+            : editing && !rateEditable
+              ? cost.frozen
+                ? 'Read only — this product is frozen because a PO has been issued against it.'
+                : 'Read only — your role cannot change this cost.'
+              : 'Read only. Press Edit cost to change the cost sheet.'}
+        </p>
         <CostDetail
           cost={cost}
           lines={lines}
@@ -184,7 +197,7 @@ export function StandardCostDetailClient({
           history={history}
           revisions={revisions}
           masterFabric={masterFabric}
-          editable={rateEditable}
+          editable={canChange}
           marginPct={marginPct}
         />
       </section>
