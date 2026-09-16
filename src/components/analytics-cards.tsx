@@ -1188,7 +1188,7 @@ export function AnalyticsCards({
               cta="Open buying plan"
               span={5}
               href="/buying-plan"
-              info="Two halves of one question. Buying Plan coverage = issued PO value ÷ planned value for the current month (did we commit what we said we would). Inward Plan coverage = GRN quantity received ÷ Receivable Plan quantity expected in the month (did what we committed actually arrive). High buying + low inward = vendor/TNA problem, not a planning problem. Updates live, not at month-end."
+              info="Two halves of one question. Buying Plan coverage = issued PO value ÷ planned value for the current month (did we commit what we said we would). Inward Plan coverage = GRN quantity received in the month ÷ quantity planned to arrive — taken from the Receivable Plan when the team has filled it, otherwise from the monthly Inward Plan sheet with rejected lines excluded (did what we committed actually arrive). High buying + low inward = vendor/TNA problem, not a planning problem. Month totals, not line-matched. Updates live, not at month-end."
             >
               <div className="ana-pair">
                 <div className="ana-pair-cell">
@@ -1210,8 +1210,10 @@ export function AnalyticsCards({
                   </strong>
                   <span className="ana-value-label">
                     {inwardMonth && inwardMonth.planned > 0
-                      ? `${fmt.format(inwardMonth.actual)} pcs received of ${fmt.format(inwardMonth.planned)} expected`
-                      : "no Receivable Plan quantity dated this month"}
+                      ? `${fmt.format(inwardMonth.actual)} pcs received of ${fmt.format(inwardMonth.planned)} expected${
+                          inwardMonth.source === "inward-plan" ? " (Inward Plan sheet)" : ""
+                        }`
+                      : "no inward quantity planned for this month"}
                   </span>
                   <div className="ana-plan-track"><i style={{ width: `${clampPct(inwardMonthPct ?? 0)}%` }} /></div>
                 </div>

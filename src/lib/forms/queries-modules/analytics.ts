@@ -256,21 +256,28 @@ export async function loadAnalyticsExtras(
     extras.inwardLastWeek = { planned, actual };
   } catch { /* stays null */ }
 
-  /* 8.1 Inward Plan coverage — current month, live. Same planned/actual sources as the
-     7-day card (Receivable Plan expected qty vs GRN received), widened to the month so it
-     pairs with Buying Plan coverage ("did what we committed actually arrive?"). */
+  /* 8.1 Inward Plan coverage — current month, live. Actual = GRN received in the month.
+     Planned is taken from whichever inward source the team is actually filling: the
+     Receivable Plan (expected qty dated in the month) when it holds anything, otherwise the
+     monthly Inward Plan sheet with rejected lines excluded — the same "rejected counts for
+     nothing" rule the Buying Plan uses. Month-level totals, not line-matched. */
   try {
     const today = istDateKey();
     const monthStartDate = `${today.slice(0, 7)}-01`;
     const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1))
       .toISOString()
       .slice(0, 10);
-    const [{ data: expected }, { data: grn }] = await Promise.all([
+    const [{ data: expected }, { data: sheet }, { data: grn }] = await Promise.all([
       supabase
         .from('sd_receivable_input')
-        .select('qty_expected_this_week, delivery_date_this_week')
+        .select('qty_expected_this_week')
         .gte('delivery_date_this_week', monthStartDate)
         .lt('delivery_date_this_week', nextMonth)
+        .limit(PAGE_SIZE),
+      supabase
+        .from('sd_inward_plan_entry')
+        .select('inward_qty, approval_status')
+        .eq('plan_month', monthStartDate)
         .limit(PAGE_SIZE),
       supabase
         .from('sd_ee_grn')
@@ -279,15 +286,20 @@ export async function loadAnalyticsExtras(
         .lt('grn_created_at', nextMonth)
         .limit(PAGE_SIZE),
     ]);
-    const planned = ((expected ?? []) as { qty_expected_this_week: number | null }[]).reduce(
-      (s, r) => s + (Number(r.qty_expected_this_week) || 0),
+    const fromReceivable = ((expected ?? []) as { qty_expected_this_week: number | null }[]).reduce(
+      (sum, r) => sum + (Number(r.qty_expected_this_week) || 0),
       0,
     );
+    const fromSheet = ((sheet ?? []) as { inward_qty: number | null; approval_status: string | null }[])
+      .filter((r) => (r.approval_status ?? '').trim().toLowerCase() !== 'rejected')
+      .reduce((sum, r) => sum + (Number(r.inward_qty) || 0), 0);
+    const planned = fromReceivable > 0 ? fromReceivable : fromSheet;
+    const source = fromReceivable > 0 ? 'receivable' : fromSheet > 0 ? 'inward-plan' : 'none';
     const actual = ((grn ?? []) as { received_quantity: number | null }[]).reduce(
-      (s, r) => s + (Number(r.received_quantity) || 0),
+      (sum, r) => sum + (Number(r.received_quantity) || 0),
       0,
     );
-    extras.inwardMonth = { month: today.slice(0, 7), planned, actual };
+    extras.inwardMonth = { month: today.slice(0, 7), planned, actual, source };
   } catch { /* stays null */ }
 
   // Weave + lifecycle per product code — shared by 1.5 and 1.10.

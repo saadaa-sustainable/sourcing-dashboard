@@ -122,11 +122,17 @@ export type AnalyticsExtras = {
   /** Inward last week: planned (due) vs actual (received) quantity. */
   inwardLastWeek: { planned: number; actual: number } | null;
   /**
-   * 8.1 — Inward Plan coverage for the CURRENT month, live: planned = Receivable Plan
-   * expected quantity dated in the month (all submitted inputs), actual = GRN received
-   * quantity in the month. Paired on the dashboard with Buying Plan coverage.
+   * 8.1 — Inward Plan coverage for the CURRENT month, live. Actual = GRN quantity received
+   * in the month. Planned comes from whichever inward source the team is actually filling:
+   * the Receivable Plan (expected qty dated in the month) when it has any, otherwise the
+   * monthly Inward Plan sheet (rejected lines excluded). Paired with Buying Plan coverage.
    */
-  inwardMonth: { month: string; planned: number; actual: number } | null;
+  inwardMonth: {
+    month: string;
+    planned: number;
+    actual: number;
+    source: 'receivable' | 'inward-plan' | 'none';
+  } | null;
   /**
    * Expected vs actual delivery volume by week (item 3) — from completed POs:
    * expected = qty due that week (by EDD), actual = qty that actually completed
