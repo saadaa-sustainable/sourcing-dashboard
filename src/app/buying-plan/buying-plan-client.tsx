@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Download,
   Eye,
+  MoreHorizontal,
   Plus,
   Save,
   Send,
@@ -159,6 +160,7 @@ export function BuyingPlanClient({
   const [inputPoType, setInputPoType] = useState('');
   const [inputSearch, setInputSearch] = useState('');
   const [inputCategory, setInputCategory] = useState('');
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   // View-mode grouping dimension (spec §2 — category, not product code, by default).
   const [groupBy, setGroupBy] = useState<'category' | 'subcategory' | 'weave' | 'code'>('category');
 
@@ -325,6 +327,7 @@ export function BuyingPlanClient({
   // switching). Garment-category options come from the catalog — the View groups by them.
   const categoryOptions = [...new Set(view.map((v) => v.category))].sort();
   const hasFilters = Boolean(inputFabric || inputStatus || inputPoType || inputCategory || inputSearchQ);
+  const hiddenFilterCount = Number(Boolean(inputFabric)) + Number(Boolean(inputPoType));
   const clearFilters = () => {
     setInputFabric('');
     setInputStatus('');
@@ -568,9 +571,10 @@ export function BuyingPlanClient({
 
   // Shared filter toolbar (sticky card). Group-by only applies to the grouped View.
   const toolbar = (
-    <div className="bp-toolbar">
+    <div className={`bp-toolbar bp-filter-toolbar bp-filter-toolbar-${mode}`}>
       <input
         className="bp-search"
+        aria-label="Search product code"
         placeholder="Search product code…"
         value={inputSearch}
         onChange={(e) => setInputSearch(e.target.value)}
@@ -581,23 +585,11 @@ export function BuyingPlanClient({
           <option key={c} value={c}>{c}</option>
         ))}
       </select>
-      <select aria-label="Woven or knitted" value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
-        <option value="">Woven / Knitted: All</option>
-        {fabricOptions.map((f) => (
-          <option key={f} value={f}>{f}</option>
-        ))}
-      </select>
       <select aria-label="Product state" value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
         <option value="">State: All</option>
         {statusOptions.map((s) => (
           <option key={s} value={s}>{s}</option>
         ))}
-      </select>
-      <select aria-label="PO type" value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
-        <option value="">PO type: All</option>
-        <option value="job">Job Work</option>
-        <option value="fob">FOB</option>
-        <option value="efob">E-FOB</option>
       </select>
       {mode === 'view' && (
         <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}>
@@ -607,6 +599,17 @@ export function BuyingPlanClient({
           <option value="code">Group by: Product code</option>
         </select>
       )}
+      <button
+        type="button"
+        className={moreFiltersOpen ? 'bp-more-button active' : 'bp-more-button'}
+        aria-expanded={moreFiltersOpen}
+        aria-controls="buying-plan-more-filters"
+        onClick={() => setMoreFiltersOpen((open) => !open)}
+      >
+        <MoreHorizontal size={15} aria-hidden="true" />
+        More filters
+        {hiddenFilterCount > 0 && <span className="bp-more-count">{hiddenFilterCount}</span>}
+      </button>
       <span className="bp-toolbar-count">
         {shownCount} of {totalCount} shown
         {hasFilters && (
@@ -615,6 +618,26 @@ export function BuyingPlanClient({
           </button>
         )}
       </span>
+      <div
+        id="buying-plan-more-filters"
+        className="bp-more-filters"
+        role="group"
+        aria-label="More filters"
+        hidden={!moreFiltersOpen}
+      >
+        <select aria-label="Woven or knitted" value={inputFabric} onChange={(e) => setInputFabric(e.target.value)}>
+          <option value="">Woven / Knitted: All</option>
+          {fabricOptions.map((f) => (
+            <option key={f} value={f}>{f}</option>
+          ))}
+        </select>
+        <select aria-label="PO type" value={inputPoType} onChange={(e) => setInputPoType(e.target.value)}>
+          <option value="">PO type: All</option>
+          <option value="job">Job Work</option>
+          <option value="fob">FOB</option>
+          <option value="efob">E-FOB</option>
+        </select>
+      </div>
     </div>
   );
 
