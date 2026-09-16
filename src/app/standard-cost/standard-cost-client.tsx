@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import { ChevronDown, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import Link from 'next/link';
 import { downloadCsv } from '@/lib/download';
 import {
   acceptProposedCost,
@@ -66,6 +67,20 @@ const disp = (v: number | null) => (v == null ? '—' : String(v));
 /** Read-only fabric buildup referenced from the Fabric Cost master. */
 type FabricBuildup = { grey: number | null; processing: number | null; finished: number | null };
 
+const rateDisplay = (v: number | null) =>
+  v == null ? '—' : `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(v)}`;
+
+/** "12 Sep 2026" — when the current cost was last accepted. */
+const shortDate = (iso: string | null) =>
+  !iso
+    ? null
+    : new Date(iso).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      });
+
 export function StandardCostClient({
   costs,
   lines = [],
@@ -125,6 +140,9 @@ export function StandardCostClient({
   const [expanded, setExpanded] = useState<string | null>(initialOpen);
   const [addOpen, setAddOpen] = useState(false);
   const [stageFilter, setStageFilter] = useState('all');
+  // Cards carry no column headers, so the ordering the table's headers gave gets an
+  // explicit control rather than quietly disappearing.
+  const [cardSort, setCardSort] = useState<'code' | 'job' | 'fob' | 'efob' | 'stage' | 'updated'>('code');
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
   const [tempName, setTempName] = useState('');
@@ -189,7 +207,7 @@ export function StandardCostClient({
     downloadCsv(
       'standard-cost-finished-goods',
       ['Product code', 'Product name', 'Stage', 'Proposed', 'Target', 'Job', 'FOB', 'E-FOB', 'Next step'],
-      sort.apply(shown).map((c) => [
+      (isMat ? sort.apply(shown) : sortCards(shown)).map((c) => [
         c.product_code,
         productNames.get(c.product_code.toUpperCase()) ?? '',
         COST_STAGE_LABEL[c.neg_stage ?? ''] ?? c.neg_stage ?? 'Not started',
@@ -261,6 +279,31 @@ export function StandardCostClient({
   // issued), even after sign-off — a CMTP amount change still logs a revision reason. The
   // rate itself stays governed by the negotiation controls, not these tabs.
   const cmtpFabricEditable = (c: StandardCost) => !c.frozen && canEdit(role, 'draft');
+
+  /** Ordering for the Finished Goods cards. Blank rates sort last in every direction. */
+  function sortCards(list: StandardCost[]): StandardCost[] {
+    const num = (v: number | null) => (v == null ? null : Number(v));
+    const rate = (c: StandardCost) =>
+      cardSort === 'job' ? num(c.job_cost) : cardSort === 'fob' ? num(c.fob_cost) : num(c.efob_cost);
+    return [...list].sort((a, b) => {
+      if (cardSort === 'code') return a.product_code.localeCompare(b.product_code, undefined, { numeric: true });
+      if (cardSort === 'stage') {
+        return (a.neg_stage ?? '').localeCompare(b.neg_stage ?? '') ||
+          a.product_code.localeCompare(b.product_code);
+      }
+      if (cardSort === 'updated') {
+        const at = rateHistory[a.product_code]?.[0]?.accepted_at ?? a.updated_at;
+        const bt = rateHistory[b.product_code]?.[0]?.accepted_at ?? b.updated_at;
+        return String(bt).localeCompare(String(at));
+      }
+      const av = rate(a);
+      const bv = rate(b);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return bv - av; // highest rate first
+    });
+  }
 
   const addForm = editable ? (
     <div className="wf-form-panel">
@@ -453,7 +496,7 @@ export function StandardCostClient({
 
           <section className="sc-fg-sheet" aria-label="Finished Goods cost sheet">
             <div className="sc-fg-sheet-head">
-              <div><h2>Finished Goods cost sheet</h2><p>Choose a product for rate negotiation, or expand its cost details.</p></div>
+              <div><h2>Finished Goods cost sheet</h2><p>One card per product. Open Cost Details to see the full record and change a rate.</p></div>
               <div className="sc-fg-head-actions">
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportFinishedGoods}>
                   <Download size={14} /> Export CSV
@@ -473,68 +516,72 @@ export function StandardCostClient({
                 <option value="renegotiate">Renegotiate</option>
                 <option value="rejected">Rejected</option>
               </select>
+              <select
+                aria-label="Sort products"
+                value={cardSort}
+                onChange={(e) => setCardSort(e.target.value as typeof cardSort)}
+              >
+                <option value="code">Sort: Product code</option>
+                <option value="updated">Sort: Recently updated</option>
+                <option value="stage">Sort: Stage</option>
+                <option value="job">Sort: Job rate (high first)</option>
+                <option value="fob">Sort: FOB rate (high first)</option>
+                <option value="efob">Sort: E-FOB rate (high first)</option>
+              </select>
               <div className="segment fb-seg" aria-label="Quick filter">
                 <button type="button" className={!mineOnly ? 'active' : ''} aria-pressed={!mineOnly} onClick={() => setMineOnly(false)}>All products</button>
                 <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
               </div>
             </div>
-            <div className="table-scroll">
-              <table className="wf-grid sc-fg-table wf-cost-sheet">
-                <thead><tr>
-                  <th {...sort.th('code', (c) => c.product_code)}>Product {sort.ind('code')}</th>
-                  <th className="num" {...sort.th('proposed', (c) => c.proposed_cost)}>Proposed {sort.ind('proposed')}</th>
-                  <th className="num" {...sort.th('target', (c) => c.target_cost)}>Target {sort.ind('target')}</th>
-                  <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>Job rate {sort.ind('job')}</th>
-                  <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>FOB rate {sort.ind('fob')}</th>
-                  <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>E-FOB rate {sort.ind('efob')}</th>
-                  <th {...sort.th('stage', (c) => c.neg_stage ?? c.status)}>Stage {sort.ind('stage')}</th>
-                  <th aria-label="Actions" />
-                </tr></thead>
-                <tbody>
-                  {sort.apply(shown).map((cost) => (
-                    <Fragment key={cost.product_code}>
-                      {/* The rate inputs and the stage actions live in the row itself.
-                          A read-only grid with a one-product drawer made every rate a
-                          four-click round trip, which is how the sheet is actually worked. */}
-                      <CostRow
-                        cost={cost}
-                        role={role}
-                        track="fg"
-                        temp={tempProducts[cost.product_code]}
-                        mergeCandidates={catalog}
-                        name={productNames.get(cost.product_code.toUpperCase()) || tempProducts[cost.product_code]?.name || ''}
-                        expanded={expanded === cost.product_code}
-                        onToggle={() => setExpanded(expanded === cost.product_code ? null : cost.product_code)}
-                      />
-                      {expanded === cost.product_code && (
-                        <tr className="sc-fg-inline-row" id={`sc-fg-detail-${cost.id}`}>
-                          <td colSpan={colCount}>
-                            <div className="sc-fg-inline-detail">
-                              <section className="sc-fg-detail-section sc-fg-detail-card">
-                                <CostDetail
-                                  key={cost.product_code}
-                                  cost={cost}
-                                  lines={linesByCode.get(cost.product_code) ?? []}
-                                  cmtp={cmtpByCode.get(cost.product_code) ?? []}
-                                  cmtpSubitems={cmtpSubitems}
-                                  fabricBase={fabricBase}
-                                  fabricCodes={fabricCodes}
-                                  history={rateHistory[cost.product_code] ?? []}
-                                  revisions={cmtpRevisions[cost.product_code] ?? []}
-                                  masterFabric={productFabric[cost.product_code] ?? null}
-                                  editable={cmtpFabricEditable(cost)}
-                                  marginPct={marginPct}
-                                />
-                              </section>
-                            </div>
-                          </td>
-                        </tr>
+            {/* One card per product: code, name, then the three rates side by side, the
+                Cost Details link, and when the current cost was last accepted. Rate entry
+                and the negotiation steps live on the product's own page, which is where a
+                cost is actually worked out — the sheet is for scanning. */}
+            <div className="sc-cards">
+              {sortCards(shown).map((cost) => {
+                const stageKey = cost.neg_stage ?? '';
+                const latest = rateHistory[cost.product_code]?.[0] ?? null;
+                const updated = shortDate(latest?.accepted_at ?? cost.updated_at);
+                const temp = tempProducts[cost.product_code];
+                return (
+                  <article className="sc-card" key={cost.product_code}>
+                    <div className="sc-card-head">
+                      <span className="mono sc-card-code">{cost.product_code}</span>
+                      <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
+                        {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
+                      </span>
+                    </div>
+                    <h3 className="sc-card-name">
+                      {productNames.get(cost.product_code.toUpperCase()) || temp?.name || (
+                        <span className="wf-subtle">Product name unavailable</span>
                       )}
-                    </Fragment>
-                  ))}
-                  {!shown.length && <tr><td colSpan={colCount} className="wf-empty-cell">No products match these filters.</td></tr>}
-                </tbody>
-              </table>
+                    </h3>
+                    <div className="sc-card-rates">
+                      <div><span>Job</span><strong>{rateDisplay(cost.job_cost)}</strong></div>
+                      <div><span>FOB</span><strong>{rateDisplay(cost.fob_cost)}</strong></div>
+                      <div><span>E-FOB</span><strong>{rateDisplay(cost.efob_cost)}</strong></div>
+                    </div>
+                    <div className="sc-card-foot">
+                      <Link className="wf-btn wf-btn-ghost wf-btn-sm sc-card-btn" href={`/standard-cost/${encodeURIComponent(cost.product_code)}`}>
+                        Cost Details
+                      </Link>
+                      <small className="wf-subtle">
+                        {updated ? `Cost updated ${updated}` : 'No cost recorded yet'}
+                      </small>
+                    </div>
+                    <div className="sc-card-tags">
+                      {temp?.status === 'active' && <span className="wf-temp-badge">TEMP</span>}
+                      {cost.frozen && <span className="sc-card-frozen"><Lock size={11} /> Frozen</span>}
+                      {!cost.documented && cost.neg_stage == null && (
+                        <span className="wf-gap-tag">Undocumented</span>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+              {!shown.length && (
+                <p className="wf-empty-cell sc-cards-empty">No products match these filters.</p>
+              )}
             </div>
             <div className="sc-fg-sheet-foot"><span>{shown.length} of {costs.length} products shown</span><span>Rates in ₹ per piece</span></div>
           </section>
@@ -706,7 +753,7 @@ function EfobFabricCostPanel({
   );
 }
 
-function CostRow({
+export function CostRow({
   cost,
   role,
   track,
@@ -1099,7 +1146,7 @@ function buildFinal(garment: number, marginPct: number) {
  * Final Cost = Fabric + CMTP → REJ / OH / MARGIN → FINAL PRICE, all computed and
  * never directly editable.
  */
-function CostDetail({
+export function CostDetail({
   cost,
   lines,
   cmtp,

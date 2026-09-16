@@ -1745,3 +1745,138 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   color: #8a8175;
 }
 .metric-card .wf-plan-split { margin-top: 6px; font-size: 13px; gap: 14px; }
+
+/* ---- Standard Cost: Finished Goods product cards ----
+   The sheet is for scanning: code, name, the three rates, and when the cost was last
+   accepted. Working a rate happens on the product's own page, so a card carries no inputs. */
+.sc-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+.sc-cards-empty { grid-column: 1 / -1; text-align: center; padding: 26px 0; }
+.sc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 12px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.sc-card:hover { border-color: #cfc9b6; box-shadow: 0 3px 14px rgba(0, 0, 0, 0.06); }
+.sc-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sc-card-code {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #4d6fa9;
+  overflow-wrap: anywhere;
+}
+.sc-card-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--ink-1, #1f1d19);
+  overflow-wrap: anywhere;
+}
+.sc-card-rates {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line, #e7e2d2);
+  border-bottom: 1px solid var(--line, #e7e2d2);
+}
+.sc-card-rates > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-card-rates span {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3, #6e695e);
+}
+.sc-card-rates strong { font-size: 13px; font-variant-numeric: tabular-nums; }
+.sc-card-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.sc-card-btn { width: 100%; justify-content: center; }
+.sc-card-foot small { font-size: 11px; }
+.sc-card-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sc-card-tags:empty { display: none; }
+.sc-card-frozen {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--ink-3, #6e695e);
+}
+
+/* ---- Standard Cost: one product's own page ---- */
+.sc-page { display: flex; flex-direction: column; gap: 14px; }
+.sc-page-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sc-page-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2, #3f3b33);
+  text-decoration: none;
+}
+.sc-page-back:hover { text-decoration: underline; }
+.sc-page-frozen {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-3, #6e695e);
+}
+.sc-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sc-page-title { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sc-page-code { font-size: 12px; font-weight: 600; color: #4d6fa9; }
+.sc-page-title h1 { margin: 0; font-size: 20px; line-height: 1.25; overflow-wrap: anywhere; }
+.sc-page-title p { margin: 0; font-size: 12px; }
+.sc-page-rates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+.sc-page-rate {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 10px;
+  background: #fff;
+}
+.sc-page-rate span {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3, #6e695e);
+}
+.sc-page-rate strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.sc-page-edit,
+.sc-page-detail {
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.sc-page-edit-head { padding: 13px 16px 0; }
+.sc-page-edit-head h2 { margin: 0 0 4px; font-size: 14px; }
+.sc-page-edit-head p { margin: 0 0 10px; max-width: 70ch; font-size: 12px; line-height: 1.45; }
+@media (max-width: 720px) {
+  .sc-cards { padding: 12px; grid-template-columns: 1fr; }
+  .sc-page-head { flex-direction: column; align-items: stretch; }
+}
