@@ -1,0 +1,274 @@
+/* Vendor Capacity only: Shopify-inspired presentation around the existing workflow. */
+.ui-view-vendor-capacity .vc-page,
+.ui-view-vendor-capacity .vc-section {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.ui-shopify.ui-view-vendor-capacity .vc-tabs {
+  width: 100%;
+  margin: 0;
+  padding: 0 0 1px;
+  gap: 4px;
+  border: 0;
+  border-bottom: 1px solid #d8dcdd;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.ui-shopify.ui-view-vendor-capacity .vc-tabs button {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 0;
+  background: transparent;
+  color: #63696b;
+  font-size: 11px;
+  font-weight: 650;
+}
+.ui-shopify.ui-view-vendor-capacity .vc-tabs button:hover { color: #1a1a1a; background: #ededed; }
+.ui-shopify.ui-view-vendor-capacity .vc-tabs button.active {
+  color: #1a1a1a;
+  background: transparent;
+  box-shadow: none;
+}
+.ui-shopify.ui-view-vendor-capacity .vc-tabs button.active::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  bottom: -2px;
+  left: 8px;
+  height: 2px;
+  background: #008060;
+  border-radius: 2px 2px 0 0;
+}
+
+.ui-view-vendor-capacity .vc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.ui-view-vendor-capacity .vc-metric {
+  position: relative;
+  min-width: 0;
+  min-height: 94px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.ui-view-vendor-capacity .vc-metric::after {
+  content: '';
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vc-tone, #008060);
+}
+.ui-view-vendor-capacity .vc-metric-blue { --vc-tone: #2463a8; }
+.ui-view-vendor-capacity .vc-metric-amber { --vc-tone: #d69900; }
+.ui-view-vendor-capacity .vc-metric-red { --vc-tone: #d72c0d; }
+.ui-view-vendor-capacity .vc-metric-label,
+.ui-view-vendor-capacity .vc-metric small { display: block; color: #666e70; font-size: 10px; }
+.ui-view-vendor-capacity .vc-metric-label { padding-right: 17px; font-weight: 650; }
+.ui-view-vendor-capacity .vc-metric strong {
+  display: block;
+  margin-top: 7px;
+  color: #1a1a1a;
+  font-size: 22px;
+  line-height: 1.1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+.ui-view-vendor-capacity .vc-metric small { margin-top: 5px; font-size: 9.5px; }
+
+.ui-view-vendor-capacity .vc-toolbar {
+  align-items: end;
+  padding: 11px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  box-shadow: var(--shadow-sm);
+}
+.ui-view-vendor-capacity .vc-toolbar .wf-toolbar-left {
+  display: grid;
+  flex: 1 1 630px;
+  grid-template-columns: minmax(210px, 2fr) repeat(2, minmax(135px, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+.ui-view-vendor-capacity .vc-toolbar .wf-toolbar-left > *,
+.ui-view-vendor-capacity .vc-toolbar .wf-toolbar-left .field,
+.ui-view-vendor-capacity .vc-toolbar .wf-toolbar-left select { min-width: 0; width: 100%; }
+.ui-view-vendor-capacity .vc-toolbar .wf-toolbar-right { align-items: center; gap: 8px; }
+.ui-view-vendor-capacity .vc-result-count { color: #737a7d; font-size: 10px; white-space: nowrap; }
+.ui-view-vendor-capacity .vc-export { white-space: nowrap; }
+.ui-view-vendor-capacity .vc-export svg { flex: none; }
+
+.ui-view-vendor-capacity .vc-card,
+.ui-view-vendor-capacity .vc-table-card,
+.ui-view-vendor-capacity .vc-report-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.ui-view-vendor-capacity .vc-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 58px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.ui-view-vendor-capacity .vc-card-head h2 { margin: 0; color: #202223; font-size: 13px; font-weight: 700; }
+.ui-view-vendor-capacity .vc-card-head p { margin: 3px 0 0; color: #737a7d; font-size: 10px; }
+.ui-view-vendor-capacity .vc-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ui-view-vendor-capacity .vc-card-body { padding: 16px; }
+
+.ui-view-vendor-capacity .vc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef0f1;
+  color: #5b6366;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ui-view-vendor-capacity .vc-pill-green { color: #006e52; background: #e4f5ef; }
+.ui-view-vendor-capacity .vc-pill-blue { color: #2463a8; background: #eaf4ff; }
+.ui-view-vendor-capacity .vc-pill-amber { color: #8a6116; background: #fff1d6; }
+.ui-view-vendor-capacity .vc-pill-red { color: #c5280c; background: #fff0ed; }
+
+.ui-view-vendor-capacity .vc-table-card .wide-table { min-width: 1300px; }
+.ui-view-vendor-capacity .vc-table-card .table-scroll,
+.ui-view-vendor-capacity .vc-report-card .table-scroll,
+.ui-view-vendor-capacity .vc-allocation-card .table-scroll { overflow-x: auto; }
+.ui-view-vendor-capacity .vc-table-card th,
+.ui-view-vendor-capacity .vc-table-card td,
+.ui-view-vendor-capacity .vc-allocation-card th,
+.ui-view-vendor-capacity .vc-allocation-card td,
+.ui-view-vendor-capacity .vc-report-card th,
+.ui-view-vendor-capacity .vc-report-card td { white-space: nowrap; }
+.ui-view-vendor-capacity .vc-table-card td { height: 54px; }
+.ui-view-vendor-capacity .vc-vendor-cell { min-width: 188px; }
+.ui-view-vendor-capacity .vc-vendor-cell strong,
+.ui-view-vendor-capacity .vc-product-cell strong { display: block; color: #242829; font-size: 10.5px; }
+.ui-view-vendor-capacity .vc-vendor-cell small,
+.ui-view-vendor-capacity .vc-product-cell small,
+.ui-view-vendor-capacity .vc-table-card td .wf-subtle { display: block; margin-top: 3px; font-size: 9px; }
+.ui-view-vendor-capacity .vc-table-card .wf-computed { background: #fffaf0; color: #785a22; }
+.ui-view-vendor-capacity .vc-table-card .wf-grid td.input-col input,
+.ui-view-vendor-capacity .vc-allocation-card .wf-grid td.input-col input {
+  width: 74px;
+  min-width: 74px;
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 1px solid #b9bfc2;
+  border-radius: 7px;
+  background: #fff;
+  color: #202223;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ui-view-vendor-capacity .vc-util-cell { min-width: 108px; }
+.ui-view-vendor-capacity .vc-progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9eced;
+}
+.ui-view-vendor-capacity .vc-progress > span { display: block; height: 100%; border-radius: inherit; background: #008060; }
+.ui-view-vendor-capacity .vc-progress > .vc-progress-warn { background: #d69900; }
+.ui-view-vendor-capacity .vc-progress > .vc-progress-over { background: #d72c0d; }
+.ui-view-vendor-capacity .vc-table-card .wf-over-tag { margin-left: 5px; }
+.ui-view-vendor-capacity .vc-table-card .wf-row-stale { background: #fffdf7 !important; }
+.ui-view-vendor-capacity .vc-table-card .wf-row-over { background: #fff8f5 !important; }
+.ui-view-vendor-capacity .vc-section > .wf-footer-bar { padding: 11px 14px; border-color: var(--line); border-radius: 10px; background: #fafafa; }
+.ui-view-vendor-capacity .vc-section > .wf-footer-bar .wf-footer-note { max-width: none; color: #737a7d; font-size: 10px; opacity: 1; }
+
+.ui-view-vendor-capacity .vc-allocation-layout,
+.ui-view-vendor-capacity .vc-report-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, .78fr); gap: 14px; align-items: start; }
+.ui-view-vendor-capacity .vc-allocation-side { display: grid; gap: 14px; min-width: 0; }
+.ui-view-vendor-capacity .vc-allocation-overview { padding: 15px 16px; }
+.ui-view-vendor-capacity .vc-allocation-overview .field { display: block; max-width: 440px; }
+.ui-view-vendor-capacity .vc-allocation-overview .meta-select { width: 100%; margin-top: 6px; }
+.ui-view-vendor-capacity .vc-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 15px; }
+.ui-view-vendor-capacity .vc-summary-grid > div,
+.ui-view-vendor-capacity .vc-formula-grid > div { min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: #f8f9f9; }
+.ui-view-vendor-capacity .vc-summary-grid span,
+.ui-view-vendor-capacity .vc-formula-grid span { display: block; color: #737a7d; font-size: 9px; }
+.ui-view-vendor-capacity .vc-summary-grid strong { display: block; margin-top: 4px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.ui-view-vendor-capacity .vc-summary-grid .vc-negative { color: #c5280c; }
+.ui-view-vendor-capacity .vc-usage-label { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; color: #555e60; font-size: 10px; }
+.ui-view-vendor-capacity .vc-usage-label strong { color: #242829; font-variant-numeric: tabular-nums; }
+.ui-view-vendor-capacity .vc-allocation-overview > .vc-progress { height: 8px; margin-top: 7px; }
+.ui-view-vendor-capacity .vc-allocation-warning { display: flex; align-items: center; gap: 6px; margin-top: 11px; color: #8a6116; font-size: 10px; font-weight: 650; }
+.ui-view-vendor-capacity .vc-allocation-table { min-width: 640px; }
+.ui-view-vendor-capacity .vc-product-cell { min-width: 205px; }
+.ui-view-vendor-capacity .vc-add-card .vc-card-body { display: grid; gap: 12px; }
+.ui-view-vendor-capacity .vc-add-card .field { min-width: 0; }
+.ui-view-vendor-capacity .vc-add-card .wf-picker { width: 100%; }
+.ui-view-vendor-capacity .vc-add-card .wf-inline-add { display: flex; align-items: center; }
+.ui-view-vendor-capacity .vc-add-card .wf-inline-add input { flex: 1 1 105px; width: 105px; min-width: 90px; }
+.ui-view-vendor-capacity .vc-guidance-card p { margin: 0; color: #636b6d; font-size: 10.5px; line-height: 1.5; }
+.ui-view-vendor-capacity .vc-guidance-card p + p { margin-top: 11px; }
+
+.ui-view-vendor-capacity .vc-rule-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 15px; }
+.ui-view-vendor-capacity .wf-rule-row.vc-rule-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.ui-view-vendor-capacity .vc-rule-card .wf-rule-meta { flex: 0 0 auto; }
+.ui-view-vendor-capacity .vc-rule-card .wf-rule-label { color: #242829; font-size: 12px; }
+.ui-view-vendor-capacity .vc-rule-card .wf-rule-key code { padding: 0; background: transparent; color: #8a9194; font-size: 9px; }
+.ui-view-vendor-capacity .vc-rule-card .wf-rule-edit { margin-top: auto; flex-wrap: wrap; }
+.ui-view-vendor-capacity .vc-rule-card .wf-rule-input { width: 76px; min-height: 38px; font-size: 17px; font-weight: 700; }
+.ui-view-vendor-capacity .vc-days-label { margin-right: auto; color: #737a7d; font-size: 10px; }
+.ui-view-vendor-capacity .vc-formula-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; padding: 15px; }
+.ui-view-vendor-capacity .vc-formula-grid strong { display: block; margin-top: 5px; color: #343b3d; font-size: 10.5px; }
+
+.ui-view-vendor-capacity .vc-report-grid { grid-template-columns: minmax(350px, .85fr) minmax(0, 1.4fr); }
+.ui-view-vendor-capacity .vc-report-card .wide-table { min-width: 710px; }
+.ui-view-vendor-capacity .vc-report-card .vc-type-table { min-width: 470px; }
+.ui-view-vendor-capacity .vc-report-card td { height: 53px; }
+.ui-view-vendor-capacity .vc-report-card .vc-util-cell { min-width: 130px; }
+.ui-view-vendor-capacity .vc-report-card .wf-btn { white-space: nowrap; }
+
+@media (max-width: 1200px) {
+  .ui-view-vendor-capacity .vc-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-view-vendor-capacity .vc-toolbar .wf-toolbar-left { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-view-vendor-capacity .vc-allocation-layout,
+  .ui-view-vendor-capacity .vc-report-grid { grid-template-columns: 1fr; }
+  .ui-view-vendor-capacity .vc-rule-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .ui-view-vendor-capacity .vc-metrics,
+  .ui-view-vendor-capacity .vc-toolbar .wf-toolbar-left,
+  .ui-view-vendor-capacity .vc-summary-grid,
+  .ui-view-vendor-capacity .vc-formula-grid { grid-template-columns: 1fr; }
+  .ui-view-vendor-capacity .vc-toolbar .wf-toolbar-right { width: 100%; justify-content: space-between; }
+  .ui-view-vendor-capacity .vc-card-head { flex-direction: column; }
+  .ui-view-vendor-capacity .vc-head-actions { justify-content: flex-start; }
+}

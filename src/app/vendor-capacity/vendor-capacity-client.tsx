@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, Clock, Lock, Save, Plus, Trash2, ArrowUpRight } from 'lucide-react';
+import { AlertTriangle, Clock, Download, Lock, Save, Plus, Trash2, ArrowUpRight } from 'lucide-react';
 import {
   saveVendorCapacityRow,
   saveVendorProductAllocation,
@@ -19,6 +19,7 @@ import type {
   VendorProductAllocation,
   ProductCatalogItem,
 } from '@/lib/forms/types';
+import './vendor-capacity.css';
 
 type Vendor = {
   vendor_code: string;
@@ -65,6 +66,49 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number][0];
 
+function CapacityMetric({
+  label,
+  value,
+  detail,
+  tone = 'green',
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: 'green' | 'blue' | 'amber' | 'red';
+}) {
+  return (
+    <div className={`vc-metric vc-metric-${tone}`}>
+      <span className="vc-metric-label">{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function CapacityBar({ value }: { value: number | null }) {
+  return (
+    <span className="vc-progress" aria-hidden="true">
+      <span
+        className={value != null && value > 100 ? 'vc-progress-over' : value != null && value >= 85 ? 'vc-progress-warn' : ''}
+        style={{ width: `${Math.min(Math.max(value ?? 0, 0), 100)}%` }}
+      />
+    </span>
+  );
+}
+
+function downloadCsv(name: string, rows: (string | number | null)[][]) {
+  const csv = rows
+    .map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(','))
+    .join('\r\n');
+  const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 /* ------------------------------ Shell (item 6) ------------------------------ */
 
 export function VendorCapacityClient({
@@ -85,8 +129,8 @@ export function VendorCapacityClient({
   const [focusVendor, setFocusVendor] = useState('');
 
   return (
-    <>
-      <div className="role-tabs" role="tablist" aria-label="Vendor Capacity sections">
+    <div className="vc-page">
+      <div className="role-tabs vc-tabs" role="tablist" aria-label="Vendor Capacity sections">
         {TABS.map(([id, label]) => (
           <button
             key={id}
@@ -120,7 +164,7 @@ export function VendorCapacityClient({
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -185,10 +229,33 @@ function EntryTab({
       return at - bt;
     });
   const sort = useColumnSort<(typeof filtered)[number]>();
+  const visibleCapacity = filtered.reduce((total, { vendor }) => total + poCapacityOf(vendor), 0);
+  const visibleInProcess = filtered.reduce((total, { vendor }) => total + vendor.inProcessQty, 0);
+  const visibleOver = filtered.filter(({ vendor }) => poCapacityOf(vendor) < vendor.inProcessQty).length;
+  const visibleStale = filtered.filter(({ isStale }) => isStale).length;
+
+  function exportRows() {
+    downloadCsv('vendor-capacity-entry.csv', [
+      ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Machines allocated', 'Karigar allocated', 'Capacity/month', 'First machines', 'PO capacity', 'In process', 'Available', 'Machine util %', 'Capacity util %', 'Last updated'],
+      ...sort.apply(filtered).map(({ vendor, lastUpdated }) => {
+        const machines = Number(vendor.current?.machines_allocated ?? 0);
+        const karigar = Number(vendor.current?.active_karigar ?? 0);
+        const poCapacity = poCapacityOf(vendor);
+        return [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, machines * karigar, vendor.machinesAtOnboarding, poCapacity, vendor.inProcessQty, poCapacity - vendor.inProcessQty, machines ? Math.round(karigar / machines * 100) : null, poCapacity ? Math.round(vendor.inProcessQty / poCapacity * 100) : null, lastUpdated];
+      }),
+    ]);
+  }
 
   return (
-    <>
-      <div className="wf-toolbar">
+    <div className="vc-section">
+      <div className="vc-metrics">
+        <CapacityMetric label="PO capacity" value={fmt.format(visibleCapacity)} detail={`${filtered.length} vendors · pcs/month`} />
+        <CapacityMetric label="In process" value={fmt.format(visibleInProcess)} detail={visibleCapacity ? `${Math.round(visibleInProcess / visibleCapacity * 100)}% of capacity` : 'pcs in production'} tone="blue" />
+        <CapacityMetric label="Over capacity" value={String(visibleOver)} detail="vendors above 100%" tone="red" />
+        <CapacityMetric label="Stale updates" value={String(visibleStale)} detail={`older than ${STALE_DAYS} days`} tone="amber" />
+      </div>
+
+      <div className="wf-toolbar vc-toolbar">
         <div className="wf-toolbar-left">
           <Field label="Search vendor">
             <input
@@ -221,6 +288,10 @@ function EntryTab({
           </label>
         </div>
         <div className="wf-toolbar-right">
+          <span className="vc-result-count">{filtered.length} of {decorated.length} shown</span>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}>
+            <Download size={13} /> Download CSV
+          </button>
           <span className="wf-chip">
             {decorated.length} vendors
             {staleCount > 0 && (
@@ -250,7 +321,11 @@ function EntryTab({
         <strong>stale</strong>.
       </Notice>
 
-      <div className="table-panel wf-grid-panel">
+      <div className="table-panel wf-grid-panel vc-table-card">
+        <div className="vc-card-head">
+          <div><h2>Capacity worklist</h2><p>Update machines and karigar for one vendor, then save that row.</p></div>
+          <span className="vc-pill vc-pill-blue">Per-vendor save · no approval</span>
+        </div>
         <div className="table-scroll">
           <table className="wide-table wf-grid">
             <thead>
@@ -311,7 +386,7 @@ function EntryTab({
           util = In-process ÷ PO capacity.
         </p>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -375,12 +450,12 @@ function CapacityRow({
 
   return (
     <tr className={overProduction ? 'wf-row-over' : isStale ? 'wf-row-stale' : ''}>
-      <td>
+      <td className="vc-vendor-cell">
         <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
-        <small className="mono wf-subtle">{vendor.vendor_code}</small>
+        <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
       </td>
       <td>
-        <span className="wf-fixed-value">{config?.label ?? (vendor.vendor_type || '—')}</span>
+        <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>
         <small className="wf-subtle">×{multiplier} · stock {stockDays}d</small>
       </td>
       {(['machines_allocated', 'active_karigar'] as const).map((field) => (
@@ -390,6 +465,7 @@ function CapacityRow({
             min={0}
             value={fields[field]}
             disabled={!editable}
+            aria-label={`${field === 'machines_allocated' ? 'Machines allocated' : 'Karigar allocated'} for ${vendor.vendor_name || vendor.vendor_code}`}
             onChange={(event) => set(field, event.target.value)}
           />
         </td>
@@ -405,10 +481,15 @@ function CapacityRow({
         {overProduction && <span className="wf-over-tag">over</span>}
       </td>
       <td className="num wf-computed">{machineUtil == null ? '—' : `${machineUtil}%`}</td>
-      <td className="num wf-computed">{capacityUtil == null ? '—' : `${capacityUtil}%`}</td>
+      <td className="num wf-computed vc-util-cell">
+        <span className={`vc-pill ${capacityUtil == null ? '' : capacityUtil > 100 ? 'vc-pill-red' : capacityUtil >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>
+          {capacityUtil == null ? '—' : `${capacityUtil}%`}
+        </span>
+        <CapacityBar value={capacityUtil} />
+      </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}
-        {isStale && !dirty && <span className="wf-over-tag">stale</span>}
+        {isStale && !dirty && <span className="vc-pill vc-pill-amber">Stale</span>}
         {error && <small className="wf-error-text">{error}</small>}
       </td>
       {editable && (
@@ -460,96 +541,84 @@ function ProductAllocationTab({
   const existingCodes = useMemo(() => new Set(rows.map((r) => r.product_code)), [rows]);
   const [newCode, setNewCode] = useState<string | null>(null);
 
-  return (
-    <>
-      <div className="wf-toolbar">
-        <div className="wf-toolbar-left">
-          <Field label="Vendor">
-            <select
-              className="meta-select"
-              value={vendorCode}
-              onChange={(e) => setVendorCode(e.target.value)}
-            >
-              {vendors.map((v) => (
-                <option key={v.vendor_code} value={v.vendor_code}>
-                  {v.vendor_name} ({v.vendor_code})
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <div className="wf-toolbar-right">
-          <span className="wf-chip">
-            {fmt.format(allocated)} / {capacity ? fmt.format(capacity) : '—'} pcs allocated
-            {over && (
-              <em className="wf-chip-warn">
-                <AlertTriangle size={13} /> over capacity
-              </em>
-            )}
-          </span>
-        </div>
-      </div>
+  function exportRows() {
+    if (!vendor) return;
+    downloadCsv(`vendor-allocation-${vendor.vendor_code}.csv`, [
+      ['Vendor code', 'Vendor', 'Product code', 'Product', 'Allocated pcs/month', 'Last set'],
+      ...rows.map((row) => [vendor.vendor_code, vendor.vendor_name, row.product_code, catalog.find((item) => item.product_code === row.product_code)?.product_name ?? '', row.allocated_qty, row.entry_date]),
+    ]);
+  }
 
+  return (
+    <div className="vc-section">
       <Notice tone={over ? 'warn' : 'info'}>
         Allocate how many pieces/month of each product this vendor is committed to — absolute
         pieces, not a percentage. The total is checked against the vendor&rsquo;s monthly capacity
         ({capacity ? fmt.format(capacity) : 'not set'}); going over is <strong>warned, not blocked</strong>.
       </Notice>
-
-      {editable && vendor && (
-        <div className="wf-form-panel">
-          <Field label="Add a product" hint="search by code or name — from the product master">
-            <ProductPicker
-              items={catalog}
-              exclude={existingCodes}
-              onPick={(code) => setNewCode(code)}
-              placeholder="Search product code or name…"
-            />
-          </Field>
-          {newCode && (
-            <AllocationEditor
-              key={newCode}
-              vendorCode={vendorCode}
-              productCode={newCode}
-              initialQty=""
-              isNew
-            />
+      <div className="vc-allocation-layout">
+        <section className="vc-card vc-allocation-card">
+          <div className="vc-card-head">
+            <div><h2>Product allocation</h2><p>Monthly product commitments for the selected vendor</p></div>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows} disabled={!vendor}>
+              <Download size={13} /> Download CSV
+            </button>
+          </div>
+          <div className="vc-allocation-overview">
+            <Field label="Vendor">
+              <select className="meta-select" value={vendorCode} onChange={(e) => setVendorCode(e.target.value)}>
+                {vendors.map((v) => (
+                  <option key={v.vendor_code} value={v.vendor_code}>
+                    {v.vendor_name} ({v.vendor_code})
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="vc-summary-grid">
+              <div><span>Monthly capacity</span><strong>{capacity ? fmt.format(capacity) : '—'}</strong></div>
+              <div><span>Total allocated</span><strong>{fmt.format(allocated)}</strong></div>
+              <div><span>Remaining</span><strong className={capacity && allocated > capacity ? 'vc-negative' : ''}>{capacity ? fmt.format(capacity - allocated) : '—'}</strong></div>
+            </div>
+            <div className="vc-usage-label"><span>Allocated against monthly capacity</span><strong>{capacity ? `${Math.round(allocated / capacity * 100)}%` : 'Capacity not set'}</strong></div>
+            <CapacityBar value={capacity ? Math.round(allocated / capacity * 100) : null} />
+            {over && <span className="vc-allocation-warning"><AlertTriangle size={13} /> Allocation exceeds monthly capacity; saving is still allowed.</span>}
+          </div>
+          <div className="table-scroll">
+            <table className="wide-table wf-grid vc-allocation-table">
+              <thead><tr><th>Product</th><th className="num input-col">Allocated (pcs/month)</th><th>Last set</th>{editable && <th aria-label="Actions" />}</tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <AllocationRow key={r.id} row={r} editable={editable} productName={catalog.find((item) => item.product_code === r.product_code)?.product_name ?? null} />
+                ))}
+                {!rows.length && <tr><td colSpan={editable ? 4 : 3} className="wf-empty-cell">No product allocations for this vendor yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <aside className="vc-allocation-side">
+          {editable && vendor && (
+            <section className="vc-card vc-add-card">
+              <div className="vc-card-head"><div><h2>Add a product</h2><p>Choose a Product Master item or enter a new code</p></div></div>
+              <div className="vc-card-body">
+                <Field label="Product" hint="search by code or name">
+                  <ProductPicker items={catalog} exclude={existingCodes} onPick={(code) => setNewCode(code)} placeholder="Search product code or name…" />
+                </Field>
+                {newCode && <AllocationEditor key={newCode} vendorCode={vendorCode} productCode={newCode} initialQty="" isNew />}
+              </div>
+            </section>
           )}
-        </div>
-      )}
-
-      <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wide-table wf-grid">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th className="num input-col">Allocated (pcs/month)</th>
-                <th>Last set</th>
-                {editable && <th aria-label="Actions" />}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <AllocationRow key={r.id} row={r} editable={editable} />
-              ))}
-              {!rows.length && (
-                <tr>
-                  <td colSpan={editable ? 4 : 3} className="wf-empty-cell">
-                    No product allocations for this vendor yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+          <section className="vc-card vc-guidance-card">
+            <div className="vc-card-head"><h2>Capacity check</h2></div>
+            <div className="vc-card-body"><p>The comparison uses this vendor&apos;s signed monthly capacity, or the current machines × karigar value when signed capacity is unavailable.</p><p>Product quantities are saved individually. Going over capacity is a warning, not a block.</p></div>
+          </section>
+        </aside>
       </div>
-    </>
+    </div>
   );
 }
 
 // A single existing allocation row — edit qty in place, save or delete.
-function AllocationRow({ row, editable }: { row: VendorProductAllocation; editable: boolean }) {
+function AllocationRow({ row, editable, productName }: { row: VendorProductAllocation; editable: boolean; productName: string | null }) {
   const [qty, setQty] = useState(row.allocated_qty?.toString() ?? '');
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -577,7 +646,7 @@ function AllocationRow({ row, editable }: { row: VendorProductAllocation; editab
 
   return (
     <tr>
-      <td className="mono">{row.product_code}</td>
+      <td className="vc-product-cell"><strong>{productName || row.product_code}</strong><small className="mono wf-subtle">{row.product_code}</small></td>
       <td className="num input-col">
         <input type="number" min={0} value={qty} disabled={!editable} onChange={(e) => setQty(e.target.value)} />
       </td>
@@ -665,18 +734,30 @@ function RulesTab({
     { key: 'lead_days_fob', label: 'FOB lead-time (days)', value: leadDays.fob },
   ];
   return (
-    <>
+    <div className="vc-section">
       <Notice tone="info">
         These day-counts live in the shared <strong>Rules Master</strong> (one source) — the
         Buying Plan time-buckets and lead-time/coverage calcs read the same values. FOB is settled
         at {leadDays.fob} days. {editable ? 'Edit below (admin).' : 'Only an admin can change them.'}
       </Notice>
-      <div className="wf-rule-list" style={{ maxWidth: 520 }}>
-        {rules.map((r) => (
-          <RuleRow key={r.key} ruleKey={r.key} label={r.label} value={r.value} editable={editable} />
-        ))}
-      </div>
-    </>
+      <section className="vc-card">
+        <div className="vc-card-head"><div><h2>PO lead-time defaults</h2><p>Calendar days used by shared planning calculations</p></div><span className="vc-pill vc-pill-blue">{editable ? 'Admin editable' : 'View only'}</span></div>
+        <div className="vc-rule-grid">
+          {rules.map((r) => (
+            <RuleRow key={r.key} ruleKey={r.key} label={r.label} value={r.value} editable={editable} />
+          ))}
+        </div>
+      </section>
+      <section className="vc-card">
+        <div className="vc-card-head"><div><h2>Capacity calculation</h2><p>Reference only · the vendor-type multipliers are not edited here</p></div></div>
+        <div className="vc-formula-grid">
+          <div><span>Monthly base</span><strong>Machines × Karigar</strong></div>
+          <div><span>Job work · E-FOB</span><strong>×{VENDOR_TYPE_MULTIPLIER.job_work.multiplier} · ×{VENDOR_TYPE_MULTIPLIER.efob.multiplier}</strong></div>
+          <div><span>FOB · E-FOB/FOB</span><strong>×{VENDOR_TYPE_MULTIPLIER.fob.multiplier} · ×{VENDOR_TYPE_MULTIPLIER.efob_fob.multiplier}</strong></div>
+          <div><span>Available</span><strong>PO capacity − In process</strong></div>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -708,7 +789,7 @@ function RuleRow({
   }
 
   return (
-    <div className="wf-rule-row">
+    <div className="wf-rule-row vc-rule-card">
       <div className="wf-rule-meta">
         <span className="wf-rule-label">{label}</span>
         <span className="wf-rule-key"><code>{ruleKey}</code></span>
@@ -721,8 +802,10 @@ function RuleRow({
               min={1}
               className="wf-rule-input"
               value={val}
+              aria-label={label}
               onChange={(e) => setVal(e.target.value)}
             />
+            <span className="vc-days-label">days</span>
             <button type="button" className="wf-btn wf-btn-primary wf-rule-save" onClick={save} disabled={pending || !dirty}>
               {pending ? 'Saving…' : 'Save'}
             </button>
@@ -783,23 +866,36 @@ function ReportingTab({
       .map((r) => ({ ...r, util: r.cap > 0 ? Math.round((r.inProc / r.cap) * 100) : null }));
   }, [vendors]);
 
-  const utilClass = (u: number | null) =>
-    u == null ? '' : u > 100 ? 'wf-over-tag' : u >= 70 ? '' : '';
+  const totalCapacity = pivot.reduce((sum, row) => sum + row.cap, 0);
+  const totalInProcess = pivot.reduce((sum, row) => sum + row.inProc, 0);
+  const overallUtil = totalCapacity ? Math.round(totalInProcess / totalCapacity * 100) : null;
+
+  function exportRows() {
+    downloadCsv('vendor-capacity-report.csv', [
+      ['Vendor code', 'Vendor', 'Type', 'PO capacity', 'In process', 'Utilization %'],
+      ...rows.map((row) => [row.code, row.name, row.type, row.cap, row.inProc, row.util]),
+    ]);
+  }
 
   return (
-    <>
+    <div className="vc-section">
+      <div className="vc-metrics">
+        <CapacityMetric label="Total PO capacity" value={fmt.format(totalCapacity)} detail="pcs / month" />
+        <CapacityMetric label="In process" value={fmt.format(totalInProcess)} detail="open production quantity" tone="blue" />
+        <CapacityMetric label="Overall utilization" value={overallUtil == null ? '—' : `${overallUtil}%`} detail={totalCapacity ? `${fmt.format(totalCapacity - totalInProcess)} pcs headroom` : 'No capacity entered'} tone="amber" />
+        <CapacityMetric label="Over capacity" value={String(rows.filter((row) => row.util != null && row.util > 100).length)} detail="vendors above 100%" tone="red" />
+      </div>
       <Notice tone="info">
         Utilization = in-process ÷ PO capacity, where PO capacity uses the <strong>interim</strong>{' '}
         capacity multiplier (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5) — the same basis as Vendor
         Performance. Over 100% = over-committed. Click a vendor to open its product allocation.
       </Notice>
 
-      <div className="table-panel wf-grid-panel">
-        <div className="table-meta">
-          <h3>Utilization by PO type</h3>
-        </div>
+      <div className="vc-report-grid">
+      <div className="table-panel wf-grid-panel vc-report-card">
+        <div className="vc-card-head"><div><h2>Utilization by PO type</h2><p>Aggregated capacity and in-process quantity</p></div></div>
         <div className="table-scroll">
-          <table className="wide-table">
+          <table className="wide-table vc-type-table">
             <thead>
               <tr>
                 <th>PO type</th>
@@ -814,10 +910,7 @@ function ReportingTab({
                   <td className="strong">{p.label}</td>
                   <td className="num">{fmt.format(p.cap)}</td>
                   <td className="num">{fmt.format(p.inProc)}</td>
-                  <td className="num">
-                    {p.util == null ? '—' : `${p.util}%`}
-                    {p.util != null && p.util > 100 && <span className="wf-over-tag">over</span>}
-                  </td>
+                  <td className="vc-util-cell"><span className={`vc-pill ${p.util == null ? '' : p.util > 100 ? 'vc-pill-red' : p.util >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{p.util == null ? '—' : `${p.util}%`}</span><CapacityBar value={p.util} /></td>
                 </tr>
               ))}
               {!pivot.length && (
@@ -830,11 +923,8 @@ function ReportingTab({
         </div>
       </div>
 
-      <div className="table-panel wf-grid-panel" style={{ marginTop: 16 }}>
-        <div className="table-meta">
-          <h3>Utilization by vendor</h3>
-          <span>{rows.length} vendors</span>
-        </div>
+      <div className="table-panel wf-grid-panel vc-report-card">
+        <div className="vc-card-head"><div><h2>Utilization by vendor</h2><p>Open a vendor to review its product allocation</p></div><div className="vc-head-actions"><span className="vc-pill">{rows.length} vendors</span><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}><Download size={13} /> Download CSV</button></div></div>
         <div className="table-scroll">
           <table className="wide-table">
             <thead>
@@ -856,10 +946,7 @@ function ReportingTab({
                   <td>{r.type}</td>
                   <td className="num">{fmt.format(r.cap)}</td>
                   <td className="num">{fmt.format(r.inProc)}</td>
-                  <td className={`num ${utilClass(r.util)}`}>
-                    {r.util == null ? '—' : `${r.util}%`}
-                    {r.util != null && r.util > 100 && <span className="wf-over-tag">over</span>}
-                  </td>
+                  <td className="vc-util-cell"><span className={`vc-pill ${r.util == null ? '' : r.util > 100 ? 'vc-pill-red' : r.util >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{r.util == null ? '—' : `${r.util}%`}</span><CapacityBar value={r.util} /></td>
                   <td>
                     <button
                       type="button"
@@ -867,7 +954,7 @@ function ReportingTab({
                       onClick={() => onVendor(r.code)}
                       title="Open this vendor's product allocation"
                     >
-                      <ArrowUpRight size={13} /> Detail
+                      <ArrowUpRight size={13} /> View allocation
                     </button>
                   </td>
                 </tr>
@@ -881,6 +968,7 @@ function ReportingTab({
           </table>
         </div>
       </div>
-    </>
+      </div>
+    </div>
   );
 }
