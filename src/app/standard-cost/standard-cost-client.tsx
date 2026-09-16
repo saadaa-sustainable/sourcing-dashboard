@@ -810,17 +810,6 @@ function CostRow({
     <tr className={expanded ? 'wf-cost-row-open' : undefined}>
       <td className="mono">
         <span className="wf-cost-code">
-          {onToggle && (
-            <button
-              type="button"
-              className="wf-expand-btn"
-              aria-expanded={!!expanded}
-              aria-label={expanded ? 'Collapse' : 'Show cost detail'}
-              onClick={onToggle}
-            >
-              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
-          )}
           {cost.product_code}
           {isTemp && (
             <span className="wf-temp-badge" title={temp?.name ? `Temporary product — ${temp.name}` : 'Temporary product — merge when it exists in EasyEcom'}>
@@ -834,6 +823,20 @@ function CostRow({
           )}
         </span>
         {name && <small className="wf-cost-name" title={name}>{name}</small>}
+        {/* The cost base (CMTP / Fabric / Final / Rate history) opens from a named button
+            under the code, not a bare chevron — the row is read as "this product, then its
+            cost base", and a chevron alone never said what it would reveal. */}
+        {onToggle && (
+          <button
+            type="button"
+            className="wf-cost-base-btn"
+            aria-expanded={!!expanded}
+            onClick={onToggle}
+          >
+            {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            Standard Cost Base
+          </button>
+        )}
         {!isMat && !cost.documented && stage == null && (
           <span className="wf-gap-tag">Undocumented — data gap</span>
         )}
