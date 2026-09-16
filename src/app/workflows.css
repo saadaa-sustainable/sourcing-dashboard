@@ -203,6 +203,16 @@
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
 }
+/* A grid item's default min-width is its content, so a wide child (the product picker sets
+   a 260px minimum) spills out of its track and lands on top of the next field and its hint
+   instead of shrinking. Let every field shrink to its track. */
+.wf-form-grid > * { min-width: 0; }
+.wf-form-grid .wf-picker { min-width: 0; flex-basis: auto; }
+/* The Add-a-product dialog is only ~670px wide, which splits into two cramped columns.
+   The two routes in (pick an existing code / create a temporary one) stack instead. */
+.sc-fg-add-dialog .wf-form-grid { grid-template-columns: 1fr; gap: 14px; }
+.sc-fg-add-dialog .wf-temp-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sc-fg-add-dialog .wf-temp-add input { flex: 1 1 220px; min-width: 0; }
 .wf-textarea {
   width: 100%;
   padding: 8px 10px;
