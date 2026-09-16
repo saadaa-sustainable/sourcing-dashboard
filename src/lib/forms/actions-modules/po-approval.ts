@@ -1,5 +1,7 @@
 'use server';
 
+import { isPlanFrozen } from '../approval';
+
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
@@ -95,6 +97,12 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   }
 
   const fields = readPoFields(formData);
+
+  // Month-end freeze (spec item 5): a PO cannot be linked to a plan month that has already
+  // closed — it belongs to the current month's plan. (Legacy free-text references are left alone.)
+  if (fields.buying_plan_no && /^\d{4}-\d{2}$/.test(fields.buying_plan_no) && isPlanFrozen(`${fields.buying_plan_no}-01`)) {
+    return fail(`The ${fields.buying_plan_no} buying plan is closed (month ended). Link this PO to the current month's plan.`);
+  }
 
   // Rules-Master toggle (default on): a PO's product must exist in Standard Cost
   // (a real EasyEcom code or a temporary TMP-xxxx). Keeps PO products in lockstep
@@ -314,11 +322,15 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, product_code, po_type, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at')
+    .select('id, status, product_code, po_type, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at, buying_plan_no')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
   if (po.status !== 'approved') return fail('Only an approved PO can be issued.');
+  // Month-end freeze (spec item 5): no issuance against a plan month that has closed.
+  if (po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) && isPlanFrozen(`${po.buying_plan_no}-01`)) {
+    return fail(`This PO is linked to the ${po.buying_plan_no} buying plan, which is closed (month ended). Re-link it to the current month's plan before issuing.`);
+  }
 
   const alreadyIssued = Boolean(po.po_issued_at);
   // The EasyCom number is required to first issue; once issued it can be edited.

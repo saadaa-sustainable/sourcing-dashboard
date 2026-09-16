@@ -12,7 +12,7 @@ import {
   setPoClosure,
   submitPoApproval,
 } from '@/lib/forms/actions';
-import { canApprove, canEdit, canSubmit } from '@/lib/forms/approval';
+import { addMonths, canApprove, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import type {
@@ -60,7 +60,8 @@ const BLANK = {
   cs_cutting_start: '',
   cs_inline_qc_due: '',
   critical_path_first_delivery: '',
-  buying_plan_no: '',
+  // The plan month this PO draws on — defaults to the current month (closed months are locked).
+  buying_plan_no: monthStart().slice(0, 7),
 };
 
 const catLabel = (c: PoCategory) =>
@@ -463,12 +464,25 @@ export function PoApprovalClient({
                 onChange={(e) => set('critical_path_first_delivery', e.target.value)}
               />
             </Field>
-            <Field label="Buying plan no." hint="Links back to the buying plan">
-              <input
-                value={form.buying_plan_no}
-                placeholder="e.g. BP-JUL-2026"
-                onChange={(e) => set('buying_plan_no', e.target.value)}
-              />
+            <Field label="Buying plan month" hint="The plan this PO draws on — closed months are locked">
+              <select value={form.buying_plan_no} onChange={(e) => set('buying_plan_no', e.target.value)}>
+                <option value="">— not linked —</option>
+                {[0, 1, 2].map((delta) => {
+                  const m = addMonths(monthStart(), delta);
+                  return (
+                    <option key={m} value={m.slice(0, 7)}>
+                      {monthLabel(m)} plan
+                    </option>
+                  );
+                })}
+                {/* A legacy free-text reference, or a closed month, stays visible so the row still reads correctly. */}
+                {form.buying_plan_no && !/^\d{4}-\d{2}$/.test(form.buying_plan_no) && (
+                  <option value={form.buying_plan_no}>{form.buying_plan_no} (legacy reference)</option>
+                )}
+                {/^\d{4}-\d{2}$/.test(form.buying_plan_no) && isPlanFrozen(`${form.buying_plan_no}-01`) && (
+                  <option value={form.buying_plan_no}>{monthLabel(`${form.buying_plan_no}-01`)} plan — closed</option>
+                )}
+              </select>
             </Field>
           </div>
           <div className="wf-footer-actions">

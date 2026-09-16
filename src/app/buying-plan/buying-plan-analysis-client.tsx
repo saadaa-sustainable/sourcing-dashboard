@@ -1,8 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { AlertTriangle, TrendingDown, TrendingUp } from 'lucide-react';
+import { useMemo, useState, useTransition } from 'react';
+import { AlertTriangle, FileText, Send, TrendingDown, TrendingUp } from 'lucide-react';
 import { addMonths, monthLabel } from '@/lib/forms/approval';
+import { generatePlanReportAction, getPlanReportUrl } from '@/lib/forms/actions';
+import { Notice } from '@/components/forms/form-layout';
 import { Field } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
 import type {
@@ -34,6 +36,118 @@ const STATUS_STYLE: Record<BuyingPlanAnalysisStatus, { bg: string; fg: string }>
   not_planned: { bg: '#fdecea', fg: '#c0392b' },
   not_approved: { bg: '#fdecea', fg: '#c0392b' },
 };
+
+const fmtTs = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—';
+
+/** Approval deadline compliance, approval quality and the first-time-approval rate. */
+function LifecycleCard({ lifecycle: lc, planMonth }: { lifecycle: BuyingPlanAnalysis['lifecycle']; planMonth: string }) {
+  const c = lc.compliance;
+  const dl = new Date(c.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
+  const comp: Record<typeof c.status, { tone: 'green' | 'yellow' | 'red'; text: string }> = {
+    on_time: { tone: 'green', text: 'Approved on time' },
+    pending: { tone: 'yellow', text: `Awaiting approval — due ${dl}` },
+    breach_submission: { tone: 'red', text: `Compliance breach — submission side · ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} late` },
+    breach_approval: { tone: 'red', text: `Compliance breach — approval side · ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} late` },
+  };
+  const kind: Record<typeof lc.approvalKind, { tone: 'green' | 'yellow' | 'red' | 'gray'; text: string }> = {
+    first_time: { tone: 'green', text: 'First-time approval' },
+    edited: { tone: 'yellow', text: 'Approved after rework' },
+    amended_after_freeze: { tone: 'red', text: 'Amended after freeze' },
+    not_approved: { tone: 'gray', text: 'Not approved yet' },
+  };
+  const rate = lc.firstTimeRate;
+  const ratePct = rate.approved ? Math.round((rate.firstTime / rate.approved) * 100) : null;
+  return (
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Approval compliance</h2>
+        <span className={`bp-badge ${comp[c.status].tone}`}>{comp[c.status].text}</span>
+      </div>
+      <div className="bp-cardbody">
+        <div className="bp-summaryrow"><span>Deadline</span><b>{c.deadlineDay}th of the month · {dl}</b></div>
+        <div className="bp-summaryrow"><span>Submitted</span><b>{fmtTs(lc.submittedAt)}</b></div>
+        <div className="bp-summaryrow"><span>Approved</span><b>{fmtTs(lc.approvedAt)}</b></div>
+        <div className="bp-summaryrow"><span>Approval quality</span><b><span className={`bp-badge ${kind[lc.approvalKind].tone}`}>{kind[lc.approvalKind].text}</span></b></div>
+        <div className="bp-summaryrow">
+          <span>First-time approval rate<small className="bp-summary-sub">key metric · trailing 6 months{rate.months.length ? ` · ${rate.months.join(', ')}` : ''}</small></span>
+          <b>{ratePct == null ? '—' : `${ratePct}% (${rate.firstTime}/${rate.approved})`}</b>
+        </div>
+        <div className="bp-summaryrow">
+          <span>Month-end freeze</span>
+          <b>{lc.frozen ? `Closed since ${monthLabel(lc.frozenSince ?? planMonth)}` : 'Open'}</b>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The auto-generated month report: status, download, and (admin) generate / post now. */
+function ReportCard({
+  lifecycle: lc,
+  planMonth,
+  isAdmin,
+  busy,
+  onGenerate,
+  onDownload,
+}: {
+  lifecycle: BuyingPlanAnalysis['lifecycle'];
+  planMonth: string;
+  isAdmin: boolean;
+  busy: boolean;
+  onGenerate: (post: boolean) => void;
+  onDownload: () => void;
+}) {
+  const r = lc.report;
+  return (
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Month report (PDF)</h2>
+        <span className="wf-subtle">auto on the 1st · posted to Supply Chain</span>
+      </div>
+      <div className="bp-cardbody">
+        {r ? (
+          <>
+            <div className="bp-summaryrow"><span>Generated</span><b>{fmtTs(r.generatedAt)}{r.generatedBy ? ` · ${r.generatedBy}` : ''}</b></div>
+            <div className="bp-summaryrow">
+              <span>Slack</span>
+              <b>
+                {r.slackPostedAt
+                  ? <span className="bp-badge green">Posted {fmtTs(r.slackPostedAt)}</span>
+                  : r.slackError
+                    ? <span className="bp-badge red" title={r.slackError}>Not posted</span>
+                    : <span className="bp-badge gray">Not posted</span>}
+              </b>
+            </div>
+            {r.slackError && !r.slackPostedAt && <p className="wf-subtle" style={{ fontSize: 11.5, margin: '6px 0 0' }}>{r.slackError}</p>}
+          </>
+        ) : (
+          <p className="wf-subtle" style={{ margin: 0 }}>
+            No report yet for {monthLabel(planMonth)}. It is generated automatically on the 1st after the month closes
+            {isAdmin ? ', or you can generate it now.' : '.'}
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+          {r && (
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={onDownload}>
+              <FileText size={13} /> Download PDF
+            </button>
+          )}
+          {isAdmin && (
+            <>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => onGenerate(false)}>
+                {busy ? 'Working…' : r ? 'Regenerate' : 'Generate now'}
+              </button>
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => onGenerate(true)}>
+                <Send size={13} /> Generate &amp; post to Slack
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function StatusBadge({ status }: { status: BuyingPlanAnalysisStatus }) {
   const s = STATUS_STYLE[status];
@@ -71,9 +185,32 @@ function PoList({ row }: { row: BuyingPlanAnalysisProduct }) {
   );
 }
 
-export function BuyingPlanAnalysisClient({ analysis }: { analysis: BuyingPlanAnalysis }) {
-  const { planMonth, metrics: m, products, exceptions, hasPlan, planStatus, approvedLines, totalLines } = analysis;
+export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analysis: BuyingPlanAnalysis; isAdmin?: boolean }) {
+  const { planMonth, metrics: m, products, exceptions, hasPlan, planStatus, approvedLines, totalLines, lifecycle } = analysis;
   const [onlyFlagged, setOnlyFlagged] = useState(false);
+  const [busy, start] = useTransition();
+  const [note, setNote] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+
+  function generate(post: boolean) {
+    setNote(null);
+    const fd = new FormData();
+    fd.set('plan_month', planMonth);
+    fd.set('post', post ? '1' : '0');
+    start(async () => {
+      const r = await generatePlanReportAction(fd);
+      setNote(r.ok ? { tone: 'ok', text: r.message ?? 'Done.' } : { tone: 'error', text: r.error });
+      if (r.ok) window.location.reload();
+    });
+  }
+
+  function download() {
+    if (!lifecycle.report) return;
+    start(async () => {
+      const r = await getPlanReportUrl(lifecycle.report!.storagePath);
+      if ('url' in r) window.open(r.url, '_blank', 'noopener,noreferrer');
+      else setNote({ tone: 'error', text: r.error });
+    });
+  }
 
   const rows = useMemo(
     () => (onlyFlagged ? products.filter((r) => r.status !== 'on_plan' && r.status !== 'unissued' && r.status !== 'short') : products),
@@ -124,6 +261,21 @@ export function BuyingPlanAnalysisClient({ analysis }: { analysis: BuyingPlanAna
           </Field>
           <span className="wf-subtle" style={{ fontSize: 12 }}>{planNote}</span>
         </div>
+      </div>
+
+      {note && <Notice tone={note.tone}>{note.text}</Notice>}
+
+      {/* Month-end lifecycle: approval compliance + the auto-generated month report */}
+      <div className="bp-lifecycle">
+        <LifecycleCard lifecycle={lifecycle} planMonth={planMonth} />
+        <ReportCard
+          lifecycle={lifecycle}
+          planMonth={planMonth}
+          isAdmin={isAdmin}
+          busy={busy}
+          onGenerate={generate}
+          onDownload={download}
+        />
       </div>
 
       {/* Five variance metrics for the month */}

@@ -1,5 +1,7 @@
 'use server';
 
+import { isPlanFrozen } from '../approval';
+
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
@@ -60,10 +62,18 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
     .maybeSingle();
 
   const status = (existing?.status ?? 'draft') as SdStatus;
+  // Month-end freeze (spec item 5): once the month has ended the plan takes no direct
+  // edits. The only way in is an amendment routed through approval — the plan must
+  // already be in 'rework' (requestPlanAmendment, or an approver sending it back).
+  if (isPlanFrozen(planMonth) && status !== 'rework') {
+    return fail(
+      `The ${planMonth.slice(0, 7)} plan is closed — it froze at month-end. To change it, request an amendment; it goes through approval.`,
+    );
+  }
   if (!canEdit(user.role, status)) {
     return fail(
       status === 'approved'
-        ? 'This plan is approved and can no longer be edited.'
+        ? 'This plan is approved and can no longer be edited directly — request an amendment (it goes through approval).'
         : 'You do not have permission to edit the buying plan.',
     );
   }
@@ -425,4 +435,4 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
 /* ================================================================== */
 /* Vendor capacity — no approval; one live row per vendor, saved singly */
 /* ================================================================== */
-
+

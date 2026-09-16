@@ -160,3 +160,67 @@ export function isPlanWindowOpen(planMonth: string, today = new Date()): boolean
   const opens = new Date(Date.UTC(y, m - 1, 1) - 7 * 86_400_000);
   return today.getTime() >= opens.getTime();
 }
+
+/* ------------------------------------------------------------------ */
+/* Month-end freeze + approval deadline (spec item 5)                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Month-end FREEZE: the plan for month M is frozen from 00:00 IST on the 1st of M+1.
+ * A pure date rule — nothing is stored and no scheduler is needed. Frozen plans take
+ * no direct edits and no PO may be linked to them; the only way to change one is an
+ * amendment routed through approval (rework).
+ */
+export function isPlanFrozen(planMonth: string, today = new Date()): boolean {
+  return monthStart(today) > planMonth;
+}
+
+/** The instant (UTC) the approval deadline passes: `day` of the plan month, 23:59:59 IST. */
+export function planApprovalDeadline(planMonth: string, day = 7): Date {
+  const [y, m] = planMonth.split('-').map(Number);
+  // 23:59:59 IST = 18:29:59 UTC the same calendar day.
+  return new Date(Date.UTC(y, m - 1, day, 18, 29, 59));
+}
+
+export type PlanCompliance = {
+  deadline: string; // ISO
+  deadlineDay: number;
+  /** on_time = approved by the deadline; breach_* = approved (or still open) after it;
+   *  pending = deadline not yet reached and not yet approved. */
+  status: 'on_time' | 'pending' | 'breach_submission' | 'breach_approval';
+  daysLate: number; // whole days past the deadline (0 when on time / pending)
+};
+
+/**
+ * Was the plan approved by the deadline? If not, WHO was late: the submission side
+ * (not even submitted by the deadline) or the approval side (submitted in time but
+ * approved late / still awaiting approval). An unapproved plan past the deadline is a
+ * live breach that grows until it is approved.
+ */
+export function planComplianceStatus(
+  plan: { submitted_at: string | null; approved_at: string | null } | null,
+  planMonth: string,
+  deadlineDay = 7,
+  today = new Date(),
+): PlanCompliance {
+  const deadline = planApprovalDeadline(planMonth, deadlineDay);
+  const dl = deadline.getTime();
+  const submitted = plan?.submitted_at ? Date.parse(plan.submitted_at) : null;
+  const approved = plan?.approved_at ? Date.parse(plan.approved_at) : null;
+  const daysAfter = (t: number) => Math.max(0, Math.floor((t - dl) / 86_400_000));
+  const base = { deadline: deadline.toISOString(), deadlineDay };
+  if (approved != null) {
+    if (approved <= dl) return { ...base, status: 'on_time', daysLate: 0 };
+    return {
+      ...base,
+      status: submitted != null && submitted <= dl ? 'breach_approval' : 'breach_submission',
+      daysLate: daysAfter(approved),
+    };
+  }
+  if (today.getTime() <= dl) return { ...base, status: 'pending', daysLate: 0 };
+  return {
+    ...base,
+    status: submitted != null && submitted <= dl ? 'breach_approval' : 'breach_submission',
+    daysLate: daysAfter(today.getTime()),
+  };
+}

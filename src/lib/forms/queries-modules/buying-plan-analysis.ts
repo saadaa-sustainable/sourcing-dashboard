@@ -12,13 +12,19 @@ import 'server-only';
 // never approved; (b) products issued ABOVE their approved quantity.
 
 import { client, PAGE_SIZE } from './_shared';
-import { monthStart } from '../approval';
+import { ANALYTICS_RULE_DEFAULTS } from './analytics';
+import { addMonths, isPlanFrozen, monthStart, planComplianceStatus } from '../approval';
 import type { BuyingPlan, BuyingPlanLine } from '../types';
 import type {
   BuyingPlanAnalysis,
   BuyingPlanAnalysisPo,
   BuyingPlanAnalysisProduct,
+  BuyingPlanLifecycle,
 } from '../analysis-types';
+
+/** The Supabase client the loader reads with (session-bound by default; the month-close
+ *  cron passes the service-role client because it runs with no user session). */
+export type AnalysisDb = Awaited<ReturnType<typeof client>>;
 
 const normCode = (code: string | null | undefined) => String(code ?? '').trim().toUpperCase();
 
@@ -54,8 +60,8 @@ type IssuedLine = {
   po_date: string | null;
 };
 
-export async function loadBuyingPlanAnalysis(planMonth = monthStart()): Promise<BuyingPlanAnalysis> {
-  const supabase = await client();
+export async function loadBuyingPlanAnalysis(planMonth = monthStart(), db?: AnalysisDb): Promise<BuyingPlanAnalysis> {
+  const supabase = db ?? (await client());
 
   const { data: planRow } = await supabase
     .from('sd_buying_plan')
@@ -227,6 +233,73 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart()): Promise<
   }
   products.sort((a, b) => a.product_code.localeCompare(b.product_code));
 
+  // ---- Month-end lifecycle (spec item 5): freeze, approval deadline, approval quality,
+  // trailing first-time-approval rate, and the latest generated month report. ----
+  const planX = planRow as (BuyingPlan & { amended_after_freeze?: boolean | null }) | null;
+  const { data: ruleRow } = await supabase
+    .from('sd_analytics_rule')
+    .select('value')
+    .eq('rule_key', 'plan_approval_deadline_day')
+    .maybeSingle();
+  const deadlineDay = Math.max(
+    1,
+    Math.min(28, Math.round(Number(ruleRow?.value ?? ANALYTICS_RULE_DEFAULTS.plan_approval_deadline_day ?? 7))),
+  );
+  const frozen = isPlanFrozen(planMonth);
+  const compliance = planComplianceStatus(
+    plan ? { submitted_at: plan.submitted_at, approved_at: plan.approved_at } : null,
+    planMonth,
+    deadlineDay,
+  );
+  const approvalKind: BuyingPlanLifecycle['approvalKind'] =
+    !plan || plan.status !== 'approved'
+      ? 'not_approved'
+      : planX?.amended_after_freeze
+        ? 'amended_after_freeze'
+        : plan.edited_before_approval
+          ? 'edited'
+          : 'first_time';
+  // First-time approval rate over the trailing six FG plans (this month included):
+  // approved plans that were never sent to rework nor amended after approval.
+  const { data: hist } = await supabase
+    .from('sd_buying_plan')
+    .select('plan_month, status, edited_before_approval, amended_after_freeze')
+    .eq('plan_type', 'fg')
+    .gte('plan_month', addMonths(planMonth, -5))
+    .lte('plan_month', planMonth)
+    .order('plan_month');
+  const approvedPlans = ((hist ?? []) as { plan_month: string; status: string; edited_before_approval: boolean | null; amended_after_freeze: boolean | null }[])
+    .filter((h) => h.status === 'approved');
+  const firstTimeRate = {
+    firstTime: approvedPlans.filter((h) => !h.edited_before_approval && !h.amended_after_freeze).length,
+    approved: approvedPlans.length,
+    months: approvedPlans.map((h) => String(h.plan_month).slice(0, 7)),
+  };
+  const { data: rep } = await supabase
+    .from('sd_plan_report')
+    .select('generated_at, generated_by, slack_posted_at, slack_error, storage_path')
+    .eq('plan_month', planMonth)
+    .eq('plan_type', 'fg')
+    .maybeSingle();
+  const lifecycle: BuyingPlanLifecycle = {
+    frozen,
+    frozenSince: frozen ? addMonths(planMonth, 1) : null,
+    submittedAt: plan?.submitted_at ?? null,
+    approvedAt: plan?.approved_at ?? null,
+    compliance: { deadline: compliance.deadline, deadlineDay, status: compliance.status, daysLate: compliance.daysLate },
+    approvalKind,
+    firstTimeRate,
+    report: rep
+      ? {
+          generatedAt: String(rep.generated_at),
+          generatedBy: (rep.generated_by as string | null) ?? null,
+          slackPostedAt: (rep.slack_posted_at as string | null) ?? null,
+          slackError: (rep.slack_error as string | null) ?? null,
+          storagePath: String(rep.storage_path),
+        }
+      : null,
+  };
+
   const pct = (n: number, den: number) => (den > 0 ? n / den : null);
   return {
     planMonth,
@@ -259,5 +332,6 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart()): Promise<
         .sort((a, b) => b.issuedQty - a.issuedQty),
       overApproved: products.filter((r) => r.status === 'over').sort((a, b) => b.deltaQty - a.deltaQty),
     },
+    lifecycle,
   };
 }

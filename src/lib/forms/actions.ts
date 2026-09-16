@@ -25,4 +25,5 @@ export * from './actions-modules/material';
 export * from './actions-modules/users-roles';
 export * from './actions-modules/oos';
 export * from './actions-modules/manual-adjustment';
+export * from './actions-modules/plan-lifecycle';
 export type { ActionResult, LinkResult } from './actions-modules/_shared';

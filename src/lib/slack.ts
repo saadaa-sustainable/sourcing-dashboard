@@ -101,3 +101,65 @@ export async function notifyReworkSlack(n: {
   ].filter(Boolean).join('\n');
   await postSlack(opsWebhook(), text);
 }
+
+// ── Buying Plan month-end report (spec item 5) ───────────────────────────────
+//   SLACK_SUPPLY_CHAIN_WEBHOOK_URL — the Supply Chain channel. Falls back to the ops
+//   webhook so the report still lands somewhere until the dedicated webhook is added.
+const supplyChainWebhook = () => process.env.SLACK_SUPPLY_CHAIN_WEBHOOK_URL || opsWebhook();
+
+/** True when some webhook will receive the month report (used to report "not configured"). */
+export function hasSupplyChainSlack(): boolean {
+  return Boolean(supplyChainWebhook());
+}
+
+export type PlanReportNotice = {
+  monthLabel: string; // "September 2026"
+  plannedQty: number;
+  issuedQty: number;
+  plannedValue: number;
+  issuedValue: number;
+  excessPct: number | null;
+  shortQty: number;
+  notBudgeted: number; // products issued but not budgeted (exception a)
+  overApproved: number; // products issued above approved (exception b)
+  compliance: string; // human line, e.g. "Approved on time" / "Breach — approval side, 9 days late"
+  pdfUrl: string | null; // signed URL to the PDF (null if storage failed)
+  analysisPath: string; // dashboard path for the month's analysis
+};
+
+/** Posts the month-close summary + PDF link to the Supply Chain channel. Returns false when no webhook is set. */
+export async function notifyPlanReportSlack(n: PlanReportNotice): Promise<boolean> {
+  const hook = supplyChainWebhook();
+  if (!hook) return false;
+  const inr = (v: number) =>
+    Math.abs(v) >= 1e7 ? `₹${(v / 1e7).toFixed(2)} Cr` : Math.abs(v) >= 1e5 ? `₹${(v / 1e5).toFixed(2)} L` : `₹${Math.round(v).toLocaleString('en-IN')}`;
+  const pcs = (v: number) => `${Math.round(v).toLocaleString('en-IN')} pcs`;
+  const text = [
+    `📊 *Buying Plan — ${n.monthLabel} closed.* Month report is ready.`,
+    `• Issued *${pcs(n.issuedQty)}* vs approved ${pcs(n.plannedQty)}  ·  ${inr(n.issuedValue)} vs ${inr(n.plannedValue)}`,
+    `• Excess ${n.excessPct == null ? '—' : `${(n.excessPct * 100).toFixed(1)}%`}  ·  Short ${pcs(n.shortQty)}`,
+    `• ⚠️ Not budgeted: *${n.notBudgeted}* product${n.notBudgeted === 1 ? '' : 's'}  ·  Over approved: *${n.overApproved}*`,
+    `• Approval compliance: ${n.compliance}`,
+    n.pdfUrl ? `📎 <${n.pdfUrl}|Download the PDF report>` : '📎 PDF could not be stored — open the analysis instead.',
+    link(n.analysisPath, 'Open Buying Plan Analysis →'),
+  ].join('\n');
+  await postSlack(hook, text);
+  return true;
+}
+
+// ── Post-approval / post-freeze amendment request ────────────────────────────
+export async function notifyPlanAmendmentSlack(n: {
+  monthLabel: string;
+  by: string;
+  note: string;
+  frozen: boolean;
+}): Promise<void> {
+  const text = [
+    `✏️ *Buying plan amendment requested* — ${n.monthLabel}${n.frozen ? ' (month already closed)' : ''}`,
+    `👤 ${n.by}`,
+    `>${n.note.slice(0, 400)}`,
+    'The plan is back in rework; it must be re-approved before the change counts.',
+    link('/approvals', 'Open the Approvals queue →'),
+  ].join('\n');
+  await postSlack(opsWebhook(), text);
+}

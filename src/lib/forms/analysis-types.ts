@@ -58,6 +58,32 @@ export type BuyingPlanAnalysisMetrics = {
   issuedProducts: number;
 };
 
+/** Month-end lifecycle facts for the plan (spec item 5). */
+export type BuyingPlanLifecycle = {
+  frozen: boolean; // month ended → no direct edits, no PO linkage
+  frozenSince: string | null; // ISO date of the freeze (1st of the next month) when frozen
+  submittedAt: string | null;
+  approvedAt: string | null;
+  compliance: {
+    deadline: string; // ISO instant
+    deadlineDay: number; // Rules Master: plan_approval_deadline_day
+    status: 'on_time' | 'pending' | 'breach_submission' | 'breach_approval';
+    daysLate: number;
+  };
+  /** This plan's approval quality. */
+  approvalKind: 'first_time' | 'edited' | 'amended_after_freeze' | 'not_approved';
+  /** Trailing-6-month plan-level first-time approval rate (approved plans only). */
+  firstTimeRate: { firstTime: number; approved: number; months: string[] };
+  /** Latest generated month report, if any. */
+  report: {
+    generatedAt: string;
+    generatedBy: string | null;
+    slackPostedAt: string | null;
+    slackError: string | null;
+    storagePath: string;
+  } | null;
+};
+
 export type BuyingPlanAnalysis = {
   planMonth: string;
   hasPlan: boolean;
@@ -70,4 +96,5 @@ export type BuyingPlanAnalysis = {
     notBudgeted: BuyingPlanAnalysisProduct[]; // (a) not in plan, or in plan but never approved
     overApproved: BuyingPlanAnalysisProduct[]; // (b) issued above approved
   };
+  lifecycle: BuyingPlanLifecycle;
 };
