@@ -6,7 +6,6 @@ import { loadReplenishmentByProduct } from './replenishment-oos';
 import type {
   BuyingPlan,
   BuyingPlanLine,
-  BuyingPlanLineView,
   MaterialCode,
   Colour,
 } from '../types';
@@ -179,25 +178,7 @@ export async function loadActualsByProduct(planMonth: string) {
   return map;
 }
 
-export function buildBuyingPlanView(
-  lines: BuyingPlanLine[],
-  actuals: Map<string, { qty: number; value: number }>,
-): BuyingPlanLineView[] {
-  return lines.map((line) => {
-    const totalQty =
-      Number(line.job_work_qty || 0) +
-      Number(line.fob_qty || 0) +
-      Number(line.efob_qty || 0);
-    const valueToBeBought = totalQty * Number(line.standard_value || 0);
-    const actual = actuals.get(line.product_code) ?? { qty: 0, value: 0 };
-    return {
-      ...line,
-      totalQty,
-      valueToBeBought,
-      actualIssuedQty: actual.qty,
-      actualIssuedValue: actual.value,
-      // Shown in red. Deliberately does NOT block submission.
-      overPlan: actual.qty > totalQty && totalQty > 0,
-    };
-  });
-}
+// NOTE: the former buildBuyingPlanView() helper was removed (2026-09-16). It multiplied
+// standard_value by qty, but on a submitted line standard_value is already the frozen LINE
+// TOTAL — the "Rs 1 crore for 1,000 pieces" bug. It had no callers; the plan client and
+// loadBuyingPlanAnalysis carry the correct value rule (value >= qty ? total : qty × rate).

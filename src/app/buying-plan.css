@@ -313,6 +313,16 @@
   .bp-drawer-footer .wf-btn { flex: 1; }
 }
 
+/* Plan overview: total blended request, weave first then categories beneath. */
+.bp-blend { margin-top: 14px; border-top: 1px solid var(--line, #e7e2d2); padding-top: 12px; }
+.bp-blend-title { font-size: 11px; font-weight: 600; color: var(--ink-3, #6e695e); margin-bottom: 8px; }
+.bp-blend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.bp-blend-col { border: 1px solid var(--line, #e7e2d2); border-radius: 10px; padding: 10px 12px; background: #fff; }
+.bp-blend-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; padding-bottom: 6px; border-bottom: 1px solid var(--line, #e7e2d2); margin-bottom: 4px; }
+.bp-blend-head span { font-size: 11px; color: var(--ink-3, #6e695e); white-space: nowrap; }
+.bp-blend-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 4px 0; }
+.bp-blend-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
 /* Analysis track: approval-compliance + month-report cards side by side. */
 .bp-lifecycle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 @media (max-width: 860px) { .bp-lifecycle { grid-template-columns: 1fr; } }

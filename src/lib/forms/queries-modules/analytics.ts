@@ -165,6 +165,7 @@ export async function loadAnalyticsExtras(
     issuedLastWeek: null,
     pendingApproval: null,
     inwardLastWeek: null,
+    inwardMonth: null,
     reliability: null,
     expectedVsActual: null,
     replenishment: null,
@@ -253,6 +254,40 @@ export async function loadAnalyticsExtras(
     const planned = ((due ?? []) as { original_qty: number | null }[]).reduce((s, r) => s + (Number(r.original_qty) || 0), 0);
     const actual = ((grn ?? []) as { received_quantity: number | null }[]).reduce((s, r) => s + (Number(r.received_quantity) || 0), 0);
     extras.inwardLastWeek = { planned, actual };
+  } catch { /* stays null */ }
+
+  /* 8.1 Inward Plan coverage — current month, live. Same planned/actual sources as the
+     7-day card (Receivable Plan expected qty vs GRN received), widened to the month so it
+     pairs with Buying Plan coverage ("did what we committed actually arrive?"). */
+  try {
+    const today = istDateKey();
+    const monthStartDate = `${today.slice(0, 7)}-01`;
+    const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1))
+      .toISOString()
+      .slice(0, 10);
+    const [{ data: expected }, { data: grn }] = await Promise.all([
+      supabase
+        .from('sd_receivable_input')
+        .select('qty_expected_this_week, delivery_date_this_week')
+        .gte('delivery_date_this_week', monthStartDate)
+        .lt('delivery_date_this_week', nextMonth)
+        .limit(PAGE_SIZE),
+      supabase
+        .from('sd_ee_grn')
+        .select('received_quantity')
+        .gte('grn_created_at', monthStartDate)
+        .lt('grn_created_at', nextMonth)
+        .limit(PAGE_SIZE),
+    ]);
+    const planned = ((expected ?? []) as { qty_expected_this_week: number | null }[]).reduce(
+      (s, r) => s + (Number(r.qty_expected_this_week) || 0),
+      0,
+    );
+    const actual = ((grn ?? []) as { received_quantity: number | null }[]).reduce(
+      (s, r) => s + (Number(r.received_quantity) || 0),
+      0,
+    );
+    extras.inwardMonth = { month: today.slice(0, 7), planned, actual };
   } catch { /* stays null */ }
 
   // Weave + lifecycle per product code — shared by 1.5 and 1.10.
@@ -419,8 +454,9 @@ export async function loadAnalyticsExtras(
     const { data: lines } = planIds.length
       ? await supabase
           .from('sd_buying_plan_line')
-          .select('plan_id, product_code, job_work_qty, fob_qty, efob_qty, standard_value')
+          .select('plan_id, product_code, job_work_qty, fob_qty, efob_qty, standard_value, line_status')
           .in('plan_id', planIds)
+          .neq('line_status', 'rejected')
       : { data: [] };
     const monthOfPlan = new Map<number, string>();
     planByMonth.forEach((v, month) => monthOfPlan.set(v.id, month));
@@ -441,7 +477,9 @@ export async function loadAnalyticsExtras(
     ((lines ?? []) as {
       plan_id: number; product_code: string; job_work_qty: number | null;
       fob_qty: number | null; efob_qty: number | null; standard_value: number | null;
+      line_status: string | null;
     }[]).forEach((l) => {
+      // Rejected lines are excluded at the query (P0: SUMIF was counting rejected rows).
       const month = monthOfPlan.get(l.plan_id);
       if (!month) return;
       const cost = stdCosts[l.product_code];

@@ -315,7 +315,10 @@ export function BuyingPlanClient({
   ];
 
   // View module works over products that actually have a planned quantity.
-  const planned = view.filter((v) => v.totalQty > 0);
+  // View module works over products that actually have a planned quantity. REJECTED lines
+  // are excluded from every total, group and PO-type rollup (spec §sequencing: "SUMIF
+  // counting rejected rows") — they still appear in the Plan-detail table with their status.
+  const planned = view.filter((v) => v.totalQty > 0 && v.row.line_status !== 'rejected');
   // §7 time-bucket demand coverage: pending = 30-day ROP, so N-day coverage scales
   // linearly. Reads the lead-time day-counts from the Rules Master.
   const totalPending = planned.reduce((s, v) => s + (pendingByCode[v.row.product_code] ?? 0), 0);
@@ -372,6 +375,25 @@ export function BuyingPlanClient({
       : 0;
 
   // §1 macro snapshot: total blended request broken down by category (real plan data).
+  // 7.1 — total blended request split Woven/Knitted first, then category beneath each.
+  const blendedByWeave = (() => {
+    const m = new Map<string, { value: number; qty: number; cats: Map<string, number> }>();
+    for (const v of planned) {
+      const w = m.get(v.fabricType) ?? { value: 0, qty: 0, cats: new Map<string, number>() };
+      w.value += v.valueToBeBought;
+      w.qty += v.totalQty;
+      w.cats.set(v.category, (w.cats.get(v.category) ?? 0) + v.valueToBeBought);
+      m.set(v.fabricType, w);
+    }
+    return [...m.entries()]
+      .sort((a, b) => b[1].value - a[1].value)
+      .map(([weave, w]) => ({
+        weave,
+        value: w.value,
+        qty: w.qty,
+        cats: [...w.cats.entries()].filter(([, val]) => val > 0).sort((a, b) => b[1] - a[1]),
+      }));
+  })();
   const blendedByCategory = (() => {
     const m = new Map<string, number>();
     for (const v of planned) m.set(v.category, (m.get(v.category) ?? 0) + v.valueToBeBought);
@@ -439,13 +461,24 @@ export function BuyingPlanClient({
     return null;
   }
 
+  // 7.9 — CSV keyed to Product Code, WIDE format matching the manual-entry fields:
+  // product_code, job_work_qty, fob_qty, efob_qty, remark. Any qty column may be blank
+  // (partial-fill rule). The older long format (product_code, po_type, qty) still imports.
+  const CSV_HEADERS = ['product_code', 'job_work_qty', 'fob_qty', 'efob_qty', 'remark'] as const;
+
   function downloadTemplate() {
-    const examples = productCodes.slice(0, 2).map((code) => [code, 'fob', '100', '']);
-    downloadCsv(
-      'buying-plan-template.csv',
-      ['product_code', 'po_type', 'qty', 'remark'],
-      examples,
+    const examples = productCodes.slice(0, 2).map((code, i) =>
+      i === 0 ? [code, '200', '', '', 'job work only'] : [code, '', '100', '50', ''],
     );
+    downloadCsv('buying-plan-template.csv', [...CSV_HEADERS], examples);
+  }
+
+  /** Header lookup tolerant of spacing/case ("Job Work qty", "FOB Qty", "Product Code"). */
+  function cell(r: Record<string, string>, ...names: string[]): string | undefined {
+    const norm = (k: string) => k.toLowerCase().replace(/[^a-z]/g, '');
+    const wanted = names.map(norm);
+    for (const k of Object.keys(r)) if (wanted.includes(norm(k))) return r[k];
+    return undefined;
   }
 
   async function onCsvFile(file: File) {
@@ -460,24 +493,57 @@ export function BuyingPlanClient({
     }
     const acc = new Map<string, { job_work_qty: number; fob_qty: number; efob_qty: number; remark: string }>();
     const skipped: string[] = [];
+    const first = objects[0] ?? {};
+    const isWide =
+      cell(first, 'job_work_qty', 'jobworkqty', 'job_work', 'jobwork') !== undefined ||
+      cell(first, 'fob_qty', 'fobqty', 'fob') !== undefined ||
+      cell(first, 'efob_qty', 'efobqty', 'efob') !== undefined;
     objects.forEach((r, i) => {
       const line = i + 2; // +1 header, +1 to 1-index
-      const code = String(r.product_code ?? '').trim();
-      const field = poTypeOf(String(r.po_type ?? ''));
-      const qty = Number(r.qty);
+      const code = String(cell(r, 'product_code', 'productcode', 'code') ?? '').trim().toUpperCase();
       if (!code) return skipped.push(`row ${line}: missing product code`);
-      if (!codeSet.has(code)) return skipped.push(`row ${line}: unknown code "${code}"`);
-      if (!field) return skipped.push(`row ${line}: unknown po_type "${r.po_type ?? ''}"`);
-      if (!Number.isFinite(qty) || qty <= 0) return skipped.push(`row ${line}: non-positive qty`);
+      if (!codeSet.has(code)) {
+        // Unrecognised OR discontinued (the add-list already excludes discontinued codes).
+        const known = productMaster[code];
+        return skipped.push(
+          known?.status === 'Discontinued'
+            ? `row ${line}: "${code}" is discontinued`
+            : `row ${line}: unknown code "${code}"`,
+        );
+      }
+      const remark = String(cell(r, 'remark', 'remarks') ?? '');
       const cur = acc.get(code) ?? { job_work_qty: 0, fob_qty: 0, efob_qty: 0, remark: '' };
-      cur[field] += qty;
-      if (r.remark) cur.remark = String(r.remark);
+      if (isWide) {
+        // Partial-fill: blank cells are simply 0; only negative / non-numeric cells fail.
+        const parts: ['job_work_qty' | 'fob_qty' | 'efob_qty', string | undefined][] = [
+          ['job_work_qty', cell(r, 'job_work_qty', 'jobworkqty', 'job_work', 'jobwork')],
+          ['fob_qty', cell(r, 'fob_qty', 'fobqty', 'fob')],
+          ['efob_qty', cell(r, 'efob_qty', 'efobqty', 'efob')],
+        ];
+        let any = false;
+        for (const [field, raw] of parts) {
+          const t = String(raw ?? '').trim();
+          if (!t) continue;
+          const qty = Number(t.replace(/,/g, ''));
+          if (!Number.isFinite(qty) || qty < 0) return skipped.push(`row ${line}: bad ${field} "${t}"`);
+          cur[field] = qty;
+          if (qty > 0) any = true;
+        }
+        if (!any) return skipped.push(`row ${line}: no quantity in any column`);
+      } else {
+        const field = poTypeOf(String(cell(r, 'po_type', 'potype', 'type') ?? ''));
+        const qty = Number(String(cell(r, 'qty', 'quantity') ?? '').replace(/,/g, ''));
+        if (!field) return skipped.push(`row ${line}: unknown po_type "${cell(r, 'po_type') ?? ''}"`);
+        if (!Number.isFinite(qty) || qty <= 0) return skipped.push(`row ${line}: non-positive qty`);
+        cur[field] += qty;
+      }
+      if (remark) cur.remark = remark;
       acc.set(code, cur);
     });
 
     if (!acc.size) {
       setError(
-        `No valid rows imported.${skipped.length ? ` ${skipped.slice(0, 5).join('; ')}` : ' Expected headers: product_code, po_type, qty.'}`,
+        `No valid rows imported.${skipped.length ? ` ${skipped.slice(0, 5).join('; ')}` : ` Expected headers: ${CSV_HEADERS.join(', ')}.`}`,
       );
       return;
     }
@@ -612,6 +678,19 @@ export function BuyingPlanClient({
     });
   }
 
+  // 7.8 submitter-side indicator: after a partial approval the team must see how much is
+  // still waiting — "12 of 40 lines still awaiting review" — so it is never mistaken for a
+  // silent rejection. Counted over lines that carry quantity (zero lines never go to review).
+  const reviewable = view.filter((v) => v.totalQty > 0);
+  const lineCounts = {
+    total: reviewable.length,
+    approved: reviewable.filter((v) => v.row.line_status === 'approved').length,
+    rework: reviewable.filter((v) => v.row.line_status === 'rework').length,
+    rejected: reviewable.filter((v) => v.row.line_status === 'rejected').length,
+  };
+  const awaitingReview = lineCounts.total - lineCounts.approved - lineCounts.rework - lineCounts.rejected;
+  const showLineProgress = planLocked || status === 'rework';
+
   const shownCount = mode === 'view' ? viewRows.length : inputRows.length;
   const totalCount = mode === 'view' ? planned.length : view.length;
 
@@ -723,6 +802,20 @@ export function BuyingPlanClient({
             submittedAt={plan?.submitted_at ?? null}
             frozen={frozen}
           />
+          {showLineProgress && lineCounts.total > 0 && (
+            <span
+              className={`bp-badge ${awaitingReview > 0 ? 'yellow' : lineCounts.rework > 0 ? 'red' : 'green'}`}
+              style={{ whiteSpace: 'normal' }}
+              title="Line-level approval progress on this submission"
+            >
+              {awaitingReview > 0
+                ? `${awaitingReview} of ${lineCounts.total} lines still awaiting review`
+                : `All ${lineCounts.total} lines reviewed`}
+              {lineCounts.approved ? ` · ${lineCounts.approved} approved` : ''}
+              {lineCounts.rework ? ` · ${lineCounts.rework} sent for rework` : ''}
+              {lineCounts.rejected ? ` · ${lineCounts.rejected} rejected` : ''}
+            </span>
+          )}
           <div className="segment wf-segment">
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
@@ -852,6 +945,7 @@ export function BuyingPlanClient({
               demandQty={totalPending}
               issuedValue={plannedTotals.actualValue}
               byCategory={blendedByCategory}
+              byWeave={blendedByWeave}
             />
 
             <div className="bp-sticky">
@@ -1318,7 +1412,7 @@ const dayWord = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
 
 /**
  * Deadline pill that completes the status badge in plain words, e.g.
- *   Approval Pending  · Overdue — no admin decision since 7 Sept (8 days)
+ *   Approval Pending  · Deadline passed — no admin decision since 7 Sept (8 days)
  *   Approved          · Approved 5 Sept — on time
  *   Draft             · Submit and approve by 7 Oct
  * The first admin decision is judged on the current submission cycle (see
@@ -1355,7 +1449,7 @@ function DeadlineChip({
     tone = 'red';
     text = decisionAt
       ? `${status === 'approved' ? 'Approved' : 'Decided'} ${dShort(decisionAt)} — ${dayWord(c.daysLate)} after the ${dl} deadline`
-      : `Overdue — no admin decision since ${dl} (${dayWord(c.daysLate)})`;
+      : `Deadline passed — no admin decision since ${dl} (${dayWord(c.daysLate)})`;
     title = `Compliance breach, approval side: submitted ${submittedAt ? dShort(submittedAt) : 'in time'}, but not decided by ${dl}`;
   } else {
     tone = 'red';
@@ -1413,6 +1507,7 @@ function OverviewCard({
   demandQty,
   issuedValue,
   byCategory,
+  byWeave,
 }: {
   pctBought: number;
   issuedQty: number;
@@ -1421,6 +1516,8 @@ function OverviewCard({
   demandQty: number;
   issuedValue: number;
   byCategory: [string, number][];
+  /** 7.1: total blended request by weave (Woven/Knitted), each split by category beneath. */
+  byWeave?: { weave: string; value: number; qty: number; cats: [string, number][] }[];
 }) {
   const remaining = Math.max(0, plannedQty - issuedQty);
   return (
@@ -1459,6 +1556,32 @@ function OverviewCard({
             <div className="sub">{fmt.format(remaining)} pcs remaining</div>
           </div>
         </div>
+        {/* 7.1 — total blended request: Woven / Knitted first, categories beneath each. */}
+        {byWeave && byWeave.length > 0 && (
+          <div className="bp-blend">
+            <div className="bp-blend-title">Total blended request by weave → category</div>
+            <div className="bp-blend-grid">
+              {byWeave.map((w) => (
+                <div className="bp-blend-col" key={w.weave}>
+                  <div className="bp-blend-head">
+                    <b>{w.weave}</b>
+                    <span>{w.value ? inr(w.value) : '—'} · {fmt.format(w.qty)} pcs</span>
+                  </div>
+                  {w.cats.length ? (
+                    w.cats.map(([cat, val]) => (
+                      <div className="bp-blend-row" key={cat}>
+                        <span>{cat}</span>
+                        <b>{inr(val)}</b>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="bp-blend-row"><span className="wf-subtle">no priced lines</span></div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

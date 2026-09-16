@@ -122,6 +122,12 @@ export type AnalyticsExtras = {
   /** Inward last week: planned (due) vs actual (received) quantity. */
   inwardLastWeek: { planned: number; actual: number } | null;
   /**
+   * 8.1 — Inward Plan coverage for the CURRENT month, live: planned = Receivable Plan
+   * expected quantity dated in the month (all submitted inputs), actual = GRN received
+   * quantity in the month. Paired on the dashboard with Buying Plan coverage.
+   */
+  inwardMonth: { month: string; planned: number; actual: number } | null;
+  /**
    * Expected vs actual delivery volume by week (item 3) — from completed POs:
    * expected = qty due that week (by EDD), actual = qty that actually completed
    * that week (by completion date). The gap is the delivery slippage.

@@ -385,6 +385,12 @@ export function AnalyticsCards({
   const inward = extras?.inwardLastWeek ?? null;
   const inwardPct =
     inward && inward.planned > 0 ? Math.round((inward.actual / inward.planned) * 100) : null;
+  // 8.1 — live, paired coverage for the current month (Buying Plan vs Inward Plan).
+  const inwardMonth = extras?.inwardMonth ?? null;
+  const inwardMonthPct =
+    inwardMonth && inwardMonth.planned > 0
+      ? Math.round((inwardMonth.actual / inwardMonth.planned) * 100)
+      : null;
   const repl = extras?.replenishment ?? null;
   const oosSum = extras?.oosSummary ?? null;
   const vrec = extras?.vendorRec ?? null;
@@ -1165,6 +1171,55 @@ export function AnalyticsCards({
                     <span><small>Planned</small><b>{fmt.format(inward.planned)}</b></span>
                   </div>
                 </div>
+              )}
+            </AnaCard>
+
+            <AnaCard
+              title="Live coverage — this month"
+              icon={Target}
+              tone={
+                planPct == null && inwardMonthPct == null
+                  ? "neutral"
+                  : (planPct ?? 0) >= 80 && (inwardMonthPct ?? 0) >= 80
+                    ? "green"
+                    : "amber"
+              }
+              status={`${new Date().toLocaleDateString("en-IN", { month: "short", year: "numeric" }).toUpperCase()} · LIVE`}
+              cta="Open buying plan"
+              span={5}
+              href="/buying-plan"
+              info="Two halves of one question. Buying Plan coverage = issued PO value ÷ planned value for the current month (did we commit what we said we would). Inward Plan coverage = GRN quantity received ÷ Receivable Plan quantity expected in the month (did what we committed actually arrive). High buying + low inward = vendor/TNA problem, not a planning problem. Updates live, not at month-end."
+            >
+              <div className="ana-pair">
+                <div className="ana-pair-cell">
+                  <small>Buying Plan coverage</small>
+                  <strong className="ana-value ana-value-xl">
+                    {planPct ?? "—"}{planPct != null ? "%" : ""}
+                  </strong>
+                  <span className="ana-value-label">
+                    {planTotals.planned > 0
+                      ? `${money.format(planTotals.actual)} issued of ${money.format(planTotals.planned)} planned`
+                      : "no approved plan value this month"}
+                  </span>
+                  <div className="ana-plan-track"><i style={{ width: `${clampPct(planPct ?? 0)}%` }} /></div>
+                </div>
+                <div className="ana-pair-cell">
+                  <small>Inward Plan coverage</small>
+                  <strong className="ana-value ana-value-xl">
+                    {inwardMonthPct ?? "—"}{inwardMonthPct != null ? "%" : ""}
+                  </strong>
+                  <span className="ana-value-label">
+                    {inwardMonth && inwardMonth.planned > 0
+                      ? `${fmt.format(inwardMonth.actual)} pcs received of ${fmt.format(inwardMonth.planned)} expected`
+                      : "no Receivable Plan quantity dated this month"}
+                  </span>
+                  <div className="ana-plan-track"><i style={{ width: `${clampPct(inwardMonthPct ?? 0)}%` }} /></div>
+                </div>
+              </div>
+              {planPct != null && inwardMonthPct != null && planPct - inwardMonthPct >= 30 && (
+                <p className="ana-note">
+                  Commitments are running well ahead of arrivals — check vendor follow-up / TNA before adding more plan.
+                </p>
               )}
             </AnaCard>
 
