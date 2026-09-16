@@ -33,7 +33,7 @@ export default async function VendorCapacityPage() {
 
   if (!user) redirect('/login');
 
-  const { logs, vendorMasters, vendorTypes } = await loadVendorCapacity();
+  const { logs, vendorMasters, vendorTypes, multipliers } = await loadVendorCapacity();
   // Real in-process load from the PO pipeline (sd_vendor_in_process), not the sheet.
   const inProcessByCode = await loadInProcessByVendor();
   // Item 1 product allocations + catalog, and item 3 day-count rules — for the sub-tabs.
@@ -97,6 +97,7 @@ export default async function VendorCapacityPage() {
         role={user.role}
         allocations={allocations}
         catalog={catalog}
+        multipliers={multipliers}
         leadDays={{
           job: rules.lead_days_job,
           efob: rules.lead_days_efob,

@@ -405,11 +405,19 @@ export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent
 // confirmed 2026-09-04 at 90 (was 75), matching the Rules Master
 // (sd_analytics_rule.lead_days_fob = 90), which is the authoritative day-count
 // source for lead-time/coverage everywhere. Only Machines & Karigar are hand-entered.
+/**
+ * The three PO types and what a month of capacity buys for each. Matches the
+ * sd_vendor_type_multiplier master (job_work 1.00 / efob 1.50 / fob 2.50).
+ *
+ * There used to be a fourth, efob_fob at 2.0, for vendors typed "EFOB/FOB" in the vendor
+ * master (five of them). It was dropped on the team's instruction that those vendors use the
+ * E-FOB formula, so normaliseVendorType now folds "EFOB/FOB" into efob rather than leaving it
+ * to fall through to a multiplier of 1 and silently halve their capacity.
+ */
 export const VENDOR_TYPE_MULTIPLIER: Record<string, { label: string; multiplier: number; stockDays: number }> = {
   job_work: { label: 'Job work', multiplier: 1.0, stockDays: 30 },
   efob: { label: 'E-FOB', multiplier: 1.5, stockDays: 45 },
   fob: { label: 'FOB', multiplier: 2.5, stockDays: 90 },
-  efob_fob: { label: 'E-FOB/FOB', multiplier: 2.0, stockDays: 60 },
 };
 
 // EasyEcom's raw vendor status (vendor_master_data.ee_status, pulled through GCP)
@@ -429,8 +437,8 @@ export function eeVendorActive(status: string | null | undefined): boolean | nul
 export function normaliseVendorType(raw: string | null | undefined): string {
   const v = key(raw);
   if (v.includes('job')) return 'job_work';
+  // "EFOB/FOB" counts as E-FOB: the team's call, and the reason the old efob_fob entry went.
   const hasEfob = v.includes('efob') || v.includes('e-fob');
-  if (hasEfob && v.includes('/')) return 'efob_fob';
   if (hasEfob) return 'efob';
   if (v.includes('fob')) return 'fob';
   return 'job_work';

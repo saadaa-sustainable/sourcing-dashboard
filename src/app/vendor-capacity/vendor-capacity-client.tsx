@@ -6,7 +6,6 @@ import {
   saveVendorCapacityRow,
   saveVendorProductAllocation,
   deleteVendorProductAllocation,
-  saveAnalyticsRule,
 } from '@/lib/forms/actions';
 import { canEdit } from '@/lib/forms/approval';
 import { useColumnSort } from '@/lib/use-column-sort';
@@ -17,6 +16,7 @@ import type {
   SdRole,
   VendorCapacityLog,
   VendorProductAllocation,
+  VendorTypeMultiplier,
   ProductCatalogItem,
 } from '@/lib/forms/types';
 import './vendor-capacity.css';
@@ -117,12 +117,15 @@ export function VendorCapacityClient({
   allocations = [],
   catalog = [],
   leadDays,
+  multipliers = [],
 }: {
   vendors: Vendor[];
   role: SdRole;
   allocations?: VendorProductAllocation[];
   catalog?: ProductCatalogItem[];
   leadDays: { job: number; efob: number; fob: number };
+  /** Vendor-type multipliers straight from the sd_vendor_type_multiplier master. */
+  multipliers?: VendorTypeMultiplier[];
 }) {
   const [tab, setTab] = useState<TabId>('entry');
   // Click-through: Reporting → Entry/Allocation focused on one vendor.
@@ -154,7 +157,7 @@ export function VendorCapacityClient({
           initialVendor={focusVendor}
         />
       )}
-      {tab === 'rules' && <RulesTab leadDays={leadDays} role={role} />}
+      {tab === 'rules' && <RulesTab leadDays={leadDays} multipliers={multipliers} />}
       {tab === 'reporting' && (
         <ReportingTab
           vendors={vendors}
@@ -251,7 +254,7 @@ function EntryTab({
       <div className="vc-metrics">
         <CapacityMetric label="PO capacity" value={fmt.format(visibleCapacity)} detail={`${filtered.length} vendors · pcs/month`} />
         <CapacityMetric label="In process" value={fmt.format(visibleInProcess)} detail={visibleCapacity ? `${Math.round(visibleInProcess / visibleCapacity * 100)}% of capacity` : 'pcs in production'} tone="blue" />
-        <CapacityMetric label="Over capacity" value={String(visibleOver)} detail="vendors above 100%" tone="red" />
+        <CapacityMetric label="100% and over Utilised" value={String(visibleOver)} detail="vendors at or past capacity" tone="red" />
         <CapacityMetric label="Stale updates" value={String(visibleStale)} detail={`older than ${STALE_DAYS} days`} tone="amber" />
       </div>
 
@@ -301,7 +304,7 @@ function EntryTab({
             )}
             {overCount > 0 && (
               <em className="wf-chip-warn">
-                <AlertTriangle size={13} /> {overCount} over production
+                <AlertTriangle size={13} /> {overCount} at 100% and over Utilised
               </em>
             )}
           </span>
@@ -382,7 +385,7 @@ function EntryTab({
         <p className="wf-footer-note">
           Capacity/month = Machines × Karigar. PO capacity = Capacity/month × type multiplier
           (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5 · E-FOB/FOB ×2.0). Available = PO capacity −
-          in-process (negative = over production). Machine util = Karigar ÷ Machines; Capacity
+          in-process (negative = 100% and over Utilised). Machine util = Karigar ÷ Machines; Capacity
           util = In-process ÷ PO capacity.
         </p>
       </div>
@@ -478,7 +481,7 @@ function CapacityRow({
       <td className="num">{fmt.format(vendor.inProcessQty)}</td>
       <td className="num wf-computed strong">
         {fmt.format(available)}
-        {overProduction && <span className="wf-over-tag">over</span>}
+        {overProduction && <span className="wf-over-tag">100% and over Utilised</span>}
       </td>
       <td className="num wf-computed">{machineUtil == null ? '—' : `${machineUtil}%`}</td>
       <td className="num wf-computed vc-util-cell">
@@ -720,33 +723,91 @@ function AllocationEditor({
 
 /* ------------------------------ Rules tab (item 3) ------------------------------ */
 
+/**
+ * Rules is a read-out, not a second place to edit. Every value here already belongs to the
+ * shared Rules Master, so this tab shows what the capacity maths is currently using and sends
+ * you there to change it. Keeping an edit box here as well meant two doors onto one setting.
+ */
 function RulesTab({
   leadDays,
-  role,
+  multipliers = [],
 }: {
   leadDays: { job: number; efob: number; fob: number };
-  role: SdRole;
+  multipliers?: VendorTypeMultiplier[];
 }) {
-  const editable = role === 'admin';
   const rules = [
-    { key: 'lead_days_job', label: 'Job Work lead-time (days)', value: leadDays.job },
-    { key: 'lead_days_efob', label: 'E-FOB lead-time (days)', value: leadDays.efob },
-    { key: 'lead_days_fob', label: 'FOB lead-time (days)', value: leadDays.fob },
+    { key: 'lead_days_job', label: 'Job Work lead-time', value: leadDays.job },
+    { key: 'lead_days_efob', label: 'E-FOB lead-time', value: leadDays.efob },
+    { key: 'lead_days_fob', label: 'FOB lead-time', value: leadDays.fob },
   ];
+  // Straight from sd_vendor_type_multiplier; the code constant is only a fallback for a type
+  // the master has no row for.
+  const types = (multipliers.length
+    ? multipliers.map((m) => ({
+        key: m.vendor_type,
+        label: m.label || typeConfig(m.vendor_type)?.label || m.vendor_type,
+        multiplier: Number(m.multiplier),
+        stockDays: Number(m.stock_days),
+      }))
+    : Object.entries(VENDOR_TYPE_MULTIPLIER).map(([key, v]) => ({
+        key,
+        label: v.label,
+        multiplier: v.multiplier,
+        stockDays: v.stockDays,
+      }))
+  ).sort((a, b) => a.multiplier - b.multiplier);
+
   return (
     <div className="vc-section">
       <Notice tone="info">
-        These day-counts live in the shared <strong>Rules Master</strong> (one source) — the
-        Buying Plan time-buckets and lead-time/coverage calcs read the same values. FOB is settled
-        at {leadDays.fob} days. {editable ? 'Edit below (admin).' : 'Only an admin can change them.'}
+        Everything on this tab lives in the shared <strong>Rules Master</strong> — one source,
+        read by the Buying Plan time-buckets, the lead-time and coverage calculations and the
+        capacity maths here. This tab shows what those calculations are using right now;{' '}
+        <a href="/rules-master">change the values in Rules Master</a>.
       </Notice>
       <section className="vc-card">
-        <div className="vc-card-head"><div><h2>PO lead-time defaults</h2><p>Calendar days used by shared planning calculations</p></div><span className="vc-pill vc-pill-blue">{editable ? 'Admin editable' : 'View only'}</span></div>
-        <div className="vc-rule-grid">
+        <div className="vc-card-head">
+          <div>
+            <h2>PO lead-time defaults</h2>
+            <p>Calendar days used by shared planning calculations</p>
+          </div>
+          <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/rules-master">
+            Edit in Rules Master →
+          </a>
+        </div>
+        <div className="vc-formula-grid">
           {rules.map((r) => (
-            <RuleRow key={r.key} ruleKey={r.key} label={r.label} value={r.value} editable={editable} />
+            <div key={r.key}>
+              <span>{r.label}</span>
+              <strong>{r.value} days</strong>
+            </div>
           ))}
         </div>
+      </section>
+      <section className="vc-card">
+        <div className="vc-card-head">
+          <div>
+            <h2>Vendor-type multipliers</h2>
+            <p>What a month of capacity buys, by PO type</p>
+          </div>
+          <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/rules-master">
+            Edit in Rules Master →
+          </a>
+        </div>
+        <div className="vc-formula-grid">
+          {types.map((t) => (
+            <div key={t.key}>
+              <span>{t.label}</span>
+              <strong>
+                ×{t.multiplier}
+                {t.stockDays ? ` · stock ${t.stockDays}d` : ''}
+              </strong>
+            </div>
+          ))}
+        </div>
+        <p className="wf-subtle vc-formula-hold">
+          Vendors typed <strong>EFOB/FOB</strong> in the vendor master use the E-FOB multiplier.
+        </p>
       </section>
       {/*
         The capacity-formula reference card is deliberately withheld.
@@ -756,11 +817,9 @@ function RulesTab({
         a PO capacity of 2,500, and the agreed basis is capacity per DAY, not machines times
         karigar. The calculation is fixed first, then documented here.
 
-        Two other things are unresolved and must be settled before this card returns:
-        - the fourth multiplier (E-FOB/FOB, x2.0) is still in the code constant while the
-          sd_vendor_type_multiplier master holds only job_work / efob / fob, and five vendors
-          are typed EFOB/FOB in the vendor master, so dropping it silently halves their capacity;
-        - lead times are admin-editable here while the multipliers are not, in the same panel.
+        The multiplier questions are settled: the fourth multiplier is gone and EFOB/FOB vendors
+        use the E-FOB figure, and the whole tab now reads the Rules Master rather than editing
+        anything itself. The formula itself is the only thing still outstanding.
       */}
       <section className="vc-card">
         <div className="vc-card-head">
@@ -775,68 +834,9 @@ function RulesTab({
           wrong — it was raised on 14/09, where a vendor with 40 machines and a stated
           1,000/month came out at 2,500 PO capacity — and the agreed basis is capacity per day
           rather than machines multiplied by karigar. Documenting the formula before fixing it
-          would make a bug look official, so this card returns once the calculation is corrected
-          and the vendor-type multipliers are confirmed.
+          would make a bug look official, so this card returns once the calculation is corrected.
         </p>
       </section>
-    </div>
-  );
-}
-
-function RuleRow({
-  ruleKey,
-  label,
-  value,
-  editable,
-}: {
-  ruleKey: string;
-  label: string;
-  value: number;
-  editable: boolean;
-}) {
-  const [val, setVal] = useState(String(value));
-  const [msg, setMsg] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const dirty = val !== String(value);
-
-  function save() {
-    setMsg(null);
-    const fd = new FormData();
-    fd.set('rule_key', ruleKey);
-    fd.set('value', val);
-    start(async () => {
-      const r = await saveAnalyticsRule(fd);
-      setMsg(r.ok ? 'Saved — applies on next load' : r.error);
-    });
-  }
-
-  return (
-    <div className="wf-rule-row vc-rule-card">
-      <div className="wf-rule-meta">
-        <span className="wf-rule-label">{label}</span>
-        <span className="wf-rule-key"><code>{ruleKey}</code></span>
-      </div>
-      <div className="wf-rule-edit">
-        {editable ? (
-          <>
-            <input
-              type="number"
-              min={1}
-              className="wf-rule-input"
-              value={val}
-              aria-label={label}
-              onChange={(e) => setVal(e.target.value)}
-            />
-            <span className="vc-days-label">days</span>
-            <button type="button" className="wf-btn wf-btn-primary wf-rule-save" onClick={save} disabled={pending || !dirty}>
-              {pending ? 'Saving…' : 'Save'}
-            </button>
-          </>
-        ) : (
-          <strong className="wf-rule-value">{value}</strong>
-        )}
-      </div>
-      {msg && <p className="wf-rule-error" style={{ color: msg.startsWith('Saved') ? 'var(--ink-2)' : '#c0392b' }}>{msg}</p>}
     </div>
   );
 }
@@ -905,7 +905,7 @@ function ReportingTab({
         <CapacityMetric label="Total PO capacity" value={fmt.format(totalCapacity)} detail="pcs / month" />
         <CapacityMetric label="In process" value={fmt.format(totalInProcess)} detail="open production quantity" tone="blue" />
         <CapacityMetric label="Overall utilization" value={overallUtil == null ? '—' : `${overallUtil}%`} detail={totalCapacity ? `${fmt.format(totalCapacity - totalInProcess)} pcs headroom` : 'No capacity entered'} tone="amber" />
-        <CapacityMetric label="Over capacity" value={String(rows.filter((row) => row.util != null && row.util > 100).length)} detail="vendors above 100%" tone="red" />
+        <CapacityMetric label="100% and over Utilised" value={String(rows.filter((row) => row.util != null && row.util >= 100).length)} detail="vendors at or past capacity" tone="red" />
       </div>
       <Notice tone="info">
         Utilization = in-process ÷ PO capacity, where PO capacity uses the <strong>interim</strong>{' '}

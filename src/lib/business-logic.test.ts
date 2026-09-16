@@ -166,8 +166,10 @@ describe('sourcing business rules', () => {
   it('derives PO capacity from machines x karigar x type multiplier; utilisation from monthly capacity', () => {
     assert.equal(vendorPoCapacity(20, 25, 'E-FOB'), 750);
     assert.equal(vendorPoCapacity(10, 10, 'FOB'), 250);
-    assert.equal(vendorPoCapacity(5, 4, 'EFOB/FOB'), 40);
-    assert.equal(normaliseVendorType('EFOB/FOB'), 'efob_fob');
+    // "EFOB/FOB" vendors use the E-FOB multiplier (team decision 2026-09-16); the old
+    // efob_fob type and its x2.0 multiplier are gone.
+    assert.equal(vendorPoCapacity(5, 4, 'EFOB/FOB'), 30);
+    assert.equal(normaliseVendorType('EFOB/FOB'), 'efob');
     const cap = new Map([['v1', { machines: 20, karigar: 25 }]]);
     const line = { ...base, po_ref_num: 'PO-9', vendor_code: 'V1', pending_qty_actual: 300, expected_delivery_date: '2026-09-01' };
     const vt = { vendor_name: 'V1', vendor_code: 'V1', vendor_type: 'E-FOB', merchant_name: null, status: 'active' };
