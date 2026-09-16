@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Lock, Pencil, X } from 'lucide-react';
 import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
-import { CostRow, CostDetail } from '../standard-cost-client';
+import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
 import type {
   CmtpComponent,
   ProductCatalogItem,
@@ -57,6 +57,7 @@ export function StandardCostDetailClient({
   catalog,
   role,
   marginPct,
+  track = 'fg',
 }: {
   cost: StandardCost;
   productName: string | null;
@@ -72,6 +73,7 @@ export function StandardCostDetailClient({
   catalog: ProductCatalogItem[];
   role: SdRole;
   marginPct: number;
+  track?: 'fg' | 'material';
 }) {
   const [editing, setEditing] = useState(false);
   const stageKey = cost.neg_stage ?? '';
@@ -82,12 +84,18 @@ export function StandardCostDetailClient({
   // changing one are different jobs, and a page full of live inputs invites the accidental
   // edit. The role/frozen check still applies on top: pressing the button cannot grant rights.
   const canChange = editing && rateEditable;
+  const isMat = track === 'material';
+  // Material relabels the three rate slots; the underlying columns are the same.
+  const rateLabels = isMat
+    ? { job: 'FOB Fabric', fob: 'Billing', efob: 'Standard Fabric' }
+    : { job: 'Job', fob: 'FOB', efob: 'E-FOB' };
+  const backHref = isMat ? '/standard-cost?track=material' : '/standard-cost';
 
   return (
     <div className="sc-page">
       <div className="sc-page-bar">
-        <Link href="/standard-cost" className="sc-page-back">
-          <ArrowLeft size={15} /> All products
+        <Link href={backHref} className="sc-page-back">
+          <ArrowLeft size={15} /> {isMat ? 'All materials' : 'All products'}
         </Link>
         <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
           {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
@@ -102,7 +110,11 @@ export function StandardCostDetailClient({
       <header className="sc-page-head">
         <div className="sc-page-title">
           <span className="mono sc-page-code">{cost.product_code}</span>
-          <h1>{productName || temp?.name || 'Product name unavailable'}</h1>
+          <h1>
+            {productName ||
+              temp?.name ||
+              (isMat ? 'Not in the material master' : 'Product name unavailable')}
+          </h1>
           <p className="wf-subtle">
             {nextActor(cost.neg_stage)}
             {updatedOn ? ` · Current cost updated ${updatedOn}` : ''}
@@ -125,9 +137,16 @@ export function StandardCostDetailClient({
 
       <section className="sc-page-rates" aria-label="Current rates">
         {[
-          { label: 'Job rate', value: cost.job_cost },
-          { label: 'FOB rate', value: cost.fob_cost },
-          { label: 'E-FOB rate', value: cost.efob_cost },
+          ...(isMat
+            ? [
+                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
+                { label: `${rateLabels.job} rate`, value: cost.job_cost },
+              ]
+            : [
+                { label: `${rateLabels.job} rate`, value: cost.job_cost },
+                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
+              ]),
+          { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
           { label: 'Proposed', value: cost.proposed_cost },
           { label: 'Target', value: cost.target_cost },
         ].map((r) => (
@@ -155,9 +174,18 @@ export function StandardCostDetailClient({
                   <th>Product</th>
                   <th className="num">Proposed</th>
                   <th className="num">Target</th>
-                  <th className="num input-col">Job rate</th>
-                  <th className="num input-col">FOB rate</th>
-                  <th className="num input-col">E-FOB rate</th>
+                  {isMat ? (
+                    <>
+                      <th className="num input-col">{rateLabels.fob} rate</th>
+                      <th className="num input-col">{rateLabels.job} rate</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="num input-col">{rateLabels.job} rate</th>
+                      <th className="num input-col">{rateLabels.fob} rate</th>
+                    </>
+                  )}
+                  <th className="num input-col">{rateLabels.efob} rate</th>
                   <th>Stage</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -166,7 +194,7 @@ export function StandardCostDetailClient({
                 <CostRow
                   cost={cost}
                   role={role}
-                  track="fg"
+                  track={track}
                   temp={temp}
                   mergeCandidates={catalog}
                   name={productName || undefined}
@@ -180,13 +208,22 @@ export function StandardCostDetailClient({
       <section className="sc-page-detail" aria-label="Cost record">
         <p className="sc-page-mode">
           {canChange
-            ? 'Editing — change the cost sheet below, then save. Rate changes go through approval.'
+            ? isMat
+              ? 'Editing — propose a rate above. Material rates have no cost sheet to fill in.'
+              : 'Editing — change the cost sheet below, then save. Rate changes go through approval.'
             : editing && !rateEditable
               ? cost.frozen
                 ? 'Read only — this product is frozen because a PO has been issued against it.'
                 : 'Read only — your role cannot change this cost.'
-              : 'Read only. Press Edit cost to change the cost sheet.'}
+              : isMat
+                ? 'Read only. Press Edit cost to propose a new rate.'
+                : 'Read only. Press Edit cost to change the cost sheet.'}
         </p>
+        {isMat ? (
+          <div className="wf-cost-detail">
+            <RateHistoryPanel history={history} hideRevisions rateLabels={rateLabels} />
+          </div>
+        ) : (
         <CostDetail
           cost={cost}
           lines={lines}
@@ -200,6 +237,7 @@ export function StandardCostDetailClient({
           editable={canChange}
           marginPct={marginPct}
         />
+        )}
       </section>
     </div>
   );

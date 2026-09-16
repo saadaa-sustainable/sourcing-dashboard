@@ -673,7 +673,7 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
                 <div><dt>Variance</dt><dd className={variance != null && variance > 0 ? 'wf-subtle' : undefined}>{variance != null ? fmtNum(variance) : '—'}</dd></div>
               </dl>
               {d.productCode && (
-                <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={`/standard-cost?open=${encodeURIComponent(d.productCode)}`}>
+                <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={`/standard-cost/${encodeURIComponent(d.productCode)}`}>
                   Open Standard Cost →
                 </Link>
               )}

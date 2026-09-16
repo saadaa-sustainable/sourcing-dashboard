@@ -2,26 +2,20 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
-  loadCmtpComponents,
-  loadCmtpSubitems,
   loadCostStandards,
   loadEfobFabricCost,
-  loadFabricCostBase,
+  loadMaterialCodeInfo,
   loadMaterialStandardCosts,
   loadProductCatalog,
-  loadStandardCostLines,
   loadStandardCostRateHistory,
   loadMaterialStandardCostRateHistory,
   loadStandardCosts,
   loadHiddenStandardCostCodes,
-  loadAnalyticsRules,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostClient } from './standard-cost-client';
 import { CostTrackTabs } from './cost-track-tabs';
 import type { StandardCostRateHistory } from '@/lib/forms/types';
-import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
-import { loadProductFabricMap } from '@/lib/product-fabric.server';
 import { loadTempProductMap } from '@/lib/temp-product.server';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +28,12 @@ export default async function StandardCostPage({
   const params = await searchParams;
   const track = params.track === 'material' ? 'material' : 'fg';
   const openCode = params.open ?? null;
+  // Older links used ?open=CODE to expand a row. The record has its own page now.
+  if (openCode) {
+    redirect(
+      `/standard-cost/${encodeURIComponent(openCode)}${track === 'material' ? '?track=material' : ''}`,
+    );
+  }
 
   let user;
   try {
@@ -51,52 +51,34 @@ export default async function StandardCostPage({
 
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, standards, cmtp, efob, catalog, rateHistory, cmtpSubitems] =
+  // The list is cards now: code, name, three rates, when the cost was last accepted. The
+  // cost sheet itself (CMTP lines, fabric buildup, revisions, margin) belongs to one
+  // product's page, so none of it is fetched or shipped to the browser here any more.
+  const [costs, standards, efob, catalog, rateHistory] =
     track === 'material'
-      ? [await loadMaterialStandardCosts(), [], [], await loadCostStandards(), [], await loadEfobFabricCost(), [], await loadMaterialStandardCostRateHistory(), {}]
+      ? [
+          await loadMaterialStandardCosts(),
+          await loadCostStandards(),
+          await loadEfobFabricCost(),
+          [],
+          await loadMaterialStandardCostRateHistory(),
+        ]
       : await Promise.all([
           loadStandardCosts(),
-          loadStandardCostLines(),
-          loadFabricCostBase(),
           loadCostStandards(),
-          loadCmtpComponents(),
           loadEfobFabricCost(),
           loadProductCatalog(),
           loadStandardCostRateHistory(),
-          loadCmtpSubitems(),
         ]);
-
-  // Item 2 — line-item CMTP revision audit (FG track only; material CMTP isn't a
-  // thing). Keyed by product_code, shown in the Rate History view.
-  const cmtpRevisions =
-    track === 'material' ? {} : await loadCmtpRevisions(costs.map((c) => c.product_code));
-
-  // Product → fabric from Product Master, to auto-default the Fabric field (item: the
-  // fabric can be figured out from the master, no manual entry for the clean cases).
-  const productFabric = track === 'material' ? {} : await loadProductFabricMap();
 
   // Soft-deleted codes for this track — re-adding one restores it (un-hide) with data intact.
   const hiddenCodes = await loadHiddenStandardCostCodes(track === 'material');
 
+  // Material cards show what a code IS ("Cotton Slub · Indigo · Dyed"), from the material master.
+  const materialNames = track === 'material' ? await loadMaterialCodeInfo() : {};
+
   // Temporary products (minted here for items not yet in EasyEcom) — badge + merge (FG).
   const tempProducts = track === 'material' ? {} : await loadTempProductMap();
-
-  // Final-price margin from Rules Master (margin_pct, stored as a percent). REJ/OH
-  // were removed 2026-09-08 — final = garment + margin.
-  const marginPct = (await loadAnalyticsRules()).margin_pct / 100;
-
-  // Fabric buildup map (grey / processing / finished) + code list — the Fabric
-  // Cost tab references these read-only from the Fabric Cost master.
-  const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
-  const fabricCodes: string[] = [];
-  for (const f of fabricBase) {
-    fabricCodes.push(f.fabric_code);
-    fabricByCode[f.fabric_code] = {
-      grey: f.grey_rate != null ? Number(f.grey_rate) : null,
-      processing: f.processing_cost != null ? Number(f.processing_cost) : null,
-      finished: f.finished_fabric_cost != null ? Number(f.finished_fabric_cost) : null,
-    };
-  }
 
   return (
     <FormLayout
@@ -115,23 +97,15 @@ export default async function StandardCostPage({
       <CostTrackTabs track={track} />
       <StandardCostClient
         costs={costs}
-        lines={lines}
-        cmtp={cmtp}
-        cmtpSubitems={cmtpSubitems as Record<string, string[]>}
-        fabricBase={fabricByCode}
-        fabricCodes={fabricCodes}
         standards={standards}
         efob={efob}
         catalog={catalog}
         rateHistory={rateHistory as Record<string, StandardCostRateHistory[]>}
-        cmtpRevisions={cmtpRevisions}
-        productFabric={productFabric}
         hiddenCodes={hiddenCodes}
         tempProducts={tempProducts}
-        initialOpen={openCode}
+        materialNames={materialNames}
         role={user.role}
         track={track}
-        marginPct={marginPct}
       />
     </FormLayout>
   );

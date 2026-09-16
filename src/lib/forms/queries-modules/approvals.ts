@@ -137,8 +137,8 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
             : 'Actual rate submitted — awaiting your sign-off',
         status: c.status,
         href: material
-          ? '/standard-cost?track=material'
-          : `/standard-cost?open=${encodeURIComponent(c.product_code)}`,
+          ? `/standard-cost/${encodeURIComponent(c.product_code)}?track=material`
+          : `/standard-cost/${encodeURIComponent(c.product_code)}`,
         submittedBy: null,
         submittedAt: c.updated_at,
       });

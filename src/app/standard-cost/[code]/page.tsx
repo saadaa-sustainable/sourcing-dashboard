@@ -6,6 +6,9 @@ import {
   loadCmtpComponents,
   loadCmtpSubitems,
   loadFabricCostBase,
+  loadMaterialCodeInfo,
+  loadMaterialStandardCostRateHistory,
+  loadMaterialStandardCosts,
   loadProductCatalog,
   loadStandardCostLines,
   loadStandardCostRateHistory,
@@ -22,17 +25,21 @@ import { loadTempProductMap } from '@/lib/temp-product.server';
 export const dynamic = 'force-dynamic';
 
 /**
- * One product's full cost record, on its own URL. The Finished Goods sheet lists products as
- * cards; "Cost Details" lands here. Material codes keep the single-screen sheet, so this
- * route is Finished Goods only.
+ * One product's or material's full cost record, on its own URL. Both sheets list as cards and
+ * "Cost Details" lands here; `?track=material` switches the source tables and the rate labels.
+ * Material has no CMTP or fabric buildup, so its record is the accepted-rate history.
  */
 export default async function StandardCostDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams: Promise<{ track?: string }>;
 }) {
   const { code: raw } = await params;
+  const { track: trackParam } = await searchParams;
   const code = decodeURIComponent(raw);
+  const track = trackParam === 'material' ? 'material' : 'fg';
 
   let user;
   try {
@@ -49,15 +56,28 @@ export default async function StandardCostDetailPage({
   }
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, cmtp, catalog, rateHistory, cmtpSubitems] = await Promise.all([
-    loadStandardCosts(),
-    loadStandardCostLines(),
-    loadFabricCostBase(),
-    loadCmtpComponents(),
-    loadProductCatalog(),
-    loadStandardCostRateHistory(),
-    loadCmtpSubitems(),
-  ]);
+  const [costs, lines, fabricBase, cmtp, catalog, rateHistory, cmtpSubitems, materialNames] =
+    track === 'material'
+      ? [
+          await loadMaterialStandardCosts(),
+          [],
+          [],
+          [],
+          [],
+          await loadMaterialStandardCostRateHistory(),
+          {},
+          await loadMaterialCodeInfo(),
+        ]
+      : await Promise.all([
+          loadStandardCosts(),
+          loadStandardCostLines(),
+          loadFabricCostBase(),
+          loadCmtpComponents(),
+          loadProductCatalog(),
+          loadStandardCostRateHistory(),
+          loadCmtpSubitems(),
+          Promise.resolve({} as Record<string, string>),
+        ]);
 
   const cost = costs.find((c) => c.product_code.toUpperCase() === code.toUpperCase()) ?? null;
 
@@ -72,19 +92,25 @@ export default async function StandardCostDetailPage({
         accent="purple"
       >
         <Notice tone="error">
-          No Finished Goods cost record for &ldquo;{code}&rdquo;.{' '}
-          <Link href="/standard-cost">Back to all products</Link>
+          No {track === 'material' ? 'material' : 'Finished Goods'} cost record for &ldquo;{code}
+          &rdquo;.{' '}
+          <Link href={track === 'material' ? '/standard-cost?track=material' : '/standard-cost'}>
+            Back to all {track === 'material' ? 'materials' : 'products'}
+          </Link>
         </Notice>
       </FormLayout>
     );
   }
 
-  const [cmtpRevisions, productFabric, tempProducts, rules] = await Promise.all([
-    loadCmtpRevisions([cost.product_code]),
-    loadProductFabricMap(),
-    loadTempProductMap(),
-    loadAnalyticsRules(),
-  ]);
+  const [cmtpRevisions, productFabric, tempProducts, rules] =
+    track === 'material'
+      ? [{}, {}, {}, await loadAnalyticsRules()]
+      : await Promise.all([
+          loadCmtpRevisions([cost.product_code]),
+          loadProductFabricMap(),
+          loadTempProductMap(),
+          loadAnalyticsRules(),
+        ]);
 
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -100,8 +126,10 @@ export default async function StandardCostDetailPage({
 
   const history = (rateHistory as Record<string, StandardCostRateHistory[]>)[cost.product_code] ?? [];
   const productName =
-    catalog.find((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase())
-      ?.product_name ?? null;
+    track === 'material'
+      ? materialNames[cost.product_code.toUpperCase()] ?? null
+      : catalog.find((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase())
+          ?.product_name ?? null;
 
   return (
     <FormLayout
@@ -128,6 +156,7 @@ export default async function StandardCostDetailPage({
         catalog={catalog}
         role={user.role}
         marginPct={rules.margin_pct / 100}
+        track={track}
       />
     </FormLayout>
   );

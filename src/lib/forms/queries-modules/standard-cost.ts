@@ -103,6 +103,33 @@ export async function loadCmtpSubitems(): Promise<Record<string, string[]>> {
   return map;
 }
 
+/**
+ * Descriptive names for material codes (sd_material_codes), so the Material cost cards can
+ * show what a code IS, not just its code. Keyed by upper-cased material_code.
+ */
+export async function loadMaterialCodeInfo(): Promise<Record<string, string>> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_material_codes')
+    .select('material_code, material_type, fabric_name, colour')
+    .limit(PAGE_SIZE);
+  const map: Record<string, string> = {};
+  (
+    (data ?? []) as {
+      material_code: string;
+      material_type: string | null;
+      fabric_name: string | null;
+      colour: string | null;
+    }[]
+  ).forEach((m) => {
+    const code = (m.material_code ?? '').trim().toUpperCase();
+    if (!code) return;
+    // "Cotton Slub · Indigo · Dyed" — whichever parts exist, in that order.
+    map[code] = [m.fabric_name, m.colour, m.material_type].filter(Boolean).join(' · ');
+  });
+  return map;
+}
+
 /** Every material-cost row, for the Material tab of the Standard Cost page. */
 export async function loadMaterialStandardCosts(): Promise<StandardCost[]> {
   const supabase = await client();

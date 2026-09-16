@@ -83,45 +83,30 @@ const shortDate = (iso: string | null) =>
 
 export function StandardCostClient({
   costs,
-  lines = [],
-  cmtp = [],
-  cmtpSubitems = {},
-  fabricBase = {},
-  fabricCodes = [],
   standards,
   efob = [],
   catalog = [],
   rateHistory = {},
-  cmtpRevisions = {},
-  productFabric = {},
   hiddenCodes = [],
   tempProducts = {},
-  initialOpen = null,
+  materialNames = {},
   role,
   track = 'fg',
-  marginPct = 0.15,
 }: {
   costs: StandardCost[];
-  lines?: StandardCostLine[];
-  cmtp?: CmtpComponent[];
-  cmtpSubitems?: Record<string, string[]>;
-  fabricBase?: Record<string, FabricBuildup>;
-  fabricCodes?: string[];
   standards?: CostStandards;
   efob?: EfobFabricCost[];
   catalog?: ProductCatalogItem[];
   rateHistory?: Record<string, StandardCostRateHistory[]>;
-  cmtpRevisions?: Record<string, CmtpRevision[]>;
-  productFabric?: Record<string, { fabricCode: string | null; multi: boolean }>;
   /** Product codes soft-deleted from this track — re-adding one restores it intact. */
   hiddenCodes?: string[];
   /** Temporary products keyed by code (badge + merge). */
   tempProducts?: Record<string, TempProductInfo>;
-  initialOpen?: string | null;
+  /** Material track: "fabric · colour · type" per material code, for the cards. */
+  materialNames?: Record<string, string>;
   role: SdRole;
   track?: 'fg' | 'material';
   /** Final-price margin as a fraction (e.g. 0.15), from Rules Master (margin_pct). */
-  marginPct?: number;
 }) {
   const isMat = track === 'material';
   const codeLabel = isMat ? 'Material code' : 'Product code';
@@ -136,8 +121,6 @@ export function StandardCostClient({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState('');
-  // A newly-added product opens straight into its cost format.
-  const [expanded, setExpanded] = useState<string | null>(initialOpen);
   const [addOpen, setAddOpen] = useState(false);
   const [stageFilter, setStageFilter] = useState('all');
   // Cards carry no column headers, so the ordering the table's headers gave gets an
@@ -153,18 +136,6 @@ export function StandardCostClient({
     () => new Map(catalog.map((item) => [item.product_code.toUpperCase(), item.product_name ?? ''])),
     [catalog],
   );
-
-  const linesByCode = useMemo(() => {
-    const m = new Map<string, StandardCostLine[]>();
-    for (const l of lines) m.set(l.product_code, [...(m.get(l.product_code) ?? []), l]);
-    return m;
-  }, [lines]);
-
-  const cmtpByCode = useMemo(() => {
-    const m = new Map<string, CmtpComponent[]>();
-    for (const c of cmtp) m.set(c.product_code, [...(m.get(c.product_code) ?? []), c]);
-    return m;
-  }, [cmtp]);
 
   // Rows waiting on the signed-in user's side of the negotiation.
   const [mineOnly, setMineOnly] = useState(false);
@@ -250,9 +221,10 @@ export function StandardCostClient({
         result = await (isMat ? saveMaterialCost : saveStandardCost)(fd);
       }
       if (result.ok) {
-        window.location.href = isMat
-          ? '/standard-cost?track=material'
-          : `/standard-cost?open=${encodeURIComponent(code.toUpperCase())}`;
+        // A freshly seeded row opens straight into its own cost page, which is where the
+        // cost format is filled in.
+        const to = `/standard-cost/${encodeURIComponent(code.toUpperCase())}`;
+        window.location.href = isMat ? `${to}?track=material` : to;
       } else setError(result.error);
     });
   }
@@ -273,12 +245,10 @@ export function StandardCostClient({
     });
   }
 
-  const colCount = 8; // code, proposed, target, 3 rate cols, stage, actions (both tracks)
 
   // CMTP + Fabric Cost are documentation: editable until the cost is FROZEN (a PO was
   // issued), even after sign-off — a CMTP amount change still logs a revision reason. The
   // rate itself stays governed by the negotiation controls, not these tabs.
-  const cmtpFabricEditable = (c: StandardCost) => !c.frozen && canEdit(role, 'draft');
 
   /** Ordering for the Finished Goods cards. Blank rates sort last in every direction. */
   function sortCards(list: StandardCost[]): StandardCost[] {
@@ -403,85 +373,49 @@ export function StandardCostClient({
         <span className="wf-subtle">{shown.length} shown</span>
       </div>
 
+      {/* Material codes get the same cards as Finished Goods: code, what the material is,
+          the three rates, then Cost Details. Rate entry happens on the code's own page. */}
       <div className="table-panel wf-grid-panel">
-        <div className="table-scroll">
-          <table className="wf-grid wf-cost-sheet">
-            <thead>
-              <tr>
-                <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
-                <th className="num" {...sort.th('proposed', (c) => c.proposed_cost)}>Proposed {sort.ind('proposed')}</th>
-                <th className="num" {...sort.th('target', (c) => c.target_cost)}>Target {sort.ind('target')}</th>
-                {isMat ? (
-                  <>
-                    <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>{fobLabel} rate {sort.ind('fob')}</th>
-                    <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>{jobLabel} rate {sort.ind('job')}</th>
-                    <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>{efobLabel} rate {sort.ind('efob')}</th>
-                  </>
-                ) : (
-                  <>
-                    <th className="num input-col" {...sort.th('job', (c) => c.job_cost)}>{jobLabel} rate {sort.ind('job')}</th>
-                    <th className="num input-col" {...sort.th('fob', (c) => c.fob_cost)}>{fobLabel} rate {sort.ind('fob')}</th>
-                    <th className="num input-col" {...sort.th('efob', (c) => c.efob_cost)}>{efobLabel} rate {sort.ind('efob')}</th>
-                  </>
-                )}
-                <th {...sort.th('stage', (c) => c.neg_stage ?? c.status)}>Stage {sort.ind('stage')}</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {sort.apply(shown).map((cost) => (
-                <Fragment key={cost.product_code}>
-                  <CostRow
-                    cost={cost}
-                    role={role}
-                    track={track}
-                    expanded={expanded === cost.product_code}
-                    temp={tempProducts[cost.product_code]}
-                    mergeCandidates={catalog}
-                    onToggle={() => setExpanded(expanded === cost.product_code ? null : cost.product_code)}
-                  />
-                  {expanded === cost.product_code && (
-                    <tr className="wf-cost-detail-row">
-                      <td colSpan={colCount}>
-                        {isMat ? (
-                          // Material has no CMTP/fabric detail — just its accepted-rate history,
-                          // with the material rate labels (Billing / FOB Fabric / Standard Fabric).
-                          <div className="wf-cost-detail">
-                            <RateHistoryPanel
-                              history={rateHistory[cost.product_code] ?? []}
-                              hideRevisions
-                              rateLabels={{ fob: 'Billing', job: 'FOB Fabric', efob: 'Standard Fabric' }}
-                            />
-                          </div>
-                        ) : (
-                          <CostDetail
-                            cost={cost}
-                            lines={linesByCode.get(cost.product_code) ?? []}
-                            cmtp={cmtpByCode.get(cost.product_code) ?? []}
-                            cmtpSubitems={cmtpSubitems}
-                            fabricBase={fabricBase}
-                            fabricCodes={fabricCodes}
-                            history={rateHistory[cost.product_code] ?? []}
-                            revisions={cmtpRevisions[cost.product_code] ?? []}
-                            masterFabric={productFabric[cost.product_code] ?? null}
-                            editable={cmtpFabricEditable(cost)}
-                            marginPct={marginPct}
-                          />
-                        )}
-                      </td>
-                    </tr>
+        <div className="sc-cards">
+          {sortCards(shown).map((cost) => {
+            const stageKey = cost.neg_stage ?? '';
+            const latest = rateHistory[cost.product_code]?.[0] ?? null;
+            const updated = shortDate(latest?.accepted_at ?? cost.updated_at);
+            return (
+              <article className="sc-card" key={cost.product_code}>
+                <div className="sc-card-head">
+                  <span className="mono sc-card-code">{cost.product_code}</span>
+                  <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
+                    {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
+                  </span>
+                </div>
+                <h3 className="sc-card-name">
+                  {materialNames[cost.product_code.toUpperCase()] || (
+                    <span className="wf-subtle">Not in the material master</span>
                   )}
-                </Fragment>
-              ))}
-              {!shown.length && (
-                <tr>
-                  <td colSpan={colCount} className="wf-empty-cell">
-                    No {isMat ? 'materials' : 'products'} match.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                </h3>
+                <div className="sc-card-rates">
+                  <div><span>{fobLabel}</span><strong>{rateDisplay(cost.fob_cost)}</strong></div>
+                  <div><span>{jobLabel}</span><strong>{rateDisplay(cost.job_cost)}</strong></div>
+                  <div><span>{efobLabel}</span><strong>{rateDisplay(cost.efob_cost)}</strong></div>
+                </div>
+                <div className="sc-card-foot">
+                  <Link className="wf-btn wf-btn-ghost wf-btn-sm sc-card-btn" href={`/standard-cost/${encodeURIComponent(cost.product_code)}?track=material`}>
+                    Cost Details
+                  </Link>
+                  <small className="wf-subtle">
+                    {updated ? `Cost updated ${updated}` : 'No cost recorded yet'}
+                  </small>
+                </div>
+                <div className="sc-card-tags">
+                  {cost.frozen && <span className="sc-card-frozen"><Lock size={11} /> Frozen</span>}
+                </div>
+              </article>
+            );
+          })}
+          {!shown.length && (
+            <p className="wf-empty-cell sc-cards-empty">No {codeLabel.toLowerCase()}s match these filters.</p>
+          )}
         </div>
       </div>
         </>
@@ -1416,7 +1350,7 @@ export function CostDetail({
  * signed off, newest first, with the date and who accepted it. The top row is
  * the LIVE rate the Buying Plan values from (until a new proposal is accepted).
  */
-function RateHistoryPanel({
+export function RateHistoryPanel({
   history,
   revisions = [],
   hideRevisions = false,
