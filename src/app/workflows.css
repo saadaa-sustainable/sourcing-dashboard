@@ -967,9 +967,52 @@ th.wf-yarn-col { color: #2f6bbf; }
 .wf-history-view { margin-top: 6px; }
 
 /* ---- CM cost matrix: black (input) / green (computed) cells + document view ---- */
-/* Per-size consumption matrix: same problem as the CMTP heads — a 520px cap squeezed the
-   size columns while the rest of the panel sat empty. */
-.wf-cost-matrix { max-width: 980px; }
+/* The per-size consumption matrix is a tile grid now (.wf-size-grid), not a 3-column table
+   stretched across the panel — stretching one only opened grey gaps between the columns. */
+.wf-size-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 8px;
+}
+.wf-size-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 10px;
+  background: #fff;
+  min-width: 0;
+}
+.wf-size-name { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+.wf-size-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wf-size-field > span,
+.wf-size-calc > span {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-3, #6e695e);
+}
+.wf-size-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #fff;
+}
+.wf-size-field input:disabled { background: rgba(0, 0, 0, 0.035); opacity: 0.75; }
+.wf-size-calc {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.wf-size-calc strong { font-size: 13px; font-variant-numeric: tabular-nums; }
 /* computed = green, input = dark/neutral — his "black & green" separation */
 .wf-cell-calc { background: #e7f6ea; color: #2f6b3a; font-weight: 600; }
 th.wf-cell-calc { background: #d7efdc; color: #2f6b3a; }
@@ -1213,6 +1256,9 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-doc-meta div { display: flex; justify-content: space-between; border-bottom: 1px dotted #e7e2d2; padding: 2px 0; }
 .wf-doc-meta dt { color: #6e695e; font-size: 11px; }
 .wf-doc-meta dd { margin: 0; font-weight: 600; font-size: 12px; }
+/* The fabric buildup is three figures, not two: a fixed 2-up grid left Processing stretched
+   across the whole second half with nothing in it. */
+.wf-cost-param .wf-doc-meta { grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); }
 
 /* ---- PO approval inline detail (4 verify tabs) ---- */
 .wf-po-detail { margin: 6px 0 2px; }

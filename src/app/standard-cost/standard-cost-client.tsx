@@ -1311,33 +1311,32 @@ export function CostDetail({
             <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/fabric-cost">Edit on Fabric Cost →</a>
           </div>
 
-          <table className="wf-grid wf-cost-lines wf-cost-matrix">
-            <thead>
-              <tr>
-                <th>Size</th>
-                <th className="num input-col wf-cell-input">Consumption (mtr)</th>
-                <th className="num wf-cell-calc">Fabric cost*</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.size}>
-                  <td className="strong">{r.size}</td>
-                  <td className="num input-col wf-cell-input">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={r.cons}
-                      disabled={!editable}
-                      onChange={(e) => setCons(r.size, e.target.value)}
-                    />
-                  </td>
-                  <td className="num wf-cell-calc">{disp(r.fabric)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Three columns stretched across a wide panel left huge empty gaps between the
+              size and its consumption, and pushed nine sizes into a tall scroll. One tile per
+              size instead: the sizes sit side by side and the whole size run is visible. */}
+          <div className="wf-size-grid" role="group" aria-label="Consumption and fabric cost by size">
+            {rows.map((r) => (
+              <div className="wf-size-tile" key={r.size}>
+                <span className="wf-size-name">{r.size}</span>
+                <label className="wf-size-field">
+                  <span>Consumption (mtr)</span>
+                  <input
+                    className="wf-cell-input"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={r.cons}
+                    disabled={!editable}
+                    onChange={(e) => setCons(r.size, e.target.value)}
+                  />
+                </label>
+                <div className="wf-size-calc">
+                  <span>Fabric cost*</span>
+                  <strong className="wf-cell-calc">{disp(r.fabric)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
           <p className="wf-subtle wf-legend">
             <span className="wf-legend-input">input</span>
             <span className="wf-legend-calc">computed</span>
