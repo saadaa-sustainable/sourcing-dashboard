@@ -76,6 +76,8 @@ export type BuyingPlanLifecycle = {
   approvalKind: 'first_time' | 'edited' | 'amended_after_freeze' | 'not_approved';
   /** Trailing-6-month plan-level first-time approval rate (approved plans only). */
   firstTimeRate: { firstTime: number; approved: number; months: string[] };
+  /** Which Slack webhook the month report will post to (dedicated, a fallback, or none). */
+  slackTarget: 'supply_chain' | 'ops' | 'feedback' | 'none';
   /** Latest generated month report, if any. */
   report: {
     generatedAt: string;

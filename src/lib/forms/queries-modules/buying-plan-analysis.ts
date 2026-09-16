@@ -14,6 +14,7 @@ import 'server-only';
 import { client, PAGE_SIZE } from './_shared';
 import { ANALYTICS_RULE_DEFAULTS } from './analytics';
 import { addMonths, isPlanFrozen, monthStart, planComplianceStatus } from '../approval';
+import { slackReportTarget } from '@/lib/slack';
 import type { BuyingPlan, BuyingPlanLine } from '../types';
 import type {
   BuyingPlanAnalysis,
@@ -290,6 +291,7 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart(), db?: Anal
     submittedAt: plan?.submitted_at ?? null,
     approvedAt: plan?.approved_at ?? null,
     firstActionAt,
+    slackTarget: slackReportTarget(),
     compliance: { deadline: compliance.deadline, deadlineDay, status: compliance.status, daysLate: compliance.daysLate },
     approvalKind,
     firstTimeRate,

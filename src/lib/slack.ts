@@ -112,6 +112,19 @@ export function hasSupplyChainSlack(): boolean {
   return Boolean(supplyChainWebhook());
 }
 
+export type SlackReportTarget = 'supply_chain' | 'ops' | 'feedback' | 'none';
+
+/**
+ * Which webhook the month report will actually go to — the dedicated Supply Chain one, or
+ * a fallback. Surfaced on the report card so nobody has to guess which channel receives it.
+ */
+export function slackReportTarget(): SlackReportTarget {
+  if (process.env.SLACK_SUPPLY_CHAIN_WEBHOOK_URL) return 'supply_chain';
+  if (process.env.SLACK_OPS_WEBHOOK_URL) return 'ops';
+  if (process.env.SLACK_FEEDBACK_WEBHOOK_URL) return 'feedback';
+  return 'none';
+}
+
 export type PlanReportNotice = {
   monthLabel: string; // "September 2026"
   plannedQty: number;

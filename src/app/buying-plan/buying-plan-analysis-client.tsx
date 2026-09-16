@@ -7,6 +7,7 @@ import { generatePlanReportAction, getPlanReportUrl } from '@/lib/forms/actions'
 import { Notice } from '@/components/forms/form-layout';
 import { Field } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { InfoDot } from '@/components/info-dot';
 import type {
   BuyingPlanAnalysis,
   BuyingPlanAnalysisProduct,
@@ -61,7 +62,10 @@ function LifecycleCard({ lifecycle: lc, planMonth }: { lifecycle: BuyingPlanAnal
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Approval compliance</h2>
+        <h2>
+          Approval compliance
+          <InfoDot text="Shows whether the plan was approved by the Rules Master deadline and the trailing six-plan first-time approval rate." />
+        </h2>
         <span className={`bp-badge ${comp[c.status].tone}`}>{comp[c.status].text}</span>
       </div>
       <div className="bp-cardbody">
@@ -106,10 +110,23 @@ function ReportCard({
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Month report (PDF)</h2>
+        <h2>
+          Month report (PDF)
+          <InfoDot text="The month-end report reconciles the approved plan with issued POs and can be generated or posted to the Supply Chain channel." />
+        </h2>
         <span className="wf-subtle">auto on the 1st · posted to Supply Chain</span>
       </div>
       <div className="bp-cardbody">
+        {/* Which webhook the post will actually hit — so nobody has to guess the channel. */}
+        <div className="bp-summaryrow">
+          <span>Posts to<small className="bp-summary-sub">Slack incoming webhook in use</small></span>
+          <b>
+            {lc.slackTarget === 'supply_chain' && <span className="bp-badge green">Supply Chain webhook</span>}
+            {lc.slackTarget === 'ops' && <span className="bp-badge yellow" title="SLACK_SUPPLY_CHAIN_WEBHOOK_URL is not set; falling back to SLACK_OPS_WEBHOOK_URL">Ops webhook (fallback)</span>}
+            {lc.slackTarget === 'feedback' && <span className="bp-badge yellow" title="Neither SLACK_SUPPLY_CHAIN_WEBHOOK_URL nor SLACK_OPS_WEBHOOK_URL is set; falling back to SLACK_FEEDBACK_WEBHOOK_URL">Feedback webhook (fallback)</span>}
+            {lc.slackTarget === 'none' && <span className="bp-badge red" title="Set SLACK_SUPPLY_CHAIN_WEBHOOK_URL in Vercel">Not configured</span>}
+          </b>
+        </div>
         {r ? (
           <>
             <div className="bp-summaryrow"><span>Generated</span><b>{fmtTs(r.generatedAt)}{r.generatedBy ? ` · ${r.generatedBy}` : ''}</b></div>
@@ -320,6 +337,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 6 }}>
           <AlertTriangle size={16} style={{ color: '#c0392b' }} />
           Issued but NOT budgeted — {exceptions.notBudgeted.length} product{exceptions.notBudgeted.length === 1 ? '' : 's'}
+          <InfoDot text="Products with issued POs but no approved plan quantity for the selected month, including products absent from the plan or approved at zero." />
         </div>
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
           POs issued for products that are not in the {monthLabel(planMonth)} buying plan, or are in the plan with no approved quantity (never approved, or approved at zero). Why were these issued?
@@ -352,6 +370,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 6 }}>
           <TrendingUp size={16} style={{ color: '#9a6b12' }} />
           Issued ABOVE approved quantity — {exceptions.overApproved.length} product{exceptions.overApproved.length === 1 ? '' : 's'}
+          <InfoDot text="Products where issued PO quantity exceeds the approved buying-plan quantity for the selected month." />
         </div>
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
           Approved 100, issued 110 — the excess over what the plan approved.
@@ -383,7 +402,10 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
       {/* Every product: approved vs issued */}
       <div className="wf-card">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <strong>All products — approved vs issued</strong>
+          <strong>
+            All products — approved vs issued
+            <InfoDot text="Complete product-level reconciliation of approved plan quantity and value versus issued PO quantity and value for the selected month." />
+          </strong>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} />
             flagged only
