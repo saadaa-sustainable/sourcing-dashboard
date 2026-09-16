@@ -343,19 +343,36 @@ export async function loadBuyingPlanAnalysis(planMonth = monthStart(), db?: Anal
 }
 
 /**
- * When did an admin first ACT on this plan (approve / reject / send for rework)? From the
- * approval log — the plan row itself only stamps approved_at. Null when no decision yet.
+ * When did an admin first ACT on the plan's CURRENT submission (approve / reject / send for
+ * rework)? A plan can be approved, then reverted / reopened, then sit waiting again — the
+ * deadline is judged on the latest cycle, so an old decision never covers a fresh wait.
+ * cycle start = the latest transition INTO a waiting state (submitted / pending_l2) in the
+ * approval log, or the plan's submitted_at; the decision = the first approve / reject /
+ * rework entry at or after that. Per-line approvals do not change the plan status and are
+ * logged without a transition, so they never count. Null when no decision yet.
  */
 export async function loadPlanFirstActionAt(planId: number, db?: AnalysisDb): Promise<string | null> {
   const supabase = db ?? (await client());
-  const { data } = await supabase
-    .from('sd_approval_log')
-    .select('created_at')
-    .eq('entity_type', 'buying_plan')
-    .eq('entity_id', String(planId))
-    .in('to_status', ['approved', 'rejected', 'rework'])
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return data?.created_at ? String(data.created_at) : null;
+  const [{ data: rows }, { data: planRow }] = await Promise.all([
+    supabase
+      .from('sd_approval_log')
+      .select('created_at, from_status, to_status')
+      .eq('entity_type', 'buying_plan')
+      .eq('entity_id', String(planId))
+      .order('created_at', { ascending: true })
+      .limit(500),
+    supabase.from('sd_buying_plan').select('submitted_at').eq('id', planId).maybeSingle(),
+  ]);
+  const log = ((rows ?? []) as { created_at: string; from_status: string | null; to_status: string | null }[])
+    .filter((r) => r.to_status !== r.from_status); // real transitions only
+  const waiting = new Set(['submitted', 'pending_l2']);
+  const decided = new Set(['approved', 'rejected', 'rework']);
+  let cycleStart = planRow?.submitted_at ? Date.parse(String(planRow.submitted_at)) : 0;
+  for (const r of log) {
+    if (r.to_status && waiting.has(r.to_status)) cycleStart = Math.max(cycleStart, Date.parse(r.created_at));
+  }
+  const decision = log.find(
+    (r) => r.to_status && decided.has(r.to_status) && Date.parse(r.created_at) >= cycleStart - 1000,
+  );
+  return decision ? String(decision.created_at) : null;
 }

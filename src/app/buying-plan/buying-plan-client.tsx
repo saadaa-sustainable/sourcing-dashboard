@@ -716,7 +716,13 @@ export function BuyingPlanClient({
             </select>
           </Field>
           <StatusBadge status={status} edited={plan?.edited_before_approval} />
-          <ComplianceChip c={compliance} frozen={frozen} />
+          <DeadlineChip
+            c={compliance}
+            status={status}
+            decisionAt={firstActionAt ?? plan?.approved_at ?? null}
+            submittedAt={plan?.submitted_at ?? null}
+            frozen={frozen}
+          />
           <div className="segment wf-segment">
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
@@ -1306,50 +1312,72 @@ type ViewItemFull = {
   overPlan: boolean;
 };
 
-/** Approve-by chip: on time / pending / breach (with which side was late). */
-function ComplianceChip({ c, frozen }: { c: PlanCompliance; frozen: boolean }) {
-  const dl = new Date(c.deadline).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'Asia/Kolkata',
-  });
-  const spec: Record<PlanCompliance['status'], { tone: 'green' | 'yellow' | 'red' | 'gray'; text: string; title: string }> = {
-    on_time: {
-      tone: 'green',
-      text: 'Approved on time',
-      title: `Approved by the ${dl} deadline`,
-    },
-    pending: {
-      tone: 'yellow',
-      text: `Approval due by ${dl}`,
-      title: 'An admin must approve, reject or send for rework by this date',
-    },
-    breach_submission: {
-      tone: 'red',
-      text: `Deadline missed — not submitted by ${dl} (${c.daysLate} day${c.daysLate === 1 ? '' : 's'} over)`,
-      title: 'Compliance breach on the submission side: the plan was not submitted by the deadline',
-    },
-    breach_approval: {
-      tone: 'red',
-      text: `Deadline missed — awaiting admin decision since ${dl} (${c.daysLate} day${c.daysLate === 1 ? '' : 's'} over)`,
-      title: 'Compliance breach on the approval side: submitted in time, but no admin approved, rejected or reworked it by the deadline',
-    },
-  };
-  const s = spec[c.status];
+const dShort = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+const dayWord = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
+
+/**
+ * Deadline pill that completes the status badge in plain words, e.g.
+ *   Approval Pending  · Overdue — no admin decision since 7 Sept (8 days)
+ *   Approved          · Approved 5 Sept — on time
+ *   Draft             · Submit and approve by 7 Oct
+ * The first admin decision is judged on the current submission cycle (see
+ * loadPlanFirstActionAt), so an old approval never covers a fresh wait.
+ */
+function DeadlineChip({
+  c,
+  status,
+  decisionAt,
+  submittedAt,
+  frozen,
+}: {
+  c: PlanCompliance;
+  status: SdStatus;
+  decisionAt: string | null;
+  submittedAt: string | null;
+  frozen: boolean;
+}) {
+  const dl = dShort(c.deadline);
+  const waiting = status === 'submitted' || status === 'pending_l2';
+  let tone: 'green' | 'yellow' | 'red' | 'gray' = 'gray';
+  let text = '';
+  let title = '';
+  if (c.status === 'on_time') {
+    tone = 'green';
+    const when = decisionAt ? dShort(decisionAt) : dl;
+    text = status === 'approved' ? `Approved ${when} — on time` : `Admin decided ${when} — on time`;
+    title = `An admin acted by the ${dl} deadline`;
+  } else if (c.status === 'pending') {
+    tone = 'yellow';
+    text = waiting ? `Awaiting admin decision — due by ${dl}` : `Submit and approve by ${dl}`;
+    title = 'An admin must approve, reject or send for rework by the deadline';
+  } else if (c.status === 'breach_approval') {
+    tone = 'red';
+    text = decisionAt
+      ? `${status === 'approved' ? 'Approved' : 'Decided'} ${dShort(decisionAt)} — ${dayWord(c.daysLate)} after the ${dl} deadline`
+      : `Overdue — no admin decision since ${dl} (${dayWord(c.daysLate)})`;
+    title = `Compliance breach, approval side: submitted ${submittedAt ? dShort(submittedAt) : 'in time'}, but not decided by ${dl}`;
+  } else {
+    tone = 'red';
+    text = submittedAt
+      ? `Submitted late (${dShort(submittedAt)}) — ${dayWord(c.daysLate)} past the ${dl} deadline`
+      : `Not submitted — ${dayWord(c.daysLate)} past the ${dl} deadline`;
+    title = 'Compliance breach, submission side: the plan was not submitted by the deadline';
+  }
   return (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-      <span className="wf-subtle" style={{ fontSize: 11, display: 'inline' }}>Approval deadline</span>
-      <span className={`bp-badge ${s.tone}`} title={s.title} style={{ whiteSpace: 'normal' }}>
-        {s.text}
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className={`bp-badge ${tone}`} title={title} style={{ whiteSpace: 'normal' }}>
+        {text}
       </span>
       {frozen && (
-        <span className="bp-badge gray" title="Month ended — plan is frozen">
+        <span className="bp-badge gray" title="Month ended — the plan is frozen">
           Month closed
         </span>
       )}
     </span>
   );
 }
+
 
 function Progress({ pct, flush = false }: { pct: number; flush?: boolean }) {
   return (
