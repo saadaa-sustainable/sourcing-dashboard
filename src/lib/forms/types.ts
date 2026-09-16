@@ -132,6 +132,10 @@ export type AnalyticsExtras = {
     planned: number;
     actual: number;
     source: 'receivable' | 'inward-plan' | 'none';
+    /** Receivable Plan PO lines with no expected-quantity input yet — the adoption gap. */
+    awaitingInput: number;
+    dayOfMonth: number;
+    daysInMonth: number;
   } | null;
   /**
    * Expected vs actual delivery volume by week (item 3) — from completed POs:

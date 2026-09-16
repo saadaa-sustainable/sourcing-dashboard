@@ -1184,7 +1184,11 @@ export function AnalyticsCards({
                     ? "green"
                     : "amber"
               }
-              status={`${new Date().toLocaleDateString("en-IN", { month: "short", year: "numeric" }).toUpperCase()} · LIVE`}
+              status={
+                inwardMonth
+                  ? `DAY ${inwardMonth.dayOfMonth} OF ${inwardMonth.daysInMonth}`
+                  : "LIVE"
+              }
               cta="Open buying plan"
               span={5}
               href="/buying-plan"
@@ -1210,14 +1214,29 @@ export function AnalyticsCards({
                   </strong>
                   <span className="ana-value-label">
                     {inwardMonth && inwardMonth.planned > 0
-                      ? `${fmt.format(inwardMonth.actual)} pcs received of ${fmt.format(inwardMonth.planned)} expected${
-                          inwardMonth.source === "inward-plan" ? " (Inward Plan sheet)" : ""
-                        }`
+                      ? `${fmt.format(inwardMonth.actual)} pcs received of ${fmt.format(inwardMonth.planned)} expected`
                       : "no inward quantity planned for this month"}
                   </span>
+                  {inwardMonth && inwardMonth.source === "inward-plan" && (
+                    <span className="ana-value-label ana-src-warn">
+                      Receivable Plan is empty
+                      {inwardMonth.awaitingInput > 0
+                        ? ` — ${fmt.format(inwardMonth.awaitingInput)} PO lines awaiting input`
+                        : ""}
+                      . Denominator is the older monthly Inward Plan sheet, so read it as
+                      indicative until the Receivable Plan is filled.
+                    </span>
+                  )}
                   <div className="ana-plan-track"><i style={{ width: `${clampPct(inwardMonthPct ?? 0)}%` }} /></div>
                 </div>
               </div>
+              {inwardMonth && inwardMonth.dayOfMonth < inwardMonth.daysInMonth && (
+                <p className="ana-note">
+                  Both figures are month-to-date with{" "}
+                  {inwardMonth.daysInMonth - inwardMonth.dayOfMonth} days still to run — they are a
+                  pacing check, not a final score.
+                </p>
+              )}
               {planPct != null && inwardMonthPct != null && planPct - inwardMonthPct >= 30 && (
                 <p className="ana-note">
                   Commitments are running well ahead of arrivals — check vendor follow-up / TNA before adding more plan.

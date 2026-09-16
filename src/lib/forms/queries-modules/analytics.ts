@@ -267,10 +267,10 @@ export async function loadAnalyticsExtras(
     const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1))
       .toISOString()
       .slice(0, 10);
-    const [{ data: expected }, { data: sheet }, { data: grn }] = await Promise.all([
+    const [{ data: expected }, { data: sheet }, { data: grn }, { count: openLines }] = await Promise.all([
       supabase
         .from('sd_receivable_input')
-        .select('qty_expected_this_week')
+        .select('qty_expected_this_week, row_key')
         .gte('delivery_date_this_week', monthStartDate)
         .lt('delivery_date_this_week', nextMonth)
         .limit(PAGE_SIZE),
@@ -285,8 +285,11 @@ export async function loadAnalyticsExtras(
         .gte('grn_created_at', monthStartDate)
         .lt('grn_created_at', nextMonth)
         .limit(PAGE_SIZE),
+      // Open PO lines the team is meant to fill an expected quantity against. When the
+      // Receivable Plan is untouched this is the adoption gap, not a data gap.
+      supabase.from('sd_receivable_plan').select('row_key', { count: 'exact', head: true }),
     ]);
-    const fromReceivable = ((expected ?? []) as { qty_expected_this_week: number | null }[]).reduce(
+    const fromReceivable = ((expected ?? []) as { qty_expected_this_week: number | null; row_key?: string }[]).reduce(
       (sum, r) => sum + (Number(r.qty_expected_this_week) || 0),
       0,
     );
@@ -299,7 +302,22 @@ export async function loadAnalyticsExtras(
       (sum, r) => sum + (Number(r.received_quantity) || 0),
       0,
     );
-    extras.inwardMonth = { month: today.slice(0, 7), planned, actual, source };
+    const filledKeys = new Set(
+      ((expected ?? []) as { row_key?: string }[]).map((r) => r.row_key).filter(Boolean) as string[],
+    );
+    const dayOfMonth = Number(today.slice(8, 10));
+    const daysInMonth = new Date(
+      Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0),
+    ).getUTCDate();
+    extras.inwardMonth = {
+      month: today.slice(0, 7),
+      planned,
+      actual,
+      source,
+      awaitingInput: Math.max(0, (openLines ?? 0) - filledKeys.size),
+      dayOfMonth,
+      daysInMonth,
+    };
   } catch { /* stays null */ }
 
   // Weave + lifecycle per product code — shared by 1.5 and 1.10.

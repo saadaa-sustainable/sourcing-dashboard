@@ -1023,3 +1023,4 @@
 @media (max-width: 640px) {
   .ana-pair { grid-template-columns: 1fr; }
 }
+.ana-src-warn { color: var(--warn-ink, #8a6d1f); font-size: 11px; line-height: 1.4; margin-top: 4px; }

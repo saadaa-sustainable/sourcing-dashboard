@@ -295,7 +295,9 @@ export function BuyingPlanClient({
   const rate = (s: string) => (s === '' || s == null ? null : Number(s));
   const sheetCols: Column<ViewItem>[] = [
     { key: 'code', label: 'Product code', kind: 'mono', source: 'easyecom', accessor: (v) => v.row.product_code },
-    { key: 'category', label: 'Category', kind: 'text', source: 'easyecom', accessor: (v) => v.fabricType },
+    { key: 'weave', label: 'Weave', kind: 'text', source: 'easyecom', accessor: (v) => v.fabricType },
+    { key: 'category', label: 'Category', kind: 'text', source: 'easyecom', accessor: (v) => v.category },
+    { key: 'sub_category', label: 'Sub-category', kind: 'text', source: 'easyecom', accessor: (v) => v.subCategory },
     { key: 'fob_efob_rate', label: 'Buy value (FOB/E-FOB)', kind: 'num',
       accessor: (v) => rate(v.row.fob_efob_rate),
       render: (v) => (rate(v.row.fob_efob_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.fob_efob_rate))) },
@@ -314,7 +316,6 @@ export function BuyingPlanClient({
     { key: 'approval', label: 'Approval', kind: 'text', accessor: (v) => v.row.line_status || '—' },
   ];
 
-  // View module works over products that actually have a planned quantity.
   // View module works over products that actually have a planned quantity. REJECTED lines
   // are excluded from every total, group and PO-type rollup (spec §sequencing: "SUMIF
   // counting rejected rows") — they still appear in the Plan-detail table with their status.
