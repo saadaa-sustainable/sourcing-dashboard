@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
-import { AlertTriangle, FileText, Send, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Download, FileText, Send, TrendingDown, TrendingUp } from 'lucide-react';
 import { addMonths, monthLabel } from '@/lib/forms/approval';
 import { generatePlanReportAction, getPlanReportUrl } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
 import { Field } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { downloadCsv } from '@/lib/download';
 import { InfoDot } from '@/components/info-dot';
 import type {
   BuyingPlanAnalysis,
@@ -206,6 +207,12 @@ function PoList({ row }: { row: BuyingPlanAnalysisProduct }) {
   );
 }
 
+function poCsvText(row: BuyingPlanAnalysisProduct) {
+  return row.pos
+    .map((po) => `${po.po_ref_num || po.po_number || po.po_id} (${po.vendor_code ?? '?'} · ${po.qty})`)
+    .join('; ');
+}
+
 export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analysis: BuyingPlanAnalysis; isAdmin?: boolean }) {
   const { planMonth, metrics: m, products, exceptions, hasPlan, planStatus, approvedLines, totalLines, lifecycle } = analysis;
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -231,6 +238,37 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
       if ('url' in r) window.open(r.url, '_blank', 'noopener,noreferrer');
       else setNote({ tone: 'error', text: r.error });
     });
+  }
+
+  function downloadNotBudgetedCsv() {
+    downloadCsv(
+      `buying-plan-not-budgeted-${planMonth.slice(0, 7)}`,
+      ['Product', 'Reason', 'Issued qty', 'Issued value', 'POs', 'PO references'],
+      exceptions.notBudgeted.map((row) => [
+        row.product_code,
+        STATUS_LABEL[row.status],
+        row.issuedQty,
+        row.issuedValue,
+        row.poCount,
+        poCsvText(row),
+      ]),
+    );
+  }
+
+  function downloadOverApprovedCsv() {
+    downloadCsv(
+      `buying-plan-over-approved-${planMonth.slice(0, 7)}`,
+      ['Product', 'Approved qty', 'Issued qty', 'Excess qty', 'Excess %', 'Excess value', 'PO references'],
+      exceptions.overApproved.map((row) => [
+        row.product_code,
+        row.plannedQty,
+        row.issuedQty,
+        row.deltaQty,
+        row.plannedQty > 0 ? `${((row.deltaQty / row.plannedQty) * 100).toFixed(1)}%` : '',
+        row.deltaValue,
+        poCsvText(row),
+      ]),
+    );
   }
 
   const rows = useMemo(
@@ -333,15 +371,24 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
       </div>
 
       {/* Exception (a): issued but not budgeted */}
-      <div className="wf-card" style={{ borderLeft: '4px solid #c0392b' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 6 }}>
-          <AlertTriangle size={16} style={{ color: '#c0392b' }} />
-          Issued but NOT budgeted — {exceptions.notBudgeted.length} product{exceptions.notBudgeted.length === 1 ? '' : 's'}
-          <InfoDot text="Products with issued POs but no approved plan quantity for the selected month, including products absent from the plan or approved at zero." />
-        </div>
+      <details className="wf-card bp-analysis-disclosure bp-analysis-not-budgeted">
+        <summary className="bp-analysis-summary">
+          <span className="bp-analysis-summary-title">
+            <AlertTriangle size={16} aria-hidden="true" />
+            Issued but NOT budgeted — {exceptions.notBudgeted.length} product{exceptions.notBudgeted.length === 1 ? '' : 's'}
+          </span>
+          <ChevronRight size={16} className="bp-analysis-chevron" aria-hidden="true" />
+        </summary>
+        <div className="bp-analysis-content">
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
           POs issued for products that are not in the {monthLabel(planMonth)} buying plan, or are in the plan with no approved quantity (never approved, or approved at zero). Why were these issued?
+          <InfoDot text="Products with issued POs but no approved plan quantity for the selected month, including products absent from the plan or approved at zero." />
         </p>
+        <div className="bp-analysis-actions">
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadNotBudgetedCsv}>
+            <Download size={14} aria-hidden="true" /> Download CSV
+          </button>
+        </div>
         {exceptions.notBudgeted.length === 0 ? (
           <div className="wf-subtle">None — every issued product was budgeted and approved.</div>
         ) : (
@@ -363,18 +410,28 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
             </table>
           </div>
         )}
-      </div>
+        </div>
+      </details>
 
       {/* Exception (b): issued above approved */}
-      <div className="wf-card" style={{ borderLeft: '4px solid #e0a400' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 6 }}>
-          <TrendingUp size={16} style={{ color: '#9a6b12' }} />
-          Issued ABOVE approved quantity — {exceptions.overApproved.length} product{exceptions.overApproved.length === 1 ? '' : 's'}
-          <InfoDot text="Products where issued PO quantity exceeds the approved buying-plan quantity for the selected month." />
-        </div>
+      <details className="wf-card bp-analysis-disclosure bp-analysis-over-approved">
+        <summary className="bp-analysis-summary">
+          <span className="bp-analysis-summary-title">
+            <TrendingUp size={16} aria-hidden="true" />
+            Issued ABOVE approved quantity — {exceptions.overApproved.length} product{exceptions.overApproved.length === 1 ? '' : 's'}
+          </span>
+          <ChevronRight size={16} className="bp-analysis-chevron" aria-hidden="true" />
+        </summary>
+        <div className="bp-analysis-content">
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
           Approved 100, issued 110 — the excess over what the plan approved.
+          <InfoDot text="Products where issued PO quantity exceeds the approved buying-plan quantity for the selected month." />
         </p>
+        <div className="bp-analysis-actions">
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadOverApprovedCsv}>
+            <Download size={14} aria-hidden="true" /> Download CSV
+          </button>
+        </div>
         {exceptions.overApproved.length === 0 ? (
           <div className="wf-subtle">None — nothing was issued above its approved quantity.</div>
         ) : (
@@ -397,21 +454,30 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
             </table>
           </div>
         )}
-      </div>
+        </div>
+      </details>
 
       {/* Every product: approved vs issued */}
-      <div className="wf-card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <strong>
+      <details className="wf-card bp-analysis-disclosure">
+        <summary className="bp-analysis-summary">
+          <span className="bp-analysis-summary-title">
+            <TrendingDown size={16} aria-hidden="true" />
             All products — approved vs issued
-            <InfoDot text="Complete product-level reconciliation of approved plan quantity and value versus issued PO quantity and value for the selected month." />
-          </strong>
+          </span>
+          <span className="bp-analysis-summary-meta">
+            {products.length} product{products.length === 1 ? '' : 's'}
+            <ChevronRight size={16} className="bp-analysis-chevron" aria-hidden="true" />
+          </span>
+        </summary>
+        <div className="bp-analysis-content">
+        <div className="bp-analysis-actions">
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} />
             flagged only
           </label>
           <span className="wf-subtle" style={{ fontSize: 12 }}>
-            <TrendingDown size={12} style={{ verticalAlign: '-2px' }} /> {m.approvedProducts} approved · {m.issuedProducts} issued
+            {m.approvedProducts} approved · {m.issuedProducts} issued
+            <InfoDot text="Complete product-level reconciliation of approved plan quantity and value versus issued PO quantity and value for the selected month." />
           </span>
         </div>
         <FilterTable
@@ -424,7 +490,8 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
           emptyText="Nothing planned or issued for this month."
           download={{ filename: `buying-plan-analysis-${planMonth.slice(0, 7)}` }}
         />
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

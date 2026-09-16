@@ -1,8 +1,9 @@
 'use client';
 
-import { Fragment, useMemo, useState, useTransition } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
-import { ChevronDown, ChevronRight, Lock, Plus, Save, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import { downloadCsv } from '@/lib/download';
 import {
   acceptProposedCost,
   confirmCmRate,
@@ -61,6 +62,8 @@ import type { TempProductInfo } from '@/lib/temp-product.server';
 import { useColumnSort } from '@/lib/use-column-sort';
 
 const disp = (v: number | null) => (v == null ? '—' : String(v));
+const rateDisplay = (v: number | null) =>
+  v == null ? '—' : `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(v)}`;
 
 /** Read-only fabric buildup referenced from the Fabric Cost master. */
 type FabricBuildup = { grey: number | null; processing: number | null; finished: number | null };
@@ -122,10 +125,19 @@ export function StandardCostClient({
   const [filter, setFilter] = useState('');
   // A newly-added product opens straight into its cost format.
   const [expanded, setExpanded] = useState<string | null>(initialOpen);
+  const [addOpen, setAddOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState('all');
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
   const [tempName, setTempName] = useState('');
 
   const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
+  const undocumented = costs.filter((c) => !c.documented && c.neg_stage == null).length;
+  const productNames = useMemo(
+    () => new Map(catalog.map((item) => [item.product_code.toUpperCase(), item.product_name ?? ''])),
+    [catalog],
+  );
 
   const linesByCode = useMemo(() => {
     const m = new Map<string, StandardCostLine[]>();
@@ -153,9 +165,50 @@ export function StandardCostClient({
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
     const base = mineOnly ? costs.filter((c) => myTurn(c.neg_stage)) : costs;
-    return q ? base.filter((c) => c.product_code.toLowerCase().includes(q)) : base;
-  }, [costs, filter, mineOnly, myTurn]);
+    return base.filter((c) => {
+      if (!isMat && stageFilter !== 'all' && (c.neg_stage ?? 'not_started') !== stageFilter) return false;
+      return !q || c.product_code.toLowerCase().includes(q) ||
+        (!isMat && (productNames.get(c.product_code.toUpperCase()) ?? '').toLowerCase().includes(q));
+    });
+  }, [costs, filter, mineOnly, myTurn, isMat, stageFilter, productNames]);
   const sort = useColumnSort<StandardCost>();
+  const selectedCost = !isMat ? costs.find((c) => c.product_code === expanded) : null;
+
+  useEffect(() => {
+    if (!selectedCost && !addOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (addOpen) addCloseRef.current?.focus();
+    else drawerCloseRef.current?.focus();
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (addOpen) setAddOpen(false);
+      else setExpanded(null);
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onEscape);
+    };
+  }, [selectedCost, addOpen]);
+
+  function exportFinishedGoods() {
+    downloadCsv(
+      'standard-cost-finished-goods',
+      ['Product code', 'Product name', 'Stage', 'Proposed', 'Target', 'Job', 'FOB', 'E-FOB', 'Next step'],
+      sort.apply(shown).map((c) => [
+        c.product_code,
+        productNames.get(c.product_code.toUpperCase()) ?? '',
+        COST_STAGE_LABEL[c.neg_stage ?? ''] ?? c.neg_stage ?? 'Not started',
+        c.proposed_cost,
+        c.target_cost,
+        c.job_cost,
+        c.fob_cost,
+        c.efob_cost,
+        nextActor(c.neg_stage),
+      ]),
+    );
+  }
 
   const existingCodes = useMemo(() => new Set(costs.map((c) => c.product_code)), [costs]);
   // Codes soft-deleted from this track (upper-cased) — re-adding restores them intact.
@@ -216,6 +269,50 @@ export function StandardCostClient({
   // rate itself stays governed by the negotiation controls, not these tabs.
   const cmtpFabricEditable = (c: StandardCost) => !c.frozen && canEdit(role, 'draft');
 
+  const addForm = editable ? (
+    <div className="wf-form-panel">
+      {isMat ? (
+        <div className="wf-form-grid">
+          <Field label={`Add a ${codeLabel.toLowerCase()}`} hint="seeds a row you can then propose">
+            <input value={newCode} placeholder="e.g. TRM07" onChange={(e) => setNewCode(e.target.value)} />
+          </Field>
+          <button type="button" className="wf-btn wf-btn-primary" onClick={() => addCode(newCode)} disabled={pending}>
+            <Plus size={15} /> Add to sheet
+          </button>
+        </div>
+      ) : (
+        <div className="wf-form-grid">
+          <Field label="Add a product" hint="search by code or name — from the product master">
+            <ProductPicker
+              items={catalog}
+              exclude={existingCodes}
+              onPick={(code) => addCode(code)}
+              disabled={pending}
+              placeholder="Search product code or name…"
+            />
+          </Field>
+          <Field label="…or a new product not in EasyEcom yet" hint="gets a temporary ID (TMP-…) you can merge later">
+            <div className="wf-temp-add">
+              <input
+                value={tempName}
+                placeholder="New product name"
+                onChange={(e) => setTempName(e.target.value)}
+              />
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                disabled={pending || !tempName.trim()}
+                onClick={addTemp}
+              >
+                <Plus size={13} /> Create temporary
+              </button>
+            </div>
+          </Field>
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <>
       <Notice tone="info">
@@ -230,7 +327,6 @@ export function StandardCostClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {!isMat && standards && <StandardFieldsPanel standards={standards} editable={editable} />}
       {/* EFOB rate lives on the Material track — fabrics are the materials there (the
           /RM codes). Its fabric options are the material codes themselves. */}
       {isMat && (
@@ -241,53 +337,10 @@ export function StandardCostClient({
         />
       )}
 
-      {editable && (
-        <div className="wf-form-panel">
-          {isMat ? (
-            <div className="wf-form-grid">
-              <Field label={`Add a ${codeLabel.toLowerCase()}`} hint="seeds a row you can then propose">
-                <input
-                  value={newCode}
-                  placeholder="e.g. TRM07"
-                  onChange={(e) => setNewCode(e.target.value)}
-                />
-              </Field>
-              <button type="button" className="wf-btn wf-btn-primary" onClick={() => addCode(newCode)} disabled={pending}>
-                <Plus size={15} /> Add to sheet
-              </button>
-            </div>
-          ) : (
-            <div className="wf-form-grid">
-              <Field label="Add a product" hint="search by code or name — from the product master">
-                <ProductPicker
-                  items={catalog}
-                  exclude={existingCodes}
-                  onPick={(code) => addCode(code)}
-                  disabled={pending}
-                  placeholder="Search product code or name…"
-                />
-              </Field>
-              <Field label="…or a new product not in EasyEcom yet" hint="gets a temporary ID (TMP-…) you can merge later">
-                <div className="wf-temp-add">
-                  <input
-                    value={tempName}
-                    placeholder="New product name"
-                    onChange={(e) => setTempName(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-ghost wf-btn-sm"
-                    disabled={pending || !tempName.trim()}
-                    onClick={addTemp}
-                  >
-                    <Plus size={13} /> Create temporary
-                  </button>
-                </div>
-              </Field>
-            </div>
-          )}
-        </div>
-      )}
+      {isMat && addForm}
+
+      {isMat ? (
+        <>
 
       <div className="wf-toolbar">
         <input
@@ -395,6 +448,126 @@ export function StandardCostClient({
           </table>
         </div>
       </div>
+        </>
+      ) : (
+        <div className="sc-fg">
+          <div className="sc-fg-metrics" aria-label="Finished Goods cost overview">
+            <div className="sc-fg-metric"><span>Products tracked</span><strong>{costs.length}</strong><small>Finished Goods cost records</small></div>
+            <div className="sc-fg-metric"><span>Signed off</span><strong>{signedOff}</strong><small>Accepted standard rates</small></div>
+            <div className="sc-fg-metric"><span>Needs my action</span><strong>{awaitingCount}</strong><small>{role === 'admin' ? 'Proposals and submitted rates' : 'Targets and revisions'}</small></div>
+            <div className="sc-fg-metric"><span>Not documented</span><strong>{undocumented}</strong><small>Cost sheet to complete</small></div>
+          </div>
+
+          <section className="sc-fg-sheet" aria-label="Finished Goods cost sheet">
+            <div className="sc-fg-sheet-head">
+              <div><h2>Finished Goods cost sheet</h2><p>Choose a product to view its rate negotiation and full cost record.</p></div>
+              <div className="sc-fg-head-actions">
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportFinishedGoods}>
+                  <Download size={14} /> Export CSV
+                </button>
+                {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={() => setAddOpen(true)}><Plus size={14} /> Add product</button>}
+              </div>
+            </div>
+            <div className="sc-fg-toolbar">
+              <label className="sc-fg-search"><Search size={15} aria-hidden="true" /><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search product code or name" aria-label="Search product code or name" /></label>
+              <select aria-label="Filter by stage" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
+                <option value="all">All stages</option>
+                <option value="not_started">Not started</option>
+                <option value="proposed">Proposed</option>
+                <option value="target_set">Target set</option>
+                <option value="rate_submitted">Rate submitted</option>
+                <option value="signed_off">Signed off</option>
+                <option value="renegotiate">Renegotiate</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <div className="segment fb-seg" aria-label="Quick filter">
+                <button type="button" className={!mineOnly ? 'active' : ''} aria-pressed={!mineOnly} onClick={() => setMineOnly(false)}>All products</button>
+                <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
+              </div>
+            </div>
+            <div className="table-scroll">
+              <table className="wf-grid sc-fg-table">
+                <thead><tr>
+                  <th {...sort.th('code', (c) => c.product_code)}>Product {sort.ind('code')}</th>
+                  <th className="num" {...sort.th('proposed', (c) => c.proposed_cost)}>Proposed {sort.ind('proposed')}</th>
+                  <th className="num" {...sort.th('target', (c) => c.target_cost)}>Target {sort.ind('target')}</th>
+                  <th className="num" {...sort.th('job', (c) => c.job_cost)}>Job {sort.ind('job')}</th>
+                  <th className="num" {...sort.th('fob', (c) => c.fob_cost)}>FOB {sort.ind('fob')}</th>
+                  <th className="num" {...sort.th('efob', (c) => c.efob_cost)}>E-FOB {sort.ind('efob')}</th>
+                  <th {...sort.th('stage', (c) => c.neg_stage ?? c.status)}>Stage {sort.ind('stage')}</th>
+                  <th>Next step</th><th aria-label="Open product" />
+                </tr></thead>
+                <tbody>
+                  {sort.apply(shown).map((cost) => (
+                    <tr key={cost.product_code}>
+                      <td><button type="button" className="sc-fg-product" onClick={() => setExpanded(cost.product_code)} aria-label={`Open ${cost.product_code} cost details`}><span className="sc-fg-product-icon">▧</span><span><strong>{cost.product_code}</strong><small>{productNames.get(cost.product_code.toUpperCase()) || (tempProducts[cost.product_code]?.name ?? 'Product name unavailable')}{tempProducts[cost.product_code]?.status === 'active' ? ' · TEMP' : ''}</small></span></button></td>
+                      <td className="num">{rateDisplay(cost.proposed_cost)}</td><td className="num">{rateDisplay(cost.target_cost)}</td>
+                      <td className="num">{rateDisplay(cost.job_cost)}</td><td className="num">{rateDisplay(cost.fob_cost)}</td><td className="num">{rateDisplay(cost.efob_cost)}</td>
+                      <td><span className={`wf-status tone-${COST_STAGE_TONE[cost.neg_stage ?? ''] ?? 'purple'}`}>{COST_STAGE_LABEL[cost.neg_stage ?? ''] ?? 'Not started'}</span>{cost.frozen && <small className="sc-fg-frozen"><Lock size={11} /> Frozen</small>}</td>
+                      <td className="wf-subtle">{nextActor(cost.neg_stage)}</td>
+                      <td><button type="button" className="wf-expand-btn" onClick={() => setExpanded(cost.product_code)} aria-label={`Open ${cost.product_code} cost details`}><ChevronRight size={15} /></button></td>
+                    </tr>
+                  ))}
+                  {!shown.length && <tr><td colSpan={9} className="wf-empty-cell">No products match these filters.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="sc-fg-sheet-foot"><span>{shown.length} of {costs.length} products shown</span><span>Rates in ₹ per piece</span></div>
+          </section>
+
+          <div className="sc-fg-context">
+            <div><h3>Two cost owners, one finished price</h3><p>Fabric Cost comes from Vikram ji&apos;s master. CMTP is built by Nimisha / Durganshu. Final Cost combines both with the Rules Master margin.</p></div>
+            <div><h3>After sign-off</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
+          </div>
+          {standards && <StandardFieldsPanel standards={standards} editable={editable} />}
+
+          {selectedCost && (
+            <div className="sc-fg-drawer-layer">
+              <button type="button" className="sc-fg-scrim" onClick={() => setExpanded(null)} aria-label="Close product details" />
+              <div className="sc-fg-drawer" role="dialog" aria-modal="true" aria-labelledby="sc-fg-drawer-title">
+                <div className="sc-fg-drawer-head">
+                  <div><small>Finished Goods / Standard Cost</small><h2 id="sc-fg-drawer-title">{selectedCost.product_code} · {productNames.get(selectedCost.product_code.toUpperCase()) || tempProducts[selectedCost.product_code]?.name || 'Product'}</h2><p>Negotiated rates and cost buildup</p></div>
+                  <button type="button" className="sc-fg-close" ref={drawerCloseRef} onClick={() => setExpanded(null)} aria-label="Close product details"><X size={18} /></button>
+                </div>
+                <div className="sc-fg-drawer-body">
+                  <section className="sc-fg-drawer-card">
+                    <div className="sc-fg-card-head"><h3>Rate negotiation</h3><span>{nextActor(selectedCost.neg_stage)}</span></div>
+                    <div className="sc-fg-flow" aria-label="Cost negotiation stages"><span>Proposal</span><ChevronRight size={13} /><span>Target / rate</span><ChevronRight size={13} /><span>Fabric confirmation</span><ChevronRight size={13} /><span>CMTP sign-off</span></div>
+                    <table className="wf-grid sc-fg-rate-table"><tbody><CostRow cost={selectedCost} role={role} track="fg" temp={tempProducts[selectedCost.product_code]} mergeCandidates={catalog} /></tbody></table>
+                  </section>
+                  <section className="sc-fg-drawer-card sc-fg-detail-card">
+                    <CostDetail
+                      key={selectedCost.product_code}
+                      cost={selectedCost}
+                      lines={linesByCode.get(selectedCost.product_code) ?? []}
+                      cmtp={cmtpByCode.get(selectedCost.product_code) ?? []}
+                      cmtpSubitems={cmtpSubitems}
+                      fabricBase={fabricBase}
+                      fabricCodes={fabricCodes}
+                      history={rateHistory[selectedCost.product_code] ?? []}
+                      revisions={cmtpRevisions[selectedCost.product_code] ?? []}
+                      masterFabric={productFabric[selectedCost.product_code] ?? null}
+                      editable={cmtpFabricEditable(selectedCost)}
+                      marginPct={marginPct}
+                    />
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {addOpen && editable && (
+            <div className="sc-fg-add-layer" role="presentation" onKeyDown={(e) => { if (e.key === 'Escape') setAddOpen(false); }}>
+              <button type="button" className="sc-fg-scrim" onClick={() => setAddOpen(false)} aria-label="Close add product" />
+              <div className="sc-fg-add-dialog" role="dialog" aria-modal="true" aria-labelledby="sc-fg-add-title">
+                <div className="sc-fg-card-head"><h2 id="sc-fg-add-title">Add a product</h2><button type="button" className="sc-fg-close" ref={addCloseRef} onClick={() => setAddOpen(false)} aria-label="Close add product"><X size={18} /></button></div>
+                <p>Choose an existing Product Master code or create a temporary product for an item not yet in EasyEcom.</p>
+                {addForm}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
