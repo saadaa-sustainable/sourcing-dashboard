@@ -72,7 +72,7 @@ export default async function BuyingPlanPage({
     >
       <PlanTypeTabs planMonth={planMonth} planType={planType} />
       {planType === 'analysis' ? (
-        <AnalysisTrack planMonth={planMonth} />
+        <AnalysisTrack planMonth={planMonth} isAdmin={user.role === 'admin'} />
       ) : planType === 'material' ? (
         <MaterialTrack planMonth={planMonth} role={user.role} />
       ) : (
@@ -115,7 +115,9 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       catalog={catalog}
       pickerItems={pickerItems}
       restrictPicker={restrictToStandardCost}
+      npdBudgetSet={npdBudget.cap != null}
       leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
+      deadlineDay={rules.plan_approval_deadline_day ?? 7}
       role={role}
     />
     </>
@@ -140,7 +142,7 @@ async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'vi
 // Buying Plan Analysis: month-filtered variance between the approved FG plan and the
 // POs actually issued (real EasyEcom POs), plus the two exception lists. Read-only,
 // derived at request time — no data of its own.
-async function AnalysisTrack({ planMonth }: { planMonth: string }) {
+async function AnalysisTrack({ planMonth, isAdmin }: { planMonth: string; isAdmin: boolean }) {
   const analysis = await loadBuyingPlanAnalysis(planMonth);
-  return <BuyingPlanAnalysisClient analysis={analysis} />;
+  return <BuyingPlanAnalysisClient analysis={analysis} isAdmin={isAdmin} />;
 }

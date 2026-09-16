@@ -1002,7 +1002,7 @@
   grid-template-columns: minmax(210px, 2.2fr) repeat(2, minmax(115px, .85fr)) minmax(155px, 1fr) auto auto;
 }
 .ui-view-buying-plan .bp-filter-toolbar-input {
-  grid-template-columns: minmax(240px, 2.2fr) repeat(2, minmax(130px, 1fr)) auto auto;
+  grid-template-columns: minmax(240px, 2.2fr) repeat(2, minmax(130px, 1fr)) auto auto auto;
 }
 .ui-view-buying-plan .bp-filter-toolbar > .bp-search,
 .ui-view-buying-plan .bp-filter-toolbar > select,

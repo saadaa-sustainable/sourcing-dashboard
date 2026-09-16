@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { reloadWithToast } from '@/lib/toast';
 import {
   ChevronDown,
@@ -8,14 +8,18 @@ import {
   ClipboardList,
   Download,
   Eye,
+  Maximize2,
+  Minimize2,
   MoreHorizontal,
   Plus,
   Save,
+  Search,
   Send,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
-import { saveAnalyticsRule, saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
+import { requestPlanAmendment, saveAnalyticsRule, saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { FilterTable, type Column } from '@/components/filter-table';
 import {
@@ -23,8 +27,11 @@ import {
   canApprove,
   canEdit,
   canSubmit,
+  isPlanFrozen,
   isPlanWindowOpen,
   monthLabel,
+  planComplianceStatus,
+  type PlanCompliance,
 } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -111,7 +118,9 @@ export function BuyingPlanClient({
   catalog = [],
   pickerItems = [],
   restrictPicker = false,
+  npdBudgetSet = true,
   leadDays = { job: 30, efob: 45, fob: 90 },
+  deadlineDay = 7,
   role,
 }: {
   planMonth: string;
@@ -127,13 +136,20 @@ export function BuyingPlanClient({
   pickerItems?: ProductCatalogItem[];
   /** When true, only Standard-Cost products are selectable (no free-typed codes). */
   restrictPicker?: boolean;
+  /** Whether Sourcing has set the monthly NPD cap shown above this plan. */
+  npdBudgetSet?: boolean;
   leadDays?: { job: number; efob: number; fob: number };
+  /** Rules Master: day of the plan month by which the plan must be approved. */
+  deadlineDay?: number;
   role: SdRole;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
   const planLocked = status === 'submitted' || status === 'pending_l2' || status === 'approved';
-  const editable = canEdit(role, status);
+  // Month-end freeze (spec item 5): a closed month takes no direct edits; only a plan
+  // already sent to rework (an amendment, or approver rework) can be edited and re-approved.
+  const frozen = isPlanFrozen(planMonth);
+  const editable = canEdit(role, status) && (!frozen || status === 'rework');
 
   // Spec: every active product is listed; you zero out what you won't make.
   // A saved plan shows its stored lines; a fresh editable plan pre-lists all
@@ -161,6 +177,8 @@ export function BuyingPlanClient({
   const [inputSearch, setInputSearch] = useState('');
   const [inputCategory, setInputCategory] = useState('');
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [planDetailExpanded, setPlanDetailExpanded] = useState(false);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
   // View-mode grouping dimension (spec §2 — category, not product code, by default).
   const [groupBy, setGroupBy] = useState<'category' | 'subcategory' | 'weave' | 'code'>('category');
 
@@ -385,22 +403,15 @@ export function BuyingPlanClient({
     );
   }
 
-  function addRow(code: string) {
-    const c = code.trim();
-    if (!c) return;
-    // Clear filters + search to the code so the added/existing row is visible
-    // immediately (the grid can be long — otherwise the add looks like nothing
-    // happened).
+  function addRows(codes: string[]) {
+    const next = [...new Set(codes.map((code) => code.trim().toUpperCase()).filter(Boolean))].filter((code) => !used.has(code));
+    if (!next.length) return;
+    setRows((current) => [...current, ...next.map((code, index) => blankDraft(code, `drawer-${code}-${Date.now()}-${index}`))]);
     setInputFabric('');
     setInputStatus('');
     setInputPoType('');
-    setInputSearch(c);
-    if (rows.some((r) => r.product_code === c)) {
-      setMessage(`${c} is already in the plan — showing it below.`);
-      return;
-    }
-    setRows((current) => [...current, blankDraft(c, `new-${c}-${Date.now()}`)]);
-    setMessage(`Added ${c}. Clear the filter to see the whole plan.`);
+    setInputSearch('');
+    setMessage(`Added ${next.length} product${next.length === 1 ? '' : 's'} to the plan.`);
   }
 
   function addAll() {
@@ -543,6 +554,9 @@ export function BuyingPlanClient({
   };
   const attentionTotal =
     attention.missingCost + attention.approvalPending + attention.notStarted + attention.overPlan;
+  const inputReviewCount = attention.missingCost + (npdBudgetSet ? 0 : 1);
+  const inputReadyCount = planned.filter((item) => !item.missingCost).length;
+  const inputSplit = poTypeSplit(view.map((item) => item.row));
 
   // Export = the Plan-detail table, respecting the current filters.
   function exportCsv() {
@@ -564,6 +578,30 @@ export function BuyingPlanClient({
       ['product_code', 'category', 'state', 'plan_qty', 'plan_value', 'job', 'efob', 'fob', 'actual_qty', 'bought_pct', 'approval'],
       rows,
     );
+  }
+
+  // Approval-deadline compliance (spec item 5) and the post-approval amendment request â€”
+  // the sanctioned way to change an approved (or closed) plan: it drops to rework and
+  // must be re-approved.
+  const compliance = planComplianceStatus(plan ? { submitted_at: plan.submitted_at, approved_at: plan.approved_at } : null, planMonth, deadlineDay);
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendNote, setAmendNote] = useState('');
+  const canAmend = status === 'approved' && role !== 'viewer' && Boolean(plan?.id);
+  function requestAmendment() {
+    if (!plan?.id) return;
+    setError(null);
+    setMessage(null);
+    const fd = new FormData();
+    fd.set('plan_id', String(plan.id));
+    fd.set('note', amendNote);
+    start(async () => {
+      const r = await requestPlanAmendment(fd);
+      if (r.ok) {
+        setAmendOpen(false);
+        setAmendNote('');
+        reloadWithToast(r.message ?? 'Amendment requested.');
+      } else setError(r.error);
+    });
   }
 
   const shownCount = mode === 'view' ? viewRows.length : inputRows.length;
@@ -610,6 +648,12 @@ export function BuyingPlanClient({
         More filters
         {hiddenFilterCount > 0 && <span className="bp-more-count">{hiddenFilterCount}</span>}
       </button>
+      {mode === 'input' && editable && (
+        <button type="button" className="wf-btn wf-btn-primary bp-add-products" onClick={() => setProductPickerOpen(true)}>
+          <Plus size={15} aria-hidden="true" />
+          Add products
+        </button>
+      )}
       <span className="bp-toolbar-count">
         {shownCount} of {totalCount} shown
         {hasFilters && (
@@ -664,6 +708,7 @@ export function BuyingPlanClient({
             </select>
           </Field>
           <StatusBadge status={status} edited={plan?.edited_before_approval} />
+          <ComplianceChip c={compliance} frozen={frozen} />
           <div className="segment wf-segment">
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
@@ -699,17 +744,13 @@ export function BuyingPlanClient({
               >
                 <Upload size={15} /> Import CSV
               </button>
-              <ProductPicker
-                items={restrictPicker ? pickerItems : catalog}
-                exclude={used}
-                allowFreeText={!restrictPicker}
-                onPick={(code) => addRow(code)}
-                placeholder={restrictPicker ? 'Add product — from Standard Cost…' : 'Add product — search code or name…'}
-              />
-              <button type="button" className="wf-btn wf-btn-ghost" onClick={addAll} disabled={!available.length}>
-                <Plus size={15} /> Add all
-              </button>
+
             </>
+          )}
+          {canAmend && (
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setAmendOpen((o) => !o)}>
+              Request amendment
+            </button>
           )}
           <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
             <Download size={15} /> Export
@@ -746,6 +787,43 @@ export function BuyingPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
+      {frozen && (
+        <Notice tone={status === 'rework' ? 'warn' : 'info'}>
+          <strong>{monthLabel(planMonth)} is closed.</strong> The plan froze at month-end: no direct edits and no POs can be linked to it. {status === 'rework' ? 'It is open for an approved amendment â€” make the change and resubmit for approval.' : status === 'approved' ? 'A missed product can still be added through Request amendment; the change must be approved again.' : 'It cannot be edited any more.'}
+        </Notice>
+      )}
+
+      {amendOpen && canAmend && (
+        <div className="bp-card bp-cardbody" style={{ marginBottom: 14 }}>
+          <div style={{ fontWeight: 650, marginBottom: 6 }}>Request an amendment to the approved plan</div>
+          <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
+            For the case where something dropped out of view (a product never got its PO). The plan goes back to rework, you make the change, and it must be approved again â€” this counts against first-time approval.
+          </p>
+          <textarea
+            value={amendNote}
+            onChange={(e) => setAmendNote(e.target.value)}
+            placeholder="What needs to change and why â€” e.g. Maroon fabric line was missed; add 1,200 pcs FOB."
+            rows={3}
+            style={{
+              width: '100%',
+              font: 'inherit',
+              fontSize: 13,
+              padding: 8,
+              borderRadius: 8,
+              border: '1px solid var(--line-strong, #c9c2ae)',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !amendNote.trim()} onClick={requestAmendment}>
+              {pending ? 'Sendingâ€¦' : 'Open for amendment'}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setAmendOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {mode === 'view' && (
         <div className="bp-layout">
           <div className="bp-stack">
@@ -771,10 +849,22 @@ export function BuyingPlanClient({
               plannedCount={planned.length}
             />
 
-            <section className="bp-card">
+            <section id="buying-plan-detail" className={`bp-card bp-plan-detail${planDetailExpanded ? ' is-expanded' : ''}`}>
               <div className="bp-cardhead">
                 <h2>Plan detail</h2>
-                <span className="wf-subtle">{view.length} products · every line as on the sheet · filter or sort any column</span>
+                <div className="bp-plan-detail-head-actions">
+                  <span className="wf-subtle">{view.length} products · every line as on the sheet · filter or sort any column</span>
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-ghost wf-btn-sm bp-plan-detail-toggle"
+                    aria-controls="buying-plan-detail"
+                    aria-expanded={planDetailExpanded}
+                    onClick={() => setPlanDetailExpanded((expanded) => !expanded)}
+                  >
+                    {planDetailExpanded ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+                    {planDetailExpanded ? 'Restore' : 'Expand'}
+                  </button>
+                </div>
               </div>
               <div className="bp-cardbody bp-cardbody-flush">
                 <FilterTable
@@ -806,130 +896,176 @@ export function BuyingPlanClient({
 
       {mode === 'input' && (
         <>
+          <div className="bp-metrics bp-input-metrics" aria-label="Plan input summary">
+            <div className="bp-metric">
+              <div className="label">Lines in plan</div>
+              <div className="value">{fmt.format(planned.length)}</div>
+              <div className="sub">{fmt.format(view.length)} products on sheet</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Plan quantity</div>
+              <div className="value">{fmt.format(totals.qty)}</div>
+              <div className="sub">pieces across JOB, E-FOB and FOB</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Plan value</div>
+              <div className="value">{totals.value ? inr(totals.value) : 'â€”'}</div>
+              <div className="sub">{attention.missingCost ? `${attention.missingCost} line${attention.missingCost === 1 ? '' : 's'} missing approved cost` : 'All planned lines have an approved cost'}</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Review</div>
+              <div className="value">{fmt.format(inputReviewCount)}</div>
+              <div className="sub">{inputReviewCount ? 'Review before submit' : 'No plan-level issues found'}</div>
+            </div>
+          </div>
+
           <div className="bp-sticky">
             <div className="bp-card bp-toolbar-card">{toolbar}</div>
           </div>
-          <section className="bp-card">
-            <div className="bp-cardhead">
-              <h2>Fill the plan</h2>
-              <span className="wf-subtle">
-                Every active product is listed — zero out what you will not make. Allocation may exceed pending
-                quantity: FOB orders run ahead of demand because the vendor holds the stock.
-              </span>
-            </div>
-            <div className="bp-cardbody bp-cardbody-flush">
-              <div className="table-panel wf-grid-panel bp-input-panel">
-                <div className="table-scroll">
-                  <table className="wide-table wf-grid">
-                    <thead>
-                      <tr>
-                        <th>Product code</th>
-                        <th>Product State</th>
-                        <th>Woven / Knitted</th>
-                        <th className="num wf-cell-calc">Pending qty</th>
-                        <th className="num input-col wf-cell-input">Job work qty</th>
-                        <th className="num input-col wf-cell-input">FOB qty</th>
-                        <th className="num input-col wf-cell-input">E-FOB qty</th>
-                        <th className="num wf-cell-calc">Total quantity</th>
-                        <th className="num wf-cell-calc">
-                          Standard cost<small className="wf-subtle">Job · FOB · E-FOB</small>
-                        </th>
-                        <th className="num wf-cell-calc">Value to be bought</th>
-                        <th className="num wf-cell-calc">Actual issued quantity</th>
-                        <th className="num wf-cell-calc">Actual issued value</th>
-                        <th className="input-col wf-cell-input">Remark</th>
-                        {editable && <th aria-label="Remove" />}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, actualQty, actualValue, overPlan }) => (
-                        <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
-                          <td className="mono">{row.product_code}</td>
-                          <td>{productStatus}</td>
-                          <td>{fabricType}</td>
-                          <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : '—'}</td>
-                          {(['job_work_qty', 'fob_qty', 'efob_qty'] as const).map((field) => (
-                            <td key={field} className="num input-col wf-cell-input">
-                              <input
-                                type="number"
-                                min={0}
-                                value={row[field]}
-                                disabled={!editable}
-                                onChange={(event) => patch(row.key, field, event.target.value)}
-                              />
+          <div className="bp-layout bp-input-layout">
+            <section className="bp-card">
+              <div className="bp-cardhead">
+                <div>
+                  <h2>Fill the plan</h2>
+                  <span className="wf-subtle">Enter quantities by PO type. Zero quantities stay out of the submitted plan.</span>
+                </div>
+                <Badge tone={status === 'draft' ? 'gray' : status === 'approved' ? 'green' : 'yellow'}>{status.replace('_', ' ')}</Badge>
+              </div>
+              <div className="bp-cardbody bp-cardbody-flush">
+                <div className="table-panel wf-grid-panel bp-input-panel">
+                  <div className="table-scroll">
+                    <table className="wide-table wf-grid">
+                      <thead>
+                        <tr>
+                          <th>Product code</th>
+                          <th>Category</th>
+                          <th>Product State</th>
+                          <th>Woven / Knitted</th>
+                          <th className="num wf-cell-calc">Pending qty</th>
+                          <th className="num input-col wf-cell-input">Job work qty</th>
+                          <th className="num input-col wf-cell-input">E-FOB qty</th>
+                          <th className="num input-col wf-cell-input">FOB qty</th>
+                          <th className="num wf-cell-calc">Total quantity</th>
+                          <th className="num wf-cell-calc">
+                            Standard cost
+                            <small className="wf-subtle">Job Â· E-FOB Â· FOB</small>
+                          </th>
+                          <th className="num wf-cell-calc">Value to be bought</th>
+                          <th className="num wf-cell-calc">Actual issued quantity</th>
+                          <th className="num wf-cell-calc">Actual issued value</th>
+                          <th className="input-col wf-cell-input">Remark</th>
+                          <th>Validation</th>
+                          {editable && <th aria-label="Remove" />}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, category, actualQty, actualValue, overPlan }) => (
+                          <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
+                            <td className="mono">{row.product_code}</td>
+                            <td>{category}</td>
+                            <td>{productStatus}</td>
+                            <td>{fabricType}</td>
+                            <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : 'â€”'}</td>
+                            {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => (
+                              <td key={field} className="num input-col wf-cell-input">
+                                <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(event) => patch(row.key, field, event.target.value)} />
+                              </td>
+                            ))}
+                            <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
+                            <td className="num wf-cell-calc">
+                              {cost ? (
+                                <div className="wf-cost-triple">
+                                  <span>
+                                    <b>Job</b> {fmt.format(cost.job)}
+                                  </span>
+                                  <span>
+                                    <b>E-FOB</b> {fmt.format(cost.efob)}
+                                  </span>
+                                  <span>
+                                    <b>FOB</b> {fmt.format(cost.fob)}
+                                  </span>
+                                </div>
+                              ) : (
+                                'â€”'
+                              )}
                             </td>
-                          ))}
-                          <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
-                          <td className="num wf-cell-calc">
-                            {cost ? (
-                              <div className="wf-cost-triple">
-                                <span><b>Job</b> {fmt.format(cost.job)}</span>
-                                <span><b>FOB</b> {fmt.format(cost.fob)}</span>
-                                <span><b>E-FOB</b> {fmt.format(cost.efob)}</span>
-                              </div>
-                            ) : (
-                              '—'
+                            <td className="num wf-cell-calc">{missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(valueToBeBought)}</td>
+                            <td className="num wf-cell-calc">
+                              {fmt.format(actualQty)}
+                              {overPlan && <span className="wf-over-tag">over plan</span>}
+                            </td>
+                            <td className="num wf-cell-calc">{money.format(actualValue)}</td>
+                            <td className="input-col">
+                              <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(event) => patch(row.key, 'remark', event.target.value)} />
+                            </td>
+                            <td>{missingCost ? <Badge tone="red">No approved cost</Badge> : overPlan ? <Badge tone="red">Over plan</Badge> : totalQty > 0 ? <Badge tone="green">Ready</Badge> : <Badge tone="gray">No qty</Badge>}</td>
+                            {editable && (
+                              <td>
+                                <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.product_code}`} onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
+                                  <Trash2 size={14} />
+                                </button>
+                              </td>
                             )}
-                          </td>
-                          <td className="num wf-cell-calc">
-                            {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(valueToBeBought)}
-                          </td>
-                          <td className="num wf-cell-calc">
-                            {fmt.format(actualQty)}
-                            {overPlan && <span className="wf-over-tag">over plan</span>}
-                          </td>
-                          <td className="num wf-cell-calc">{money.format(actualValue)}</td>
-                          <td className="input-col">
-                            <input
-                              value={row.remark}
-                              disabled={!editable}
-                              placeholder="optional"
-                              onChange={(event) => patch(row.key, 'remark', event.target.value)}
-                            />
-                          </td>
-                          {editable && (
-                            <td>
-                              <button
-                                type="button"
-                                className="wf-icon-btn"
-                                aria-label={`Remove ${row.product_code}`}
-                                onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                          </tr>
+                        ))}
+                        {!inputRows.length && (
+                          <tr>
+                            <td colSpan={editable ? 16 : 15} className="wf-empty-cell">
+                              {view.length ? 'No products match the filters.' : 'No product codes added yet. Discontinued variants are excluded automatically.'}
                             </td>
-                          )}
-                        </tr>
-                      ))}
-                      {!inputRows.length && (
-                        <tr>
-                          <td colSpan={editable ? 14 : 13} className="wf-empty-cell">
-                            {view.length
-                              ? 'No products match the filters.'
-                              : 'No product codes added yet. Discontinued variants are excluded automatically.'}
-                          </td>
-                        </tr>
+                          </tr>
+                        )}
+                      </tbody>
+                      {view.length > 0 && (
+                        <tfoot>
+                          <tr>
+                            <td colSpan={8}>Total</td>
+                            <td className="num strong">{fmt.format(totals.qty)}</td>
+                            <td />
+                            <td className="num strong">{money.format(totals.value)}</td>
+                            <td className="num strong">{fmt.format(totals.actualQty)}</td>
+                            <td className="num strong">{money.format(totals.actualValue)}</td>
+                            <td />
+                            <td />
+                            {editable && <td />}
+                          </tr>
+                        </tfoot>
                       )}
-                    </tbody>
-                    {view.length > 0 && (
-                      <tfoot>
-                        <tr>
-                          <td colSpan={7}>Total</td>
-                          <td className="num strong">{fmt.format(totals.qty)}</td>
-                          <td />
-                          <td className="num strong">{money.format(totals.value)}</td>
-                          <td className="num strong">{fmt.format(totals.actualQty)}</td>
-                          <td className="num strong">{money.format(totals.actualValue)}</td>
-                          <td />
-                          {editable && <td />}
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
+                    </table>
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
+              <div className="bp-input-footer">
+                <div>
+                  <strong>
+                    {fmt.format(totals.qty)} pcs Â· {totals.value ? inr(totals.value) : 'value pending'}
+                  </strong>
+                  <span>
+                    {planned.length} planned line
+                    {planned.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="bp-actions">
+                  {editable && (
+                    <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
+                      <Save size={15} /> {pending ? 'Savingâ€¦' : 'Save draft'}
+                    </button>
+                  )}
+                  {canSubmit(role, status) && (
+                    <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
+                      <Send size={15} /> Submit for approval
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <aside className="bp-stack bp-rightcol bp-input-side">
+              <InputValidationCard missingCost={attention.missingCost} npdBudgetSet={npdBudgetSet} ready={inputReadyCount} planned={planned.length} />
+              <PlanSplitCard split={inputSplit} leadDays={leadDays} />
+              <LeadTimesCard buckets={buckets} isAdmin={role === 'admin'} />
+            </aside>
+          </div>
 
           {canApprove(role, status) && plan && (
             <div className="bp-card bp-cardbody">
@@ -945,7 +1081,188 @@ export function BuyingPlanClient({
           )}
         </>
       )}
+      {productPickerOpen && <BuyingPlanProductDrawer items={restrictPicker ? pickerItems : catalog} exclude={used} allowFreeText={!restrictPicker} onAdd={addRows} onAddAll={addAll} canAddAll={available.length > 0} onClose={() => setProductPickerOpen(false)} />}
     </>
+  );
+}
+
+function BuyingPlanProductDrawer({ items, exclude, allowFreeText, onAdd, onAddAll, canAddAll, onClose }: { items: ProductCatalogItem[]; exclude: Set<string>; allowFreeText: boolean; onAdd: (codes: string[]) => void; onAddAll: () => void; canAddAll: boolean; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const excludeUpper = useMemo(() => new Set([...exclude].map((code) => code.toUpperCase())), [exclude]);
+  const availableItems = useMemo(() => items.filter((item) => !excludeUpper.has(item.product_code.toUpperCase())), [excludeUpper, items]);
+  const queryLower = query.trim().toLowerCase();
+  const filteredItems = useMemo(
+    () => availableItems.filter((item) => !queryLower || item.product_code.toLowerCase().includes(queryLower) || (item.product_name ?? '').toLowerCase().includes(queryLower) || (item.category ?? '').toLowerCase().includes(queryLower)),
+    [availableItems, queryLower],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  function toggle(code: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  function addSelected() {
+    if (!selected.size) return;
+    onAdd([...selected]);
+    onClose();
+  }
+
+  return (
+    <div className="bp-drawer-scrim" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <aside className="bp-product-drawer" role="dialog" aria-modal="true" aria-labelledby="bp-product-drawer-title">
+        <div className="bp-drawer-head">
+          <div>
+            <h2 id="bp-product-drawer-title">Add products</h2>
+            <span>Select one or more products for this monthâ€™s plan.</span>
+          </div>
+          <button type="button" className="wf-icon-btn" onClick={onClose} aria-label="Close product picker">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="bp-drawer-body">
+          <div className="bp-drawer-quick-add">
+            <span className="bp-drawer-label">Quick add</span>
+            <ProductPicker
+              items={items}
+              exclude={exclude}
+              allowFreeText={allowFreeText}
+              onPick={(code) => {
+                onAdd([code]);
+                onClose();
+              }}
+              placeholder={allowFreeText ? 'Search code or product nameâ€¦' : 'Search approved-cost productsâ€¦'}
+            />
+          </div>
+          <label className="bp-drawer-search">
+            <Search size={16} aria-hidden="true" />
+            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter available products" />
+          </label>
+          <div className="bp-drawer-list" role="list" aria-label="Available products">
+            {filteredItems.map((item) => (
+              <label className="bp-drawer-item" key={item.product_code}>
+                <input type="checkbox" checked={selected.has(item.product_code)} onChange={() => toggle(item.product_code)} />
+                <span>
+                  <strong className="mono">{item.product_code}</strong>
+                  <small>{item.product_name ?? 'Unnamed product'}</small>
+                </span>
+                <em>{item.category ?? 'Uncategorised'}</em>
+              </label>
+            ))}
+            {!filteredItems.length && <div className="bp-drawer-empty">{availableItems.length ? 'No products match this search.' : 'Every available product is already on the plan.'}</div>}
+          </div>
+        </div>
+        <div className="bp-drawer-footer">
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost"
+            disabled={!canAddAll}
+            onClick={() => {
+              onAddAll();
+              onClose();
+            }}
+          >
+            Add all available
+          </button>
+          <div className="bp-actions">
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" className="wf-btn wf-btn-primary" disabled={!selected.size} onClick={addSelected}>
+              Add {selected.size || ''} product{selected.size === 1 ? '' : 's'}
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function InputValidationCard({ missingCost, npdBudgetSet, ready, planned }: { missingCost: number; npdBudgetSet: boolean; ready: number; planned: number }) {
+  const reviewCount = missingCost + (npdBudgetSet ? 0 : 1);
+  return (
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Review before submit</h2>
+        <Badge tone={reviewCount ? 'yellow' : 'green'}>{reviewCount ? `${reviewCount} to review` : 'All clear'}</Badge>
+      </div>
+      <div className="bp-cardbody bp-attention">
+        {missingCost > 0 && (
+          <div className="bp-issue">
+            <div className="left">
+              <span className="bp-dot red" />
+              <div>
+                <b>Missing approved cost</b>
+                <span>Plan value cannot be calculated for these lines</span>
+              </div>
+            </div>
+            <strong>{missingCost}</strong>
+          </div>
+        )}
+        {!npdBudgetSet && (
+          <div className="bp-issue">
+            <div className="left">
+              <span className="bp-dot yellow" />
+              <div>
+                <b>NPD budget not set</b>
+                <span>Monthly planning reference is not configured</span>
+              </div>
+            </div>
+            <strong>1</strong>
+          </div>
+        )}
+        {!reviewCount && <span className="wf-subtle">Nothing is flagged at plan level.</span>}
+        <div className="bp-validation-ready">
+          <span>Lines ready</span>
+          <strong>
+            {ready} / {planned}
+          </strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PlanSplitCard({ split, leadDays }: { split: { job: number; fob: number; efob: number }; leadDays: { job: number; efob: number; fob: number } }) {
+  const rows = [
+    { key: 'job', label: 'JOB', qty: split.job, days: leadDays.job },
+    { key: 'efob', label: 'E-FOB', qty: split.efob, days: leadDays.efob },
+    { key: 'fob', label: 'FOB', qty: split.fob, days: leadDays.fob },
+  ];
+  return (
+    <section className="bp-card">
+      <div className="bp-cardhead">
+        <h2>Plan split</h2>
+        <span className="wf-subtle">quantity by PO type</span>
+      </div>
+      <div className="bp-cardbody">
+        {rows.map((row) => (
+          <div className="bp-summaryrow" key={row.key}>
+            <span>
+              {row.label}
+              <small className="bp-summary-sub">{row.days} day lead time</small>
+            </span>
+            <b>{fmt.format(row.qty)} pcs</b>
+          </div>
+        ))}
+        <div className="bp-summaryrow">
+          <span>Total</span>
+          <b>{fmt.format(split.job + split.efob + split.fob)} pcs</b>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -965,6 +1282,50 @@ type ViewItemFull = {
   subCategory: string;
   overPlan: boolean;
 };
+
+/** Approve-by chip: on time / pending / breach (with which side was late). */
+function ComplianceChip({ c, frozen }: { c: PlanCompliance; frozen: boolean }) {
+  const dl = new Date(c.deadline).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Asia/Kolkata',
+  });
+  const spec: Record<PlanCompliance['status'], { tone: 'green' | 'yellow' | 'red' | 'gray'; text: string; title: string }> = {
+    on_time: {
+      tone: 'green',
+      text: 'Approved on time',
+      title: `Approved by the ${dl} deadline`,
+    },
+    pending: {
+      tone: 'yellow',
+      text: `Approve by ${dl}`,
+      title: 'Plan must be approved by this date',
+    },
+    breach_submission: {
+      tone: 'red',
+      text: `Breach Â· submission side Â· ${c.daysLate}d late`,
+      title: `Not submitted by the ${dl} deadline`,
+    },
+    breach_approval: {
+      tone: 'red',
+      text: `Breach Â· approval side Â· ${c.daysLate}d late`,
+      title: `Submitted in time but not approved by ${dl}`,
+    },
+  };
+  const s = spec[c.status];
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      <span className={`bp-badge ${s.tone}`} title={s.title}>
+        {s.text}
+      </span>
+      {frozen && (
+        <span className="bp-badge gray" title="Month ended â€” plan is frozen">
+          Closed
+        </span>
+      )}
+    </span>
+  );
+}
 
 function Progress({ pct, flush = false }: { pct: number; flush?: boolean }) {
   return (
