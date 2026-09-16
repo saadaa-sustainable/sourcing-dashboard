@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, Pencil, AlertTriangle } from 'lucide-react';
 import { setNpdBudget } from '@/lib/forms/actions';
+import { InfoDot } from '@/components/info-dot';
 import type { NpdBudget, SdRole } from '@/lib/forms/types';
 
 const money = new Intl.NumberFormat('en-IN', {
@@ -61,7 +62,10 @@ export function NpdBudgetCard({
     return (
       <div className="bp-banner">
         <div>
-          <strong>NPD budget isn’t set for this month.</strong>
+          <strong>
+            NPD budget isn’t set for this month.
+            <InfoDot text="The monthly cap for approved NPD purchase orders. Committed and pending values come from the selected month's NPD PO activity." />
+          </strong>
           <span>
             Set a cap to track new product development spend against plan.
             {budget.spentCount + budget.pendingCount > 0 && (
@@ -87,6 +91,7 @@ export function NpdBudgetCard({
       <div className="wf-npd-head">
         <span className="wf-npd-title">
           <Sparkles size={14} strokeWidth={2} /> NPD budget — this month
+          <InfoDot text="The monthly cap for approved NPD purchase orders. Committed and pending values come from the selected month's NPD PO activity." />
         </span>
         {isAdmin && !editing && (
           <button type="button" className="wf-btn wf-btn-ghost wf-npd-edit" onClick={() => setEditing(true)}>

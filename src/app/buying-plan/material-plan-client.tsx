@@ -15,6 +15,7 @@ import {
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
+import { InfoDot } from '@/components/info-dot';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -477,7 +478,13 @@ export function MaterialPlanClient({
               <table className="wide-table wf-grid">
                 <thead>
                   <tr>
-                    <th>{TYPE_LABEL[type]} code</th>
+                    <th>
+                      {TYPE_LABEL[type]} code
+                      <InfoDot
+                        label="About material plan input"
+                        text="Enter Job Work and Purchase quantities for the selected material type. Values use the approved Material Standard Cost rates."
+                      />
+                    </th>
                     {type === 'dyed' && <th className="input-col wf-cell-input">Colour</th>}
                     <th className="num input-col wf-cell-input">Job Work qty</th>
                     <th className="num wf-cell-calc">Job rate</th>
@@ -643,7 +650,10 @@ function MaterialView({ view }: { view: ViewItem[] }) {
       {groups.map((g) => (
         <div className="table-panel" key={g.key}>
           <div className="table-meta">
-            <h3>{g.label}</h3>
+            <h3>
+              {g.label}
+              <InfoDot text={`Shows approved ${g.label.toLowerCase()} plan quantities and value, split between Job Work and Purchase.`} />
+            </h3>
             <span>
               Job {money.format(g.job)} · Purchase {money.format(g.purchase)} · Total{' '}
               {money.format(g.total)}

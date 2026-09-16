@@ -35,6 +35,7 @@ import {
 } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
+import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import type {
   BuyingPlan,
@@ -802,7 +803,10 @@ export function BuyingPlanClient({
 
       {amendOpen && canAmend && (
         <div className="bp-card bp-cardbody" style={{ marginBottom: 14 }}>
-          <div style={{ fontWeight: 650, marginBottom: 6 }}>Request an amendment to the approved plan</div>
+          <div style={{ fontWeight: 650, marginBottom: 6 }}>
+            Request an amendment to the approved plan
+            <InfoDot text="Reopens an approved plan as rework. The requested changes must be saved, resubmitted, and approved again." />
+          </div>
           <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
             For the case where something dropped out of view (a product never got its PO). The plan goes back to rework, you make the change, and it must be approved again â€” this counts against first-time approval.
           </p>
@@ -858,7 +862,10 @@ export function BuyingPlanClient({
 
             <section id="buying-plan-detail" className={`bp-card bp-plan-detail${planDetailExpanded ? ' is-expanded' : ''}`}>
               <div className="bp-cardhead">
-                <h2>Plan detail</h2>
+                <h2>
+                  Plan detail
+                  <InfoDot text="Every finished-goods plan line for the selected month. Search, sort, filter columns, download, or expand the table without changing plan data." />
+                </h2>
                 <div className="bp-plan-detail-head-actions">
                   <span className="wf-subtle">{view.length} products · every line as on the sheet · filter or sort any column</span>
                   <button
@@ -929,11 +936,14 @@ export function BuyingPlanClient({
           <div className="bp-sticky">
             <div className="bp-card bp-toolbar-card">{toolbar}</div>
           </div>
-          <div className="bp-layout bp-input-layout">
+          <div className="bp-stack bp-input-workspace">
             <section className="bp-card">
               <div className="bp-cardhead">
                 <div>
-                  <h2>Fill the plan</h2>
+                  <h2>
+                    Fill the plan
+                    <InfoDot text="Enter finished-goods quantities by PO type. Totals, values, and validation update from the existing plan inputs." />
+                  </h2>
                   <span className="wf-subtle">Enter quantities by PO type. Zero quantities stay out of the submitted plan.</span>
                 </div>
                 <Badge tone={status === 'draft' ? 'gray' : status === 'approved' ? 'green' : 'yellow'}>{status.replace('_', ' ')}</Badge>
@@ -1067,7 +1077,7 @@ export function BuyingPlanClient({
               </div>
             </section>
 
-            <aside className="bp-stack bp-rightcol bp-input-side">
+            <aside className="bp-input-support-grid" aria-label="Plan review and lead-time summary">
               <InputValidationCard missingCost={attention.missingCost} npdBudgetSet={npdBudgetSet} ready={inputReadyCount} planned={planned.length} />
               <PlanSplitCard split={inputSplit} leadDays={leadDays} />
               <LeadTimesCard buckets={buckets} isAdmin={role === 'admin'} />
@@ -1202,7 +1212,10 @@ function InputValidationCard({ missingCost, npdBudgetSet, ready, planned }: { mi
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Review before submit</h2>
+        <h2>
+          Review before submit
+          <InfoDot text="Highlights missing approved costs and monthly NPD-budget setup that require review before the plan is submitted." />
+        </h2>
         <Badge tone={reviewCount ? 'yellow' : 'green'}>{reviewCount ? `${reviewCount} to review` : 'All clear'}</Badge>
       </div>
       <div className="bp-cardbody bp-attention">
@@ -1251,7 +1264,10 @@ function PlanSplitCard({ split, leadDays }: { split: { job: number; fob: number;
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Plan split</h2>
+        <h2>
+          Plan split
+          <InfoDot text="Summarises planned quantity by Job Work, E-FOB, and FOB, together with the lead-time rule for each route." />
+        </h2>
         <span className="wf-subtle">quantity by PO type</span>
       </div>
       <div className="bp-cardbody">
@@ -1381,7 +1397,10 @@ function OverviewCard({
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Plan overview</h2>
+        <h2>
+          Plan overview
+          <InfoDot text="Summarises the selected month's finished-goods plan: issued versus planned quantity, total plan value, 30-day demand projection, and issued value." />
+        </h2>
         <span className="wf-subtle">Run rate and last-3-month average: sales feed not wired yet</span>
       </div>
       <div className="bp-cardbody">
@@ -1433,7 +1452,10 @@ function AttentionCard({
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Needs attention</h2>
+        <h2>
+          Needs attention
+          <InfoDot text="Counts plan lines requiring review: missing approved cost, approval pending, issued above plan, or planned with nothing issued." />
+        </h2>
         <Badge tone={total ? 'red' : 'green'}>{total ? `${total} item${total === 1 ? '' : 's'}` : 'All clear'}</Badge>
       </div>
       <div className="bp-cardbody bp-attention">
@@ -1487,7 +1509,10 @@ function LeadTimesCard({
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>PO lead times</h2>
+        <h2>
+          PO lead times
+          <InfoDot text="Uses Rules Master lead-time days and the 30-day ROP demand to show the quantity needed to cover each PO route." />
+        </h2>
         <span className="wf-subtle">coverage from 30-day ROP</span>
       </div>
       <div className="bp-cardbody">
@@ -1572,7 +1597,10 @@ function ValueByTypeCard({
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Planned value by PO type</h2>
+        <h2>
+          Planned value by PO type
+          <InfoDot text="Splits planned quantity and value across Job Work, FOB, and E-FOB using the approved standard cost for each line." />
+        </h2>
         <span className="wf-subtle">qty × approved standard cost</span>
       </div>
       <div className="bp-cardbody">
@@ -1620,7 +1648,10 @@ function PlanGroups({
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
-        <h2>Buying plan by {GROUP_LABEL[groupBy]}</h2>
+        <h2>
+          Buying plan by {GROUP_LABEL[groupBy]}
+          <InfoDot text="Groups planned products by the selected Group By dimension. Quantities and values follow the active filters above." />
+        </h2>
         <div className="bp-actions">
           <button
             type="button"

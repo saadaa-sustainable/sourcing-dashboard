@@ -107,11 +107,12 @@
 .bp-input-metrics {
   margin-bottom: 10px;
 }
-.bp-input-layout {
-  grid-template-columns: minmax(0, 1fr) 310px;
-}
-.bp-input-side {
+.bp-input-workspace { gap: 14px; }
+.bp-input-support-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  align-items: start;
 }
 .bp-input-footer {
   display: flex;
@@ -303,6 +304,7 @@
   .bp-metrics { grid-template-columns: 1fr; }
   .bp-cathead, .bp-skurow { grid-template-columns: 1fr 0.6fr 0.6fr; }
   .bp-cathead > *:nth-child(n + 4), .bp-skurow > *:nth-child(n + 4) { display: none; }
+  .bp-input-support-grid { grid-template-columns: 1fr; }
   .bp-input-footer,
   .bp-drawer-footer { align-items: stretch; flex-direction: column; }
   .bp-input-footer .bp-actions,
