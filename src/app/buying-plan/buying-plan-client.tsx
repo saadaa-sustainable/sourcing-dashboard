@@ -1321,29 +1321,30 @@ function ComplianceChip({ c, frozen }: { c: PlanCompliance; frozen: boolean }) {
     },
     pending: {
       tone: 'yellow',
-      text: `Approve by ${dl}`,
-      title: 'Plan must be approved by this date',
+      text: `Approval due by ${dl}`,
+      title: 'An admin must approve, reject or send for rework by this date',
     },
     breach_submission: {
       tone: 'red',
-      text: `Breach · submission side · ${c.daysLate}d late`,
-      title: `Not submitted by the ${dl} deadline`,
+      text: `Deadline missed — not submitted by ${dl} (${c.daysLate} day${c.daysLate === 1 ? '' : 's'} over)`,
+      title: 'Compliance breach on the submission side: the plan was not submitted by the deadline',
     },
     breach_approval: {
       tone: 'red',
-      text: `Breach · approval side · ${c.daysLate}d late`,
-      title: `Submitted in time but not approved by ${dl}`,
+      text: `Deadline missed — awaiting admin decision since ${dl} (${c.daysLate} day${c.daysLate === 1 ? '' : 's'} over)`,
+      title: 'Compliance breach on the approval side: submitted in time, but no admin approved, rejected or reworked it by the deadline',
     },
   };
   const s = spec[c.status];
   return (
     <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-      <span className={`bp-badge ${s.tone}`} title={s.title}>
+      <span className="wf-subtle" style={{ fontSize: 11, display: 'inline' }}>Approval deadline</span>
+      <span className={`bp-badge ${s.tone}`} title={s.title} style={{ whiteSpace: 'normal' }}>
         {s.text}
       </span>
       {frozen && (
         <span className="bp-badge gray" title="Month ended — plan is frozen">
-          Closed
+          Month closed
         </span>
       )}
     </span>
