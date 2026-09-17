@@ -1373,7 +1373,7 @@ export function AnalyticsCards({
                   </div>
                   <div className="ana-plan-values">
                     <span><small>Variants</small><b>{fmt.format(repl.variants)}</b></span>
-                    <span><small>Already OOS</small><b>{fmt.format(repl.oosVariants)}</b></span>
+                    <span><small>Had OOS days (last 45)</small><b>{fmt.format(repl.oosVariants)}</b></span>
                   </div>
                 </div>
               )}

@@ -203,7 +203,7 @@ export function ReceivablePlanClient({
         </label>
         <span className="wf-chip">
           {shown.length} rows
-          {oosCount > 0 && <em className="wf-chip-warn">{oosCount} OOS</em>}
+          {oosCount > 0 && <em className="wf-chip-warn">{oosCount} had OOS days (last 45)</em>}
         </span>
         {editable && view === 'lines' && (
           <>
@@ -546,7 +546,9 @@ function ReceivableRow({
           </span>
         ) : '—'}
       </td>
-      <td>{row.oos_flag ? <span className="wf-over-tag">OOS</span> : ''}</td>
+      {/* oos_flag is true when the variant was out of stock on any day of the last 45, not
+          when it is out of stock today — so the badge says "had OOS days", not "OOS". */}
+      <td>{row.oos_flag ? <span className="wf-over-tag">Had OOS days</span> : ''}</td>
       <td className="num wf-subtle">{row.expected_delivery_date ?? '—'}</td>
       <td className="input-col">
         <select value={pick} disabled={!editable} onChange={(e) => setPick(e.target.value)}>

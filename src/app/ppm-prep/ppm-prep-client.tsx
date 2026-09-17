@@ -50,7 +50,7 @@ export function PpmPrepClient({ prep }: { prep: PpmPrep }) {
         <Stat
           label="Out of stock"
           value={prep.oos ? `${prep.oos.pct}%` : '—'}
-          sub={prep.oos ? `${fmt.format(prep.oos.oos)} of ${fmt.format(prep.oos.total)} SKUs` : 'no replenishment data'}
+          sub={prep.oos ? `${fmt.format(prep.oos.oos)} of ${fmt.format(prep.oos.total)} variants with no stock on hand` : 'no replenishment data'}
           href="/oos-calculation"
           tone="red"
         />

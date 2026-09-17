@@ -99,7 +99,17 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     loadDashboardData(),
   ]);
 
-  // OOS %: count of oos_flag over total replenishment SKUs.
+  /* Out of stock right now = no sellable stock on hand.
+
+     This used to count `oos_flag`, which is NOT what it sounds like: it is true when a
+     variant was out of stock on ANY day of the last 45, so it stays true for a variant that
+     was refilled weeks ago and is sitting on plenty. It reported 658 of 669 variants, 98%,
+     while only 13 actually had nothing on hand. Flagged variants even held MORE average stock
+     (558) than unflagged ones (427), which is the giveaway that the flag is about history,
+     not about today.
+
+     The days-out-of-stock history is still worth watching, but it belongs beside this number
+     under its own name, not inside it. */
   let oos: PpmPrep['oos'] = null;
   try {
     const { count: total } = await supabase
@@ -108,7 +118,7 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     const { count: oosCount } = await supabase
       .from('sd_replenishment')
       .select('*', { count: 'exact', head: true })
-      .eq('oos_flag', true);
+      .lte('current_stock', 0);
     if (total != null) {
       oos = {
         total,
