@@ -13,7 +13,6 @@ const GROUPS: { title: string; blurb: string; keys: string[] }[] = [
     title: 'Dashboard analytics',
     blurb: 'Risk, utilization and concentration bands used by the main-dashboard cards.',
     keys: [
-      'capital_risk_quantile',
       'vendor_concentration_alert',
       'utilization_under_pct',
       'utilization_over_pct',

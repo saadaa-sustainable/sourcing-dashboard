@@ -15,7 +15,6 @@ import type { AnalyticsExtras, AnalyticsRuleRow } from '../types';
  * gracefully if the table is unreachable. Never throws.
  */
 export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
-  capital_risk_quantile: 0.75,
   vendor_concentration_alert: 40,
   utilization_under_pct: 70,
   utilization_over_pct: 100,

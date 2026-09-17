@@ -295,7 +295,7 @@ const HELP: Record<string, HelpItem[]> = {
   ],
   '/rules-master': [
     { field: 'What this is', source: 'Admin config (sd_analytics_rule)', detail: 'The editable thresholds the analytics cards and several rules reference — change behaviour here, not in code. Admin only.' },
-    { field: 'Rule / Value', source: 'You set', detail: 'Each row is a named threshold (e.g. capital-risk quantile, concentration alert %, closure SLA days, PO-type lead times, replenishment knobs, sync-stale hours). Edit the value; the cards pick it up on next load.' },
+    { field: 'Rule / Value', source: 'You set', detail: 'Each row is a named threshold (e.g. concentration alert %, closure SLA days, PO-type lead times, replenishment knobs, sync-stale hours). Edit the value; the cards pick it up on next load.' },
     { field: 'Fallbacks', source: 'Automatic', detail: 'If a rule is unset or the table is unreachable, the app falls back to the seeded default so nothing breaks.' },
   ],
   '/feature-status': [

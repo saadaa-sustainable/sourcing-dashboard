@@ -9,7 +9,6 @@
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import {
-  AlertTriangle,
   ArrowRight,
   Award,
   Ban,
@@ -78,14 +77,6 @@ const monthLabel = (month: string) => {
   );
 };
 
-function quantile(sortedAsc: number[], q: number): number {
-  if (!sortedAsc.length) return 0;
-  const idx = Math.min(
-    sortedAsc.length - 1,
-    Math.max(0, Math.floor(q * sortedAsc.length)),
-  );
-  return sortedAsc[idx];
-}
 
 type Tone = "red" | "amber" | "green" | "neutral";
 
@@ -288,18 +279,13 @@ export function AnalyticsCards({
   }, [data]);
 
   const tnaDataPresent = data.tnaRecords.length > 0;
-  const values = tracker
-    .map((row) => row.pendingValue)
-    .filter((value) => value > 0)
-    .sort((a, b) => a - b);
-  const valueThreshold = quantile(values, rules.capital_risk_quantile ?? 0.75);
-  const atRisk = tracker
-    .filter((row) => row.highRisk && row.pendingValue >= valueThreshold)
-    .sort((a, b) => b.pendingValue - a.pendingValue);
-  const capitalAtRisk = atRisk.reduce((sum, row) => sum + row.pendingValue, 0);
-  const quantilePct = Math.round(
-    (1 - (rules.capital_risk_quantile ?? 0.75)) * 100,
-  );
+  /*
+    There is no percentile here on purpose. The old "Capital at Risk" card counted only POs
+    that were BOTH TNA high risk AND in the top quarter by pending value, which quietly hid
+    every other high-risk PO. High Risk is simply what is on the TNA critical-path list, with
+    its count and its value, and it lives on the objectives row. Overdue stays separate.
+  */
+  const highRiskPos = tracker.filter((row) => row.highRisk);
 
   // Item 7 — compute concentration WITHIN the selected fabric pool, not blended.
   const concTracker =
@@ -419,14 +405,14 @@ export function AnalyticsCards({
         </div>
         <div className="ana-signal-strip" aria-label="Current decision signals">
           <span
-            className={`ana-signal ${!tnaDataPresent ? "is-neutral" : atRisk.length ? "is-red" : "is-green"}`}
+            className={`ana-signal ${!tnaDataPresent ? "is-neutral" : highRiskPos.length ? "is-red" : "is-green"}`}
           >
             <CircleAlert size={13} />
             {!tnaDataPresent
-              ? "Capital risk pending"
-              : atRisk.length
-                ? `${atRisk.length} high-value PO${atRisk.length === 1 ? "" : "s"} at risk`
-                : "Capital risk clear"}
+              ? "TNA data pending"
+              : highRiskPos.length
+                ? `${highRiskPos.length} high risk PO${highRiskPos.length === 1 ? "" : "s"}`
+                : "No PO is high risk"}
           </span>
           <span
             className={`ana-signal ${!withCapacity.length ? "is-neutral" : over.length ? "is-amber" : "is-green"}`}
@@ -499,73 +485,6 @@ export function AnalyticsCards({
       >
         {decisionTab === "money" && (
           <div className="ana-grid ana-tab-grid">
-            <AnaCard
-              title="Capital at Risk"
-              icon={AlertTriangle}
-              tone={
-                !tnaDataPresent ? "neutral" : atRisk.length ? "red" : "green"
-              }
-              status={
-                !tnaDataPresent
-                  ? "WAITING"
-                  : atRisk.length
-                    ? "ACT NOW"
-                    : "CLEAR"
-              }
-              cta="Review high-risk POs"
-              span={7}
-              onClick={() => onTab("open-po")}
-              info={`Open POs that are both TNA High Risk and in the top ${quantilePct}% by pending value. The quantile is editable in Rules Master.`}
-            >
-              {!tnaDataPresent ? (
-                <NoData text="TNA stage data is not available yet, so capital exposure cannot be assessed." />
-              ) : atRisk.length ? (
-                <>
-                  <div className="ana-metric-row">
-                    <div>
-                      <strong className="ana-value ana-value-xl">
-                        {money.format(capitalAtRisk)}
-                      </strong>
-                      <span className="ana-value-label">
-                        open value exposed
-                      </span>
-                    </div>
-                    <span className="ana-count-chip is-red">
-                      {atRisk.length} priority PO
-                      {atRisk.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <p className="ana-decision-line">
-                    Protect these orders first—the list is ranked by rupee
-                    exposure.
-                  </p>
-                  <ul className="ana-list ana-ranked-list">
-                    {atRisk.slice(0, 4).map((row, index) => (
-                      <li key={row.key}>
-                        <span className="ana-rank">{index + 1}</span>
-                        <span className="ana-list-stack">
-                          <span className="mono">{row.poRef}</span>
-                          <small>{row.vendorName}</small>
-                        </span>
-                        <span className="ana-list-val">
-                          {money.format(row.pendingValue)}
-                        </span>
-                      </li>
-                    ))}
-                    {atRisk.length > 4 && (
-                      <li className="ana-more">
-                        +{atRisk.length - 4} more high-value exceptions
-                      </li>
-                    )}
-                  </ul>
-                </>
-              ) : (
-                <ZeroState
-                  title="No high-value TNA exception"
-                  text={`None of the top ${quantilePct}% open POs by value is high risk.`}
-                />
-              )}
-            </AnaCard>
 
             <AnaCard
               title="Cost Variance · This Month"
