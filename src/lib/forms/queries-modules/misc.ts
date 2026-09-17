@@ -58,7 +58,19 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     return d.toISOString().slice(0, 10);
   })();
 
-  const [rep, pending, issuance, approvalsWk, expected, received, dash] = await Promise.all([
+  const [
+    rep,
+    pending,
+    issuance,
+    approvalsWk,
+    expected,
+    received,
+    dash,
+    inwardSheetRes,
+    planRes,
+    actualsRes,
+    closuresRes,
+  ] = await Promise.all([
     // OOS / OS % — sd_replenishment (the existing OOS source; no DOQ rebuild needed).
     supabase.from('sd_replenishment').select('oos_flag', { count: 'exact' }).limit(1),
     countPendingApprovals(),
@@ -97,6 +109,23 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
         .order('grn_detail_id'),
     ),
     loadDashboardData(),
+    supabase
+      .from('sd_inward_plan_entry')
+      .select('inward_qty, approval_status')
+      .eq('plan_month', planMonth),
+    supabase
+      .from('sd_buying_plan')
+      .select('id')
+      .eq('plan_type', 'fg')
+      .eq('plan_month', planMonth)
+      .maybeSingle(),
+    supabase
+      .from('sd_po_actuals_by_product_month')
+      .select('issued_qty')
+      .eq('plan_month', planMonth),
+    supabase
+      .from('sd_po_closure')
+      .select('surplus_fabric_qty, surplus_fabric_value'),
   ]);
 
   /* Out of stock right now = no sellable stock on hand.
@@ -139,14 +168,89 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
 
   const expectedRows = expected;
   const receivedRows = received;
+  const inwardSheet = (inwardSheetRes.data ?? []) as {
+    inward_qty: number | null;
+    approval_status: string | null;
+  }[];
+  /* Planned inward comes from whichever source the team is actually filling. The Receivable
+     Plan is the going-forward one but is empty today, which was showing "41,042 of 0 pcs" —
+     a real receipt against a planned figure that does not exist. Fall back to the monthly
+     Inward Plan sheet, rejected rows excluded, and say which source was used. */
+  const fromReceivable = expectedRows.reduce(
+    (s, r) => s + (Number(r.qty_expected_this_week) || 0),
+    0,
+  );
+  const inwardSheetQty = (inwardSheet ?? []).reduce(
+    (s, r) =>
+      (r.approval_status ?? '').trim().toLowerCase() === 'rejected'
+        ? s
+        : s + (Number(r.inward_qty) || 0),
+    0,
+  );
   const inwardTotals = {
-    planned: expectedRows.reduce((s, r) => s + (Number(r.qty_expected_this_week) || 0), 0),
+    planned: fromReceivable > 0 ? fromReceivable : inwardSheetQty,
+    source: (fromReceivable > 0
+      ? 'receivable'
+      : inwardSheetQty > 0
+        ? 'inward-plan'
+        : 'none') as 'receivable' | 'inward-plan' | 'none',
     actual: receivedRows.reduce((s, r) => s + (Number(r.received_quantity) || 0), 0),
   };
 
   // PO audit — High Risk / Overdue open POs, with the offending stage as the "why".
   const tracker = buildTrackerRows(dash.pendingPos, dash.vendorTypes, dash.vendorMasters, dash.tnaRecords);
   const risky = tracker.filter((r) => r.internalStatus === 'High Risk' || r.internalStatus === 'Overdue');
+  /* Plan against what has actually been issued — shown in PIECES, not rupees.
+
+     The value route is unusable this month: the September plan carries 70,356 pieces but not
+     one line has a frozen standard value, because a rate is only frozen at submission when an
+     approved standard cost exists for that product. Showing "0 planned against 87.9 lakh
+     issued" would read as buying with no plan at all, when the plan is there and it is the
+     rates that are missing. Pieces are recorded on both sides, so pieces are what is shown,
+     and the card says when the values are missing. */
+  const planLinesRes = planRes.data
+    ? await supabase
+        .from('sd_buying_plan_line')
+        .select('job_work_qty, fob_qty, efob_qty, standard_value, line_status')
+        .eq('plan_id', (planRes.data as { id: number }).id)
+    : null;
+  const planLines = (planLinesRes?.data ?? []) as {
+    job_work_qty: number | null;
+    fob_qty: number | null;
+    efob_qty: number | null;
+    standard_value: number | null;
+    line_status: string | null;
+  }[];
+  const live = planLines.filter((l) => (l.line_status ?? '') !== 'rejected');
+  const planVsActual: PpmPrep['planVsActual'] = planRes.data
+    ? {
+        plannedQty: live.reduce(
+          (sum, l) =>
+            sum +
+            (Number(l.job_work_qty) || 0) +
+            (Number(l.fob_qty) || 0) +
+            (Number(l.efob_qty) || 0),
+          0,
+        ),
+        issuedQty: ((actualsRes.data ?? []) as { issued_qty: number | null }[]).reduce(
+          (sum, r) => sum + (Number(r.issued_qty) || 0),
+          0,
+        ),
+        valueFrozen: live.some((l) => (Number(l.standard_value) || 0) > 0),
+      }
+    : null;
+
+  const closureRows = (closuresRes.data ?? []) as {
+    surplus_fabric_qty: number | null;
+    surplus_fabric_value: number | null;
+  }[];
+  const withSurplus = closureRows.filter((r) => (Number(r.surplus_fabric_qty) || 0) > 0);
+  const surplus: PpmPrep['surplus'] = {
+    closures: withSurplus.length,
+    qty: withSurplus.reduce((sum, r) => sum + (Number(r.surplus_fabric_qty) || 0), 0),
+    value: withSurplus.reduce((sum, r) => sum + (Number(r.surplus_fabric_value) || 0), 0),
+  };
+
   const highRisk = {
     count: risky.filter((r) => r.internalStatus === 'High Risk').length,
     overdue: risky.filter((r) => r.internalStatus === 'Overdue').length,
@@ -163,6 +267,8 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     pendingIssuance,
     approvalsThisWeek: approvalsWk.count ?? 0,
     inward: inwardTotals,
+    planVsActual,
+    surplus,
     highRisk,
   };
 }

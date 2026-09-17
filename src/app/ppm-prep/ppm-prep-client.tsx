@@ -5,6 +5,11 @@ import { ArrowUpRight } from 'lucide-react';
 import type { PpmPrep } from '@/lib/forms/types';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+const money = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+});
 const monthLabel = (m: string) =>
   new Date(`${m.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-IN', {
     month: 'long',
@@ -78,21 +83,47 @@ export function PpmPrepClient({ prep }: { prep: PpmPrep }) {
         <Stat
           label="Inward — planned vs actual"
           value={inwardPct == null ? '—' : `${inwardPct}%`}
-          sub={`${fmt.format(prep.inward.actual)} of ${fmt.format(prep.inward.planned)} pcs (this month)`}
+          sub={
+            prep.inward.planned > 0
+              ? `${fmt.format(prep.inward.actual)} of ${fmt.format(prep.inward.planned)} pcs this month${
+                  prep.inward.source === 'inward-plan' ? ' (Inward Plan sheet)' : ''
+                }`
+              : `${fmt.format(prep.inward.actual)} pcs received · nothing planned for this month`
+          }
           href="/arrivals"
           tone="purple"
         />
+        {/* These two used to say "View" and send people to another page for a number that can
+            perfectly well be read here. The meeting should not need a second tab open. */}
         <Stat
-          label="Plan vs actual"
-          value="View"
-          sub="Buying Plan Realization (main dashboard)"
-          href="/"
+          label="Buying plan vs issued"
+          value={
+            prep.planVsActual && prep.planVsActual.plannedQty > 0
+              ? `${Math.round((prep.planVsActual.issuedQty / prep.planVsActual.plannedQty) * 100)}%`
+              : '—'
+          }
+          sub={
+            !prep.planVsActual
+              ? 'no buying plan for this month'
+              : prep.planVsActual.plannedQty > 0
+                ? `${fmt.format(prep.planVsActual.issuedQty)} of ${fmt.format(prep.planVsActual.plannedQty)} pcs issued${
+                    prep.planVsActual.valueFrozen ? '' : ' · plan has no frozen rates, so pieces not rupees'
+                  }`
+                : 'plan has no quantity yet'
+          }
+          href="/buying-plan"
           tone="purple"
         />
         <Stat
-          label="Surplus approvals"
-          value="View"
-          sub="PO Closure surplus"
+          label="Fabric surplus at closure"
+          value={prep.surplus ? fmt.format(prep.surplus.qty) : '—'}
+          sub={
+            !prep.surplus || prep.surplus.closures === 0
+              ? 'no surplus raised on any closed PO'
+              : `mtr across ${fmt.format(prep.surplus.closures)} PO${prep.surplus.closures === 1 ? '' : 's'}${
+                  prep.surplus.value > 0 ? ` · ${money.format(prep.surplus.value)}` : ''
+                }`
+          }
           href="/po-closure"
           tone="teal"
         />

@@ -277,7 +277,12 @@ export type PpmPrep = {
   pendingApproval: number;
   pendingIssuance: { count: number; qty: number };
   approvalsThisWeek: number;
-  inward: { planned: number; actual: number };
+  /** `source` says where the planned figure came from, since the Receivable Plan is often empty. */
+  inward: { planned: number; actual: number; source: 'receivable' | 'inward-plan' | 'none' };
+  /** Buying plan for the month against what has actually been issued, in pieces. */
+  planVsActual: { plannedQty: number; issuedQty: number; valueFrozen: boolean } | null;
+  /** Fabric surplus raised at PO closure and still to be settled. */
+  surplus: { closures: number; qty: number; value: number } | null;
   highRisk: {
     count: number;
     overdue: number;
