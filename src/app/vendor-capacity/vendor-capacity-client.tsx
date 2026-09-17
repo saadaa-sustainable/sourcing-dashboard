@@ -163,7 +163,15 @@ export function VendorCapacityClient({
         ))}
       </div>
 
-      {tab === 'entry' && <EntryTab vendors={vendors} role={role} initialSearch={focusVendor} />}
+      {tab === 'entry' && (
+        <EntryTab
+          vendors={vendors}
+          role={role}
+          initialSearch={focusVendor}
+          allocations={allocations}
+          catalog={catalog}
+        />
+      )}
       {tab === 'allocation' && (
         <ProductAllocationTab
           vendors={vendors}
@@ -193,16 +201,23 @@ function EntryTab({
   vendors,
   role,
   initialSearch,
+  allocations = [],
+  catalog = [],
 }: {
   vendors: Vendor[];
   role: SdRole;
   initialSearch?: string;
+  /** Product allocations, so the sheet can be narrowed to who makes a given product. */
+  allocations?: VendorProductAllocation[];
+  catalog?: ProductCatalogItem[];
 }) {
   const editable = canEdit(role, 'draft');
   const [search, setSearch] = useState(initialSearch ?? '');
   const [staleOnly, setStaleOnly] = useState(false);
   const [merchant, setMerchant] = useState('');
   const [vType, setVType] = useState('');
+  // Third filter alongside merchandiser and type: which vendors are committed to a product.
+  const [product, setProduct] = useState('');
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     // Client-only "now", set once after mount so the server render never disagrees
@@ -215,6 +230,22 @@ function EntryTab({
     () => [...new Set(vendors.map((v) => v.merchant.trim()).filter(Boolean))].sort(),
     [vendors],
   );
+  /** Vendors carrying an allocation for the chosen product code. */
+  const vendorsForProduct = useMemo(() => {
+    if (!product) return null;
+    const want = product.trim().toUpperCase();
+    return new Set(
+      allocations
+        .filter((a) => (a.product_code ?? '').trim().toUpperCase() === want)
+        .map((a) => (a.vendor_code ?? '').trim().toUpperCase()),
+    );
+  }, [allocations, product]);
+  const allocatedProducts = useMemo(
+    () =>
+      [...new Set(allocations.map((a) => (a.product_code ?? '').trim()).filter(Boolean))].sort(),
+    [allocations],
+  );
+
   const vTypes = useMemo(
     () => [...new Set(vendors.map((v) => v.vendor_type.trim()).filter(Boolean))].sort(),
     [vendors],
@@ -241,6 +272,9 @@ function EntryTab({
     )
     .filter(({ vendor }) => (merchant ? vendor.merchant.trim() === merchant : true))
     .filter(({ vendor }) => (vType ? vendor.vendor_type.trim() === vType : true))
+    .filter(({ vendor }) =>
+      vendorsForProduct ? vendorsForProduct.has(vendor.vendor_code.trim().toUpperCase()) : true,
+    )
     .filter((d) => (staleOnly ? d.isStale : true))
     .sort((a, b) => {
       const at = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
@@ -294,6 +328,22 @@ function EntryTab({
             {vTypes.map((t) => (
               <option key={t} value={t}>
                 {typeConfig(t)?.label ?? t}
+              </option>
+            ))}
+          </select>
+          <select
+            className="meta-select"
+            aria-label="Filter by product"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+          >
+            <option value="">Product: All</option>
+            {allocatedProducts.map((code) => (
+              <option key={code} value={code}>
+                {code}
+                {catalog.find((c) => c.product_code === code)?.product_name
+                  ? ` · ${catalog.find((c) => c.product_code === code)?.product_name}`
+                  : ''}
               </option>
             ))}
           </select>
