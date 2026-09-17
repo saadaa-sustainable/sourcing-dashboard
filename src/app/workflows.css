@@ -1937,3 +1937,6 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 
 /* Rules tab: the capacity-formula card is held back until the calculation is corrected. */
 .vc-formula-hold { margin: 0; padding: 12px 14px; font-size: 12px; line-height: 1.5; max-width: 78ch; }
+/* Receivable Plan: the size columns carry two numbers, so the table says which is which. */
+.rp-legend { margin: 0; padding: 10px 14px 0; font-size: 11.5px; line-height: 1.5; }
+.rp-legend-stock { color: var(--ink-3, #6e695e); }

@@ -151,7 +151,7 @@ export function ReceivablePlanClient({
   return (
     <>
       <Notice tone="info">
-        Each row is one colour on an open PO, split by size. Pick when it's expected — either a{' '}
+        Each row is one colour on an open PO, split by size. Pick when it&rsquo;s expected — either a{' '}
         <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
         know — and the <strong>qty expected</strong>, then submit for approval. <strong>Once a
         month is approved</strong> you can switch to any week within it without re-approval; filling
@@ -203,7 +203,9 @@ export function ReceivablePlanClient({
         </label>
         <span className="wf-chip">
           {shown.length} rows
-          {oosCount > 0 && <em className="wf-chip-warn">{oosCount} had OOS days (last 45)</em>}
+          {oosCount > 0 && (
+            <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
+          )}
         </span>
         {editable && view === 'lines' && (
           <>
@@ -241,6 +243,11 @@ export function ReceivablePlanClient({
 
       {view === 'lines' ? (
         <div className="table-panel wf-grid-panel">
+          <p className="wf-subtle rp-legend">
+            Each size column holds two numbers: <b>arriving on this PO</b> in bold, with{' '}
+            <span className="rp-legend-stock">stock on hand today</span> in grey underneath. A
+            blank means none.
+          </p>
           <div className="table-scroll">
             <table className="wide-table wf-grid">
               <thead>
@@ -251,12 +258,16 @@ export function ReceivablePlanClient({
                   <th {...sort.th('status', (r) => r.product_state)}>Status {sort.ind('status')}</th>
                   <th className="num" {...sort.th('arriving', (r) => r.arriving_qty)}>Arriving {sort.ind('arriving')}</th>
                   {SIZE_KEYS.map(([, label]) => (
-                    <th key={label} className="num">{label}</th>
+                    <th key={label} className="num" title={`${label}: arriving on this PO, and stock on hand beneath`}>
+                      {label}
+                    </th>
                   ))}
                   <th className="num">DOQ</th>
                   <th className="num" {...sort.th('stock', (r) => r.current_stock)}>Stock {sort.ind('stock')}</th>
                   <th className="num">Sizes in stock</th>
-                  <th>OOS</th>
+                  <th title="Whether this variant ran out of stock on any day in the last 45. It does not mean it is out of stock now.">
+                    Ran out in last 45 days
+                  </th>
                   <th className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
                   <th className="input-col">Receiving week / month</th>
                   <th className="num input-col">Qty expected</th>
@@ -528,11 +539,16 @@ function ReceivableRow({
         {row.po_status && <small className="wf-subtle">{row.po_status}</small>}
       </td>
       <td className="num strong">{fmt.format(row.arriving_qty)}</td>
-      {SIZE_KEYS.map(([key]) => {
+      {SIZE_KEYS.map(([key, label]) => {
         const stock = row.stock_by_size?.[key];
+        const arriving = row[key];
         return (
-          <td key={key} className="num wf-size-cell">
-            <span className="wf-size-arr">{cell(row[key])}</span>
+          <td
+            key={key}
+            className="num wf-size-cell"
+            title={`${label} — arriving on this PO: ${arriving ? fmt.format(arriving) : 'none'}; in stock today: ${stock ? fmt.format(stock) : 'none'}`}
+          >
+            <span className="wf-size-arr">{cell(arriving)}</span>
             <small className="wf-size-stk">{stock ? fmt.format(stock) : ''}</small>
           </td>
         );
@@ -546,9 +562,10 @@ function ReceivableRow({
           </span>
         ) : '—'}
       </td>
-      {/* oos_flag is true when the variant was out of stock on any day of the last 45, not
-          when it is out of stock today — so the badge says "had OOS days", not "OOS". */}
-      <td>{row.oos_flag ? <span className="wf-over-tag">Had OOS days</span> : ''}</td>
+      {/* oos_flag is true when the variant was out of stock on ANY day of the last 45, not
+          when it is out of stock today. The column heading carries that meaning, so the cell
+          only has to answer it. */}
+      <td>{row.oos_flag ? <span className="wf-over-tag">Yes</span> : <span className="wf-subtle">No</span>}</td>
       <td className="num wf-subtle">{row.expected_delivery_date ?? '—'}</td>
       <td className="input-col">
         <select value={pick} disabled={!editable} onChange={(e) => setPick(e.target.value)}>
