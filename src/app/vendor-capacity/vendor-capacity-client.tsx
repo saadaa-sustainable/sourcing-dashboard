@@ -479,16 +479,18 @@ function CapacityRow({
       </td>
       <td className="num wf-computed">{fmt.format(poCapacity)}</td>
       <td className="num">{fmt.format(vendor.inProcessQty)}</td>
+      {/* Once a vendor is past capacity the headroom number is negative and only says how
+          far past, which is not a figure anyone acts on. Say the state instead. */}
       <td className="num wf-computed strong">
-        {fmt.format(available)}
-        {overProduction && <span className="wf-over-tag">100% and over Utilised</span>}
+        {overProduction ? (
+          <span className="vc-over-text">Over Utilised</span>
+        ) : (
+          fmt.format(available)
+        )}
       </td>
       <td className="num wf-computed">{machineUtil == null ? '—' : `${machineUtil}%`}</td>
-      <td className="num wf-computed vc-util-cell">
-        <span className={`vc-pill ${capacityUtil == null ? '' : capacityUtil > 100 ? 'vc-pill-red' : capacityUtil >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>
-          {capacityUtil == null ? '—' : `${capacityUtil}%`}
-        </span>
-        <CapacityBar value={capacityUtil} />
+      <td className={`num wf-computed${capacityUtil != null && capacityUtil >= 100 ? ' vc-util-over' : ''}`}>
+        {capacityUtil == null ? '—' : `${capacityUtil}%`}
       </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}

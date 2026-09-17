@@ -272,3 +272,15 @@
   .ui-view-vendor-capacity .vc-card-head { flex-direction: column; }
   .ui-view-vendor-capacity .vc-head-actions { justify-content: flex-start; }
 }
+
+/* Past capacity, "Available" states the condition rather than a negative headroom figure,
+   and Capacity util is the plain percentage, red once it reaches 100%. */
+.ui-view-vendor-capacity .vc-over-text {
+  color: #c0392b;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.ui-view-vendor-capacity .vc-util-over {
+  color: #c0392b;
+  font-weight: 650;
+}
