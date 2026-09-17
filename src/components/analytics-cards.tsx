@@ -358,33 +358,7 @@ export function AnalyticsCards({
   const cost = extras?.costVariance ?? null;
   const disc = extras?.discontinued ?? null;
   const gaps = extras?.stockoutGaps ?? null;
-  // Objective spec 1.2: every objective carries a count AND a value. These variants have no
-  // price attached, so the value is the shortfall in pieces against 45-day demand — added
-  // beside the counts these cards already showed, not in place of them.
-  const shortPieces = (list: NonNullable<typeof gaps>) =>
-    list.reduce((acc, g) => acc + Math.max(0, g.doq_45 - g.current_stock), 0);
   // Stockout list segmented by ABC/D (priority shown, nothing hidden).
-  const gapsByClass = gaps
-    ? (["A", "B", "C", "D"] as const).map((c) => ({
-        cls: c,
-        n: gaps.filter((g) => g.abc_class === c).length,
-      }))
-    : null;
-  const exportStockoutCsv = () => {
-    if (!gaps?.length) return;
-    downloadCsv(
-      "stockout-risk-variants.csv",
-      ["product_variant", "product_code", "product_name", "current_stock", "doq_45", "abc_class"],
-      gaps.map((g) => [
-        g.product_variant,
-        g.product_code ?? "",
-        g.product_name ?? "",
-        g.current_stock,
-        g.doq_45,
-        g.abc_class,
-      ]),
-    );
-  };
   const issued = extras?.issuedLastWeek ?? null;
   const pending = extras?.pendingApproval ?? null;
   const inward = extras?.inwardLastWeek ?? null;
@@ -397,7 +371,6 @@ export function AnalyticsCards({
       ? Math.round((inwardMonth.actual / inwardMonth.planned) * 100)
       : null;
   const repl = extras?.replenishment ?? null;
-  const oosSum = extras?.oosSummary ?? null;
   const vrec = extras?.vendorRec ?? null;
   const pipe = extras?.inwardPipeline ?? null;
   const stateMix = extras?.productStateMix ?? null;
@@ -576,92 +549,6 @@ export function AnalyticsCards({
                 <ZeroState
                   title="No high-value TNA exception"
                   text={`None of the top ${quantilePct}% open POs by value is high risk.`}
-                />
-              )}
-            </AnaCard>
-
-            <AnaCard
-              title="Stockout Risk · No Coverage"
-              icon={PackageX}
-              tone={gaps == null ? "neutral" : gaps.length ? "red" : "green"}
-              status={
-                gaps == null ? "WAITING" : gaps.length ? "ACT NOW" : "COVERED"
-              }
-              cta="Open urgent replenishment"
-              span={5}
-              onClick={() => onTab("urgent-replenish")}
-              info="Every variant with no sellable stock and no open PO covering it — no demand threshold, so nothing is hidden. Segmented by ABC/D class (A/B = higher velocity) so priority shows without excluding anything. Download the full variant-level list as CSV."
-            >
-              {gaps == null ? (
-                <NoData text="Replenishment data is not available, so uncovered stockouts cannot be checked." />
-              ) : gaps.length ? (
-                <>
-                  <div className="ana-metric-row">
-                    <div>
-                      <strong className="ana-value ana-value-xl">
-                        {fmt.format(gaps.length)}
-                      </strong>
-                      <span className="ana-value-label">
-                        uncovered variants
-                      </span>
-                    </div>
-                    <div>
-                      <strong className="ana-value ana-value-xl">
-                        {fmt.format(shortPieces(gaps))}
-                      </strong>
-                      <span className="ana-value-label">
-                        pcs short of 45-day demand
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="ana-csv-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        exportStockoutCsv();
-                      }}
-                    >
-                      Download CSV
-                    </button>
-                  </div>
-                  <div className="ana-abcd-row">
-                    {gapsByClass!.map(({ cls, n }) => (
-                      <span key={cls} className={`ana-abcd-chip cls-${cls}`}>
-                        {cls} · {fmt.format(n)}
-                      </span>
-                    ))}
-                  </div>
-                  <ul className="ana-list ana-demand-list">
-                    {gaps.slice(0, 5).map((gap, index) => (
-                      <li key={gap.product_variant}>
-                        <span className="ana-rank">{index + 1}</span>
-                        <span className="ana-list-stack">
-                          <span>
-                            {gap.product_name ??
-                              gap.product_code ??
-                              gap.product_variant}
-                          </span>
-                          <small className="mono">{gap.product_variant}</small>
-                        </span>
-                        <span className="ana-list-val">
-                          <span className={`ana-abcd-tag cls-${gap.abc_class}`}>
-                            {gap.abc_class}
-                          </span>
-                          DOQ {fmt.format(gap.doq_45)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  {gaps.length > 5 && (
-                    <p className="ana-more-note">
-                      +{fmt.format(gaps.length - 5)} more — download the CSV for the full list.
-                    </p>
-                  )}
-                </>
-              ) : (
-                <ZeroState
-                  title="No uncovered stockout"
-                  text="Every out-of-stock variant has an open PO in flight."
                 />
               )}
             </AnaCard>
@@ -1593,39 +1480,6 @@ export function AnalyticsCards({
               )}
             </AnaCard>
 
-            <AnaCard
-              title="Out of Stock"
-              icon={PackageX}
-              tone={!oosSum ? "neutral" : oosSum.zeroStock > 0 ? "amber" : "green"}
-              status={!oosSum ? "WAITING" : `${fmt.format(oosSum.zeroStock)} SKUS`}
-              cta="Open DOQ Calculation"
-              span={6}
-              href="/oos-calculation"
-              info={`SKUs in the DOQ Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
-            >
-              {!oosSum ? (
-                <NoData text="DOQ Calculation data is not available." />
-              ) : (
-                <div className="ana-plan-hero">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {oosSum.totalSkus ? Math.round((oosSum.zeroStock / oosSum.totalSkus) * 100) : 0}%
-                    </strong>
-                    <span className="ana-value-label">of tracked SKUs at zero stock</span>
-                  </div>
-                  <div className="ana-plan-values">
-                    <span><small>Zero stock</small><b>{fmt.format(oosSum.zeroStock)}</b></span>
-                    <span><small>Tracked</small><b>{fmt.format(oosSum.totalSkus)}</b></span>
-                    {gaps && (
-                      <span>
-                        <small>Short of demand</small>
-                        <b>{fmt.format(shortPieces(gaps.filter((g) => g.oos)))} pcs</b>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </AnaCard>
 
             <AnaCard
               title="Inward Pipeline"
@@ -1761,5 +1615,170 @@ export function AnalyticsCards({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The two stock objectives, lifted out of the decision tabs so all five objectives sit
+ * together above them. The cards themselves are unchanged — same figures, same ABC split,
+ * same CSV, same click-through; only where they render has moved.
+ */
+export function ObjectiveStockCards({
+  extras,
+  onTab,
+}: {
+  extras?: AnalyticsExtras | null;
+  onTab: (id: TabId) => void;
+}) {
+  const gaps = extras?.stockoutGaps ?? null;
+  const oosSum = extras?.oosSummary ?? null;
+  const gapsByClass = gaps
+    ? (["A", "B", "C", "D"] as const).map((c) => ({
+        cls: c,
+        n: gaps.filter((g) => g.abc_class === c).length,
+      }))
+    : null;
+  // Objective spec 1.2: a count AND a value. These variants carry no price, so the value is
+  // the shortfall in pieces against 45-day demand.
+  const shortPieces = (list: NonNullable<typeof gaps>) =>
+    list.reduce((acc, g) => acc + Math.max(0, g.doq_45 - g.current_stock), 0);
+  const exportStockoutCsv = () => {
+    if (!gaps?.length) return;
+    downloadCsv(
+      "stockout-risk-variants.csv",
+      ["product_variant", "product_code", "product_name", "current_stock", "doq_45", "abc_class"],
+      gaps.map((g) => [
+        g.product_variant,
+        g.product_code ?? "",
+        g.product_name ?? "",
+        g.current_stock,
+        g.doq_45,
+        g.abc_class,
+      ]),
+    );
+  };
+
+  return (
+    <div className="ana-grid ana-tab-grid">
+
+        <AnaCard
+          title="Stockout Risk · No Coverage"
+          icon={PackageX}
+          tone={gaps == null ? "neutral" : gaps.length ? "red" : "green"}
+          status={
+            gaps == null ? "WAITING" : gaps.length ? "ACT NOW" : "COVERED"
+          }
+          cta="Open urgent replenishment"
+          span={5}
+          onClick={() => onTab("urgent-replenish")}
+          info="Every variant with no sellable stock and no open PO covering it — no demand threshold, so nothing is hidden. Segmented by ABC/D class (A/B = higher velocity) so priority shows without excluding anything. Download the full variant-level list as CSV."
+        >
+          {gaps == null ? (
+            <NoData text="Replenishment data is not available, so uncovered stockouts cannot be checked." />
+          ) : gaps.length ? (
+            <>
+              <div className="ana-metric-row">
+                <div>
+                  <strong className="ana-value ana-value-xl">
+                    {fmt.format(gaps.length)}
+                  </strong>
+                  <span className="ana-value-label">
+                    uncovered variants
+                  </span>
+                </div>
+                <div>
+                  <strong className="ana-value ana-value-xl">
+                    {fmt.format(shortPieces(gaps))}
+                  </strong>
+                  <span className="ana-value-label">
+                    pcs short of 45-day demand
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="ana-csv-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    exportStockoutCsv();
+                  }}
+                >
+                  Download CSV
+                </button>
+              </div>
+              <div className="ana-abcd-row">
+                {gapsByClass!.map(({ cls, n }) => (
+                  <span key={cls} className={`ana-abcd-chip cls-${cls}`}>
+                    {cls} · {fmt.format(n)}
+                  </span>
+                ))}
+              </div>
+              <ul className="ana-list ana-demand-list">
+                {gaps.slice(0, 5).map((gap, index) => (
+                  <li key={gap.product_variant}>
+                    <span className="ana-rank">{index + 1}</span>
+                    <span className="ana-list-stack">
+                      <span>
+                        {gap.product_name ??
+                          gap.product_code ??
+                          gap.product_variant}
+                      </span>
+                      <small className="mono">{gap.product_variant}</small>
+                    </span>
+                    <span className="ana-list-val">
+                      <span className={`ana-abcd-tag cls-${gap.abc_class}`}>
+                        {gap.abc_class}
+                      </span>
+                      DOQ {fmt.format(gap.doq_45)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {gaps.length > 5 && (
+                <p className="ana-more-note">
+                  +{fmt.format(gaps.length - 5)} more — download the CSV for the full list.
+                </p>
+              )}
+            </>
+          ) : (
+            <ZeroState
+              title="No uncovered stockout"
+              text="Every out-of-stock variant has an open PO in flight."
+            />
+          )}
+        </AnaCard>
+        <AnaCard
+          title="Out of Stock"
+          icon={PackageX}
+          tone={!oosSum ? "neutral" : oosSum.zeroStock > 0 ? "amber" : "green"}
+          status={!oosSum ? "WAITING" : `${fmt.format(oosSum.zeroStock)} SKUS`}
+          cta="Open DOQ Calculation"
+          span={6}
+          href="/oos-calculation"
+          info={`SKUs in the DOQ Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
+        >
+          {!oosSum ? (
+            <NoData text="DOQ Calculation data is not available." />
+          ) : (
+            <div className="ana-plan-hero">
+              <div>
+                <strong className="ana-value ana-value-xl">
+                  {oosSum.totalSkus ? Math.round((oosSum.zeroStock / oosSum.totalSkus) * 100) : 0}%
+                </strong>
+                <span className="ana-value-label">of tracked SKUs at zero stock</span>
+              </div>
+              <div className="ana-plan-values">
+                <span><small>Zero stock</small><b>{fmt.format(oosSum.zeroStock)}</b></span>
+                <span><small>Tracked</small><b>{fmt.format(oosSum.totalSkus)}</b></span>
+                {gaps && (
+                  <span>
+                    <small>Short of demand</small>
+                    <b>{fmt.format(shortPieces(gaps.filter((g) => g.oos)))} pcs</b>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </AnaCard>
+    </div>
   );
 }

@@ -71,7 +71,7 @@ import type {
 import { TnaBreakdown } from "./tna-breakdown";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
-import { AnalyticsCards } from "./analytics-cards";
+import { AnalyticsCards, ObjectiveStockCards } from "@/components/analytics-cards";
 import { canView } from "@/lib/views";
 import type { AnalyticsExtras, PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
@@ -551,6 +551,7 @@ function DashboardTab({
   onHighRisk,
   onOverdue,
   onVendorSelect,
+  onTab,
   expectedVsActual = null,
   extras = null,
 }: {
@@ -560,6 +561,8 @@ function DashboardTab({
   onHighRisk: (rows: PendingPo[]) => void;
   onOverdue: (rows: PendingPo[]) => void;
   onVendorSelect?: (vendorCode: string) => void;
+  /** Switches the shell's own tab — the stock objectives link into other views. */
+  onTab: (tab: TabId) => void;
   expectedVsActual?: AnalyticsExtras["expectedVsActual"];
   /** Server-computed sections — the stock and OTIF objectives read from these. */
   extras?: AnalyticsExtras | null;
@@ -889,8 +892,6 @@ function DashboardTab({
           icon={IndianRupee}
           info="Pending quantity times item price, summed across open SKU rows."
         />
-        {/* Stock Out Risk and Out of Stock are NOT repeated here — they already have full
-            cards in the decision sub-tabs below, which is where they were updated. */}
         <Card
           label="OTIF"
           value={otifPct == null ? "—" : `${otifPct}%`}
@@ -909,6 +910,10 @@ function DashboardTab({
           onClick={otif ? () => router.push("/vendor-otif") : undefined}
         />
       </div>
+      {/* The five standing objectives read as one group. High Risk and Overdue are counted
+          separately on purpose and are never merged into a single figure. */}
+      <ObjectiveStockCards extras={extras} onTab={onTab} />
+
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
@@ -3553,6 +3558,7 @@ export function DashboardShell({
                 bucket={bucket}
                 setBucket={setBucket}
                 extras={analyticsExtras}
+                onTab={setTab}
                 onHighRisk={setHighRisk}
                 onOverdue={setOverdue}
                 onVendorSelect={openVendorPos}
