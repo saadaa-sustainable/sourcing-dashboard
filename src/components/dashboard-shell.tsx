@@ -148,12 +148,6 @@ const money = new Intl.NumberFormat("en-IN", {
 const norm = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
 // Stable colour per product code (hashed hue) — the EDD scatter's colour
-// dimension, so the same code is always the same colour without a huge legend.
-const productColor = (code: string) => {
-  let h = 0;
-  for (let i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) % 360;
-  return `hsl(${h}, 60%, 50%)`;
-};
 const eddTick = (ms: number) =>
   new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const unique = (values: string[]) =>
@@ -703,20 +697,41 @@ function DashboardTab({
     today,
   );
   const dayMs = 86_400_000;
-  // EDD scatter (item 2): one point per open PO line with an EDD, X = EDD date,
-  // Y = vendor, coloured by product code, sized by pending qty — so what's
-  // arriving (and what's overdue, left of the This-week line) reads at a glance.
-  const eddScatter = tracker
+  /* EDD schedule: one bubble per open PO, X = expected delivery date, Y = vendor code,
+     size = pending quantity.
+
+     Only POs with something genuinely left to receive are plotted. A PO sitting on under 5%
+     of its ordered quantity is finished in every way that matters — it is waiting on a closure
+     click, not on goods — and leaving those in filled the chart with dots nobody can act on.
+
+     Colour marks the ones that should already have closed: received in full or nearly so but
+     still open, or past their delivery date with the goods not in. Those are the dots worth
+     looking at, which is a better use of colour than repeating the product code. */
+  const REMAINING_FLOOR = 0.05;
+  const stillOpen = tracker.filter((row) => {
+    if (row.pendingQty <= 0) return false;
+    if (row.orderedQty <= 0) return true;
+    return row.pendingQty / row.orderedQty >= REMAINING_FLOOR;
+  });
+  const nearlyDone = tracker.length - stillOpen.length;
+  const eddBubbleKind = (row: (typeof tracker)[number]) => {
+    if (row.easycomStatus === "Closure Pending") return "to_close" as const;
+    if (row.delayDays > 0) return "late" as const;
+    return "on_track" as const;
+  };
+  const eddScatter = stillOpen
     .map((row) => {
       const edd = row.edd ? parseIsoDate(row.edd) : null;
       return edd
         ? {
             x: edd.getTime(),
-            vendor: row.vendorName || "Unknown",
+            vendor: row.vendorCode || row.vendorName || "Unknown",
             z: Math.max(1, row.pendingQty),
             productCode: row.productCode || "(no product code)",
             poRef: row.poRef,
             edd: row.edd as string,
+            kind: eddBubbleKind(row),
+            delayDays: row.delayDays,
           }
         : null;
     })
@@ -724,6 +739,51 @@ function DashboardTab({
       (p): p is NonNullable<typeof p> =>
         p != null && p.x >= today.getTime() - 45 * dayMs && p.x <= today.getTime() + 90 * dayMs,
     );
+
+  /* The TNA critical path, as a Gantt.
+
+     One bar per open PO, running from the earliest planned stage date to the last, with the
+     stage that has slipped marked on it. Read together with the bubbles above: those say when
+     goods are due, this says whether the work behind them is running to time. */
+  const gantt = stillOpen
+    .filter((row) => row.tna)
+    .map((row) => {
+      // TNA_STAGES is the shared critical path (business-logic) — same list the High Risk
+      // rule walks, so the chart cannot drift from the flag.
+      const t = row.tna!;
+      const stages = TNA_STAGES.map((stage) => {
+        const planned = t[stage.tnaField] as string | null | undefined;
+        const actual = t[stage.actualField] as string | null | undefined;
+        const plannedAt = planned ? parseIsoDate(planned) : null;
+        return {
+          key: stage.tnaField,
+          label: stage.name === "Inline / Midline QC" ? "Inline QC" : stage.name,
+          plannedAt: plannedAt ? plannedAt.getTime() : null,
+          done: Boolean(actual),
+          late: Boolean(plannedAt && !actual && plannedAt.getTime() < today.getTime()),
+        };
+      }).filter((st) => st.plannedAt != null);
+      if (!stages.length) return null;
+      const from = Math.min(...stages.map((st) => st.plannedAt!));
+      const to = Math.max(...stages.map((st) => st.plannedAt!));
+      return {
+        poRef: row.poRef,
+        vendorCode: row.vendorCode || row.vendorName,
+        productCode: row.productCode,
+        pendingQty: row.pendingQty,
+        from,
+        to,
+        stages,
+        slipped: stages.filter((st) => st.late).length,
+      };
+    })
+    .filter((g): g is NonNullable<typeof g> => g != null)
+    .sort((a, b) => b.slipped - a.slipped || a.from - b.from)
+    .slice(0, 14);
+  const ganttFrom = gantt.length ? Math.min(...gantt.map((g) => g.from)) : 0;
+  const ganttTo = gantt.length ? Math.max(...gantt.map((g) => g.to)) : 1;
+  const ganttSpan = Math.max(1, ganttTo - ganttFrom);
+  const ganttPct = (t: number) => ((t - ganttFrom) / ganttSpan) * 100;
   const hasEddScatter = eddScatter.length > 0;
   // Y is a numeric row index from ONE canonical vendor list (not a category axis):
   // with many dots per vendor, a category axis positions dots by data index while
@@ -1408,12 +1468,18 @@ function DashboardTab({
         tall
         title="EDD schedule — by vendor & product"
         kicker="EDD schedule"
-        info="One dot per open PO line at its expected delivery date (X), grouped by vendor (Y) and coloured by product code; dot size is pending quantity. Dots left of the dashed This-week line are overdue. Shows the −45 to +90 day window."
+        info={`One bubble per open PO at its expected delivery date (X), by vendor code (Y), sized by pending quantity. Colour marks what needs acting on: red for POs received in full or nearly so but never closed, amber for POs past their delivery date with goods still out, green for those running to time. POs with less than 5% of their quantity left are left out — they are waiting on a closure click, not on goods${nearlyDone ? ` (${fmt.format(nearlyDone)} excluded today)` : ""}. Bubbles left of the dashed This-week line are overdue. Window is −45 to +90 days.`}
         actions={
           <span className="legend-pills">
-            <span className="legend-pill" style={{ "--pill-color": "#8a8477" } as CSSProperties}>
-              <i /> colour = product code · size = qty
-            </span>
+            {(["to_close", "late", "on_track"] as const).map((k) => (
+              <span
+                key={k}
+                className="legend-pill"
+                style={{ "--pill-color": EDD_KIND_COLOR[k] } as CSSProperties}
+              >
+                <i /> {EDD_KIND_LABEL[k]}
+              </span>
+            ))}
           </span>
         }
       >
@@ -1455,6 +1521,7 @@ function DashboardTab({
                   if (!active || !payload?.length) return null;
                   const p = payload[0].payload as {
                     productCode: string; vendor: string; poRef: string; z: number; edd: string;
+                    kind: "to_close" | "late" | "on_track"; delayDays: number;
                   };
                   return (
                     <div
@@ -1471,13 +1538,14 @@ function DashboardTab({
                       <div>{p.vendor}</div>
                       <div>PO {p.poRef}</div>
                       <div>{fmt.format(p.z)} pcs · EDD {p.edd}</div>
+                      <div>{EDD_KIND_LABEL[p.kind]}{p.delayDays > 0 ? ` · ${p.delayDays}d late` : ""}</div>
                     </div>
                   );
                 }}
               />
               <Scatter data={eddPoints} fillOpacity={0.78}>
                 {eddPoints.map((p, i) => (
-                  <Cell key={i} fill={productColor(p.productCode)} />
+                  <Cell key={i} fill={EDD_KIND_COLOR[p.kind]} />
                 ))}
               </Scatter>
             </ScatterChart>
@@ -1486,12 +1554,76 @@ function DashboardTab({
           <Empty text="No EDDs inside the −45 to +90 day window" />
         )}
       </ChartCard>
+
+      <ChartCard
+        tall
+        title="TNA critical path — planned stage dates"
+        kicker="Is the work on time"
+        info="One bar per open PO across its planned TNA stages, earliest to last. A filled dot is a stage completed; a hollow red dot is a stage whose planned date has passed with nothing recorded, which is what makes a PO High Risk. Read with the bubbles above: those say when goods are due, this says whether the work behind them is running to time. Most-slipped POs first, top 14."
+        actions={
+          <span className="legend-pills">
+            <span className="legend-pill" style={{ "--pill-color": "#4f7c4d" } as CSSProperties}>
+              <i /> stage done
+            </span>
+            <span className="legend-pill" style={{ "--pill-color": "#c0392b" } as CSSProperties}>
+              <i /> planned date passed, not done
+            </span>
+          </span>
+        }
+      >
+        {gantt.length ? (
+          <div className="gantt">
+            {gantt.map((g) => (
+              <div className="gantt-row" key={g.poRef}>
+                <span className="gantt-label">
+                  <b>{g.poRef}</b>
+                  <small>
+                    {g.vendorCode} · {fmt.format(g.pendingQty)} pcs
+                  </small>
+                </span>
+                <span className="gantt-track">
+                  <i
+                    className={g.slipped ? "gantt-bar is-slipped" : "gantt-bar"}
+                    style={{
+                      left: `${ganttPct(g.from)}%`,
+                      width: `${Math.max(1.5, ganttPct(g.to) - ganttPct(g.from))}%`,
+                    }}
+                  />
+                  {g.stages.map((st) => (
+                    <em
+                      key={st.key}
+                      className={`gantt-dot${st.done ? " is-done" : st.late ? " is-late" : ""}`}
+                      style={{ left: `${ganttPct(st.plannedAt!)}%` }}
+                      title={`${st.label} — planned ${new Date(st.plannedAt!).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}${st.done ? " · done" : st.late ? " · overdue, not done" : " · not due yet"}`}
+                    />
+                  ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="No open PO has a TNA timeline to plot" />
+        )}
+      </ChartCard>
       </>
       )}
     </>
   );
 }
 
+
+/* EDD bubbles are coloured by what to do about them, not by product. "To close" is the one
+   worth chasing: goods are in but the PO is still open. */
+const EDD_KIND_COLOR: Record<"to_close" | "late" | "on_track", string> = {
+  to_close: "#c0392b",
+  late: "#d9a441",
+  on_track: "#4f7c4d",
+};
+const EDD_KIND_LABEL: Record<"to_close" | "late" | "on_track", string> = {
+  to_close: "received, still open",
+  late: "past delivery date",
+  on_track: "on time",
+};
 
 const internalStatusTone = (s: string) =>
   s === "Overdue" ? "danger" : s === "High Risk" ? "warn" : "success";
