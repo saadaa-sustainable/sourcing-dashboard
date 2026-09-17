@@ -243,35 +243,35 @@ export function ReceivablePlanClient({
 
       {view === 'lines' ? (
         <div className="table-panel wf-grid-panel">
-          <p className="wf-subtle rp-legend">
-            Each size column holds two numbers: <b>arriving on this PO</b> in bold, with{' '}
-            <span className="rp-legend-stock">stock on hand today</span> in grey underneath. A
-            blank means none.
-          </p>
           <div className="table-scroll">
             <table className="wide-table wf-grid">
+              {/* Two header rows. A size cell carries two numbers, and a tooltip is no use to
+                  someone who does not know there is anything to hover over — so the meaning
+                  sits in a heading spanning the size columns, visible without any action. */}
               <thead>
                 <tr>
-                  <th {...sort.th('po', (r) => r.po_number || r.po_ref_num || '')}>PO {sort.ind('po')}</th>
-                  <th {...sort.th('product', (r) => r.product_code || r.product_variant)}>Product / colour {sort.ind('product')}</th>
-                  <th {...sort.th('vendor', (r) => r.vendor_name)}>Vendor {sort.ind('vendor')}</th>
-                  <th {...sort.th('status', (r) => r.product_state)}>Status {sort.ind('status')}</th>
-                  <th className="num" {...sort.th('arriving', (r) => r.arriving_qty)}>Arriving {sort.ind('arriving')}</th>
-                  {SIZE_KEYS.map(([, label]) => (
-                    <th key={label} className="num" title={`${label}: arriving on this PO, and stock on hand beneath`}>
-                      {label}
-                    </th>
-                  ))}
-                  <th className="num">DOQ</th>
-                  <th className="num" {...sort.th('stock', (r) => r.current_stock)}>Stock {sort.ind('stock')}</th>
-                  <th className="num">Sizes in stock</th>
-                  <th title="Whether this variant ran out of stock on any day in the last 45. It does not mean it is out of stock now.">
-                    Ran out in last 45 days
+                  <th rowSpan={2} {...sort.th('po', (r) => r.po_number || r.po_ref_num || '')}>PO {sort.ind('po')}</th>
+                  <th rowSpan={2} {...sort.th('product', (r) => r.product_code || r.product_variant)}>Product / colour {sort.ind('product')}</th>
+                  <th rowSpan={2} {...sort.th('vendor', (r) => r.vendor_name)}>Vendor {sort.ind('vendor')}</th>
+                  <th rowSpan={2} {...sort.th('status', (r) => r.product_state)}>Status {sort.ind('status')}</th>
+                  <th rowSpan={2} className="num" {...sort.th('arriving', (r) => r.arriving_qty)}>Arriving {sort.ind('arriving')}</th>
+                  <th colSpan={SIZE_KEYS.length} className="rp-size-group">
+                    By size: <b>arriving on this PO</b>
+                    <span className="rp-size-group-stock">stock on hand today</span>
                   </th>
-                  <th className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
-                  <th className="input-col">Receiving week / month</th>
-                  <th className="num input-col">Qty expected</th>
-                  {editable && <th aria-label="Save" />}
+                  <th rowSpan={2} className="num">DOQ</th>
+                  <th rowSpan={2} className="num" {...sort.th('stock', (r) => r.current_stock)}>Stock {sort.ind('stock')}</th>
+                  <th rowSpan={2} className="num">Sizes in stock</th>
+                  <th rowSpan={2}>Ran out in last 45 days</th>
+                  <th rowSpan={2} className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
+                  <th rowSpan={2} className="input-col">Receiving week / month</th>
+                  <th rowSpan={2} className="num input-col">Qty expected</th>
+                  {editable && <th rowSpan={2} aria-label="Save" />}
+                </tr>
+                <tr>
+                  {SIZE_KEYS.map(([, label]) => (
+                    <th key={label} className="num rp-size-head">{label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
