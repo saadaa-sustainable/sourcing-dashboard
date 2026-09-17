@@ -1,150 +1,129 @@
 /**
- * Every short form this dashboard uses, in plain words.
+ * Names this dashboard invented, in plain words.
  *
- * Why this file exists: none of these terms was written out anywhere in the product. Someone
- * who has not sat in the meetings reads "DOQ 45" or "PO Not Closed on EE" and has to ask, and
- * a person who has to ask twice stops using the screen. One definition lives here and every
- * screen points at it, so the wording cannot drift apart between pages.
+ * Deliberately NOT a dictionary of the trade. DOQ, EE, TNA, FOB, GRN, SKU and the rest are
+ * what the team says every day and they need no explaining; renaming them would only make the
+ * screens harder to read.
  *
- * Rules for adding a term:
- *  - Write it for someone on their first week, not for the person who coined it.
- *  - Say what it IS, then what it is used for. No other short forms inside the definition.
- *  - If nobody can say what it stands for, set `needsDefinition` rather than inventing one.
- *    A wrong expansion is worse than an honest gap, because it gets repeated.
+ * The confusion comes from the other direction: headings coined in this project that exist
+ * nowhere in the base data. Nobody has heard them in a meeting, so a reader has no way to
+ * work out what they mean, and — as "Capital at Risk" showed — a coined name can also quietly
+ * change what a number counts. Every one of them has to earn its place by being obvious on
+ * sight.
+ *
+ * Rules for anything added here:
+ *  - If a base-data term already says it, use that term and do not coin a new one.
+ *  - A coined name must say what the number counts, in the unit it counts in.
+ *  - If the name still needs a sentence of explanation to be understood, it is the wrong
+ *    name. Fix the name rather than adding the sentence.
  */
-export type GlossaryTerm = {
+export type CoinedTerm = {
+  /** The heading as it appears on screen. */
   term: string;
-  expansion: string;
+  /** Where the reader meets it. */
+  where: string;
+  /** What it actually counts or measures, in plain words. */
   meaning: string;
-  /** True while the team still has to confirm what this stands for. */
-  needsDefinition?: boolean;
+  /** Base-data wording it maps to, when there is one. */
+  basedOn?: string;
 };
 
-export const GLOSSARY: GlossaryTerm[] = [
+export const COINED_TERMS: CoinedTerm[] = [
   {
-    term: 'PO',
-    expansion: 'Purchase Order',
+    term: 'Objectives',
+    where: 'Main dashboard, first tab',
     meaning:
-      'One order placed on a vendor. A PO covers several products and sizes, so one PO usually has many lines.',
+      'The five standing problems worth checking every day: high risk purchase orders, overdue purchase orders, stock out risk, out of stock, and on time in full.',
   },
   {
-    term: 'TNA',
-    expansion: 'Time and Action',
+    term: 'Open orders today',
+    where: 'Main dashboard, second tab',
     meaning:
-      'The production calendar for a PO: each stage, from sample through cutting to delivery, has a planned date. A stage whose planned date has passed with no actual date is what makes a PO High Risk.',
+      'Everything still on order: how many purchase orders are open, what quantity and value sit behind them, and the delivery charts.',
   },
   {
-    term: 'EDD',
-    expansion: 'Expected Delivery Date',
+    term: 'Will we run out',
+    where: 'Main dashboard tab',
     meaning:
-      'The date goods are due from the vendor. A PO past its EDD with quantity still pending is Overdue.',
+      'Replenishment pressure and what is landing: whether stock plus what is on order covers demand.',
   },
   {
-    term: 'GRN',
-    expansion: 'Goods Receipt Note',
+    term: 'Buying to plan',
+    where: 'Main dashboard tab',
     meaning:
-      'The record raised when goods physically arrive at the warehouse. Everything the dashboard calls "received" is counted from these.',
+      'How much of the buying plan has actually been committed, plus approval and closure progress against it.',
   },
   {
-    term: 'OTIF',
-    expansion: 'On Time In Full',
-    meaning:
-      'A completed PO counts as OTIF only if it arrived on or before its expected date AND nothing was left short. On time but short does not count, and neither does complete but late.',
+    term: 'Who we buy from',
+    where: 'Main dashboard tab',
+    meaning: 'Vendor capacity against demand, how concentrated the book is, and who delivers on time.',
   },
   {
-    term: 'SKU',
-    expansion: 'Stock Keeping Unit',
+    term: 'Trust the numbers',
+    where: 'Main dashboard tab',
     meaning:
-      'One sellable item at its finest level: a product in one colour and one size. A product code covers many SKUs.',
+      'The master data and feeds behind every figure: how fresh each sync is, and anything still on order that should not be.',
   },
   {
-    term: 'FOB',
-    expansion: 'Free On Board',
+    term: 'Stock Out Risk',
+    where: 'Objectives',
     meaning:
-      'The vendor buys the fabric and trims and delivers a finished garment, so the price covers the whole garment.',
+      'Variants that will run out before new goods can arrive: either nothing in stock and nothing on order, or cover that runs out inside the 45-day lead time.',
+    basedOn: 'current stock, in process, daily demand',
   },
   {
-    term: 'Job work',
-    expansion: 'Job work (cut, make and trim)',
+    term: 'Nothing on order',
+    where: 'Urgent Replenishment',
     meaning:
-      'We supply the fabric and the vendor only stitches. The rate covers labour, not the garment, which is why job-work rates are far lower than FOB and the two must never be added together as if they were the same money.',
+      'A count of product codes whose purchase order lines have all been received, so nothing is left on order. Not a count of purchase orders, not a quantity, and not a stock figure.',
   },
   {
-    term: 'CMTP',
-    expansion: 'Cut, Make, Trim, Pack',
+    term: 'In Process (365d)',
+    where: 'Urgent Replenishment',
     meaning:
-      'The make-up cost of a garment built up from its heads: labour, cutting, finishing, trims and packing. Added to fabric cost, it gives the final standard cost.',
+      'A count of open purchase order lines with quantity due within the next 365 days, including lines already overdue.',
   },
   {
-    term: 'NPD',
-    expansion: 'New Product Development',
+    term: 'Live coverage',
+    where: 'Buying to plan',
     meaning:
-      'A product still being developed. "NPD - Not Launched Yet" has never been on sale, so it cannot be short against demand it does not yet have.',
+      'Two figures side by side for the current month: how much of the buying plan value has been issued, and how much of the planned inward quantity has actually been received.',
   },
   {
-    term: 'OOS',
-    expansion: 'Out of Stock',
-    meaning: 'No sellable stock on hand for that variant.',
+    term: 'Buying Plan Realization',
+    where: 'Buying to plan',
+    meaning:
+      'Planned buying value against purchase order value actually issued, by month and weave.',
   },
   {
-    term: 'ROP',
-    expansion: 'Re-Order Point',
+    term: 'Sales class',
+    where: 'Stock screens',
     meaning:
-      'The stock level at which a fresh order should be placed so goods arrive before the shelf empties.',
+      'The A to D banding by how fast a variant sells. A sells fastest, D slowest. Separate from the product state: a D product is a slow seller, not one being discontinued.',
+    basedOn: 'A, B, C, D',
   },
   {
-    term: 'A, B, C, D',
-    expansion: 'Sales class',
+    term: '100% and over Utilised',
+    where: 'Vendor Capacity',
     meaning:
-      'How fast a variant sells: A is the fastest, D the slowest. It is separate from the product state. A product being discontinued is a state, not a class, and a D product is a slow seller, not one on its way out.',
+      'A vendor whose in-process quantity has reached or passed its monthly purchase order capacity.',
   },
   {
-    term: 'EasyCom',
-    expansion: 'EasyEcom',
+    term: 'Standard Cost Base',
+    where: 'Standard Cost cards',
     meaning:
-      'The system of record for purchase orders and stock. When a screen says a PO is not closed there, it means the goods are in but the order has not been marked finished.',
+      'The full cost record behind a rate: the make-up build-up, fabric cost, final cost and the history of accepted rates.',
   },
   {
-    term: 'SLA',
-    expansion: 'Service Level Agreement',
-    meaning:
-      'The number of days a step is allowed to take before it counts as late. Closure SLA days is set in Rules Master.',
-  },
-  {
-    term: 'PPM',
-    expansion: 'Pre-Production Meeting',
-    meaning:
-      'The check held with the vendor before bulk production starts, covering the sample, fabric and trims.',
-  },
-  {
-    term: 'DOQ',
-    expansion: 'not yet confirmed',
-    meaning:
-      'Used across the replenishment and stock screens as DOQ 15, 30, 45 and 365. Nobody has written down what the letters stand for, so it is left undefined here rather than guessed at.',
-    needsDefinition: true,
-  },
-  {
-    term: 'IPDOQ',
-    expansion: 'not yet confirmed',
-    meaning:
-      'In-process DOQ: the 45-day figure, or the higher of the 45 and 365-day figures when the 45-day window was mostly out of stock. Depends on DOQ, which is itself unconfirmed.',
-    needsDefinition: true,
-  },
-  {
-    term: 'E-FOB',
-    expansion: 'not yet confirmed',
-    meaning:
-      'A third PO type sitting between job work and FOB, priced close to FOB and carrying a 45-day lead time against FOB’s 75. What the E stands for has not been written down.',
-    needsDefinition: true,
-  },
-  {
-    term: 'COM status',
-    expansion: 'not yet confirmed',
-    meaning:
-      'A grouping key that joins a product state and a sales class, for example "Ongoing-A". What COM stands for has not been written down.',
-    needsDefinition: true,
+    term: 'Cost Details',
+    where: 'Standard Cost cards',
+    meaning: 'Opens that product or material on its own page, where the cost can be read and changed.',
   },
 ];
 
-/** Terms the team still has to define, so the gaps are visible rather than quietly carried. */
-export const UNDEFINED_TERMS = GLOSSARY.filter((t) => t.needsDefinition);
+/**
+ * Coined names removed after review, kept so they are not reinvented.
+ * "Capital at Risk" was never agreed and its percentile rule also hid high-risk purchase
+ * orders of ordinary value, so both the name and the logic went.
+ */
+export const RETIRED_TERMS = ['Capital at Risk'];

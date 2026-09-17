@@ -1667,3 +1667,5 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .glossary-gap { color: #8a6d1f; font-style: italic; }
 .glossary-item dd { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-2, #3f3b33); }
+.glossary-intro { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--ink-3, #6e695e); max-width: 70ch; }
+.glossary-item dd small { display: block; margin-top: 4px; font-size: 11px; color: var(--ink-3, #6e695e); }
