@@ -90,39 +90,39 @@ type Tone = "red" | "amber" | "green" | "neutral";
 
 const decisionTabs = [
   {
-    id: "protect",
+    id: "money",
     number: "01",
-    label: "Key updates",
+    label: "Money committed",
     description:
-      "Review cash, availability, cost, and master-data updates in one place.",
+      "What the open book is worth and where we are paying more than agreed.",
   },
   {
-    id: "allocate",
+    id: "stock",
     number: "02",
-    label: "Vendor planning",
+    label: "Will we run out",
     description:
-      "Compare demand, vendor capacity, concentration, and recent delivery performance.",
+      "Replenishment pressure and what is actually landing, so gaps are caught while they can still be fixed.",
   },
   {
-    id: "execution",
+    id: "plan",
     number: "03",
-    label: "Plan progress",
+    label: "Buying to plan",
     description:
-      "Track buying-plan realization, TNA progress, and PO closure compliance.",
+      "Commitment against the buying plan, approval progress, TNA compliance and PO closure.",
   },
   {
-    id: "workspace",
+    id: "vendors",
     number: "04",
-    label: "Workspace pulse",
+    label: "Who we buy from",
     description:
-      "Read the workspace views at a glance — replenishment pressure, stock-outs, vendor picks and the inward pipeline.",
+      "Vendor capacity against demand, how concentrated the book is, and who delivers.",
   },
   {
     id: "datahealth",
     number: "05",
-    label: "Data & sync",
+    label: "Trust the numbers",
     description:
-      "Watch the static datasets behind every number — product-master mix and how fresh each synced feed is.",
+      "The master data and feeds behind every figure above, plus products still on order after being discontinued.",
   },
 ] as const;
 
@@ -225,17 +225,26 @@ export function AnalyticsCards({
   rules,
   extras,
   onTab,
+  only,
   isAdmin = false,
 }: {
   data: DashboardData;
   rules: Record<string, number>;
   extras?: AnalyticsExtras | null;
   onTab: (id: TabId) => void;
+  /**
+   * Render a single group and hide the internal strip. The Main Dashboard owns one tab strip
+   * for all of its groups now, so these are driven from there rather than switching
+   * themselves.
+   */
+  only?: DecisionTab;
   /** /replenishment is admin-only; non-admins get Urgent Replenishment instead. */
   isAdmin?: boolean;
 }) {
   const today = istToday();
-  const [decisionTab, setDecisionTab] = useState<DecisionTab>("protect");
+  const [ownTab, setOwnTab] = useState<DecisionTab>("money");
+  const decisionTab = only ?? ownTab;
+  const setDecisionTab = setOwnTab;
   const activeDecisionTab =
     decisionTabs.find((tab) => tab.id === decisionTab) ?? decisionTabs[0];
   // Item 7 — Vendor Concentration is measured within a fabric pool. Woven and Knit
@@ -440,6 +449,7 @@ export function AnalyticsCards({
         </div>
       </header>
 
+      {!only && (
       <div className="ana-tabs" role="tablist" aria-label="Decision views">
         {decisionTabs.map((tab, index) => (
           <button
@@ -476,6 +486,7 @@ export function AnalyticsCards({
           </button>
         ))}
       </div>
+      )}
 
       <div
         id="ana-decision-panel"
@@ -483,7 +494,7 @@ export function AnalyticsCards({
         role="tabpanel"
         aria-labelledby={`ana-tab-${decisionTab}`}
       >
-        {decisionTab === "protect" && (
+        {decisionTab === "money" && (
           <div className="ana-grid ana-tab-grid">
             <AnaCard
               title="Capital at Risk"
@@ -605,75 +616,10 @@ export function AnalyticsCards({
               )}
             </AnaCard>
 
-            <AnaCard
-              title="Open POs of Discontinued Products"
-              icon={Ban}
-              tone={
-                disc == null ? "neutral" : discontinuedCount ? "red" : "green"
-              }
-              status={
-                disc == null
-                  ? "WAITING"
-                  : discontinuedCount
-                    ? "DATA ISSUE"
-                    : "CLEAN"
-              }
-              cta="Review affected PO lines"
-              span={6}
-              onClick={() => onTab("open-po")}
-              info="Products marked Discontinued in Product Master that still have an open PO (or a current buying-plan line) with pending quantity against them — i.e. buying is still happening on a discontinued product. This should always be zero."
-            >
-              {disc == null ? (
-                <NoData text="Product Master data is not available, so lifecycle integrity cannot be checked." />
-              ) : discontinuedCount ? (
-                <>
-                  <div className="ana-metric-row">
-                    <div>
-                      <strong className="ana-value ana-value-xl">
-                        {discontinuedCount}
-                      </strong>
-                      <span className="ana-value-label">
-                        discontinued products still being bought
-                      </span>
-                    </div>
-                    <div className="ana-mini-split">
-                      <span>
-                        <b>{disc.openPoCount}</b> open PO
-                      </span>
-                      <span>
-                        <b>{disc.planLineCount}</b> plan
-                      </span>
-                    </div>
-                  </div>
-                  <p className="ana-decision-line">
-                    {fmt.format(disc.openPoQty)} pending pieces reference
-                    discontinued products.
-                  </p>
-                  {disc.codes.length > 0 && (
-                    <div className="ana-code-list">
-                      {disc.codes.slice(0, 6).map((code) => (
-                        <span className="mono" key={code}>
-                          {code}
-                        </span>
-                      ))}
-                      {disc.codes.length > 6 && (
-                        <span>+{disc.codes.length - 6}</span>
-                      )}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <ZeroState
-                  compact
-                  title="Lifecycle data is clean"
-                  text="No discontinued product is being bought or planned."
-                />
-              )}
-            </AnaCard>
           </div>
         )}
 
-        {decisionTab === "allocate" && (
+        {decisionTab === "vendors" && (
           <div className="ana-grid ana-tab-grid">
             <AnaCard
               title="Capacity vs Demand"
@@ -958,10 +904,41 @@ export function AnalyticsCards({
                 />
               )}
             </AnaCard>
+            <AnaCard
+              title="Vendor Recommendation"
+              icon={Award}
+              tone={!vrec ? "neutral" : vrec.risky.length ? "amber" : "green"}
+              status={!vrec ? "WAITING" : `${fmt.format(vrec.rated)} RATED`}
+              cta="Open Vendor Recommendation"
+              span={5}
+              href="/vendor-recommendation"
+              info="From completed-PO history (vendors with at least 3 completed POs): the best on-time performers and any vendor whose recent delay rate is 50% or worse."
+            >
+              {!vrec ? (
+                <NoData text="Vendor recommendation data is not available." />
+              ) : !vrec.rated ? (
+                <NoData text="No vendor has 3+ completed POs to rate yet." />
+              ) : (
+                <ul className="ana-list">
+                  {vrec.best.map((v) => (
+                    <li key={`best-${v.name}`}>
+                      <span className="ana-list-stack"><span>{v.name}</span><small>{v.completed} completed POs</small></span>
+                      <span className="ana-list-val is-green">{v.onTimePct}% on time</span>
+                    </li>
+                  ))}
+                  {vrec.risky.map((v) => (
+                    <li key={`risk-${v.name}`}>
+                      <span className="ana-list-stack"><span>{v.name}</span><small>{v.completed} completed POs</small></span>
+                      <span className="ana-list-val is-red">{v.delayPct}% delayed</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AnaCard>
           </div>
         )}
 
-        {decisionTab === "execution" && (
+        {decisionTab === "plan" && (
           <div className="ana-grid ana-tab-grid">
             <AnaCard
               title="POs issued — this week vs last"
@@ -1046,33 +1023,6 @@ export function AnalyticsCards({
               )}
             </AnaCard>
 
-            <AnaCard
-              title="Inward — last 7 days"
-              icon={Scale}
-              tone={inward && inwardPct != null && inwardPct >= 80 ? "green" : inward ? "amber" : "neutral"}
-              status={inwardPct != null ? `${inwardPct}% RECEIVED` : "WAITING"}
-              cta="Open Inward Plan"
-              span={4}
-              href="/inward-plan"
-              info="Planned arrivals due last week (still-open lines) vs quantity actually received (GRN). Approximate — the two are not line-matched."
-            >
-              {!inward ? (
-                <NoData text="Inward-plan / GRN data is not available." />
-              ) : (
-                <div className="ana-plan-hero">
-                  <div>
-                    <strong className="ana-value ana-value-xl">
-                      {inwardPct ?? "—"}{inwardPct != null ? "%" : ""}
-                    </strong>
-                    <span className="ana-value-label">received vs planned</span>
-                  </div>
-                  <div className="ana-plan-values">
-                    <span><small>Actual</small><b>{fmt.format(inward.actual)}</b></span>
-                    <span><small>Planned</small><b>{fmt.format(inward.planned)}</b></span>
-                  </div>
-                </div>
-              )}
-            </AnaCard>
 
             <AnaCard
               title="Live coverage — this month"
@@ -1448,8 +1398,35 @@ export function AnalyticsCards({
           </div>
         )}
 
-        {decisionTab === "workspace" && (
+        {decisionTab === "stock" && (
           <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Inward — last 7 days"
+              icon={Scale}
+              tone={inward && inwardPct != null && inwardPct >= 80 ? "green" : inward ? "amber" : "neutral"}
+              status={inwardPct != null ? `${inwardPct}% RECEIVED` : "WAITING"}
+              cta="Open Inward Plan"
+              span={4}
+              href="/inward-plan"
+              info="Planned arrivals due last week (still-open lines) vs quantity actually received (GRN). Approximate — the two are not line-matched."
+            >
+              {!inward ? (
+                <NoData text="Inward-plan / GRN data is not available." />
+              ) : (
+                <div className="ana-plan-hero">
+                  <div>
+                    <strong className="ana-value ana-value-xl">
+                      {inwardPct ?? "—"}{inwardPct != null ? "%" : ""}
+                    </strong>
+                    <span className="ana-value-label">received vs planned</span>
+                  </div>
+                  <div className="ana-plan-values">
+                    <span><small>Actual</small><b>{fmt.format(inward.actual)}</b></span>
+                    <span><small>Planned</small><b>{fmt.format(inward.planned)}</b></span>
+                  </div>
+                </div>
+              )}
+            </AnaCard>
             <AnaCard
               title="Replenishment Queue"
               icon={Repeat}
@@ -1519,42 +1496,76 @@ export function AnalyticsCards({
               )}
             </AnaCard>
 
-            <AnaCard
-              title="Vendor Recommendation"
-              icon={Award}
-              tone={!vrec ? "neutral" : vrec.risky.length ? "amber" : "green"}
-              status={!vrec ? "WAITING" : `${fmt.format(vrec.rated)} RATED`}
-              cta="Open Vendor Recommendation"
-              span={5}
-              href="/vendor-recommendation"
-              info="From completed-PO history (vendors with at least 3 completed POs): the best on-time performers and any vendor whose recent delay rate is 50% or worse."
-            >
-              {!vrec ? (
-                <NoData text="Vendor recommendation data is not available." />
-              ) : !vrec.rated ? (
-                <NoData text="No vendor has 3+ completed POs to rate yet." />
-              ) : (
-                <ul className="ana-list">
-                  {vrec.best.map((v) => (
-                    <li key={`best-${v.name}`}>
-                      <span className="ana-list-stack"><span>{v.name}</span><small>{v.completed} completed POs</small></span>
-                      <span className="ana-list-val is-green">{v.onTimePct}% on time</span>
-                    </li>
-                  ))}
-                  {vrec.risky.map((v) => (
-                    <li key={`risk-${v.name}`}>
-                      <span className="ana-list-stack"><span>{v.name}</span><small>{v.completed} completed POs</small></span>
-                      <span className="ana-list-val is-red">{v.delayPct}% delayed</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </AnaCard>
           </div>
         )}
 
         {decisionTab === "datahealth" && (
           <div className="ana-grid ana-tab-grid">
+            <AnaCard
+              title="Open POs of Discontinued Products"
+              icon={Ban}
+              tone={
+                disc == null ? "neutral" : discontinuedCount ? "red" : "green"
+              }
+              status={
+                disc == null
+                  ? "WAITING"
+                  : discontinuedCount
+                    ? "DATA ISSUE"
+                    : "CLEAN"
+              }
+              cta="Review affected PO lines"
+              span={6}
+              onClick={() => onTab("open-po")}
+              info="Products marked Discontinued in Product Master that still have an open PO (or a current buying-plan line) with pending quantity against them — i.e. buying is still happening on a discontinued product. This should always be zero."
+            >
+              {disc == null ? (
+                <NoData text="Product Master data is not available, so lifecycle integrity cannot be checked." />
+              ) : discontinuedCount ? (
+                <>
+                  <div className="ana-metric-row">
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {discontinuedCount}
+                      </strong>
+                      <span className="ana-value-label">
+                        discontinued products still being bought
+                      </span>
+                    </div>
+                    <div className="ana-mini-split">
+                      <span>
+                        <b>{disc.openPoCount}</b> open PO
+                      </span>
+                      <span>
+                        <b>{disc.planLineCount}</b> plan
+                      </span>
+                    </div>
+                  </div>
+                  <p className="ana-decision-line">
+                    {fmt.format(disc.openPoQty)} pending pieces reference
+                    discontinued products.
+                  </p>
+                  {disc.codes.length > 0 && (
+                    <div className="ana-code-list">
+                      {disc.codes.slice(0, 6).map((code) => (
+                        <span className="mono" key={code}>
+                          {code}
+                        </span>
+                      ))}
+                      {disc.codes.length > 6 && (
+                        <span>+{disc.codes.length - 6}</span>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <ZeroState
+                  compact
+                  title="Lifecycle data is clean"
+                  text="No discontinued product is being bought or planned."
+                />
+              )}
+            </AnaCard>
             <AnaCard
               title="Product Master Mix"
               icon={Database}

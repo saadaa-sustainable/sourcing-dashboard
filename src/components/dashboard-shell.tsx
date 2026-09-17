@@ -544,6 +544,26 @@ function FilterSelect({
   );
 }
 
+/**
+ * The Main Dashboard is read in seven passes, each answering one question, so nobody scrolls
+ * a single page looking for the number they came for.
+ *
+ * "Objectives" is the standing five. "Open orders today" is the working view exactly as it
+ * was. The remaining five group the cross-module analytics by the decision they serve rather
+ * than by which module produced them.
+ */
+const DASH_GROUPS = [
+  ["objectives", "Objectives"],
+  ["orders", "Open orders today"],
+  ["money", "Money committed"],
+  ["stock", "Will we run out"],
+  ["plan", "Buying to plan"],
+  ["vendors", "Who we buy from"],
+  ["datahealth", "Trust the numbers"],
+] as const;
+
+type DashGroup = (typeof DASH_GROUPS)[number][0];
+
 function DashboardTab({
   data,
   bucket,
@@ -552,6 +572,7 @@ function DashboardTab({
   onOverdue,
   onVendorSelect,
   onTab,
+  section,
   expectedVsActual = null,
   extras = null,
 }: {
@@ -563,6 +584,11 @@ function DashboardTab({
   onVendorSelect?: (vendorCode: string) => void;
   /** Switches the shell's own tab — the stock objectives link into other views. */
   onTab: (tab: TabId) => void;
+  /**
+   * "objectives" renders the five standing objectives; "orders" renders the open-order view
+   * and its charts. Both keep the weave filter, because both are read weave by weave.
+   */
+  section: "objectives" | "orders";
   expectedVsActual?: AnalyticsExtras["expectedVsActual"];
   /** Server-computed sections — the stock and OTIF objectives read from these. */
   extras?: AnalyticsExtras | null;
@@ -848,6 +874,49 @@ function DashboardTab({
           Other
         </button>
       </div>
+      {section === "objectives" ? (
+        <>
+          <div className="metric-grid dashboard-metrics">
+            <Card
+              label="Overdue POs"
+              value={fmt.format(delayedRefs.length)}
+              note={`${money.format(sumValue(delayed))} pending · ${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · view audit`}
+              tone="red"
+              icon={CalendarClock}
+              info="Open POs whose expected delivery date is already past, with the pending value still sitting behind them. Click to open the audit list. Kept separate from High Risk: a PO can be overdue without any TNA stage having slipped."
+              onClick={() => onOverdue(delayed)}
+            />
+            <Card
+              label="High Risk POs"
+              value={fmt.format(highRiskRefs)}
+              note={`${money.format(sumValue(highRisk))} pending · TNA stage slipped · view details`}
+              tone="orange"
+              icon={AlertTriangle}
+              info="A critical-path TNA stage is past its planned date with no actual date yet, with the pending value behind those POs. Clears the moment the stage is marked done. Kept separate from Overdue: the delivery date may still be days away."
+              onClick={() => onHighRisk(highRisk)}
+            />
+            <Card
+              label="OTIF"
+              value={otifPct == null ? "—" : `${otifPct}%`}
+              note={
+                otif
+                  ? `${fmt.format(otif.otif)} of ${fmt.format(otif.completedPos)} completed POs · ${money.format(otif.otifValue)} delivered OTIF`
+                  : "completed-PO data unavailable"
+              }
+              tone={otifPct != null && otifPct < 80 ? "red" : "teal"}
+              icon={Timer}
+              info={
+                otif
+                  ? `Completed POs over the last ${otif.windowDays} days that arrived on time AND in full: closed on or before the expected delivery date with nothing left pending. ${fmt.format(otif.onTime)} were on time and ${fmt.format(otif.inFull)} were in full; OTIF counts only those that were both. Open POs are excluded — they have not had their chance yet. Click to open Vendor OTIF.`
+                  : "Completed-PO data is not available."
+              }
+              onClick={otif ? () => router.push("/vendor-otif") : undefined}
+            />
+          </div>
+          <ObjectiveStockCards extras={extras} onTab={onTab} />
+        </>
+      ) : (
+      <>
       <div className="metric-grid dashboard-metrics">
         <Card
           label="Open POs"
@@ -856,24 +925,6 @@ function DashboardTab({
           tone="blue"
           icon={LayoutDashboard}
           info="Unique PO references that still have pending quantity above 0. Fully received POs drop off."
-        />
-        <Card
-          label="Overdue POs"
-          value={fmt.format(delayedRefs.length)}
-          note={`${money.format(sumValue(delayed))} pending · ${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · view audit`}
-          tone="red"
-          icon={CalendarClock}
-          info="Open POs whose expected delivery date is already past, with the pending value still sitting behind them. Click to open the audit list. Kept separate from High Risk: a PO can be overdue without any TNA stage having slipped."
-          onClick={() => onOverdue(delayed)}
-        />
-        <Card
-          label="High Risk POs"
-          value={fmt.format(highRiskRefs)}
-          note={`${money.format(sumValue(highRisk))} pending · TNA stage slipped · view details`}
-          tone="orange"
-          icon={AlertTriangle}
-          info="A critical-path TNA stage is past its planned date with no actual date yet, with the pending value behind those POs. Clears the moment the stage is marked done. Kept separate from Overdue: the delivery date may still be days away."
-          onClick={() => onHighRisk(highRisk)}
         />
         <Card
           label="Open Qty"
@@ -892,28 +943,7 @@ function DashboardTab({
           icon={IndianRupee}
           info="Pending quantity times item price, summed across open SKU rows."
         />
-        <Card
-          label="OTIF"
-          value={otifPct == null ? "—" : `${otifPct}%`}
-          note={
-            otif
-              ? `${fmt.format(otif.otif)} of ${fmt.format(otif.completedPos)} completed POs · ${money.format(otif.otifValue)} delivered OTIF`
-              : "completed-PO data unavailable"
-          }
-          tone={otifPct != null && otifPct < 80 ? "red" : "teal"}
-          icon={Timer}
-          info={
-            otif
-              ? `Completed POs over the last ${otif.windowDays} days that arrived on time AND in full: closed on or before the expected delivery date with nothing left pending. ${fmt.format(otif.onTime)} were on time and ${fmt.format(otif.inFull)} were in full; OTIF counts only those that were both. Open POs are excluded — they have not had their chance yet. Click to open Vendor OTIF.`
-              : "Completed-PO data is not available."
-          }
-          onClick={otif ? () => router.push("/vendor-otif") : undefined}
-        />
       </div>
-      {/* The five standing objectives read as one group. High Risk and Overdue are counted
-          separately on purpose and are never merged into a single figure. */}
-      <ObjectiveStockCards extras={extras} onTab={onTab} />
-
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
@@ -1406,6 +1436,8 @@ function DashboardTab({
           <Empty text="No EDDs inside the −45 to +90 day window" />
         )}
       </ChartCard>
+      </>
+      )}
     </>
   );
 }
@@ -3483,6 +3515,7 @@ export function DashboardShell({
   analyticsExtras?: AnalyticsExtras | null;
 }) {
   const [tab, setTab] = useState<TabId>("dashboard");
+  const [dashGroup, setDashGroup] = useState<DashGroup>("objectives");
   const [info, setInfo] = useState(false);
   const [detail, setDetail] = useState<TrackerRow | null>(null);
   const [highRisk, setHighRisk] = useState<PendingPo[] | null>(null);
@@ -3551,19 +3584,44 @@ export function DashboardShell({
         <div className="content">
           {tab === "dashboard" && (
             <>
-              {/* Cross-tab decision cards — the "so what" layer above the KPIs. */}
-              <AnalyticsCards data={data} rules={analyticsRules} extras={analyticsExtras} onTab={setTab} isAdmin={role === "admin"} />
-              <DashboardTab
-                data={data}
-                bucket={bucket}
-                setBucket={setBucket}
-                extras={analyticsExtras}
-                onTab={setTab}
-                onHighRisk={setHighRisk}
-                onOverdue={setOverdue}
-                onVendorSelect={openVendorPos}
-                expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
-              />
+              <div className="ana-tabs dash-groups" role="tablist" aria-label="Dashboard views">
+                {DASH_GROUPS.map(([id, label], index) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={dashGroup === id}
+                    className={dashGroup === id ? "active" : ""}
+                    onClick={() => setDashGroup(id)}
+                  >
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {dashGroup === "objectives" || dashGroup === "orders" ? (
+                <DashboardTab
+                  data={data}
+                  bucket={bucket}
+                  setBucket={setBucket}
+                  extras={analyticsExtras}
+                  section={dashGroup}
+                  onTab={setTab}
+                  onHighRisk={setHighRisk}
+                  onOverdue={setOverdue}
+                  onVendorSelect={openVendorPos}
+                  expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
+                />
+              ) : (
+                <AnalyticsCards
+                  data={data}
+                  rules={analyticsRules}
+                  extras={analyticsExtras}
+                  onTab={setTab}
+                  isAdmin={role === "admin"}
+                  only={dashGroup}
+                />
+              )}
             </>
           )}{" "}
           {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} initialVendorCode={vendorFilter} />}{" "}

@@ -1634,3 +1634,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 }
 .wf-file-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
 
+
+/* Main Dashboard group strip — same look as the analytics tabs, but it drives every group
+   on the page, including the objectives and the open-order view. */
+.dash-groups { margin-bottom: 14px; }
