@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -542,6 +543,65 @@ function FilterSelect({
   );
 }
 
+/**
+ * The five standing objectives, each its own tab with a count and a value, each clickable.
+ *
+ * High Risk and Overdue are kept apart deliberately and are never merged into one
+ * "High Risk / Overdue" figure: a PO is high risk because a TNA stage slipped, and overdue
+ * because its delivery date passed. Either can be true without the other, and the actions
+ * differ, so combining them hides which problem you actually have.
+ *
+ * Where a rupee value exists it is shown. The stock and OTIF objectives have no price in
+ * their source, so they carry the truest second measure available — pieces short, or the
+ * on-time share — labelled for what it is rather than dressed up as money.
+ */
+function ObjectiveTabs({
+  items,
+  active,
+  onSelect,
+}: {
+  items: {
+    id: string;
+    label: string;
+    count: string;
+    countNote: string;
+    value: string;
+    valueNote: string;
+    tone: string;
+    disabled?: boolean;
+  }[];
+  active: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="obj-tabs" role="tablist" aria-label="Dashboard objectives">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          role="tab"
+          aria-selected={active === it.id}
+          disabled={it.disabled}
+          className={`obj-tab tone-${it.tone}${active === it.id ? " is-active" : ""}`}
+          onClick={() => onSelect(it.id)}
+        >
+          <span className="obj-tab-label">{it.label}</span>
+          <span className="obj-tab-figs">
+            <span>
+              <b>{it.count}</b>
+              <small>{it.countNote}</small>
+            </span>
+            <span>
+              <b>{it.value}</b>
+              <small>{it.valueNote}</small>
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DashboardTab({
   data,
   bucket,
@@ -550,6 +610,7 @@ function DashboardTab({
   onOverdue,
   onVendorSelect,
   expectedVsActual = null,
+  extras = null,
 }: {
   data: DashboardData;
   bucket: string;
@@ -558,6 +619,8 @@ function DashboardTab({
   onOverdue: (rows: PendingPo[]) => void;
   onVendorSelect?: (vendorCode: string) => void;
   expectedVsActual?: AnalyticsExtras["expectedVsActual"];
+  /** Server-computed sections — the stock and OTIF objectives read from these. */
+  extras?: AnalyticsExtras | null;
 }) {
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
@@ -574,12 +637,102 @@ function DashboardTab({
       ),
     [data.pendingPos, bucket, lookups],
   );
+  const [objective, setObjective] = useState("high_risk");
+  const router = useRouter();
   const today = istToday();
   const open = rows.filter(isOpenPo);
   const delayed = open.filter((row) => isDelayedPo(row, today));
   const highRisk = open.filter((row) => isHighRiskLine(row, lookups.tnaByPo, today));
   const openRefs = unique(open.map((row) => row.po_ref_num ?? ""));
   const delayedRefs = unique(delayed.map((row) => row.po_ref_num ?? ""));
+
+  /**
+   * The five standing objectives. Each carries a count and a value and each is clickable:
+   * the two PO objectives open their audit list, the stock and OTIF ones open the page that
+   * owns that number.
+   *
+   * High Risk and Overdue stay separate. A PO is high risk when a TNA stage has slipped and
+   * overdue when its delivery date has passed; either can be true alone, and they call for
+   * different action, so they are never added together into one figure.
+   */
+  const lineValue = (r: PendingPo) => r.pending_qty_actual * r.item_price;
+  const sumValue = (rowsIn: PendingPo[]) => rowsIn.reduce((acc, r) => acc + lineValue(r), 0);
+  const gaps = extras?.stockoutGaps ?? null;
+  // "No coverage" = demand over the DOQ-45 horizon that current stock does not cover, for
+  // variants still holding stock. Variants already at zero are the Out of Stock objective.
+  const riskGaps = (gaps ?? []).filter((g) => !g.oos && g.doq_45 > g.current_stock);
+  const oosGaps = (gaps ?? []).filter((g) => g.oos);
+  const shortPieces = (list: typeof riskGaps) =>
+    list.reduce((acc, g) => acc + Math.max(0, g.doq_45 - g.current_stock), 0);
+  const rel = extras?.reliability ?? null;
+  const relTotal = (rel?.vendors ?? []).reduce((acc, v) => acc + v.total, 0);
+  const relDelayed = (rel?.vendors ?? []).reduce((acc, v) => acc + v.delayed, 0);
+  const otifPct = relTotal > 0 ? Math.round(((relTotal - relDelayed) / relTotal) * 100) : null;
+
+  const objectives = [
+    {
+      id: "high_risk",
+      label: "High Risk POs",
+      count: fmt.format(unique(highRisk.map((r) => r.po_ref_num ?? "")).length),
+      countNote: "open POs",
+      value: money.format(sumValue(highRisk)),
+      valueNote: "pending value",
+      tone: "orange",
+    },
+    {
+      id: "overdue",
+      label: "Overdue POs",
+      count: fmt.format(delayedRefs.length),
+      countNote: "open POs",
+      value: money.format(sumValue(delayed)),
+      valueNote: "pending value",
+      tone: "red",
+    },
+    {
+      id: "stockout_risk",
+      label: "Stock Out Risk (No Coverage)",
+      count: gaps ? fmt.format(riskGaps.length) : "—",
+      countNote: "variants",
+      value: gaps ? `${fmt.format(shortPieces(riskGaps))} pcs` : "—",
+      valueNote: "short of 45-day demand",
+      tone: "amber",
+      disabled: !gaps,
+    },
+    {
+      id: "out_of_stock",
+      label: "Out of Stock",
+      count: gaps ? fmt.format(oosGaps.length) : fmt.format(extras?.oosSummary?.zeroStock ?? 0),
+      countNote: "variants at zero",
+      value: gaps ? `${fmt.format(shortPieces(oosGaps))} pcs` : "—",
+      valueNote: "short of 45-day demand",
+      tone: "red",
+      disabled: !gaps && !extras?.oosSummary,
+    },
+    {
+      id: "otif",
+      label: "OTIF",
+      count: otifPct == null ? "—" : `${otifPct}%`,
+      countNote: "delivered on time",
+      value: rel ? fmt.format(relDelayed) : "—",
+      valueNote: `late of ${fmt.format(relTotal)} POs`,
+      tone: otifPct != null && otifPct < 80 ? "red" : "teal",
+      disabled: !rel,
+    },
+  ];
+
+  function openObjective(id: string) {
+    setObjective(id);
+    if (id === "high_risk") return onHighRisk(highRisk);
+    if (id === "overdue") return onOverdue(delayed);
+    // These three are owned by their own pages, which hold the working detail.
+    router.push(
+      id === "stockout_risk"
+        ? "/doq-dashboard"
+        : id === "out_of_stock"
+          ? "/oos-calculation"
+          : "/vendor-otif",
+    );
+  }
   const tracker = buildTrackerRows(
     rows,
     data.vendorTypes,
@@ -865,6 +1018,8 @@ function DashboardTab({
           info="Pending quantity times item price, summed across open SKU rows."
         />
       </div>
+      <ObjectiveTabs items={objectives} active={objective} onSelect={openObjective} />
+
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
@@ -3508,6 +3663,7 @@ export function DashboardShell({
                 data={data}
                 bucket={bucket}
                 setBucket={setBucket}
+                extras={analyticsExtras}
                 onHighRisk={setHighRisk}
                 onOverdue={setOverdue}
                 onVendorSelect={openVendorPos}

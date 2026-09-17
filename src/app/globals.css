@@ -1633,3 +1633,47 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   background: var(--surface-2, #f1f2f6);
 }
 .wf-file-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---- Dashboard objectives ----
+   Five standing objectives as tabs, each with a count and a value, each clickable. High Risk
+   and Overdue are separate objectives by design and are never shown as one combined figure. */
+.obj-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.obj-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 13px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line, #e7e2d2);
+  border-left: 3px solid var(--line, #e7e2d2);
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.obj-tab:hover:not(:disabled) { box-shadow: 0 3px 14px rgba(0, 0, 0, 0.07); }
+.obj-tab.is-active { background: #fbfaf6; box-shadow: 0 3px 14px rgba(0, 0, 0, 0.07); }
+.obj-tab:disabled { opacity: 0.55; cursor: default; }
+.obj-tab-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3, #6e695e);
+  line-height: 1.25;
+}
+.obj-tab-figs { display: flex; gap: 14px; align-items: flex-start; }
+.obj-tab-figs > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.obj-tab-figs b { font-size: 17px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.obj-tab-figs small { font-size: 10px; color: var(--ink-3, #6e695e); line-height: 1.3; }
+.obj-tab.tone-red { border-left-color: #c0392b; }
+.obj-tab.tone-orange { border-left-color: #d9722f; }
+.obj-tab.tone-amber { border-left-color: #d9a441; }
+.obj-tab.tone-teal { border-left-color: #3f8f84; }
+@media (max-width: 640px) { .obj-tabs { grid-template-columns: 1fr; } }
