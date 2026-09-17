@@ -153,10 +153,10 @@ export async function loadAnalyticsExtras(
 ): Promise<AnalyticsExtras> {
   const supabase = await client();
   const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
-  const openVariants = new Set(openPos.map((p) => norm(p.variant)).filter(Boolean));
 
   const extras: AnalyticsExtras = {
     stockoutGaps: null,
+    stockoutWatch30: null,
     planRealization: null,
     tnaTrend: null,
     closure: null,
@@ -349,39 +349,95 @@ export async function loadAnalyticsExtras(
      No demand/DOQ threshold (a stockout is a stockout); the full list is instead
      segmented by ABC/D class so priority is shown, not used to hide items. */
   try {
+    /* Stock-out risk, variant level.
+       Rewritten 2026-09-17 after the team found the old list wrong end to end. The old
+       version filtered on "no sellable stock" and then hid anything with an open PO, which
+       both under-counted (a variant with a PO arriving too late looked safe) and mixed the
+       filter order. Now: product state first, then test SKUs out, then risk.
+
+       LEAD_TIME_DAYS is the assumed time to get new goods in, the same 45 days for A, B and
+       C. If stock plus what is already on order does not cover 45 days, a new PO has to be
+       raised now or the variant runs dry before it can be replenished. */
+    const LEAD_TIME_DAYS = 45;
+    const WATCH_DAYS = 30;
     const classRules = {
       aAbove: rules.product_class_a_above ?? 10,
       bMin: rules.product_class_b_min ?? 7,
       cMin: rules.product_class_c_min ?? 3,
     };
-    // Paged: "every variant" means every variant, not the first 1000 in arbitrary order.
+
+    // Test SKUs live on the shared exclusion list (the same one the OOS and DOQ pages use).
+    const { data: excluded } = await supabase.from('sd_oos_sku_exclusion').select('sku');
+    const excludedSkus = new Set(
+      ((excluded ?? []) as { sku: string | null }[]).map((r) => norm(r.sku)).filter(Boolean),
+    );
+
+    // Only states that can actually sell. "NPD - Not Launched Yet" is excluded: it has never
+    // been on sale, so it cannot be out of stock against demand it does not have.
+    const sellingState = (raw: string | null) => {
+      const v = norm(raw);
+      if (v === 'ONGOING') return true;
+      return v.startsWith('NPD') && !v.includes('NOT LAUNCH');
+    };
+
     const data = await pageAll<{
       product_variant: string; product_code: string | null; product_name: string | null;
-      current_stock: number | null; doq_45: number | null; ipdoq: number | null; oos_flag: boolean | null;
+      product_state: string | null; current_stock: number | null; in_progress: number | null;
+      daily_demand: number | null; doq_45: number | null;
     }>(() =>
       supabase
         .from('sd_replenishment')
-        .select('product_variant, product_code, product_name, current_stock, doq_45, ipdoq, oos_flag')
+        .select('product_variant, product_code, product_name, product_state, current_stock, in_progress, daily_demand, doq_45')
         .order('product_variant'),
     );
-    extras.stockoutGaps = data
-      .filter(
-        (r) =>
-          (Number(r.current_stock) || 0) <= 0 &&
-          !openVariants.has(norm(r.product_variant)),
-      )
-      .map((r) => ({
-        product_variant: r.product_variant,
-        product_code: r.product_code,
-        product_name: r.product_name,
-        doq_45: Number(r.doq_45) || 0,
-        current_stock: Number(r.current_stock) || 0,
-        oos: Boolean(r.oos_flag),
-        // ABC/D from the DOQ-based velocity (ipdoq), same classifier used elsewhere.
-        abc_class: productClassOf(Number(r.ipdoq ?? r.doq_45) || 0, classRules),
-      }))
-      // Highest-velocity first so A/B surface at the top of the list + CSV.
-      .sort((a, b) => b.doq_45 - a.doq_45);
+
+    const assessed = data
+      .filter((r) => sellingState(r.product_state) && !excludedSkus.has(norm(r.product_variant)))
+      .map((r) => {
+        const stock = Number(r.current_stock) || 0;
+        const inProcess = Number(r.in_progress) || 0;
+        const demand = Number(r.daily_demand) || 0;
+        const daysOnHand = demand > 0 ? (stock + inProcess) / demand : null;
+        return {
+          product_variant: r.product_variant,
+          product_code: r.product_code,
+          product_name: r.product_name,
+          product_state: r.product_state,
+          current_stock: stock,
+          in_process: inProcess,
+          daily_demand: demand,
+          days_on_hand: daysOnHand,
+          doq_45: Number(r.doq_45) || 0,
+          // Class from how fast it actually sells, in pieces a day.
+          abc_class: productClassOf(demand, classRules),
+        };
+      });
+
+    const atRiskOf = (v: (typeof assessed)[number], horizon: number) => {
+      // Nothing in stock and nothing coming: it cannot sell today, whatever the demand.
+      if (v.in_process <= 0 && v.current_stock <= 0) return 'stopped' as const;
+      // Something is coming, but cover runs out before replenishment can land.
+      if (v.days_on_hand != null && v.days_on_hand < horizon) return 'short_cover' as const;
+      return null;
+    };
+
+    // Prioritised by DOQ, as agreed — the busiest variants first, then the most urgent.
+    const byPriority = (a: { doq_45: number; days_on_hand: number | null }, b: typeof a) =>
+      b.doq_45 - a.doq_45 ||
+      (a.days_on_hand ?? Number.POSITIVE_INFINITY) - (b.days_on_hand ?? Number.POSITIVE_INFINITY);
+
+    extras.stockoutGaps = assessed
+      .map((v) => ({ ...v, reason: atRiskOf(v, LEAD_TIME_DAYS) }))
+      .filter((v): v is typeof v & { reason: 'stopped' | 'short_cover' } => v.reason != null)
+      .sort(byPriority);
+
+    // The 30-day watch list is the fast sellers only: A and B are where a stock-out costs
+    // real sales, and D never reaches the threshold in practice.
+    extras.stockoutWatch30 = assessed
+      .filter((v) => v.abc_class === 'A' || v.abc_class === 'B')
+      .map((v) => ({ ...v, reason: atRiskOf(v, WATCH_DAYS) }))
+      .filter((v): v is typeof v & { reason: 'stopped' | 'short_cover' } => v.reason != null)
+      .sort(byPriority);
   } catch { /* section stays null */ }
 
   /* 1.9 Delivery reliability — per-vendor delay rate over the Rules-Master window

@@ -55,23 +55,44 @@ export type SdCustomRole = {
  * may be null = "data not available" — cards must show that state, never a
  * fake zero.
  */
+/**
+ * One variant on the stock-out risk list. Variant level, never product-code level.
+ *
+ * The population is filtered by product state FIRST (Ongoing and NPD only; NPD Not Launched
+ * Yet is excluded because it has never sold), then test SKUs are dropped, and only then is
+ * risk assessed. A variant is at risk for exactly one of two reasons:
+ *   - "stopped": nothing in stock and nothing on order, so it cannot sell at all;
+ *   - "short_cover": stock plus what is on order runs out before the 45-day lead time, so a
+ *     new PO is needed now or it will be out of stock before goods can arrive.
+ */
+export type StockoutRiskVariant = {
+  product_variant: string;
+  product_code: string | null;
+  product_name: string | null;
+  product_state: string | null;
+  current_stock: number;
+  in_process: number;
+  daily_demand: number;
+  /** Days of cover from stock + in-process. Null when there is no demand to divide by. */
+  days_on_hand: number | null;
+  doq_45: number;
+  reason: 'stopped' | 'short_cover';
+  /** Sales class from daily demand: A sells fastest, D slowest. */
+  abc_class: 'A' | 'B' | 'C' | 'D';
+};
+
 export type AnalyticsExtras = {
   /**
    * 1.4 — every variant with no stock and no open PO covering it (NO demand
    * threshold: a stockout is a stockout). Each carries its ABC/D class so the
    * card can segment the full list by priority instead of hiding low-DOQ items.
    */
-  stockoutGaps:
-    | {
-        product_variant: string;
-        product_code: string | null;
-        product_name: string | null;
-        doq_45: number;
-        current_stock: number;
-        oos: boolean;
-        abc_class: 'A' | 'B' | 'C' | 'D';
-      }[]
-    | null;
+  stockoutGaps: StockoutRiskVariant[] | null;
+  /**
+   * The 30-day watch list: fast-selling (A/B) variants whose stock plus what is on order
+   * runs out inside 30 days. Same population and rules as stockoutGaps, tighter horizon.
+   */
+  stockoutWatch30: StockoutRiskVariant[] | null;
   /** 1.5 — planned vs issued value per month (current + 2 prior) split by weave. */
   planRealization:
     | {

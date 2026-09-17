@@ -66,7 +66,8 @@ export async function loadProductHub(): Promise<ProductHubData> {
       abcClass: g.abc_class,
       currentStock: g.current_stock,
       doq45: g.doq_45,
-      oos: g.oos,
+      // "stopped" means nothing in stock and nothing on order — the old oos flag's meaning.
+      oos: g.reason === 'stopped',
     }))
     .sort((a, b) => CLASS_ORDER[a.abcClass] - CLASS_ORDER[b.abcClass] || b.doq45 - a.doq45);
 

@@ -18,6 +18,7 @@ import {
   Database,
   Factory,
   IndianRupee,
+  PackageSearch,
   PackageX,
   RefreshCw,
   Repeat,
@@ -43,7 +44,7 @@ import {
   istToday,
 } from "@/lib/business-logic";
 import type { DashboardData } from "@/lib/types";
-import type { AnalyticsExtras } from "@/lib/forms/types";
+import type { AnalyticsExtras, StockoutRiskVariant } from "@/lib/forms/types";
 import { downloadCsv } from "@/lib/download";
 import { InfoDot } from "./info-dot";
 import type { TabId } from "./side-nav";
@@ -1644,29 +1645,38 @@ export function ObjectiveStockCards({
   onTab: (id: TabId) => void;
 }) {
   const gaps = extras?.stockoutGaps ?? null;
+  const risk = gaps;
+  const watch = extras?.stockoutWatch30 ?? null;
   const oosSum = extras?.oosSummary ?? null;
-  const gapsByClass = gaps
-    ? (["A", "B", "C", "D"] as const).map((c) => ({
-        cls: c,
-        n: gaps.filter((g) => g.abc_class === c).length,
-      }))
-    : null;
-  // Objective spec 1.2: a count AND a value. These variants carry no price, so the value is
-  // the shortfall in pieces against 45-day demand.
-  const shortPieces = (list: NonNullable<typeof gaps>) =>
-    list.reduce((acc, g) => acc + Math.max(0, g.doq_45 - g.current_stock), 0);
-  const exportStockoutCsv = () => {
-    if (!gaps?.length) return;
+  const stopped = (risk ?? []).filter((v) => v.reason === "stopped");
+  /** Variant-level CSV: everything the buyer needs to raise the PO, nothing rolled up. */
+  const exportRiskCsv = (rows: StockoutRiskVariant[], filename: string) => {
+    if (!rows.length) return;
     downloadCsv(
-      "stockout-risk-variants.csv",
-      ["product_variant", "product_code", "product_name", "current_stock", "doq_45", "abc_class"],
-      gaps.map((g) => [
-        g.product_variant,
-        g.product_code ?? "",
-        g.product_name ?? "",
-        g.current_stock,
-        g.doq_45,
-        g.abc_class,
+      filename,
+      [
+        "product_variant",
+        "product_code",
+        "product_name",
+        "product_state",
+        "sales_class",
+        "current_stock",
+        "on_order",
+        "daily_demand",
+        "days_of_cover",
+        "reason",
+      ],
+      rows.map((v) => [
+        v.product_variant,
+        v.product_code ?? "",
+        v.product_name ?? "",
+        v.product_state ?? "",
+        v.abc_class,
+        v.current_stock,
+        v.in_process,
+        v.daily_demand,
+        v.days_on_hand == null ? "" : Math.round(v.days_on_hand),
+        v.reason === "stopped" ? "nothing in stock or on order" : "cover runs out before lead time",
       ]),
     );
   };
@@ -1674,91 +1684,127 @@ export function ObjectiveStockCards({
   return (
     <div className="ana-grid ana-tab-grid">
 
-        <AnaCard
-          title="Stockout Risk · No Coverage"
-          icon={PackageX}
-          tone={gaps == null ? "neutral" : gaps.length ? "red" : "green"}
-          status={
-            gaps == null ? "WAITING" : gaps.length ? "ACT NOW" : "COVERED"
-          }
-          cta="Open urgent replenishment"
-          span={5}
-          onClick={() => onTab("urgent-replenish")}
-          info="Every variant with no sellable stock and no open PO covering it — no demand threshold, so nothing is hidden. Segmented by ABC/D class (A/B = higher velocity) so priority shows without excluding anything. Download the full variant-level list as CSV."
-        >
-          {gaps == null ? (
-            <NoData text="Replenishment data is not available, so uncovered stockouts cannot be checked." />
-          ) : gaps.length ? (
-            <>
-              <div className="ana-metric-row">
-                <div>
-                  <strong className="ana-value ana-value-xl">
-                    {fmt.format(gaps.length)}
-                  </strong>
-                  <span className="ana-value-label">
-                    uncovered variants
-                  </span>
-                </div>
-                <div>
-                  <strong className="ana-value ana-value-xl">
-                    {fmt.format(shortPieces(gaps))}
-                  </strong>
-                  <span className="ana-value-label">
-                    pcs short of 45-day demand
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="ana-csv-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    exportStockoutCsv();
-                  }}
-                >
-                  Download CSV
-                </button>
+      <AnaCard
+        title="Stock Out Risk"
+        icon={PackageX}
+        tone={risk == null ? "neutral" : risk.length ? "red" : "green"}
+        status={risk == null ? "WAITING" : risk.length ? "ACT NOW" : "ALL COVERED"}
+        cta="Open urgent replenishment"
+        span={5}
+        onClick={() => onTab("urgent-replenish")}
+        info="Variants that will run out before new goods can arrive. Only products that can actually sell are counted: Ongoing and NPD, never NPD Not Launched Yet, and test SKUs are left out. A variant is listed for one of two reasons: it has nothing in stock and nothing on order, so it cannot sell at all; or what it has plus what is on order runs out inside the 45-day lead time, so a purchase order has to go out now. Listed per variant, busiest first. Download the full list as CSV."
+      >
+        {risk == null ? (
+          <NoData text="Replenishment data is not available, so stock-out risk cannot be checked." />
+        ) : risk.length ? (
+          <>
+            <div className="ana-metric-row">
+              <div>
+                <strong className="ana-value ana-value-xl">{fmt.format(risk.length)}</strong>
+                <span className="ana-value-label">variants need a PO now</span>
               </div>
-              <div className="ana-abcd-row">
-                {gapsByClass!.map(({ cls, n }) => (
-                  <span key={cls} className={`ana-abcd-chip cls-${cls}`}>
-                    {cls} · {fmt.format(n)}
-                  </span>
-                ))}
+              <div>
+                <strong className="ana-value ana-value-xl">{fmt.format(stopped.length)}</strong>
+                <span className="ana-value-label">cannot sell today</span>
               </div>
-              <ul className="ana-list ana-demand-list">
-                {gaps.slice(0, 5).map((gap, index) => (
-                  <li key={gap.product_variant}>
-                    <span className="ana-rank">{index + 1}</span>
-                    <span className="ana-list-stack">
-                      <span>
-                        {gap.product_name ??
-                          gap.product_code ??
-                          gap.product_variant}
-                      </span>
-                      <small className="mono">{gap.product_variant}</small>
-                    </span>
-                    <span className="ana-list-val">
-                      <span className={`ana-abcd-tag cls-${gap.abc_class}`}>
-                        {gap.abc_class}
-                      </span>
-                      DOQ {fmt.format(gap.doq_45)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {gaps.length > 5 && (
-                <p className="ana-more-note">
-                  +{fmt.format(gaps.length - 5)} more — download the CSV for the full list.
-                </p>
-              )}
-            </>
-          ) : (
-            <ZeroState
-              title="No uncovered stockout"
-              text="Every out-of-stock variant has an open PO in flight."
-            />
-          )}
-        </AnaCard>
+              <button
+                type="button"
+                className="ana-csv-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  exportRiskCsv(risk, "stock-out-risk-variants.csv");
+                }}
+              >
+                Download CSV
+              </button>
+            </div>
+            <div className="ana-abcd-row">
+              {(["A", "B", "C", "D"] as const).map((cls) => (
+                <span key={cls} className={`ana-abcd-chip cls-${cls}`}>
+                  {cls} · {fmt.format(risk.filter((r) => r.abc_class === cls).length)}
+                </span>
+              ))}
+              <span className="ana-value-label">A sells fastest</span>
+            </div>
+            <ul className="ana-list ana-demand-list">
+              {risk.slice(0, 5).map((v, index) => (
+                <li key={v.product_variant}>
+                  <span className="ana-rank">{index + 1}</span>
+                  <span className="ana-list-stack">
+                    <span>{v.product_name ?? v.product_code ?? v.product_variant}</span>
+                    <small className="mono">{v.product_variant}</small>
+                  </span>
+                  <span className="ana-list-val">
+                    <span className={`ana-abcd-tag cls-${v.abc_class}`}>{v.abc_class}</span>
+                    {v.reason === "stopped"
+                      ? "nothing in stock or on order"
+                      : `${Math.round(v.days_on_hand ?? 0)} days of cover`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <ZeroState
+            title="Everything is covered"
+            text="No sellable variant runs out inside the 45-day lead time."
+          />
+        )}
+      </AnaCard>
+
+      <AnaCard
+        title="Fast sellers running out in 30 days"
+        icon={PackageSearch}
+        tone={watch == null ? "neutral" : watch.length ? "amber" : "green"}
+        status={watch == null ? "WAITING" : watch.length ? `${fmt.format(watch.length)} TO ORDER` : "CLEAR"}
+        cta="Open urgent replenishment"
+        span={5}
+        onClick={() => onTab("urgent-replenish")}
+        info="The A and B sellers only — the ones where an empty shelf costs real sales — whose stock plus what is on order runs out inside 30 days. Same population and rules as Stock Out Risk, on a tighter horizon, so these are the orders to place first. D-class items rarely reach this list because they sell too slowly to run out quickly."
+      >
+        {watch == null ? (
+          <NoData text="Replenishment data is not available." />
+        ) : watch.length ? (
+          <>
+            <div className="ana-metric-row">
+              <div>
+                <strong className="ana-value ana-value-xl">{fmt.format(watch.length)}</strong>
+                <span className="ana-value-label">fast sellers at risk</span>
+              </div>
+              <button
+                type="button"
+                className="ana-csv-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  exportRiskCsv(watch, "fast-sellers-30-day-risk.csv");
+                }}
+              >
+                Download CSV
+              </button>
+            </div>
+            <ul className="ana-list ana-demand-list">
+              {watch.slice(0, 5).map((v, index) => (
+                <li key={v.product_variant}>
+                  <span className="ana-rank">{index + 1}</span>
+                  <span className="ana-list-stack">
+                    <span>{v.product_name ?? v.product_code ?? v.product_variant}</span>
+                    <small className="mono">{v.product_variant}</small>
+                  </span>
+                  <span className="ana-list-val">
+                    <span className={`ana-abcd-tag cls-${v.abc_class}`}>{v.abc_class}</span>
+                    {Math.round(v.days_on_hand ?? 0)} days left
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <ZeroState
+            title="No fast seller is short"
+            text="Every A and B variant has more than 30 days of cover."
+          />
+        )}
+      </AnaCard>
         <AnaCard
           title="Out of Stock"
           icon={PackageX}
@@ -1784,8 +1830,8 @@ export function ObjectiveStockCards({
                 <span><small>Tracked</small><b>{fmt.format(oosSum.totalSkus)}</b></span>
                 {gaps && (
                   <span>
-                    <small>Short of demand</small>
-                    <b>{fmt.format(shortPieces(gaps.filter((g) => g.oos)))} pcs</b>
+                    <small>Cannot sell</small>
+                    <b>{fmt.format(gaps.filter((g) => g.reason === "stopped").length)}</b>
                   </span>
                 )}
               </div>
