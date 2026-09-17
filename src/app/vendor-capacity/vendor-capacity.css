@@ -284,3 +284,7 @@
   color: #c0392b;
   font-weight: 650;
 }
+
+/* In a Reporting utilisation column the phrase replaces the figure, so let it wrap rather
+   than widen the column. */
+.ui-view-vendor-capacity .vc-util-cell .vc-over-text { white-space: normal; line-height: 1.3; }

@@ -86,6 +86,22 @@ function CapacityMetric({
   );
 }
 
+/**
+ * A utilisation cell. At or past 100% the number stops being the useful thing — 2,815% and
+ * 1,833% are both simply over — so the cell states the condition instead. Under 100% it keeps
+ * the figure and the bar, where the exact value still tells you how much room is left.
+ */
+function UtilCell({ value }: { value: number | null }) {
+  if (value == null) return <span className="wf-subtle">—</span>;
+  if (value >= 100) return <span className="vc-over-text">100% and Over Utilised</span>;
+  return (
+    <>
+      <span className={`vc-pill ${value >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{value}%</span>
+      <CapacityBar value={value} />
+    </>
+  );
+}
+
 function CapacityBar({ value }: { value: number | null }) {
   return (
     <span className="vc-progress" aria-hidden="true">
@@ -906,13 +922,27 @@ function ReportingTab({
       <div className="vc-metrics">
         <CapacityMetric label="Total PO capacity" value={fmt.format(totalCapacity)} detail="pcs / month" />
         <CapacityMetric label="In process" value={fmt.format(totalInProcess)} detail="open production quantity" tone="blue" />
-        <CapacityMetric label="Overall utilization" value={overallUtil == null ? '—' : `${overallUtil}%`} detail={totalCapacity ? `${fmt.format(totalCapacity - totalInProcess)} pcs headroom` : 'No capacity entered'} tone="amber" />
+        <CapacityMetric
+          label="Overall utilization"
+          value={
+            overallUtil == null ? '—' : overallUtil >= 100 ? '100% and Over Utilised' : `${overallUtil}%`
+          }
+          detail={
+            !totalCapacity
+              ? 'No capacity entered'
+              : totalInProcess > totalCapacity
+                ? `${fmt.format(totalInProcess - totalCapacity)} pcs past capacity`
+                : `${fmt.format(totalCapacity - totalInProcess)} pcs headroom`
+          }
+          tone={overallUtil != null && overallUtil >= 100 ? 'red' : 'amber'}
+        />
         <CapacityMetric label="100% and over Utilised" value={String(rows.filter((row) => row.util != null && row.util >= 100).length)} detail="vendors at or past capacity" tone="red" />
       </div>
       <Notice tone="info">
         Utilization = in-process ÷ PO capacity, where PO capacity uses the <strong>interim</strong>{' '}
         capacity multiplier (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5) — the same basis as Vendor
-        Performance. Over 100% = over-committed. Click a vendor to open its product allocation.
+        Performance. At or past 100% a row reads <strong>100% and Over Utilised</strong> instead
+        of a percentage. Click a vendor to open its product allocation.
       </Notice>
 
       <div className="vc-report-grid">
@@ -934,7 +964,7 @@ function ReportingTab({
                   <td className="strong">{p.label}</td>
                   <td className="num">{fmt.format(p.cap)}</td>
                   <td className="num">{fmt.format(p.inProc)}</td>
-                  <td className="vc-util-cell"><span className={`vc-pill ${p.util == null ? '' : p.util > 100 ? 'vc-pill-red' : p.util >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{p.util == null ? '—' : `${p.util}%`}</span><CapacityBar value={p.util} /></td>
+                  <td className="vc-util-cell"><UtilCell value={p.util} /></td>
                 </tr>
               ))}
               {!pivot.length && (
@@ -970,7 +1000,7 @@ function ReportingTab({
                   <td>{r.type}</td>
                   <td className="num">{fmt.format(r.cap)}</td>
                   <td className="num">{fmt.format(r.inProc)}</td>
-                  <td className="vc-util-cell"><span className={`vc-pill ${r.util == null ? '' : r.util > 100 ? 'vc-pill-red' : r.util >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{r.util == null ? '—' : `${r.util}%`}</span><CapacityBar value={r.util} /></td>
+                  <td className="vc-util-cell"><UtilCell value={r.util} /></td>
                   <td>
                     <button
                       type="button"
