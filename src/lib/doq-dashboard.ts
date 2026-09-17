@@ -34,13 +34,25 @@ const STATUS_ORDER = [
 
 export type ClassRules = { aAbove: number; bMin: number; cMin: number };
 
-/** NPD-family states are not ABC-classified — their COM suffix is "NPD". */
+/**
+ * True for the NPD family of product STATES (NPD, NPD - Not Launched Yet).
+ *
+ * State and sales class are two independent dimensions and must never be merged. A product
+ * has a state (Ongoing, NPD, To Be Discontinued, Discontinued) AND a class (A to D by how
+ * fast it sells). D is the slowest seller, NOT a product on its way out; "To Be
+ * Discontinued" is a state and says nothing about how well the product sells. Use this to
+ * describe or filter by state only — never to fill in a class.
+ */
 export function isNpdFamily(state: string | null): boolean {
   const s = (state ?? '').toLowerCase();
   return s.includes('npd') || s.includes('not launch');
 }
 
-/** ABC/D class from the SKU's IPDOQ: >a → A, ≥b → B, ≥c → C, else D. */
+/**
+ * Sales class from the SKU's velocity: >a → A, ≥b → B, ≥c → C, else D. A sells fastest, D
+ * slowest. Every product has one, whatever its state — an NPD or to-be-discontinued product
+ * still sells at some rate. Keep the state in its own column.
+ */
 export function productClassOf(ipdoq: number, r: ClassRules): 'A' | 'B' | 'C' | 'D' {
   if (ipdoq > r.aAbove) return 'A';
   if (ipdoq >= r.bMin) return 'B';
@@ -64,13 +76,17 @@ export function computeSkuIpdoq(
   return Math.max(floor, raw || 0);
 }
 
-/** COM STATUS = "<state>-<class>"; NPD-family gets the literal "-NPD". */
+/**
+ * COM STATUS = "<state>-<class>" — the one place the two dimensions are deliberately shown
+ * together, as a compound grouping key. Both halves are always present: an NPD product keeps
+ * its real sales class rather than having the class overwritten with its state.
+ */
 export function comStatusOf(state: string | null, cls: string): string {
   const s = state?.trim() || 'Unknown';
-  return `${s}-${isNpdFamily(s) ? 'NPD' : cls}`;
+  return `${s}-${cls}`;
 }
 
-/** Sheet ordering for COM rows: base state order first, then class A<B<C<D<NPD. */
+/** Sheet ordering for COM rows: state order first, then sales class A < B < C < D. */
 export function compareCom(a: string, b: string): number {
   const base = (v: string) => {
     const i = v.lastIndexOf('-');

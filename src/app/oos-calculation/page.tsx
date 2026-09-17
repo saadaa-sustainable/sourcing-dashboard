@@ -10,7 +10,7 @@ import {
   loadSkuClassInputs,
   NotConfiguredError,
 } from '@/lib/forms/queries';
-import { computeSkuIpdoq, isNpdFamily, productClassOf } from '@/lib/doq-dashboard';
+import { computeSkuIpdoq, productClassOf } from '@/lib/doq-dashboard';
 import { OosCalculationClient } from './oos-calculation-client';
 
 export const dynamic = 'force-dynamic';
@@ -65,7 +65,9 @@ export default async function OosCalculationPage() {
       ...r,
       launch_date: r.launch_date ?? m?.launch ?? null,
       sales_value: r.sales_value ?? m?.mrp ?? null,
-      product_class: isNpdFamily(r.product_status) ? 'NPD' : productClassOf(ipdoq, classRules),
+      // Class is how fast it sells; the product's state lives in its own column. An NPD or
+      // to-be-discontinued SKU still has a sales class and must keep it.
+      product_class: productClassOf(ipdoq, classRules),
     };
   });
 

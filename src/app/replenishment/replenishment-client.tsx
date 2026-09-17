@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { InfoDot } from '@/components/info-dot';
-import { isNpdFamily, productClassOf, type ClassRules } from '@/lib/doq-dashboard';
+import { productClassOf, type ClassRules } from '@/lib/doq-dashboard';
 import { saveAnalyticsRule } from '@/lib/forms/actions';
 import { reloadWithToast } from '@/lib/toast';
 import type { ReplenishmentRow } from '@/lib/forms/types';
@@ -80,7 +80,8 @@ const buildCols = (
     kind: 'text',
     filter: 'select',
     accessor: (r) =>
-      isNpdFamily(r.product_state) ? 'NPD' : productClassOf(r.ipdoq ?? 0, classRules),
+      // Sales class only — the product state is a separate dimension and has its own column.
+      productClassOf(r.ipdoq ?? 0, classRules),
     info: 'ABC/D classification from IPDOQ (A above 10/day, B ≥ 7, C ≥ 3, else D — rules-master thresholds). NPD-family products are not classed.',
   },
   { key: 'rop_30', source: 'computed', label: '30d', kind: 'num', info: 'Reorder quantity to cover the next 30 days at the IPDOQ rate, net of stock and in-process.', render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
