@@ -126,7 +126,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "Pending qty & value", text: "Pending qty = sum of pending pieces; Pending value = sum of (pending qty × item price). Both tables sort by quantity." },
   ],
   "urgent-replenish": [
-    { title: "In Process (365d)", text: "Open PO stock arriving soon — open lines whose EDD is set and falls between today and today + 365 days." },
+    { title: "Arriving this month", text: "Pieces still to arrive whose delivery date falls inside the current month. The schedule beneath it groups every open line by the month it is due, with anything already past its date separated out and undated lines shown last.", tip: "A year-long window was meaningless against 60 to 90 day production, so arrivals are read by month." },
     { title: "Out of Stock", text: "Products with 0 pending quantity across their lines: nothing is currently on the way to replenish them." },
     { title: "How to use this page", text: "Start with the out-of-stock products, then check the In Process table to see what stock is already coming and when." },
   ],
@@ -3136,16 +3136,52 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
       ),
     [data],
   );
-  // Open lines due within the next 365 days — overdue lines included (they are
-  // still arriving), which is what makes the Delay column meaningful.
-  const inProcess365 = tracker.filter((row) => {
-    if (!row.edd) return false;
-    const eddDate = new Date(row.edd);
-    const daysUntilEdd = Math.floor(
-      (eddDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-    );
-    return daysUntilEdd <= 365;
+  /* Arrivals, month by month.
+
+     "Within 365 days" was not a horizon anyone plans against: production runs 60 to 90 days,
+     so a year-long window swept in everything and answered nothing. What a buyer needs is
+     when goods actually land — this month, next month, the month after — with whatever is
+     already late called out first, because that is the part needing a phone call today.
+
+     Anything due beyond the third month is grouped as "Later": at that distance the month is
+     a promise, not a plan, and splitting it further implies a precision the dates do not have. */
+  const monthKey = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  const monthLabelOf = (d: Date) =>
+    d.toLocaleDateString("en-IN", { month: "short", year: "numeric", timeZone: "UTC" });
+  const horizonMonths = [0, 1, 2].map((add) => {
+    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + add, 1));
+    return { key: monthKey(d), label: monthLabelOf(d) };
   });
+  const arrivalsOpen = tracker.filter((row) => row.pendingQty > 0);
+  const arrivalBuckets = [
+    { key: "overdue", label: "Already late", qty: 0, lines: 0, tone: "red" },
+    ...horizonMonths.map((m, i) => ({
+      key: m.key,
+      label: i === 0 ? `${m.label} (this month)` : m.label,
+      qty: 0,
+      lines: 0,
+      tone: i === 0 ? "amber" : "teal",
+    })),
+    { key: "later", label: "Later", qty: 0, lines: 0, tone: "blue" },
+    { key: "nodate", label: "No delivery date", qty: 0, lines: 0, tone: "orange" },
+  ];
+  const bucketOf = (row: (typeof arrivalsOpen)[number]) => {
+    if (!row.edd) return "nodate";
+    const edd = new Date(row.edd);
+    if (edd.getTime() < today.getTime()) return "overdue";
+    const k = monthKey(edd);
+    return horizonMonths.some((m) => m.key === k) ? k : "later";
+  };
+  arrivalsOpen.forEach((row) => {
+    const b = arrivalBuckets.find((x) => x.key === bucketOf(row));
+    if (!b) return;
+    b.qty += row.pendingQty;
+    b.lines += 1;
+  });
+  const arrivalsTotal = arrivalBuckets.reduce((sum, b) => sum + b.qty, 0);
+  const maxBucketQty = Math.max(1, ...arrivalBuckets.map((b) => b.qty));
+  const dueThisMonth = arrivalBuckets.find((b) => b.key === horizonMonths[0].key);
+  const lateBucket = arrivalBuckets.find((b) => b.key === "overdue");
   // Products whose PO lines are fully received (nothing left on order) — ranked by
   // how many such lines, most first. The KPI counts all of them; the chart shows 20.
   const productOOSAll = Object.values(
@@ -3169,24 +3205,17 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
   ).sort((a, b) => b.count - a.count);
   const productOOS = productOOSAll.slice(0, 20);
 
-  const inProcessData = inProcess365.slice(0, 15).map((row) => ({
-    productCode: row.productCode,
-    vendor: row.vendorCode || row.vendorName,
-    qty: row.pendingQty,
-    edd: row.edd,
-    delayDays: row.delayDays,
-  }));
 
   return (
     <>
       <div className="metric-grid compact summary">
         <Card
-          label="In Process (365d)"
-          value={fmt.format(inProcess365.length)}
-          note="open PO lines due within 365 days"
+          label="Arriving this month"
+          value={fmt.format(dueThisMonth?.qty ?? 0)}
+          note={`pieces due this month${lateBucket?.qty ? ` · ${fmt.format(lateBucket.qty)} already late` : ""}`}
           tone="teal"
           big
-          info="A count of open PO lines (one line = PO × product × delivery date) with pending quantity due within the next 365 days, including lines already overdue. It is a count of lines, not of POs and not a quantity."
+          info="Pieces still to arrive with a delivery date falling inside the current month. Production runs 60 to 90 days, so the month is the unit worth planning against — see the schedule below for what follows it."
         />
         <Card
           label="Nothing on order"
@@ -3199,46 +3228,35 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
       </div>
       <div className="chart-grid">
         <ChartCard
-          title="In Process — top products by pending quantity"
-          info="The SKUs with the largest pending PO quantity arriving within 365 days — your biggest inbound replenishment."
+          title="Arrival schedule — pieces by month"
+          kicker="When goods land"
+          info="Open pieces grouped by the month their delivery date falls in. Anything already past its date is separated out, because it needs chasing rather than planning. Lines with no delivery date are shown last: they cannot be scheduled at all until a date is set."
           download={{
-            filename: "in-process-365",
-            headers: ["Product", "Vendor", "Qty", "EDD", "Delay days"],
-            rows: inProcessData.map((row) => [
-              row.productCode,
-              row.vendor,
-              row.qty,
-              row.edd ?? "No EDD",
-              row.delayDays,
-            ]),
+            filename: "arrival-schedule",
+            headers: ["When", "Pieces", "PO lines"],
+            rows: arrivalBuckets.map((b) => [b.label, b.qty, b.lines]),
           }}
         >
-          {inProcessData.length ? (
-            <ResponsiveContainer>
-              <BarChart
-                data={inProcessData}
-                layout="vertical"
-                margin={{ left: 100 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" />
-                <YAxis
-                  type="category"
-                  dataKey="productCode"
-                  interval={0}
-                  width={100}
-                />
-                <Tooltip />
-                <Bar
-                  dataKey="qty"
-                  name="Pending quantity"
-                  fill="#4f7c4d"
-                  radius={[0, 5, 5, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          {arrivalsTotal ? (
+            <div className="arrival-schedule">
+              {arrivalBuckets.map((b) => (
+                <div className={`arrival-row tone-${b.tone}`} key={b.key}>
+                  <span className="arrival-when">{b.label}</span>
+                  <span className="arrival-bar">
+                    <i style={{ width: `${Math.round((b.qty / maxBucketQty) * 100)}%` }} />
+                  </span>
+                  <span className="arrival-qty">
+                    <b>{fmt.format(b.qty)}</b>
+                    <small>
+                      {fmt.format(b.lines)} line{b.lines === 1 ? "" : "s"}
+                      {arrivalsTotal ? ` · ${Math.round((b.qty / arrivalsTotal) * 100)}%` : ""}
+                    </small>
+                  </span>
+                </div>
+              ))}
+            </div>
           ) : (
-            <Empty text="No products expected within 365 days" />
+            <Empty text="Nothing is on order" />
           )}
         </ChartCard>
         <ChartCard
@@ -3286,12 +3304,12 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
       <section className="panel table-panel">
         <div className="panel-title">
           <h3>
-            In Process inventory (365 days)
-            <InfoDot text="Every open PO line expected within the next 365 days — product, vendor, quantity, EDD and current delay." />
+            Arrivals — every open line
+            <InfoDot text="Every open PO line still to arrive: product, vendor, quantity, expected delivery date and current delay. Sort or filter it to work a single month, a single vendor or the already-late lines." />
           </h3>
         </div>
         <FilterTable
-          rows={inProcess365}
+          rows={arrivalsOpen}
           columns={[
             { key: "productCode", label: "Product" },
             { key: "vendor", label: "Vendor", accessor: (r) => r.vendorCode || r.vendorName, render: (r) => r.vendorCode || r.vendorName },
@@ -3308,8 +3326,8 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           defaultSource="easyecom"
           unit="lines"
           searchPlaceholder="Product, vendor, PO…"
-          emptyText="No products in process within 365 days."
-          download={{ filename: "in-process-365d" }}
+          emptyText="Nothing is on order."
+          download={{ filename: "arrivals-open-lines" }}
         />
       </section>
     </>

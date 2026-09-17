@@ -1669,3 +1669,34 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .glossary-item dd { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-2, #3f3b33); }
 .glossary-intro { margin: 0 0 12px; font-size: 12px; line-height: 1.5; color: var(--ink-3, #6e695e); max-width: 70ch; }
 .glossary-item dd small { display: block; margin-top: 4px; font-size: 11px; color: var(--ink-3, #6e695e); }
+
+/* ---- Arrival schedule ----
+   Open pieces grouped by the month they are due. A year-long horizon meant nothing against
+   60-90 day production, so the unit is the month, with the already-late band called out
+   first because it needs chasing rather than planning. */
+.arrival-schedule { display: flex; flex-direction: column; gap: 9px; }
+.arrival-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr minmax(96px, auto);
+  align-items: center;
+  gap: 12px;
+}
+.arrival-when { font-size: 12px; font-weight: 600; }
+.arrival-bar {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--color-ecru-200, #ece7d9);
+  overflow: hidden;
+}
+.arrival-bar i { display: block; height: 100%; border-radius: 4px; background: #3f8f84; }
+.arrival-row.tone-red .arrival-bar i { background: #c0392b; }
+.arrival-row.tone-amber .arrival-bar i { background: #d9a441; }
+.arrival-row.tone-blue .arrival-bar i { background: #4d6fa9; }
+.arrival-row.tone-orange .arrival-bar i { background: #d9722f; }
+.arrival-qty { text-align: right; line-height: 1.25; }
+.arrival-qty b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+.arrival-qty small { font-size: 10.5px; color: var(--ink-3, #6e695e); }
+@media (max-width: 640px) {
+  .arrival-row { grid-template-columns: 1fr auto; }
+  .arrival-bar { grid-column: 1 / -1; }
+}
