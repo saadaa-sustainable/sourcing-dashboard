@@ -636,6 +636,43 @@ function DashboardTab({
 
   // Figures the objective cards below need.
   const highRiskRefs = unique(highRisk.map((r) => r.po_ref_num ?? "")).length;
+
+  /*
+    Open value, by PO type.
+
+    Two things this gets right that a plain sum over open lines does not.
+
+    First, it nets reversals. A cancelled or reversed line comes back as a NEGATIVE pending
+    quantity on the same purchase order. Summing only the positive lines counts the original
+    order in full and ignores the credit against it, so the book reads high. Value is summed
+    over every line of a purchase order that is still open, negatives included.
+
+    Second, job work is valued at the job-work rate, not at a garment price: item_price on a
+    JOB line is already the CMT rate (around Rs 112 a piece against Rs 320 on FOB), so the
+    three types must be shown apart rather than blended into one number.
+  */
+  const openRefSet = new Set(openRefs);
+  const poTypeOf = (r: PendingPo) => {
+    const t = (r.po_type ?? "").trim().toUpperCase();
+    if (t === "FOB" || t === "EFOB" || t === "JOB") return t;
+    return "Other";
+  };
+  const valueByType = rows
+    .filter((r) => openRefSet.has(r.po_ref_num ?? ""))
+    .reduce<Record<string, { value: number; qty: number }>>((acc, r) => {
+      const key = poTypeOf(r);
+      const cur = (acc[key] ??= { value: 0, qty: 0 });
+      cur.value += r.pending_qty_actual * r.item_price;
+      cur.qty += r.pending_qty_actual;
+      return acc;
+    }, {});
+  const openValueNet = Object.values(valueByType).reduce((sum, v) => sum + v.value, 0);
+  const typeOrder = ["FOB", "EFOB", "JOB", "Other"] as const;
+  const typeLabel: Record<string, string> = { FOB: "FOB", EFOB: "E-FOB", JOB: "Job work", Other: "Untyped" };
+  const valueSplit = typeOrder
+    .filter((t) => valueByType[t]?.value)
+    .map((t) => `${typeLabel[t]} ${money.format(valueByType[t].value)}`)
+    .join(" · ");
   const tracker = buildTrackerRows(
     rows,
     data.vendorTypes,
@@ -935,13 +972,11 @@ function DashboardTab({
         />
         <Card
           label="Open Value"
-          value={money.format(
-            open.reduce((s, r) => s + r.pending_qty_actual * r.item_price, 0),
-          )}
-          note="pending qty × item price"
+          value={money.format(openValueNet)}
+          note={valueSplit || "pending qty × item price"}
           tone="teal"
           icon={IndianRupee}
-          info="Pending quantity times item price, summed across open SKU rows."
+          info="Pending quantity times item price across every line of an open PO, split by PO type. Job work is valued at its job-work rate, not at a garment price, so the three types are shown apart rather than blended. Reversed and cancelled lines come back as negative quantities and are netted off here rather than ignored, which a sum over positive lines only would do."
         />
       </div>
       <div className="bento-grid">
