@@ -616,12 +616,20 @@ function DashboardTab({
   const highRisk = open.filter((row) => isHighRiskLine(row, lookups.tnaByPo, today));
   const openRefs = unique(open.map((row) => row.po_ref_num ?? ""));
   const delayedRefs = unique(delayed.map((row) => row.po_ref_num ?? ""));
-  // Overdue is measured against the expected delivery date, so a line without one can never
-  // count as overdue however long it has been sitting. Say how many are in that position
-  // rather than letting the percentage read as though it covered the whole book.
-  const noEddRefs = unique(
-    open.filter((r) => !r.expected_delivery_date).map((r) => r.po_ref_num ?? ""),
-  ).length;
+  /*
+    Overdue is judged on the expected delivery date, so a PO with no date can never be counted
+    however long it sits. The figure worth stating is how many POs are INVISIBLE to the
+    measure, which is not the same as how many have a blank line on them.
+
+    Today 328 open lines carry no date, spread across 8 POs — but 6 of those 8 also have dated
+    lines, so the PO is already being judged (5 of them already count as overdue). Only the POs
+    where NOT ONE open line has a date are genuinely unmeasurable: 2 of them. Counting the 8
+    would overstate the blind spot fourfold.
+  */
+  const refsWithDate = new Set(
+    open.filter((r) => r.expected_delivery_date).map((r) => r.po_ref_num ?? ""),
+  );
+  const undatedRefs = openRefs.filter((ref) => !refsWithDate.has(ref)).length;
 
   /**
    * The five standing objectives. Each carries a count and a value and each is clickable:
@@ -927,7 +935,7 @@ function DashboardTab({
               note={`${money.format(sumValue(delayed))} pending · ${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · view audit`}
               tone="red"
               icon={CalendarClock}
-              info={`Open POs whose expected delivery date is already past, with the pending value still sitting behind them. Click to open the audit list. Kept separate from High Risk: a PO can be overdue without any TNA stage having slipped.${noEddRefs ? ` Note that ${noEddRefs} open PO${noEddRefs === 1 ? " has" : "s have"} no expected delivery date at all, so they cannot be counted here however long they have been open — see the No EDD bucket in PO ageing.` : ""}`}
+              info={`Open POs whose expected delivery date is already past, with the pending value still sitting behind them. Click to open the audit list. Kept separate from High Risk: a PO can be overdue without any TNA stage having slipped.${undatedRefs ? ` ${undatedRefs} open PO${undatedRefs === 1 ? " has" : "s have"} no expected delivery date on any line, so ${undatedRefs === 1 ? "it cannot" : "they cannot"} be counted here however long ${undatedRefs === 1 ? "it has" : "they have"} been open — see the No EDD bucket in PO ageing.` : ""}`}
               onClick={() => onOverdue(delayed)}
             />
             <Card
