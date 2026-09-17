@@ -548,14 +548,14 @@ function FilterSelect({
  * The Main Dashboard is read in seven passes, each answering one question, so nobody scrolls
  * a single page looking for the number they came for.
  *
- * "Objectives" is the standing five. "Open orders today" is the working view exactly as it
- * was. The remaining five group the cross-module analytics by the decision they serve rather
- * than by which module produced them.
+ * "Objectives" is the standing five plus the two money cards — what is at stake sits with the
+ * problems it is at stake over. "Open orders today" is the working view exactly as it was. The
+ * rest group the cross-module analytics by the decision they serve rather than by which module
+ * produced them.
  */
 const DASH_GROUPS = [
   ["objectives", "Objectives"],
   ["orders", "Open orders today"],
-  ["money", "Money committed"],
   ["stock", "Will we run out"],
   ["plan", "Buying to plan"],
   ["vendors", "Who we buy from"],
@@ -3600,18 +3600,33 @@ export function DashboardShell({
                 ))}
               </div>
               {dashGroup === "objectives" || dashGroup === "orders" ? (
-                <DashboardTab
-                  data={data}
-                  bucket={bucket}
-                  setBucket={setBucket}
-                  extras={analyticsExtras}
-                  section={dashGroup}
-                  onTab={setTab}
-                  onHighRisk={setHighRisk}
-                  onOverdue={setOverdue}
-                  onVendorSelect={openVendorPos}
-                  expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
-                />
+                <>
+                  <DashboardTab
+                    data={data}
+                    bucket={bucket}
+                    setBucket={setBucket}
+                    extras={analyticsExtras}
+                    section={dashGroup}
+                    onTab={setTab}
+                    onHighRisk={setHighRisk}
+                    onOverdue={setOverdue}
+                    onVendorSelect={openVendorPos}
+                    expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
+                  />
+                  {/* Capital at Risk and Cost Variance render from AnalyticsCards, which owns
+                      the tracker maths behind them — rendering them here keeps that one
+                      implementation rather than copying it. */}
+                  {dashGroup === "objectives" && (
+                    <AnalyticsCards
+                      data={data}
+                      rules={analyticsRules}
+                      extras={analyticsExtras}
+                      onTab={setTab}
+                      isAdmin={role === "admin"}
+                      only="money"
+                    />
+                  )}
+                </>
               ) : (
                 <AnalyticsCards
                   data={data}

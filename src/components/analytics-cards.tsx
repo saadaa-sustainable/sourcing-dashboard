@@ -409,6 +409,7 @@ export function AnalyticsCards({
 
   return (
     <section className="ana-board" aria-labelledby="decision-briefing-title">
+      {!only && (
       <header className="ana-brief">
         <div className="ana-brief-copy">
           <span className="ana-eyebrow">Cross-module insights</span>
@@ -448,6 +449,7 @@ export function AnalyticsCards({
           </span>
         </div>
       </header>
+      )}
 
       {!only && (
       <div className="ana-tabs" role="tablist" aria-label="Decision views">
