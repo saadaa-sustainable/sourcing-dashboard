@@ -71,6 +71,7 @@ import type {
 import { TnaBreakdown } from "./tna-breakdown";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
+import { GLOSSARY } from "@/lib/glossary";
 import { AnalyticsCards, ObjectiveStockCards } from "@/components/analytics-cards";
 import { canView } from "@/lib/views";
 import type { AnalyticsExtras, PoClosureView, SdRole } from "@/lib/forms/types";
@@ -100,7 +101,7 @@ const simpleGlossary: Record<string, HelpItem[]> = {
     { title: "One row = one open PO", text: "Each row is a purchase order grouped by PO number, product and delivery date. 'Variants' counts the distinct variants (e.g. colours) on that PO — it is not a piece count." },
     { title: "Pending, Delivered & EasyCom", text: "Pending qty/value are what is still to come; Delivered is received ÷ ordered. The EasyCom column is the delivery/closure state (Layer 1): Approved (nothing received), Partially Received, or Closure Pending (≥95% received — functionally done but not yet closed on EasyCom, shown amber). Completed / Approval-Pending POs stay out of this open view." },
     { title: "EDD, Delay & Days Overdue", text: "EDD is the promised delivery date. Delay = today − EDD (0 shows as On time). Days Overdue buckets that delay: Not Due, 0–7, 8–15, 16–30, 30+ days, or No EDD." },
-    { title: "Task-list tabs", text: "Filter lenses over this one table (a row can match several): High Risk (any critical-path TNA stage past its planned date, not done — pure TNA), On Time (inverse of High Risk), Overdue (EDD is past — EDD-only), PO Not Closed on EE (received ≥95% but not closed on EasyCom), and Due Today (a TNA stage is planned for today and not done — act now, distinct from already-overdue). The Internal status column still shows the Layer-2 precedence Overdue → High Risk → On Track.", tip: "High Risk is a live snapshot — it clears the moment the overdue stage is marked done." },
+    { title: "Task-list tabs", text: "Filter lenses over this one table (a row can match several): High Risk (any critical-path production stage past its planned date and not done), On Time (inverse of High Risk), Overdue (the expected delivery date has passed), Received but not closed in EasyCom (95% or more received but the order is still open there), and Due Today (a TNA stage is planned for today and not done — act now, distinct from already-overdue). The Internal status column still shows the Layer-2 precedence Overdue → High Risk → On Track.", tip: "High Risk is a live snapshot — it clears the moment the overdue stage is marked done." },
     { title: "TNA stage", text: "The earliest production stage not yet completed: PP Sample → GPT → Cutting → Inline / Midline QC → First Delivery → PO Closer. Shows '… Pending', 'Production' when every stage is done, or 'Not in TNA Tracker' when no timeline exists." },
     { title: "Per-stage TNA vs Actual", text: "Each stage shows its planned (TNA) date next to the actual date, plus a per-stage verdict: On Time, 'On Time · N days early', 'Delay N d', or Pending. There is no single lumped total — delay is read stage by stage.", tip: "Scroll right for PP, GPT, Cutting, Inline and PO Closer." },
     { title: "TNA sequence (data-entry check)", text: "Stages are strictly linear. If a later stage is marked done while an earlier one is still blank, it is flagged as a data-entry error with a lock icon, and the earliest still-pending stage is treated as the real status rather than skipping ahead." },
@@ -1496,7 +1497,7 @@ const TASK_TABS: { label: string; test: (r: TrackerRow) => boolean }[] = [
   { label: "High Risk", test: (r) => r.highRisk },
   { label: "On Time", test: (r) => !r.highRisk },
   { label: "Overdue", test: (r) => r.delayDays > 0 },
-  { label: "PO Not Closed on EE", test: (r) => r.easycomStatus === "Closure Pending" },
+  { label: "Received but not closed in EasyCom", test: (r) => r.easycomStatus === "Closure Pending" },
   { label: "Due Today", test: (r) => r.dueToday },
 ];
 
@@ -3704,6 +3705,26 @@ export function DashboardShell({
                 </div>
               </article>
             ))}
+          </div>
+
+          {/* Every short form the dashboard uses, in plain words. It sits behind the same
+              "What do these mean?" button on every tab, so nobody has to ask what a label
+              means — which is the point: a person who has to ask twice stops using the screen. */}
+          <div className="glossary">
+            <h3 className="glossary-head">Words used across the dashboard</h3>
+            <dl className="glossary-list">
+              {GLOSSARY.map((t) => (
+                <div className="glossary-item" key={t.term}>
+                  <dt>
+                    {t.term}
+                    <span className={t.needsDefinition ? "glossary-gap" : "glossary-expansion"}>
+                      {t.needsDefinition ? "meaning not confirmed" : t.expansion}
+                    </span>
+                  </dt>
+                  <dd>{t.meaning}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </Modal>
       )}

@@ -1638,3 +1638,32 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 /* Main Dashboard group strip — same look as the analytics tabs, but it drives every group
    on the page, including the objectives and the open-order view. */
 .dash-groups { margin-bottom: 14px; }
+
+/* ---- Glossary in the "What do these mean?" panel ----
+   One definition per term, shared by every tab, so a label never needs explaining in person. */
+.glossary { margin-top: 22px; border-top: 1px solid var(--line, #e7e2d2); padding-top: 16px; }
+.glossary-head { margin: 0 0 12px; font-size: 14px; }
+.glossary-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 0; }
+.glossary-item {
+  padding: 11px 13px;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 10px;
+  background: #fff;
+}
+.glossary-item dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+.glossary-expansion,
+.glossary-gap {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3, #6e695e);
+}
+.glossary-gap { color: #8a6d1f; font-style: italic; }
+.glossary-item dd { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-2, #3f3b33); }
