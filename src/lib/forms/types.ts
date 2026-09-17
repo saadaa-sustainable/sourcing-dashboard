@@ -164,6 +164,22 @@ export type AnalyticsExtras = {
         }[];
       }
     | null;
+  /**
+   * OTIF over COMPLETED POs only (sd_po_completed) within the reliability window. A PO counts
+   * as OTIF when it was closed on or before its expected delivery date AND nothing was left
+   * pending on it. On-time and in-full are carried separately so the composite is readable.
+   */
+  otif:
+    | {
+        windowDays: number;
+        completedPos: number;
+        onTime: number;
+        inFull: number;
+        otif: number;
+        value: number;
+        otifValue: number;
+      }
+    | null;
   /** 04 Workspace — replenishment queue (variants with ROP-30 > 0). */
   replenishment: { variants: number; rop30Qty: number; oosVariants: number } | null;
   /** 04 Workspace — OOS Calculation summary (counts; the page has the detail). */

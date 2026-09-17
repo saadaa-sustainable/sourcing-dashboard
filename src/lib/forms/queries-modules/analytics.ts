@@ -167,6 +167,7 @@ export async function loadAnalyticsExtras(
     inwardLastWeek: null,
     inwardMonth: null,
     reliability: null,
+    otif: null,
     expectedVsActual: null,
     replenishment: null,
     oosSummary: null,
@@ -406,6 +407,67 @@ export async function loadAnalyticsExtras(
       })),
     };
   } catch { /* section stays null */ }
+
+  /* OTIF — COMPLETED POs only, over the same window as Delivery Reliability.
+     On time = the PO was closed on or before its expected delivery date; in full = nothing
+     was left pending on it. OTIF is both. Deduped to one row per PO number, since the table
+     is one row per SKU line. Completed POs carry a real value, so this objective can be
+     counted AND valued. */
+  try {
+    const otifWindowDays = Math.round(rules.reliability_window_days ?? 180);
+    const cutoff = new Date(Date.now() - otifWindowDays * 86_400_000).toISOString().slice(0, 10);
+    const rows = await pageAll<{
+      po_number: string | null;
+      po_updated_date: string | null;
+      expected_delivery_date: string | null;
+      pending_qty: number | null;
+      original_qty: number | null;
+      item_price: number | null;
+    }>(() =>
+      supabase
+        .from('sd_po_completed')
+        .select('po_number, po_updated_date, expected_delivery_date, pending_qty, original_qty, item_price')
+        .not('po_updated_date', 'is', null)
+        .not('expected_delivery_date', 'is', null)
+        .gte('po_updated_date', cutoff)
+        .order('po_number'),
+    );
+    const byPo = new Map<string, { late: boolean; pending: number; value: number }>();
+    for (const r of rows) {
+      const po = (r.po_number ?? '').trim();
+      if (!po) continue;
+      const cur = byPo.get(po) ?? { late: false, pending: 0, value: 0 };
+      if ((r.po_updated_date ?? '') > (r.expected_delivery_date ?? '')) cur.late = true;
+      cur.pending += Number(r.pending_qty) || 0;
+      cur.value += (Number(r.original_qty) || 0) * (Number(r.item_price) || 0);
+      byPo.set(po, cur);
+    }
+    let onTime = 0;
+    let inFull = 0;
+    let otif = 0;
+    let value = 0;
+    let otifValue = 0;
+    for (const po of byPo.values()) {
+      const timely = !po.late;
+      const full = po.pending <= 0;
+      if (timely) onTime += 1;
+      if (full) inFull += 1;
+      value += po.value;
+      if (timely && full) {
+        otif += 1;
+        otifValue += po.value;
+      }
+    }
+    extras.otif = {
+      windowDays: otifWindowDays,
+      completedPos: byPo.size,
+      onTime,
+      inFull,
+      otif,
+      value,
+      otifValue,
+    };
+  } catch { /* stays null */ }
 
   /* Item 3 — Expected vs actual delivery volume, last 12 ISO weeks. From completed
      POs: expected = qty due that week (by EDD), actual = qty that completed that

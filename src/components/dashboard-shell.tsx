@@ -598,10 +598,12 @@ function DashboardTab({
    */
   const lineValue = (r: PendingPo) => r.pending_qty_actual * r.item_price;
   const sumValue = (rowsIn: PendingPo[]) => rowsIn.reduce((acc, r) => acc + lineValue(r), 0);
-  const rel = extras?.reliability ?? null;
-  const relTotal = (rel?.vendors ?? []).reduce((acc, v) => acc + v.total, 0);
-  const relDelayed = (rel?.vendors ?? []).reduce((acc, v) => acc + v.delayed, 0);
-  const otifPct = relTotal > 0 ? Math.round(((relTotal - relDelayed) / relTotal) * 100) : null;
+  // OTIF is measured on COMPLETED POs only: a finished order either arrived on time and in
+  // full or it did not. Open POs have not had their chance yet, so including them would flatter
+  // the figure. Delivery Reliability, which does span both, stays as its own separate card.
+  const otif = extras?.otif ?? null;
+  const otifPct =
+    otif && otif.completedPos > 0 ? Math.round((otif.otif / otif.completedPos) * 100) : null;
 
   // Figures the objective cards below need.
   const highRiskRefs = unique(highRisk.map((r) => r.po_ref_num ?? "")).length;
@@ -892,11 +894,19 @@ function DashboardTab({
         <Card
           label="OTIF"
           value={otifPct == null ? "—" : `${otifPct}%`}
-          note={rel ? `${fmt.format(relDelayed)} late of ${fmt.format(relTotal)} POs` : "reliability data unavailable"}
+          note={
+            otif
+              ? `${fmt.format(otif.otif)} of ${fmt.format(otif.completedPos)} completed POs · ${money.format(otif.otifValue)} delivered OTIF`
+              : "completed-PO data unavailable"
+          }
           tone={otifPct != null && otifPct < 80 ? "red" : "teal"}
           icon={Timer}
-          info="Share of POs in the reliability window delivered on time and in full. Click to open Vendor OTIF."
-          onClick={rel ? () => router.push("/vendor-otif") : undefined}
+          info={
+            otif
+              ? `Completed POs over the last ${otif.windowDays} days that arrived on time AND in full: closed on or before the expected delivery date with nothing left pending. ${fmt.format(otif.onTime)} were on time and ${fmt.format(otif.inFull)} were in full; OTIF counts only those that were both. Open POs are excluded — they have not had their chance yet. Click to open Vendor OTIF.`
+              : "Completed-PO data is not available."
+          }
+          onClick={otif ? () => router.push("/vendor-otif") : undefined}
         />
       </div>
       <div className="bento-grid">
