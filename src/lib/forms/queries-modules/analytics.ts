@@ -779,6 +779,7 @@ export async function loadAnalyticsExtras(
     extras.replenishment = {
       variants: rows.length,
       rop30Qty: rows.reduce((s, r) => s + (Number(r.rop_30) || 0), 0),
+      // oos_flag = had at least one out-of-stock DAY in the last 45, not out of stock today.
       oosVariants: rows.filter((r) => Boolean(r.oos_flag)).length,
     };
   } catch { /* section stays null */ }
