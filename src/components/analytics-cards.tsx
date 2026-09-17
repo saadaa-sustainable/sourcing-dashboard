@@ -358,6 +358,11 @@ export function AnalyticsCards({
   const cost = extras?.costVariance ?? null;
   const disc = extras?.discontinued ?? null;
   const gaps = extras?.stockoutGaps ?? null;
+  // Objective spec 1.2: every objective carries a count AND a value. These variants have no
+  // price attached, so the value is the shortfall in pieces against 45-day demand — added
+  // beside the counts these cards already showed, not in place of them.
+  const shortPieces = (list: NonNullable<typeof gaps>) =>
+    list.reduce((acc, g) => acc + Math.max(0, g.doq_45 - g.current_stock), 0);
   // Stockout list segmented by ABC/D (priority shown, nothing hidden).
   const gapsByClass = gaps
     ? (["A", "B", "C", "D"] as const).map((c) => ({
@@ -598,6 +603,14 @@ export function AnalyticsCards({
                       </strong>
                       <span className="ana-value-label">
                         uncovered variants
+                      </span>
+                    </div>
+                    <div>
+                      <strong className="ana-value ana-value-xl">
+                        {fmt.format(shortPieces(gaps))}
+                      </strong>
+                      <span className="ana-value-label">
+                        pcs short of 45-day demand
                       </span>
                     </div>
                     <button
@@ -1603,6 +1616,12 @@ export function AnalyticsCards({
                   <div className="ana-plan-values">
                     <span><small>Zero stock</small><b>{fmt.format(oosSum.zeroStock)}</b></span>
                     <span><small>Tracked</small><b>{fmt.format(oosSum.totalSkus)}</b></span>
+                    {gaps && (
+                      <span>
+                        <small>Short of demand</small>
+                        <b>{fmt.format(shortPieces(gaps.filter((g) => g.oos)))} pcs</b>
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

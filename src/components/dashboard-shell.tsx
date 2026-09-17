@@ -19,7 +19,6 @@ import {
   LogOut,
   MoreHorizontal,
   PackageSearch,
-  PackageX,
   Timer,
   Search,
   X,
@@ -599,13 +598,6 @@ function DashboardTab({
    */
   const lineValue = (r: PendingPo) => r.pending_qty_actual * r.item_price;
   const sumValue = (rowsIn: PendingPo[]) => rowsIn.reduce((acc, r) => acc + lineValue(r), 0);
-  const gaps = extras?.stockoutGaps ?? null;
-  // "No coverage" = demand over the DOQ-45 horizon that current stock does not cover, for
-  // variants still holding stock. Variants already at zero are the Out of Stock objective.
-  const riskGaps = (gaps ?? []).filter((g) => !g.oos && g.doq_45 > g.current_stock);
-  const oosGaps = (gaps ?? []).filter((g) => g.oos);
-  const shortPieces = (list: typeof riskGaps) =>
-    list.reduce((acc, g) => acc + Math.max(0, g.doq_45 - g.current_stock), 0);
   const rel = extras?.reliability ?? null;
   const relTotal = (rel?.vendors ?? []).reduce((acc, v) => acc + v.total, 0);
   const relDelayed = (rel?.vendors ?? []).reduce((acc, v) => acc + v.delayed, 0);
@@ -895,26 +887,8 @@ function DashboardTab({
           icon={IndianRupee}
           info="Pending quantity times item price, summed across open SKU rows."
         />
-        {/* The remaining standing objectives. They live in this row rather than a strip of
-            their own so every objective is read in one place. */}
-        <Card
-          label="Stock Out Risk"
-          value={gaps ? fmt.format(riskGaps.length) : "—"}
-          note={gaps ? `${fmt.format(shortPieces(riskGaps))} pcs short of 45-day demand` : "DOQ data unavailable"}
-          tone="amber"
-          icon={PackageSearch}
-          info="Variants still holding stock whose 45-day demand is more than that stock covers — no coverage for the rest of the horizon. Click to open the DOQ Dashboard."
-          onClick={gaps ? () => router.push("/doq-dashboard") : undefined}
-        />
-        <Card
-          label="Out of Stock"
-          value={gaps ? fmt.format(oosGaps.length) : fmt.format(extras?.oosSummary?.zeroStock ?? 0)}
-          note={gaps ? `${fmt.format(shortPieces(oosGaps))} pcs short of 45-day demand` : "variants at zero stock"}
-          tone="red"
-          icon={PackageX}
-          info="Variants already at zero stock. Click to open the OOS Calculation page, which owns this number."
-          onClick={() => router.push("/oos-calculation")}
-        />
+        {/* Stock Out Risk and Out of Stock are NOT repeated here — they already have full
+            cards in the decision sub-tabs below, which is where they were updated. */}
         <Card
           label="OTIF"
           value={otifPct == null ? "—" : `${otifPct}%`}
