@@ -699,7 +699,7 @@ function DashboardTab({
             x: edd.getTime(),
             vendor: row.vendorName || "Unknown",
             z: Math.max(1, row.pendingQty),
-            productCode: row.productCode || "Unmapped",
+            productCode: row.productCode || "(no product code)",
             poRef: row.poRef,
             edd: row.edd as string,
           }
@@ -860,7 +860,7 @@ function DashboardTab({
   > = {};
   tracker.forEach((row) =>
     row.skuRows.forEach((sku) => {
-      const key = `${row.productCode} · ${sku.product_variant ?? "Unmapped"}`;
+      const key = `${row.productCode} · ${sku.product_variant ?? "(no variant)"}`;
       const v = (varAgg[key] ??= {
         name: key,
         open: new Set(),
@@ -3142,7 +3142,9 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           { productCode: string; count: number; lastVendor: string }
         >
       >((acc, row) => {
-        const key = row.product_code || "Unmapped";
+        // A PO line with no product code is not a product code — label it for what it is
+        // rather than letting it sit silently under a "Product code" heading.
+        const key = row.product_code || "(no product code)";
         if (!acc[key])
           acc[key] = { productCode: key, count: 0, lastVendor: "" };
         acc[key].count += 1;
@@ -3166,18 +3168,18 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
         <Card
           label="In Process (365d)"
           value={fmt.format(inProcess365.length)}
-          note="Expected within 365 days"
+          note="open PO lines due within 365 days"
           tone="teal"
           big
-          info="Open PO lines (PO × product × EDD) with pending quantity due within the next 365 days, including lines already overdue."
+          info="A count of open PO lines (one line = PO × product × delivery date) with pending quantity due within the next 365 days, including lines already overdue. It is a count of lines, not of POs and not a quantity."
         />
         <Card
           label="Nothing on order"
           value={fmt.format(productOOSAll.length)}
-          note="0 pending quantity"
+          note="product codes with no pending quantity left"
           tone="orange"
           big
-          info="Product codes whose PO lines are fully received — nothing left on order to replenish them. Not a stock figure; see DOQ Calculation for actual stockouts."
+          info="A count of PRODUCT CODES whose PO lines have all been received, so nothing is left on order to replenish them. It is not a count of POs and not a quantity. It is also not a stock figure — a code can have plenty in the warehouse and still appear here; see DOQ Calculation for actual stock-outs."
         />
       </div>
       <div className="chart-grid">
@@ -3225,11 +3227,11 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           )}
         </ChartCard>
         <ChartCard
-          title="Nothing on order — products by fully-received PO lines"
-          info="Product codes with the most PO lines fully received and nothing left on order, top 20 — candidates to check for replenishment."
+          title="Nothing on order — product codes by fully-received PO lines"
+          info="The 20 product codes with the most PO lines fully received and nothing left on order — candidates to check for replenishment. The bar is a count of PO lines, not a quantity."
           download={{
-            filename: "out-of-stock",
-            headers: ["Product code", "Count", "Last vendor"],
+            filename: "nothing-on-order",
+            headers: ["Product code", "Fully-received PO lines", "Last vendor"],
             rows: productOOS.map((row) => [
               row.productCode,
               row.count,
@@ -3343,7 +3345,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
     row.skuRows.forEach((sku) => {
       const r =
         mode === "variant"
-          ? `${row.productCode} · ${sku.product_variant ?? "Unmapped"}`
+          ? `${row.productCode} · ${sku.product_variant ?? "(no variant)"}`
           : row.productCode;
       const k = `${r}${SEP}${row.vendorCode || row.vendorName}`;
       cells.set(k, (cells.get(k) ?? 0) + sku.pending_qty_actual);
