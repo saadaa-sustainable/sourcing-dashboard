@@ -19,6 +19,8 @@ import {
   LogOut,
   MoreHorizontal,
   PackageSearch,
+  PackageX,
+  Timer,
   Search,
   X,
   type LucideIcon,
@@ -543,65 +545,6 @@ function FilterSelect({
   );
 }
 
-/**
- * The five standing objectives, each its own tab with a count and a value, each clickable.
- *
- * High Risk and Overdue are kept apart deliberately and are never merged into one
- * "High Risk / Overdue" figure: a PO is high risk because a TNA stage slipped, and overdue
- * because its delivery date passed. Either can be true without the other, and the actions
- * differ, so combining them hides which problem you actually have.
- *
- * Where a rupee value exists it is shown. The stock and OTIF objectives have no price in
- * their source, so they carry the truest second measure available — pieces short, or the
- * on-time share — labelled for what it is rather than dressed up as money.
- */
-function ObjectiveTabs({
-  items,
-  active,
-  onSelect,
-}: {
-  items: {
-    id: string;
-    label: string;
-    count: string;
-    countNote: string;
-    value: string;
-    valueNote: string;
-    tone: string;
-    disabled?: boolean;
-  }[];
-  active: string;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div className="obj-tabs" role="tablist" aria-label="Dashboard objectives">
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          role="tab"
-          aria-selected={active === it.id}
-          disabled={it.disabled}
-          className={`obj-tab tone-${it.tone}${active === it.id ? " is-active" : ""}`}
-          onClick={() => onSelect(it.id)}
-        >
-          <span className="obj-tab-label">{it.label}</span>
-          <span className="obj-tab-figs">
-            <span>
-              <b>{it.count}</b>
-              <small>{it.countNote}</small>
-            </span>
-            <span>
-              <b>{it.value}</b>
-              <small>{it.valueNote}</small>
-            </span>
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function DashboardTab({
   data,
   bucket,
@@ -637,7 +580,6 @@ function DashboardTab({
       ),
     [data.pendingPos, bucket, lookups],
   );
-  const [objective, setObjective] = useState("high_risk");
   const router = useRouter();
   const today = istToday();
   const open = rows.filter(isOpenPo);
@@ -669,70 +611,8 @@ function DashboardTab({
   const relDelayed = (rel?.vendors ?? []).reduce((acc, v) => acc + v.delayed, 0);
   const otifPct = relTotal > 0 ? Math.round(((relTotal - relDelayed) / relTotal) * 100) : null;
 
-  const objectives = [
-    {
-      id: "high_risk",
-      label: "High Risk POs",
-      count: fmt.format(unique(highRisk.map((r) => r.po_ref_num ?? "")).length),
-      countNote: "open POs",
-      value: money.format(sumValue(highRisk)),
-      valueNote: "pending value",
-      tone: "orange",
-    },
-    {
-      id: "overdue",
-      label: "Overdue POs",
-      count: fmt.format(delayedRefs.length),
-      countNote: "open POs",
-      value: money.format(sumValue(delayed)),
-      valueNote: "pending value",
-      tone: "red",
-    },
-    {
-      id: "stockout_risk",
-      label: "Stock Out Risk (No Coverage)",
-      count: gaps ? fmt.format(riskGaps.length) : "—",
-      countNote: "variants",
-      value: gaps ? `${fmt.format(shortPieces(riskGaps))} pcs` : "—",
-      valueNote: "short of 45-day demand",
-      tone: "amber",
-      disabled: !gaps,
-    },
-    {
-      id: "out_of_stock",
-      label: "Out of Stock",
-      count: gaps ? fmt.format(oosGaps.length) : fmt.format(extras?.oosSummary?.zeroStock ?? 0),
-      countNote: "variants at zero",
-      value: gaps ? `${fmt.format(shortPieces(oosGaps))} pcs` : "—",
-      valueNote: "short of 45-day demand",
-      tone: "red",
-      disabled: !gaps && !extras?.oosSummary,
-    },
-    {
-      id: "otif",
-      label: "OTIF",
-      count: otifPct == null ? "—" : `${otifPct}%`,
-      countNote: "delivered on time",
-      value: rel ? fmt.format(relDelayed) : "—",
-      valueNote: `late of ${fmt.format(relTotal)} POs`,
-      tone: otifPct != null && otifPct < 80 ? "red" : "teal",
-      disabled: !rel,
-    },
-  ];
-
-  function openObjective(id: string) {
-    setObjective(id);
-    if (id === "high_risk") return onHighRisk(highRisk);
-    if (id === "overdue") return onOverdue(delayed);
-    // These three are owned by their own pages, which hold the working detail.
-    router.push(
-      id === "stockout_risk"
-        ? "/doq-dashboard"
-        : id === "out_of_stock"
-          ? "/oos-calculation"
-          : "/vendor-otif",
-    );
-  }
+  // Figures the objective cards below need.
+  const highRiskRefs = unique(highRisk.map((r) => r.po_ref_num ?? "")).length;
   const tracker = buildTrackerRows(
     rows,
     data.vendorTypes,
@@ -983,21 +863,19 @@ function DashboardTab({
         <Card
           label="Overdue POs"
           value={fmt.format(delayedRefs.length)}
-          note={`${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · view audit`}
+          note={`${money.format(sumValue(delayed))} pending · ${openRefs.length ? Math.round((delayedRefs.length / openRefs.length) * 100) : 0}% of open · view audit`}
           tone="red"
           icon={CalendarClock}
-          info="Open POs whose expected delivery date is already past. Click to open the audit list."
+          info="Open POs whose expected delivery date is already past, with the pending value still sitting behind them. Click to open the audit list. Kept separate from High Risk: a PO can be overdue without any TNA stage having slipped."
           onClick={() => onOverdue(delayed)}
         />
         <Card
           label="High Risk POs"
-          value={fmt.format(
-            unique(highRisk.map((r) => r.po_ref_num ?? "")).length,
-          )}
-          note="TNA stage slipped · view details"
+          value={fmt.format(highRiskRefs)}
+          note={`${money.format(sumValue(highRisk))} pending · TNA stage slipped · view details`}
           tone="orange"
           icon={AlertTriangle}
-          info="A critical-path TNA stage is past its planned date with no actual date yet. Clears the moment the stage is marked done."
+          info="A critical-path TNA stage is past its planned date with no actual date yet, with the pending value behind those POs. Clears the moment the stage is marked done. Kept separate from Overdue: the delivery date may still be days away."
           onClick={() => onHighRisk(highRisk)}
         />
         <Card
@@ -1017,9 +895,36 @@ function DashboardTab({
           icon={IndianRupee}
           info="Pending quantity times item price, summed across open SKU rows."
         />
+        {/* The remaining standing objectives. They live in this row rather than a strip of
+            their own so every objective is read in one place. */}
+        <Card
+          label="Stock Out Risk"
+          value={gaps ? fmt.format(riskGaps.length) : "—"}
+          note={gaps ? `${fmt.format(shortPieces(riskGaps))} pcs short of 45-day demand` : "DOQ data unavailable"}
+          tone="amber"
+          icon={PackageSearch}
+          info="Variants still holding stock whose 45-day demand is more than that stock covers — no coverage for the rest of the horizon. Click to open the DOQ Dashboard."
+          onClick={gaps ? () => router.push("/doq-dashboard") : undefined}
+        />
+        <Card
+          label="Out of Stock"
+          value={gaps ? fmt.format(oosGaps.length) : fmt.format(extras?.oosSummary?.zeroStock ?? 0)}
+          note={gaps ? `${fmt.format(shortPieces(oosGaps))} pcs short of 45-day demand` : "variants at zero stock"}
+          tone="red"
+          icon={PackageX}
+          info="Variants already at zero stock. Click to open the OOS Calculation page, which owns this number."
+          onClick={() => router.push("/oos-calculation")}
+        />
+        <Card
+          label="OTIF"
+          value={otifPct == null ? "—" : `${otifPct}%`}
+          note={rel ? `${fmt.format(relDelayed)} late of ${fmt.format(relTotal)} POs` : "reliability data unavailable"}
+          tone={otifPct != null && otifPct < 80 ? "red" : "teal"}
+          icon={Timer}
+          info="Share of POs in the reliability window delivered on time and in full. Click to open Vendor OTIF."
+          onClick={rel ? () => router.push("/vendor-otif") : undefined}
+        />
       </div>
-      <ObjectiveTabs items={objectives} active={objective} onSelect={openObjective} />
-
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
