@@ -298,22 +298,25 @@ export function BuyingPlanClient({
     { key: 'weave', label: 'Weave', kind: 'text', source: 'easyecom', accessor: (v) => v.fabricType },
     { key: 'category', label: 'Category', kind: 'text', source: 'easyecom', accessor: (v) => v.category },
     { key: 'sub_category', label: 'Sub-category', kind: 'text', source: 'easyecom', accessor: (v) => v.subCategory },
-    { key: 'fob_efob_rate', label: 'Buy value (FOB/E-FOB)', kind: 'num',
+    { key: 'fob_efob_rate', label: 'Buy value (FOB/E-FOB)', kind: 'num', source: 'supabase',
       accessor: (v) => rate(v.row.fob_efob_rate),
       render: (v) => (rate(v.row.fob_efob_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.fob_efob_rate))) },
-    { key: 'job_rate', label: 'Buy value (Job)', kind: 'num',
+    { key: 'job_rate', label: 'Buy value (Job)', kind: 'num', source: 'supabase',
       accessor: (v) => rate(v.row.job_rate),
       render: (v) => (rate(v.row.job_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.job_rate))) },
     { key: 'status', label: 'Product State', kind: 'text', source: 'easyecom', accessor: (v) => v.productStatus },
     { key: 'pending', label: 'Pending qty', kind: 'num', source: 'bigquery', accessor: (v) => v.pending },
-    { key: 'job', label: 'Job', kind: 'num', accessor: (v) => Number(v.row.job_work_qty) },
-    { key: 'efob', label: 'E-FOB', kind: 'num', accessor: (v) => Number(v.row.efob_qty) },
-    { key: 'fob', label: 'FOB', kind: 'num', accessor: (v) => Number(v.row.fob_qty) },
+    // The three PO-type quantities are what the team types into the plan.
+    { key: 'job', label: 'Job', kind: 'num', source: 'supabase', accessor: (v) => Number(v.row.job_work_qty) },
+    { key: 'efob', label: 'E-FOB', kind: 'num', source: 'supabase', accessor: (v) => Number(v.row.efob_qty) },
+    { key: 'fob', label: 'FOB', kind: 'num', source: 'supabase', accessor: (v) => Number(v.row.fob_qty) },
     { key: 'total_qty', label: 'Total qty', kind: 'num', source: 'computed', accessor: (v) => v.totalQty },
     { key: 'total_value', label: 'Total value', kind: 'num', source: 'computed', accessor: (v) => v.valueToBeBought,
       render: (v) => (v.valueToBeBought ? money.format(v.valueToBeBought) : <span className="wf-subtle">—</span>) },
-    { key: 'actual', label: 'Actual qty', kind: 'num', accessor: (v) => v.actualQty },
-    { key: 'approval', label: 'Approval', kind: 'text', accessor: (v) => v.row.line_status || '—' },
+    // Quantity actually ordered on real EasyEcom POs for this product in the plan month
+    // (status issued or completed, by PO date). Ordered, not received.
+    { key: 'actual', label: 'Actual qty', kind: 'num', source: 'easyecom', accessor: (v) => v.actualQty },
+    { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase', accessor: (v) => v.row.line_status || '—' },
   ];
 
   // View module works over products that actually have a planned quantity. REJECTED lines
