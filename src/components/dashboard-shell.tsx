@@ -711,6 +711,11 @@ function DashboardTab({
   const stillOpen = tracker.filter((row) => {
     if (row.pendingQty <= 0) return false;
     if (row.orderedQty <= 0) return true;
+    /* The should-have-closed POs are the exception to the 5% rule, not a casualty of it.
+       "Closure Pending" means 95% or more received, which is the same thing as 5% or less
+       pending — so excluding everything under 5% removed exactly the POs the red colour was
+       meant to highlight, and red could never appear however the data looked. Keep them. */
+    if (row.easycomStatus === "Closure Pending") return true;
     return row.pendingQty / row.orderedQty >= REMAINING_FLOOR;
   });
   const nearlyDone = tracker.length - stillOpen.length;
@@ -784,16 +789,53 @@ function DashboardTab({
   const ganttTo = gantt.length ? Math.max(...gantt.map((g) => g.to)) : 1;
   const ganttSpan = Math.max(1, ganttTo - ganttFrom);
   const ganttPct = (t: number) => ((t - ganttFrom) / ganttSpan) * 100;
-  const hasEddScatter = eddScatter.length > 0;
-  // Y is a numeric row index from ONE canonical vendor list (not a category axis):
-  // with many dots per vendor, a category axis positions dots by data index while
-  // labelling rows by unique vendor, so marks landed on the wrong vendor row.
-  // Vendors are sorted so the axis order is stable across refreshes.
-  const eddVendors = [...new Set(eddScatter.map((p) => p.vendor))].sort((a, b) => a.localeCompare(b));
+  /* One bubble per vendor per WEEK, not per PO.
+
+     Plotted per PO the chart was mostly white space: twenty vendor rows, dots too small to
+     compare and too many to count. Rolling each vendor's POs into the week they are due gives
+     a few large bubbles whose size can actually be read against each other, and the week is
+     the finest unit anyone schedules against anyway.
+
+     A bubble takes the worst status of the POs inside it, because that is what needs acting
+     on: a week containing one PO that should have closed is a week worth opening. */
+  const weekStartOf = (ms: number) => {
+    const d = new Date(ms);
+    const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow);
+  };
+  const kindRank = { to_close: 3, late: 2, on_track: 1 } as const;
+  const eddWeekly = [
+    ...eddScatter
+      .reduce((acc, p) => {
+        const week = weekStartOf(p.x);
+        const key = `${p.vendor}|${week}`;
+        const cur = acc.get(key);
+        if (cur) {
+          cur.z += p.z;
+          cur.pos += 1;
+          if (kindRank[p.kind] > kindRank[cur.kind]) cur.kind = p.kind;
+          cur.worstDelay = Math.max(cur.worstDelay, p.delayDays);
+        } else {
+          acc.set(key, {
+            x: week,
+            vendor: p.vendor,
+            z: p.z,
+            pos: 1,
+            kind: p.kind,
+            worstDelay: p.delayDays,
+          });
+        }
+        return acc;
+      }, new Map<string, { x: number; vendor: string; z: number; pos: number; kind: "to_close" | "late" | "on_track"; worstDelay: number }>())
+      .values(),
+  ];
+  const hasEddScatter = eddWeekly.length > 0;
+  // Y is a numeric row index, not a category axis: with several bubbles per vendor a category
+  // axis positions marks by data index while labelling rows by unique vendor, so marks landed
+  // on the wrong row. Only vendors that actually have something due are listed.
+  const eddVendors = [...new Set(eddWeekly.map((p) => p.vendor))].sort((a, b) => a.localeCompare(b));
   const eddVendorIndex = new Map(eddVendors.map((v, i) => [v, i] as const));
-  const eddPoints = eddScatter.map((p) => ({ ...p, y: eddVendorIndex.get(p.vendor) ?? 0 }));
-  // Distinct vendors drive the plot height so the (Y) labels never collide —
-  // the plot grows per vendor and scrolls inside the panel.
+  const eddPoints = eddWeekly.map((p) => ({ ...p, y: eddVendorIndex.get(p.vendor) ?? 0 }));
   const eddVendorCount = eddVendors.length;
   // Item 3 — expected vs actual delivery volume by week, with the gap between the
   // two shaded (base = the lower line, band = |expected−actual| stacked on top).
@@ -1466,9 +1508,9 @@ function DashboardTab({
           pair up and fill the slot that donut used to leave empty. */}
       <ChartCard
         tall
-        title="EDD schedule — by vendor & product"
+        title="EDD schedule — pieces due by vendor and week"
         kicker="EDD schedule"
-        info={`One bubble per open PO at its expected delivery date (X), by vendor code (Y), sized by pending quantity. Colour marks what needs acting on: red for POs received in full or nearly so but never closed, amber for POs past their delivery date with goods still out, green for those running to time. POs with less than 5% of their quantity left are left out — they are waiting on a closure click, not on goods${nearlyDone ? ` (${fmt.format(nearlyDone)} excluded today)` : ""}. Bubbles left of the dashed This-week line are overdue. Window is −45 to +90 days.`}
+        info={`One bubble per vendor per week (X = week due, Y = vendor code), sized by the pieces due that week — POs are rolled into their week so the sizes can be compared instead of a cloud of single dots. Vendors with nothing due are not listed. Colour marks what needs acting on: red for POs received in full or nearly so but never closed, amber for POs past their delivery date with goods still out, green for those running to time. POs with less than 5% of their quantity left are left out — they are waiting on a closure click, not on goods${nearlyDone ? ` (${fmt.format(nearlyDone)} excluded today)` : ""}. Bubbles left of the dashed This-week line are overdue. Window is −45 to +90 days.`}
         actions={
           <span className="legend-pills">
             {(["to_close", "late", "on_track"] as const).map((k) => (
@@ -1484,7 +1526,7 @@ function DashboardTab({
         }
       >
         {hasEddScatter ? (
-          <VScrollChart count={eddVendorCount} per={20} min={525}>
+          <VScrollChart count={eddVendorCount} per={26} min={300}>
             <ScatterChart margin={{ left: 8, right: 26, top: 14, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
@@ -1520,8 +1562,8 @@ function DashboardTab({
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
                   const p = payload[0].payload as {
-                    productCode: string; vendor: string; poRef: string; z: number; edd: string;
-                    kind: "to_close" | "late" | "on_track"; delayDays: number;
+                    vendor: string; z: number; x: number; pos: number;
+                    kind: "to_close" | "late" | "on_track"; worstDelay: number;
                   };
                   return (
                     <div
@@ -1534,11 +1576,22 @@ function DashboardTab({
                         boxShadow: "0 6px 18px rgba(22,21,19,.12)",
                       }}
                     >
-                      <strong>{p.productCode}</strong>
-                      <div>{p.vendor}</div>
-                      <div>PO {p.poRef}</div>
-                      <div>{fmt.format(p.z)} pcs · EDD {p.edd}</div>
-                      <div>{EDD_KIND_LABEL[p.kind]}{p.delayDays > 0 ? ` · ${p.delayDays}d late` : ""}</div>
+                      <strong>{p.vendor}</strong>
+                      <div>
+                        week of{" "}
+                        {new Date(p.x).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          timeZone: "UTC",
+                        })}
+                      </div>
+                      <div>
+                        {fmt.format(p.z)} pcs · {p.pos} PO{p.pos === 1 ? "" : "s"}
+                      </div>
+                      <div>
+                        {EDD_KIND_LABEL[p.kind]}
+                        {p.worstDelay > 0 ? ` · up to ${p.worstDelay}d late` : ""}
+                      </div>
                     </div>
                   );
                 }}
