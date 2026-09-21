@@ -202,6 +202,22 @@ const PICK_LIMIT = 100;
 const CUTTING_WAREHOUSE = 'SAADAA SUSTAINABLE DESIGNS AND TECHNOLOGIES PRIVATE LIMITED';
 
 /** Search POs at the SAADAA manufacturing location by PO reference / vendor (newest first). */
+/** Reads every row of a query, a page at a time. A single response stops at 1,000. */
+async function pageAllRows<T>(build: () => {
+  range: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error?: { message: string } | null }>;
+}): Promise<T[]> {
+  const out: T[] = [];
+  const size = 1000;
+  for (let from = 0; ; from += size) {
+    const { data, error } = await build().range(from, from + size - 1);
+    if (error) throw new Error(`pageAllRows: ${error.message}`);
+    if (!data?.length) break;
+    out.push(...(data as T[]));
+    if (data.length < size) break;
+  }
+  return out;
+}
+
 export async function searchPos(query: string): Promise<CuttingPoOption[]> {
   const user = await currentUser();
   if (!user) return [];
@@ -212,9 +228,9 @@ export async function searchPos(query: string): Promise<CuttingPoOption[]> {
     .select('po_ref_num, po_number, vendor_code, vendor_name, po_date')
     .eq('warehouse', CUTTING_WAREHOUSE)
     .order('po_date', { ascending: false, nullsFirst: false })
-    // A single response caps at 1,000 rows whatever this says, so this is "newest 1,000",
-    // not 1,500. Acceptable here: the search term below filters server-side and the result
-    // is deduped to PICK_LIMIT, so a typed query still reaches older POs.
+    // paging-ok: a picker over the newest POs. A response caps at 1,000 rows whatever this
+    // says, so it is really "newest 1,000" — fine here because the typed term filters
+    // server-side below and the result is deduped to PICK_LIMIT, so older POs stay reachable.
     .limit(1500);
   if (q) sel = sel.or(`po_ref_num.ilike.%${q}%,po_number.ilike.%${q}%,vendor_code.ilike.%${q}%,vendor_name.ilike.%${q}%`);
   const { data } = await sel;
@@ -239,23 +255,34 @@ export async function loadPoSkus(poRefNum: string): Promise<CuttingSkuOption[]> 
   const poRef = String(poRefNum ?? '').trim();
   if (!poRef) return [];
   const supabase = await supa();
-  const { data } = await supabase
-    .from('sd_po_master_raw')
-    .select('product_variant, product_code, product_description, sku')
-    .eq('po_ref_num', poRef)
-    .eq('warehouse', CUTTING_WAREHOUSE)
-    .limit(3000);
-  const lines = (data ?? []) as { product_variant: string | null; product_code: string | null; product_description: string | null; sku: string | null }[];
+  // Paged. One PO's lines sound small, but the biggest today carries 847 — close enough to
+  // the 1,000-row response cap that a slightly larger PO would lose lines with no error.
+  const lines = await pageAllRows<{
+    product_variant: string | null;
+    product_code: string | null;
+    product_description: string | null;
+    sku: string | null;
+  }>(() =>
+    supabase
+      .from('sd_po_master_raw')
+      .select('product_variant, product_code, product_description, sku')
+      .eq('po_ref_num', poRef)
+      .eq('warehouse', CUTTING_WAREHOUSE)
+      .order('sku'),
+  );
 
   // Map each SKU to its dyed-fabric SKU from the Item Master.
   const skuList = [...new Set(lines.map((l) => l.sku).filter(Boolean) as string[])];
   const fabricBySku = new Map<string, string | null>();
   if (skuList.length) {
-    const { data: pm } = await supabase
-      .from('sd_ee_product_master')
-      .select('sku, dyed_fabric_sku')
-      .in('sku', skuList);
-    for (const r of (pm ?? []) as { sku: string; dyed_fabric_sku: string | null }[]) fabricBySku.set(r.sku, r.dyed_fabric_sku);
+    const pm = await pageAllRows<{ sku: string; dyed_fabric_sku: string | null }>(() =>
+      supabase
+        .from('sd_ee_product_master')
+        .select('sku, dyed_fabric_sku')
+        .in('sku', skuList)
+        .order('sku'),
+    );
+    for (const r of pm) fabricBySku.set(r.sku, r.dyed_fabric_sku);
   }
 
   const bySku = new Map<string, CuttingSkuOption>();
