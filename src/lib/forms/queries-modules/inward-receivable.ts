@@ -286,9 +286,14 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
   );
   const today = istToday();
 
-  // Current stock split by size, from the inventory snapshot. Its SKUs are
-  // <product_variant>_<size> (e.g. SDVCTWH_XS), so size = the SKU tail after
-  // the variant prefix and separator. Fetch only the variants present in the plan.
+  /* Current stock split by size, from the inventory snapshot. Its SKUs are
+     <product_variant><size> (e.g. SDCSSMPXS), so size = the SKU tail after the variant
+     prefix, with any separator stripped. Fetch only the variants present in the plan.
+
+     Two things this figure is, which the screen has to say or it will not match EasyEcom:
+     it sums EVERY warehouse (Main Warehouse + STORE), where EasyEcom's inventory screen is
+     read per warehouse; and it is a daily snapshot, so anything sold or received since the
+     sync is not in it. Both differences show up as small per-size gaps. */
   const stockByVariant = await loadStockByVariantSize(
     supabase,
     [...new Set(rows.map((r) => String(r.product_variant ?? '')).filter(Boolean))],
@@ -335,7 +340,7 @@ async function loadStockByVariantSize(
     if (!chunk.length) continue;
     const { data } = await supabase
       .from('sd_inventory_planning')
-      .select('sku, product_variant, current_stock')
+      .select('sku, product_variant, current_stock, warehouse, date_day')
       .in('product_variant', chunk);
     for (const iv of (data ?? []) as Record<string, unknown>[]) {
       const variant = String(iv.product_variant ?? '');

@@ -257,10 +257,14 @@ export function ReceivablePlanClient({
                   <th rowSpan={2} className="num" {...sort.th('arriving', (r) => r.arriving_qty)}>Arriving {sort.ind('arriving')}</th>
                   <th colSpan={SIZE_KEYS.length} className="rp-size-group">
                     By size: <b>arriving on this PO</b>
-                    <span className="rp-size-group-stock">stock on hand today</span>
+                    <span className="rp-size-group-stock">
+                      stock from last night&rsquo;s sync, all warehouses
+                    </span>
                   </th>
                   <th rowSpan={2} className="num">DOQ</th>
-                  <th rowSpan={2} className="num" {...sort.th('stock', (r) => r.current_stock)}>Stock {sort.ind('stock')}</th>
+                  <th rowSpan={2} className="num" {...sort.th('stock', (r) => r.current_stock)}>
+                    Stock, all warehouses {sort.ind('stock')}
+                  </th>
                   <th rowSpan={2} className="num">Sizes in stock</th>
                   <th rowSpan={2}>Ran out in last 45 days</th>
                   <th rowSpan={2} className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
