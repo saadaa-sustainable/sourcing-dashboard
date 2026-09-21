@@ -591,8 +591,12 @@ function CapacityRow({
         )}
       </td>
       <td className="num wf-computed">{machineUtil == null ? '—' : `${machineUtil}%`}</td>
+      {/* Full is full. A vendor reading 147% is not half again as busy as one reading 100%
+          — both are booked out, and the figure past 100 only reflects how far the backlog
+          runs beyond a month. So the column stops at 100% and turns red; Available beside it
+          already says "Over Utilised". */}
       <td className={`num wf-computed${capacityUtil != null && capacityUtil >= 100 ? ' vc-util-over' : ''}`}>
-        {capacityUtil == null ? '—' : `${capacityUtil}%`}
+        {capacityUtil == null ? '—' : `${Math.min(capacityUtil, 100)}%`}
       </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}
