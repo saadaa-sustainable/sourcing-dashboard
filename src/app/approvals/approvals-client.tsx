@@ -40,6 +40,7 @@ const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'po_approval', label: 'PO Approvals' },
   { key: 'standard_cost', label: 'Standard Cost' },
   { key: 'discontinue', label: 'Discontinue' },
+  { key: 'vendor_deboarding', label: 'Vendor De-Boarding' },
   { key: 'receivable_plan', label: 'Inward Plan' },
 ];
 

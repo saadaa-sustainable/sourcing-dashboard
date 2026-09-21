@@ -6,6 +6,7 @@ import { canView } from '@/lib/views';
 import { useNavOverrides } from '@/components/nav-overrides';
 import {
   Activity,
+  UserX,
   Award,
   Ban,
   Boxes,
@@ -108,6 +109,7 @@ const GOVERNANCE_LINKS: NavLink[] = [
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
   { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
+  { href: '/vendor-deboarding', label: 'Vendor De-Boarding', Icon: UserX },
 ];
 
 // Reference data the workflows read from. All the masters now live under one

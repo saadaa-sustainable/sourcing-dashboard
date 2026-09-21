@@ -24,4 +24,5 @@ export * from './queries-modules/inward-receivable';
 export * from './queries-modules/po-approval';
 export * from './queries-modules/approvals';
 export * from './queries-modules/discontinue';
+export * from './queries-modules/vendor-deboarding';
 export * from './queries-modules/misc';

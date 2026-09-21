@@ -238,7 +238,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'standard_cost';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'standard_cost' | 'vendor_deboarding';
   label: string;
   sublabel: string;
   status: SdStatus;
@@ -779,6 +779,61 @@ export type DiscontinueRequest = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Vendor De-Boarding                                                  */
+/* ------------------------------------------------------------------ */
+
+export type VendorDeboardingReason =
+  | 'behavioural'
+  | 'delay'
+  | 'quality'
+  | 'unethical'
+  | 'process_gap'
+  | 'other';
+
+/** One row of sd_vendor_deboarding_request — the team's de-boarding form, field for field. */
+export type VendorDeboardingRequest = {
+  id: number;
+  vendor_code: string;
+  vendor_name: string | null;
+  reason: VendorDeboardingReason;
+  reason_other: string | null;
+  behaviour_score: number;
+  work_style_score: number;
+  quality_score: number;
+  process_score: number;
+  pos_done: number;
+  pos_late_15d: number;
+  pos_late_1m: number;
+  pos_late_over_1m: number;
+  rejection_pct: number | null;
+  resolvable: boolean;
+  remarks: string;
+  status: SdStatus;
+  requested_by: string | null;
+  requested_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
+  rework_notes: string | null;
+  reworked_by: string | null;
+  reworked_at: string | null;
+  edited_before_approval: boolean;
+};
+
+/** A vendor as the de-boarding form offers it, with the evidence already worked out. */
+export type VendorDeboardingVendor = {
+  vendor_code: string;
+  vendor_name: string;
+  merchant: string;
+  primary_type: string;
+  onboarding_date: string | null;
+  isActive: boolean;
+  openPoCount: number;
+  stats: { posDone: number; late15d: number; late1m: number; lateOver1m: number } | null;
+  rejectionPct: number | null;
+};
+
+/* ------------------------------------------------------------------ */
 /* Approval log                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -800,7 +855,8 @@ export type ApprovalEntity =
   | 'standard_cost'
   | 'material_cost'
   | 'receivable_plan'
-  | 'inward_plan';
+  | 'inward_plan'
+  | 'vendor_deboarding';
 
 /** Review vocabulary of the Inward Plan II sheet (matches the team's Google Sheet). */
 export const INWARD_PLAN_STATUSES = ['Pending', 'Approved', 'RE-WORK', 'Rejected'];

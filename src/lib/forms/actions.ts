@@ -11,6 +11,7 @@
 export * from './actions-modules/buying-plan';
 export * from './actions-modules/vendor-capacity';
 export * from './actions-modules/discontinue';
+export * from './actions-modules/vendor-deboarding';
 export * from './actions-modules/approval';
 export * from './actions-modules/receivable';
 export * from './actions-modules/po-lines-cutting';

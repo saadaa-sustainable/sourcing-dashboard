@@ -3,6 +3,7 @@ import { client, PAGE_SIZE } from './_shared';
 import { canApprove, routeApproval } from '../approval';
 import { loadApprovedStandardCosts, loadApprovedMaterialCosts } from './standard-cost';
 import { loadInProcessByVendor, loadLatestVendorCapacity } from './vendor';
+import { DEBOARDING_REASON_LABEL, DEBOARDING_SCORES } from '../deboarding';
 import type {
   ApprovalNotification,
   ApprovalQueueItem,
@@ -15,6 +16,7 @@ import type {
   BuyingPlanLine,
   DiscontinueRequest,
   PoApproval,
+  VendorDeboardingRequest,
 } from '../types';
 
 /** Cheap count of items in the shared approval queue, for the notification bell. */
@@ -26,14 +28,17 @@ export async function countPendingApprovals(): Promise<number> {
   // are the admin's turn (the bell renders for admins only).
   const costPending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
-  const [a, b, c, d, e] = await Promise.all([
+  const [a, b, c, d, e, f] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
     costPending('sd_standard_cost'),
     costPending('sd_material_standard_cost'),
+    pending('sd_vendor_deboarding_request'),
   ]);
-  return (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0);
+  return (
+    (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) + (f.count ?? 0)
+  );
 }
 
 /**
@@ -53,7 +58,7 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
           .select('id, product_code, status, neg_stage, updated_at')
           .in('neg_stage', ['proposed', 'rate_submitted'])
       : Promise.resolve({ data: [] as never[] });
-  const [plans, discontinues, pos, fgCosts, matCosts] = await Promise.all([
+  const [plans, discontinues, pos, fgCosts, matCosts, deboardings] = await Promise.all([
     supabase
       .from('sd_buying_plan')
       .select('id, plan_month, plan_type, status, submitted_by, submitted_at')
@@ -68,6 +73,10 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       .in('status', ['submitted', 'pending_l2']),
     costTurn('sd_standard_cost'),
     costTurn('sd_material_standard_cost'),
+    supabase
+      .from('sd_vendor_deboarding_request')
+      .select('id, vendor_code, vendor_name, status, requested_by, requested_at')
+      .in('status', ['submitted', 'pending_l2']),
   ]);
 
   const items: ApprovalNotification[] = [];
@@ -100,6 +109,23 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       kind: 'discontinue',
       label: `Discontinue — ${d.product_code ?? '—'}${d.product_variant ? ` / ${d.product_variant}` : ''}`,
       sublabel: 'Discontinuation awaiting your approval',
+      status: d.status,
+      href: '/approvals',
+      submittedBy: d.requested_by,
+      submittedAt: d.requested_at,
+    });
+  }
+
+  for (const d of (deboardings.data ?? []) as Array<{
+    id: number; vendor_code: string; vendor_name: string | null; status: SdStatus;
+    requested_by: string | null; requested_at: string | null;
+  }>) {
+    if (!canApprove(role, d.status)) continue;
+    items.push({
+      key: `vd-${d.id}`,
+      kind: 'vendor_deboarding',
+      label: `De-board vendor — ${d.vendor_code}${d.vendor_name ? ` ${d.vendor_name}` : ''}`,
+      sublabel: 'Vendor de-boarding awaiting your approval',
       status: d.status,
       href: '/approvals',
       submittedBy: d.requested_by,
@@ -235,6 +261,7 @@ export async function loadApprovalQueue(): Promise<{
     { data: fgCostReqs },
     { data: matCostReqs },
     { data: log },
+    { data: deboardings },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
@@ -257,6 +284,10 @@ export async function loadApprovalQueue(): Promise<{
       .select('*')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabase
+      .from('sd_vendor_deboarding_request')
+      .select('*')
+      .in('status', ['submitted', 'pending_l2']),
   ]);
 
   const items: ApprovalQueueItem[] = [];
@@ -363,6 +394,31 @@ export async function loadApprovalQueue(): Promise<{
       submittedBy: req.requested_by,
       submittedAt: req.requested_at,
       href: '/discontinue',
+    });
+  }
+
+  // De-boarding: the whole case fits on the card — reason, the four ratings, the PO
+  // evidence and whether the team thinks it is fixable — with the remarks as the note.
+  for (const req of (deboardings ?? []) as VendorDeboardingRequest[]) {
+    const late = req.pos_late_15d + req.pos_late_1m + req.pos_late_over_1m;
+    const reason =
+      (DEBOARDING_REASON_LABEL[req.reason] ?? req.reason) +
+      (req.reason === 'other' && req.reason_other ? ` — ${req.reason_other}` : '');
+    const ratings = DEBOARDING_SCORES.map((s) => `${s.short} ${req[s.key]}/5`).join(' · ');
+    items.push({
+      entityType: 'vendor_deboarding',
+      entityId: String(req.id),
+      label: `De-board vendor — ${req.vendor_code}${req.vendor_name ? ` ${req.vendor_name}` : ''}`,
+      sublabel: `${reason} · ${ratings} · ${req.pos_done} POs done, ${late} late${
+        req.rejection_pct != null ? `, ${Number(req.rejection_pct)}% rejected at GRN` : ''
+      } · ${req.resolvable ? 'team says resolvable' : 'team says not resolvable'}`,
+      status: req.status,
+      quantity: 0,
+      requiredRole: routeApproval('vendor_deboarding'),
+      submittedBy: req.requested_by,
+      submittedAt: req.requested_at,
+      submitNote: req.remarks,
+      href: '/vendor-deboarding',
     });
   }
 

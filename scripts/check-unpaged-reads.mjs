@@ -93,6 +93,8 @@ const SMALL_TABLES = {
   sd_vendor_recommendation: 60,
   sd_vendor_return_qc: 31,
   sd_vendor_type_multiplier: 3,
+  sd_vendor_deboarding_request: 0,
+  sd_vendor_deboarding_stats: 50,
   vendor_master_data: 32,
   vendor_type_master: 21,
 };

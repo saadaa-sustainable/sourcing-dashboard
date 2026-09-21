@@ -44,6 +44,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   material_cost: 'sd_material_standard_cost',
   receivable_plan: 'sd_receivable_input',
   inward_plan: 'sd_inward_plan_entry',
+  vendor_deboarding: 'sd_vendor_deboarding_request',
 };
 
 // Entities that carry line items eligible for line-item rework.
@@ -146,6 +147,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
+  revalidatePath('/vendor-deboarding');
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
   return done(
