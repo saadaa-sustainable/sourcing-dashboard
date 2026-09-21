@@ -15,6 +15,9 @@ import type { AnalyticsExtras, AnalyticsRuleRow } from '../types';
  * gracefully if the table is unreachable. Never throws.
  */
 export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
+  // Vendor capacity a month = karigars x pieces per karigar per day x working days.
+  karigar_daily_output: 20,
+  working_days_per_month: 26,
   vendor_concentration_alert: 40,
   utilization_under_pct: 70,
   utilization_over_pct: 100,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeClosureCompliance, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorPoCapacity } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeClosureCompliance, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorMonthlyCapacity } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -163,12 +163,15 @@ describe('sourcing business rules', () => {
     const [vendor]=buildVendorRollups([overdue,upcoming],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(vendor.openPoCount,1); assert.equal(vendor.delayedPoCount,1); assert.equal(vendor.openQty,10);
   });
-  it('derives PO capacity from machines x karigar x type multiplier; utilisation from monthly capacity', () => {
-    assert.equal(vendorPoCapacity(20, 25, 'E-FOB'), 750);
-    assert.equal(vendorPoCapacity(10, 10, 'FOB'), 250);
-    // "EFOB/FOB" vendors use the E-FOB multiplier (team decision 2026-09-16); the old
-    // efob_fob type and its x2.0 multiplier are gone.
-    assert.equal(vendorPoCapacity(5, 4, 'EFOB/FOB'), 30);
+  it('derives monthly capacity from karigars x daily output x working days', () => {
+    // Capacity is people × daily output × working days. Machines and the commercial type
+    // no longer enter it: 25 karigars × 20 a day × 26 days = 13,000 a month.
+    assert.equal(vendorMonthlyCapacity(25), 13000);
+    assert.equal(vendorMonthlyCapacity(10), 5200);
+    assert.equal(vendorMonthlyCapacity(25, 20, 24), 12000);
+    assert.equal(vendorMonthlyCapacity(0), 0);
+    // "EFOB/FOB" still normalises to E-FOB — the type drives lead time and stock days, just
+    // not capacity any more.
     assert.equal(normaliseVendorType('EFOB/FOB'), 'efob');
     const cap = new Map([['v1', { machines: 20, karigar: 25 }]]);
     const line = { ...base, po_ref_num: 'PO-9', vendor_code: 'V1', pending_qty_actual: 300, expected_delivery_date: '2026-09-01' };
@@ -179,8 +182,9 @@ describe('sourcing business rules', () => {
       capacity_per_month: 1000, karigar_latest: 25, karigar_latest_as_of: null, ee_status: null,
     };
     const [v] = buildVendorRollups([line], [vt], [vm], [], new Date('2026-07-15T00:00:00Z'), cap);
-    assert.equal(v.poCapacity, 750);
-    // Utilisation = open qty (300) ÷ monthly capacity (1000) = 30%.
+    // 25 karigars × 20 a day × 26 days.
+    assert.equal(v.poCapacity, 13000);
+    // Utilisation = open qty (300) ÷ the vendor master's stated monthly capacity (1000) = 30%.
     assert.equal(v.utilizationPct, 30);
   });
 });

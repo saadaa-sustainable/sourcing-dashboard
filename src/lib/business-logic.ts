@@ -399,20 +399,20 @@ export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent
   return events.sort((a, b) => b.overdueDays - a.overdueDays);
 }
 
-// Vendor-type capacity model. PO capacity = machines × karigar × multiplier
-// (kept as the confirmed INTERIM approximation — do NOT recompute it from the
-// day-count). stockDays is a display-only day-coverage label. FOB day-count was
-// confirmed 2026-09-04 at 90 (was 75), matching the Rules Master
-// (sd_analytics_rule.lead_days_fob = 90), which is the authoritative day-count
-// source for lead-time/coverage everywhere. Only Machines & Karigar are hand-entered.
 /**
- * The three PO types and what a month of capacity buys for each. Matches the
- * sd_vendor_type_multiplier master (job_work 1.00 / efob 1.50 / fob 2.50).
+ * The three PO types, with the stock cover each is expected to carry. stockDays is the live
+ * value; the FOB count was confirmed 2026-09-04 at 90 (was 75) and matches the Rules Master
+ * (sd_analytics_rule.lead_days_fob = 90), which stays the authoritative day-count for
+ * lead-time and coverage everywhere.
  *
- * There used to be a fourth, efob_fob at 2.0, for vendors typed "EFOB/FOB" in the vendor
- * master (five of them). It was dropped on the team's instruction that those vendors use the
- * E-FOB formula, so normaliseVendorType now folds "EFOB/FOB" into efob rather than leaving it
- * to fall through to a multiplier of 1 and silently halve their capacity.
+ * multiplier mirrors the sd_vendor_type_multiplier master so the two do not drift, but it no
+ * longer scales capacity: on the team's instruction capacity is karigars × daily output ×
+ * working days, and the commercial terms of a PO do not make anyone sew faster. See
+ * vendorMonthlyCapacity.
+ *
+ * There used to be a fourth type, efob_fob at 2.0, for the five vendors typed "EFOB/FOB" in
+ * the vendor master. It was dropped on the team's instruction that those vendors use the
+ * E-FOB formula, so normaliseVendorType folds "EFOB/FOB" into efob.
  */
 export const VENDOR_TYPE_MULTIPLIER: Record<string, { label: string; multiplier: number; stockDays: number }> = {
   job_work: { label: 'Job work', multiplier: 1.0, stockDays: 30 },
@@ -444,10 +444,30 @@ export function normaliseVendorType(raw: string | null | undefined): string {
   return 'job_work';
 }
 
-// PO capacity for a vendor = machines × karigar × type multiplier (rounded).
-export function vendorPoCapacity(machines: number | null | undefined, karigar: number | null | undefined, type: string | null | undefined): number {
-  const mult = VENDOR_TYPE_MULTIPLIER[normaliseVendorType(type)]?.multiplier ?? 1;
-  return Math.round(number(machines) * number(karigar) * mult);
+/** Defaults for the capacity formula; both live in Rules Master and are editable there. */
+export const KARIGAR_DAILY_OUTPUT = 20;
+export const WORKING_DAYS_PER_MONTH = 26;
+
+/**
+ * A vendor's monthly capacity, in pieces:
+ *
+ *     karigars × pieces one karigar makes in a day × working days in a month
+ *
+ * People sew garments, so people are the constraint. The old formula multiplied machines by
+ * karigars and then by a type multiplier, which produced a number nobody could derive from
+ * anything on the floor: a vendor with 40 machines stating 1,000 a month came out at 2,500.
+ * Machines are still recorded — they are worth knowing, and machine utilisation is karigars
+ * against machines — but they no longer decide how much a vendor can make.
+ *
+ * The type multiplier is gone from this calculation too. How much a vendor can produce does
+ * not change because the commercial terms are FOB rather than job work.
+ */
+export function vendorMonthlyCapacity(
+  karigar: number | null | undefined,
+  dailyOutput = KARIGAR_DAILY_OUTPUT,
+  workingDays = WORKING_DAYS_PER_MONTH,
+): number {
+  return Math.round(number(karigar) * number(dailyOutput) * number(workingDays));
 }
 
 export function buildVendorRollups(
@@ -471,10 +491,9 @@ export function buildVendorRollups(
     const resolved = resolveVendor(sample, lookups);
     const capacity = number(resolved.master?.capacity_per_month);
     const live = capacityByVendor.get(key(first.vendorCode)) ?? capacityByVendor.get(key(first.vendorName));
-    const poCapacity = vendorPoCapacity(
-      live?.machines ?? resolved.master?.total_machines,
+    // Karigars only. Machines and the commercial type no longer enter the capacity figure.
+    const poCapacity = vendorMonthlyCapacity(
       live?.karigar ?? resolved.master?.total_active_karigar,
-      resolved.master?.primary_type ?? resolved.type?.vendor_type,
     );
     const openQty = rows.reduce((sum, row) => sum + row.pendingQty, 0);
     const openPoRefs = unique(rows.map((row) => row.poRef));

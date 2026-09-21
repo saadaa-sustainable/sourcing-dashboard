@@ -11,7 +11,13 @@ import { canEdit } from '@/lib/forms/approval';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
-import { VENDOR_TYPE_MULTIPLIER, normaliseVendorType } from '@/lib/business-logic';
+import {
+  KARIGAR_DAILY_OUTPUT,
+  VENDOR_TYPE_MULTIPLIER,
+  WORKING_DAYS_PER_MONTH,
+  normaliseVendorType,
+  vendorMonthlyCapacity,
+} from '@/lib/business-logic';
 import type {
   SdRole,
   VendorCapacityLog,
@@ -39,12 +45,9 @@ const STALE_MS = STALE_DAYS * 86_400_000;
 
 const typeConfig = (type: string) => VENDOR_TYPE_MULTIPLIER[normaliseVendorType(type)];
 
-// Live PO capacity for a vendor from its current machines × karigar × type multiplier.
-function poCapacityOf(vendor: Vendor): number {
-  const mult = typeConfig(vendor.vendor_type)?.multiplier ?? 1;
-  const m = Number(vendor.current?.machines_allocated ?? 0);
-  const k = Number(vendor.current?.active_karigar ?? 0);
-  return Math.round(m * k * mult);
+// Live monthly capacity for a vendor: karigars × pieces per karigar per day × working days.
+function poCapacityOf(vendor: Vendor, dailyOutput = KARIGAR_DAILY_OUTPUT, workingDays = WORKING_DAYS_PER_MONTH): number {
+  return vendorMonthlyCapacity(vendor.current?.active_karigar, dailyOutput, workingDays);
 }
 
 function ageLabel(iso: string | null, now: number | null) {
@@ -134,6 +137,8 @@ export function VendorCapacityClient({
   catalog = [],
   leadDays,
   multipliers = [],
+  dailyOutput = KARIGAR_DAILY_OUTPUT,
+  workingDays = WORKING_DAYS_PER_MONTH,
 }: {
   vendors: Vendor[];
   role: SdRole;
@@ -142,6 +147,9 @@ export function VendorCapacityClient({
   leadDays: { job: number; efob: number; fob: number };
   /** Vendor-type multipliers straight from the sd_vendor_type_multiplier master. */
   multipliers?: VendorTypeMultiplier[];
+  /** Both from Rules Master, so the capacity formula changes without a deploy. */
+  dailyOutput?: number;
+  workingDays?: number;
 }) {
   const [tab, setTab] = useState<TabId>('entry');
   // Click-through: Reporting → Entry/Allocation focused on one vendor.
@@ -170,6 +178,8 @@ export function VendorCapacityClient({
           initialSearch={focusVendor}
           allocations={allocations}
           catalog={catalog}
+          dailyOutput={dailyOutput}
+          workingDays={workingDays}
         />
       )}
       {tab === 'allocation' && (
@@ -181,10 +191,19 @@ export function VendorCapacityClient({
           initialVendor={focusVendor}
         />
       )}
-      {tab === 'rules' && <RulesTab leadDays={leadDays} multipliers={multipliers} />}
+      {tab === 'rules' && (
+        <RulesTab
+          leadDays={leadDays}
+          multipliers={multipliers}
+          dailyOutput={dailyOutput}
+          workingDays={workingDays}
+        />
+      )}
       {tab === 'reporting' && (
         <ReportingTab
           vendors={vendors}
+          dailyOutput={dailyOutput}
+          workingDays={workingDays}
           onVendor={(code) => {
             setFocusVendor(code);
             setTab('allocation');
@@ -203,6 +222,8 @@ function EntryTab({
   initialSearch,
   allocations = [],
   catalog = [],
+  dailyOutput = KARIGAR_DAILY_OUTPUT,
+  workingDays = WORKING_DAYS_PER_MONTH,
 }: {
   vendors: Vendor[];
   role: SdRole;
@@ -210,6 +231,8 @@ function EntryTab({
   /** Product allocations, so the sheet can be narrowed to who makes a given product. */
   allocations?: VendorProductAllocation[];
   catalog?: ProductCatalogItem[];
+  dailyOutput?: number;
+  workingDays?: number;
 }) {
   const editable = canEdit(role, 'draft');
   const [search, setSearch] = useState(initialSearch ?? '');
@@ -381,7 +404,8 @@ function EntryTab({
         Only <strong>two fields are ever typed</strong>:{' '}
         <span className="wf-live-tag">LIVE</span> Machines allocated and Karigar allocated.
         Everything in an <span className="wf-computed-tag">orange</span> cell is computed —
-        Capacity/month = Machines × Karigar, PO capacity = Capacity/month × type multiplier,
+        Capacity/month = Karigars × pieces per karigar per day × working days a month
+        (both editable in Rules Master); On order is the quantity on open POs,
         Available = PO capacity − in-process. First machines and Type are{' '}
         <span className="wf-fixed-tag">
           <Lock size={10} /> FIXED
@@ -413,8 +437,7 @@ function EntryTab({
                 <th className="num">
                   First machines <span className="wf-fixed-tag"><Lock size={9} /></span>
                 </th>
-                <th className="num">PO capacity</th>
-                <th className="num">In process</th>
+                <th className="num">On order (in process)</th>
                 <th className="num">Available</th>
                 <th className="num">Machine util</th>
                 <th className="num">Capacity util</th>
@@ -431,11 +454,13 @@ function EntryTab({
                   lastUpdated={lastUpdated}
                   isStale={isStale}
                   now={now}
+                  dailyOutput={dailyOutput}
+                  workingDays={workingDays}
                 />
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
+                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
                     {staleOnly
                       ? 'No stale vendors — everyone is up to date.'
                       : 'No vendors match your filters.'}
@@ -449,7 +474,7 @@ function EntryTab({
 
       <div className="wf-footer-bar">
         <p className="wf-footer-note">
-          Capacity/month = Machines × Karigar. PO capacity = Capacity/month × type multiplier
+          Capacity/month = Karigars × pieces per karigar per day × working days a month
           (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5 · E-FOB/FOB ×2.0). Available = PO capacity −
           in-process (negative = 100% and over Utilised). Machine util = Karigar ÷ Machines; Capacity
           util = In-process ÷ PO capacity.
@@ -465,12 +490,17 @@ function CapacityRow({
   lastUpdated,
   isStale,
   now,
+  dailyOutput = KARIGAR_DAILY_OUTPUT,
+  workingDays = WORKING_DAYS_PER_MONTH,
 }: {
   vendor: Vendor;
   editable: boolean;
   lastUpdated: string | null;
   isStale: boolean;
   now: number | null;
+  /** Both from Rules Master, so the formula is editable without a deploy. */
+  dailyOutput?: number;
+  workingDays?: number;
 }) {
   const initial = {
     machines_allocated: vendor.current?.machines_allocated?.toString() ?? '',
@@ -486,17 +516,24 @@ function CapacityRow({
     fields.active_karigar !== initial.active_karigar;
 
   const config = typeConfig(vendor.vendor_type);
-  const multiplier = config?.multiplier ?? 1;
   const stockDays = config?.stockDays ?? 0;
 
   const machines = num(fields.machines_allocated);
   const karigar = num(fields.active_karigar);
-  const capacityMonth = machines * karigar;
-  const poCapacity = Math.round(capacityMonth * multiplier);
-  const available = poCapacity - vendor.inProcessQty;
+  /* Capacity is what the people can make in a month: karigars × pieces per karigar per day ×
+     working days. Machines are still recorded and still drive machine utilisation, but they
+     no longer decide output, and neither does the commercial type — a vendor does not sew
+     faster because the terms are FOB.
+
+     The column beside it is the quantity actually on order, which is the thing to compare
+     capacity against. It used to be capacity multiplied again by the type, which was not a
+     second fact, just the same guess scaled. */
+  const capacityMonth = vendorMonthlyCapacity(karigar, dailyOutput, workingDays);
+  const inProcess = vendor.inProcessQty;
+  const available = capacityMonth - inProcess;
   const overProduction = available < 0;
   const machineUtil = machines > 0 ? Math.round((karigar / machines) * 100) : null;
-  const capacityUtil = poCapacity > 0 ? Math.round((vendor.inProcessQty / poCapacity) * 100) : null;
+  const capacityUtil = capacityMonth > 0 ? Math.round((inProcess / capacityMonth) * 100) : null;
 
   function set(field: keyof typeof fields, value: string) {
     setFields((cur) => ({ ...cur, [field]: value }));
@@ -525,7 +562,7 @@ function CapacityRow({
       </td>
       <td>
         <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>
-        <small className="wf-subtle">×{multiplier} · stock {stockDays}d</small>
+        <small className="wf-subtle">stock {stockDays}d</small>
       </td>
       {(['machines_allocated', 'active_karigar'] as const).map((field) => (
         <td key={field} className="num input-col">
@@ -543,8 +580,7 @@ function CapacityRow({
       <td className="num wf-fixed-value">
         {vendor.machinesAtOnboarding ? fmt.format(vendor.machinesAtOnboarding) : '—'}
       </td>
-      <td className="num wf-computed">{fmt.format(poCapacity)}</td>
-      <td className="num">{fmt.format(vendor.inProcessQty)}</td>
+      <td className="num">{fmt.format(inProcess)}</td>
       {/* Once a vendor is past capacity the headroom number is negative and only says how
           far past, which is not a figure anyone acts on. Say the state instead. */}
       <td className="num wf-computed strong">
@@ -799,9 +835,13 @@ function AllocationEditor({
 function RulesTab({
   leadDays,
   multipliers = [],
+  dailyOutput = KARIGAR_DAILY_OUTPUT,
+  workingDays = WORKING_DAYS_PER_MONTH,
 }: {
   leadDays: { job: number; efob: number; fob: number };
   multipliers?: VendorTypeMultiplier[];
+  dailyOutput?: number;
+  workingDays?: number;
 }) {
   const rules = [
     { key: 'lead_days_job', label: 'Job Work lead-time', value: leadDays.job },
@@ -823,7 +863,7 @@ function RulesTab({
         multiplier: v.multiplier,
         stockDays: v.stockDays,
       }))
-  ).sort((a, b) => a.multiplier - b.multiplier);
+  ).sort((a, b) => a.stockDays - b.stockDays);
 
   return (
     <div className="vc-section">
@@ -855,8 +895,8 @@ function RulesTab({
       <section className="vc-card">
         <div className="vc-card-head">
           <div>
-            <h2>Vendor-type multipliers</h2>
-            <p>What a month of capacity buys, by PO type</p>
+            <h2>Stock cover by PO type</h2>
+            <p>Days of stock each PO type is expected to carry</p>
           </div>
           <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/rules-master">
             Edit in Rules Master →
@@ -866,43 +906,53 @@ function RulesTab({
           {types.map((t) => (
             <div key={t.key}>
               <span>{t.label}</span>
-              <strong>
-                ×{t.multiplier}
-                {t.stockDays ? ` · stock ${t.stockDays}d` : ''}
-              </strong>
+              <strong>{t.stockDays} days of stock</strong>
             </div>
           ))}
         </div>
         <p className="wf-subtle vc-formula-hold">
-          Vendors typed <strong>EFOB/FOB</strong> in the vendor master use the E-FOB multiplier.
+          Vendors typed <strong>EFOB/FOB</strong> in the vendor master are read as E-FOB.
+          The PO type sets lead time and stock cover only — it does not change how much a
+          vendor can make, so it no longer enters the capacity figure above.
         </p>
       </section>
       {/*
-        The capacity-formula reference card is deliberately withheld.
-
-        Publishing "Monthly base = Machines x Karigar" on screen would turn a known bug into
-        documentation: on 14/09 a vendor with 40 machines and a stated 1,000/month was showing
-        a PO capacity of 2,500, and the agreed basis is capacity per DAY, not machines times
-        karigar. The calculation is fixed first, then documented here.
-
-        The multiplier questions are settled: the fourth multiplier is gone and EFOB/FOB vendors
-        use the E-FOB figure, and the whole tab now reads the Rules Master rather than editing
-        anything itself. The formula itself is the only thing still outstanding.
+        This card was withheld while the capacity calculation was wrong (it multiplied
+        machines by karigars, which on 14/09 turned a vendor with 40 machines and a stated
+        1,000/month into a PO capacity of 2,500). The formula is now the agreed one, so the
+        card is back and states it in full.
       */}
       <section className="vc-card">
         <div className="vc-card-head">
           <div>
             <h2>Capacity calculation</h2>
-            <p>Withheld until the calculation is corrected</p>
+            <p>How the monthly figure on the Entry tab is worked out</p>
           </div>
-          <span className="vc-pill">Pending fix</span>
+        </div>
+        <div className="vc-rule-grid">
+          <div>
+            <span>Capacity a month</span>
+            <strong>Karigars × {dailyOutput} × {workingDays}</strong>
+          </div>
+          <div>
+            <span>Pieces a karigar makes in a day</span>
+            <strong>{dailyOutput}</strong>
+          </div>
+          <div>
+            <span>Working days in a month</span>
+            <strong>{workingDays}</strong>
+          </div>
+          <div>
+            <span>Available</span>
+            <strong>Capacity a month − quantity on order</strong>
+          </div>
         </div>
         <p className="wf-subtle vc-formula-hold">
-          The capacity formula is not shown here yet. The current calculation is known to be
-          wrong — it was raised on 14/09, where a vendor with 40 machines and a stated
-          1,000/month came out at 2,500 PO capacity — and the agreed basis is capacity per day
-          rather than machines multiplied by karigar. Documenting the formula before fixing it
-          would make a bug look official, so this card returns once the calculation is corrected.
+          Karigars are the ones who sew, so karigars set the output. Machines are still
+          recorded and still drive machine utilisation, but they do not decide how much a
+          vendor can make, and neither does the commercial type — a vendor does not sew faster
+          because the terms are FOB. The type sets lead time and stock days, above.
+          Both numbers in this formula come from Rules Master and can be changed there.
         </p>
       </section>
     </div>
@@ -914,17 +964,21 @@ function RulesTab({
 function ReportingTab({
   vendors,
   onVendor,
+  dailyOutput = KARIGAR_DAILY_OUTPUT,
+  workingDays = WORKING_DAYS_PER_MONTH,
 }: {
   vendors: Vendor[];
   onVendor: (code: string) => void;
+  dailyOutput?: number;
+  workingDays?: number;
 }) {
-  // Per-vendor utilization from the kept interim formula (PO capacity = machines ×
-  // karigar × type multiplier). Only vendors with a current entry are meaningful.
+  // Per-vendor utilisation: capacity a month against the quantity actually on order.
+  // Only vendors with a current entry are meaningful.
   const rows = useMemo(
     () =>
       vendors
         .map((v) => {
-          const cap = poCapacityOf(v);
+          const cap = poCapacityOf(v, dailyOutput, workingDays);
           return {
             code: v.vendor_code,
             name: v.vendor_name,
@@ -937,7 +991,7 @@ function ReportingTab({
         })
         .filter((r) => r.cap > 0 || r.inProc > 0)
         .sort((a, b) => (b.util ?? -1) - (a.util ?? -1)),
-    [vendors],
+    [vendors, dailyOutput, workingDays],
   );
 
   // PO-type pivot: aggregate capacity + in-process per vendor type → util per type.
@@ -947,14 +1001,14 @@ function ReportingTab({
       const key = normaliseVendorType(v.vendor_type);
       const label = typeConfig(v.vendor_type)?.label ?? (v.vendor_type || 'Unknown');
       const cur = m.get(key) ?? { label, cap: 0, inProc: 0 };
-      cur.cap += poCapacityOf(v);
+      cur.cap += poCapacityOf(v, dailyOutput, workingDays);
       cur.inProc += v.inProcessQty;
       m.set(key, cur);
     }
     return [...m.values()]
       .filter((r) => r.cap > 0 || r.inProc > 0)
       .map((r) => ({ ...r, util: r.cap > 0 ? Math.round((r.inProc / r.cap) * 100) : null }));
-  }, [vendors]);
+  }, [vendors, dailyOutput, workingDays]);
 
   const totalCapacity = pivot.reduce((sum, row) => sum + row.cap, 0);
   const totalInProcess = pivot.reduce((sum, row) => sum + row.inProc, 0);

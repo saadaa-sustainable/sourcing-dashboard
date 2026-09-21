@@ -103,6 +103,8 @@ export default async function VendorCapacityPage() {
           efob: rules.lead_days_efob,
           fob: rules.lead_days_fob,
         }}
+        dailyOutput={rules.karigar_daily_output}
+        workingDays={rules.working_days_per_month}
       />
     </FormLayout>
   );
