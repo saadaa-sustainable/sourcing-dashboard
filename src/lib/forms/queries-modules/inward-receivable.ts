@@ -333,16 +333,29 @@ async function loadStockByVariantSize(
   variants: string[],
 ): Promise<Map<string, Record<string, number>>> {
   const byVariant = new Map<string, Record<string, number>>();
-  // Chunk the variant filter so each response stays under the row cap
-  // (≤100 variants × ≤9 sizes < 1000 rows).
-  for (let i = 0; i < variants.length; i += 100) {
-    const chunk = variants.slice(i, i + 100);
+  /* PAGE the response, never assume it fits.
+
+     This used to fetch 100 variants at a time in a single unpaged request, on the assumption
+     that a variant has at most 9 rows, one per size. It has ~20: the snapshot carries a row
+     per size PER WAREHOUSE, and there are five of them (Main Warehouse, STORE, FBA, Holisol
+     MH, Holisol BLR) plus rows with no warehouse set. So 100 variants is about 2,200 rows
+     against a 1,000-row cap, and PostgREST simply returned the first 1,000 in no particular
+     order — silently, with no error.
+
+     The visible symptom was a size showing stock while its neighbours showed blank on the
+     same product, because the cut could land mid-variant. Anything missing read as "no stock
+     on hand", which is the worst possible way to be wrong about stock. */
+  for (let i = 0; i < variants.length; i += 50) {
+    const chunk = variants.slice(i, i + 50);
     if (!chunk.length) continue;
-    const { data } = await supabase
-      .from('sd_inventory_planning')
-      .select('sku, product_variant, current_stock, warehouse, date_day')
-      .in('product_variant', chunk);
-    for (const iv of (data ?? []) as Record<string, unknown>[]) {
+    const data = await pageAll<Record<string, unknown>>(() =>
+      supabase
+        .from('sd_inventory_planning')
+        .select('sku, product_variant, current_stock, warehouse, date_day')
+        .in('product_variant', chunk)
+        .order('sku'),
+    );
+    for (const iv of data) {
       const variant = String(iv.product_variant ?? '');
       const sku = String(iv.sku ?? '');
       const stock = Number(iv.current_stock) || 0;

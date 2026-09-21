@@ -258,7 +258,7 @@ export function ReceivablePlanClient({
                   <th colSpan={SIZE_KEYS.length} className="rp-size-group">
                     By size: <b>arriving on this PO</b>
                     <span className="rp-size-group-stock">
-                      stock from last night&rsquo;s sync, all warehouses
+                      stock from last night&rsquo;s sync, all five warehouses
                     </span>
                   </th>
                   <th rowSpan={2} className="num">DOQ</th>
