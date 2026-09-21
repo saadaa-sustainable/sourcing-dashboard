@@ -1,8 +1,11 @@
 'use client';
 
+import { useMemo } from 'react';
+
 import { Notice } from '@/components/forms/form-layout';
+import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { FilterTable, type Column } from '@/components/filter-table';
-import type { EeVendorMasterRow } from '@/lib/forms/types';
+import type { DeboardedVendor, EeVendorMasterRow } from '@/lib/forms/types';
 
 const date = (v: string | null) => (v ? String(v).slice(0, 10) : '');
 
@@ -109,7 +112,32 @@ const COLS: Column<EeVendorMasterRow>[] = [
   { key: 'synced_at', label: 'Synced', kind: 'text', accessor: (r) => date(r.synced_at), info: 'When this row was last pulled from GCP.' },
 ];
 
-export function VendorMasterClient({ rows }: { rows: EeVendorMasterRow[] }) {
+export function VendorMasterClient({
+  rows,
+  deboarded = {},
+}: {
+  rows: EeVendorMasterRow[];
+  /** Approved de-boardings by upper-cased code (from the dashboard's own workflow). */
+  deboarded?: Record<string, DeboardedVendor>;
+}) {
+  // The master is EasyEcom's table as-is; the one dashboard-side fact worth showing on it
+  // is whether the team has decided to stop working with the vendor. Goes right after
+  // Active, because that is the question it answers.
+  const columns = useMemo<Column<EeVendorMasterRow>[]>(() => {
+    const flagOf = (r: EeVendorMasterRow) => deboarded[(r.vendor_code ?? '').trim().toUpperCase()];
+    const col: Column<EeVendorMasterRow> = {
+      key: 'deboarded',
+      label: 'De-boarding',
+      info: 'Approved on the Vendor De-Boarding page. EasyEcom’s Active flag is separate — switching the vendor off there is a manual step.',
+      accessor: (r) => (flagOf(r) ? `De-boarded ${new Date(flagOf(r)!.approvedAt).toLocaleDateString('en-IN')}` : ''),
+      render: (r) => {
+        const f = flagOf(r);
+        return f ? <DeboardedPill flag={f} /> : <span className="wf-subtle">—</span>;
+      },
+    };
+    const at = COLS.findIndex((c) => c.key === 'active') + 1;
+    return [...COLS.slice(0, at), col, ...COLS.slice(at)];
+  }, [deboarded]);
   return (
     <>
       <Notice tone="info">
@@ -118,7 +146,7 @@ export function VendorMasterClient({ rows }: { rows: EeVendorMasterRow[] }) {
       </Notice>
       <FilterTable
         rows={rows}
-        columns={COLS}
+        columns={columns}
         rowKey={(r) => r.vendor_code ?? r.vendor_c_id ?? r.vendor_name ?? ''}
         defaultSource="easyecom"
         unit="vendors"

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadDeboardedVendors,
   loadPoApprovals,
   loadPoSubmissions,
   loadStandardCmByCode,
@@ -38,11 +39,13 @@ export default async function PoApprovalPage() {
     submissions,
     leadtimes,
     stdCm,
+    deboarded,
   ] = await Promise.all([
     loadPoApprovals(),
     loadPoSubmissions(),
     loadTnaLeadtimes(),
     loadStandardCmByCode(),
+    loadDeboardedVendors(),
   ]);
 
   return (
@@ -63,6 +66,7 @@ export default async function PoApprovalPage() {
         productCodes={productCodes}
         vendorCodes={vendorCodes}
         vendorNames={vendorNames}
+        deboarded={deboarded}
         submissions={submissions}
         leadtimes={leadtimes}
         stdCm={stdCm}

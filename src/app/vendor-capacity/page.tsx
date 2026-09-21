@@ -7,6 +7,7 @@ import {
   loadProductCatalog,
   loadVendorCapacity,
   loadVendorProductAllocations,
+  loadDeboardedVendors,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { eeVendorActive } from '@/lib/business-logic';
@@ -37,10 +38,11 @@ export default async function VendorCapacityPage() {
   // Real in-process load from the PO pipeline (sd_vendor_in_process), not the sheet.
   const inProcessByCode = await loadInProcessByVendor();
   // Item 1 product allocations + catalog, and item 3 day-count rules — for the sub-tabs.
-  const [allocations, catalog, rules] = await Promise.all([
+  const [allocations, catalog, rules, deboarded] = await Promise.all([
     loadVendorProductAllocations(),
     loadProductCatalog(),
     loadAnalyticsRules(),
+    loadDeboardedVendors(),
   ]);
 
   const currentByCode = new Map(logs.map((row) => [key(row.vendor_code), row]));
@@ -79,6 +81,8 @@ export default async function VendorCapacityPage() {
         capacitySigned: master.capacity_per_month ?? 0,
         inProcessQty: inProcessByCode.get(code) ?? 0,
         current: currentByCode.get(code) ?? null,
+        // Approved de-boarding: still listed (open POs still need capacity), but marked.
+        deboarded: deboarded[code.toUpperCase()] ?? null,
       };
     })
     .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name));

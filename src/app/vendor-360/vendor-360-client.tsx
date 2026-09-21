@@ -1,5 +1,6 @@
 'use client';
 
+import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { useMemo, useState } from 'react';
 import { InfoDot } from '@/components/info-dot';
 import type { VendorHubData, VendorHubRow } from '@/lib/vendor-hub.server';
@@ -125,7 +126,11 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
 function VendorRow({ r }: { r: VendorHubRow }) {
   return (
     <tr>
-      <td><strong>{r.vendorName}</strong>{r.vendorCode ? <small className="wf-subtle" style={{ display: 'block' }}>{r.vendorCode}</small> : null}</td>
+      <td>
+        <strong>{r.vendorName}</strong>
+        {r.vendorCode ? <small className="wf-subtle" style={{ display: 'block' }}>{r.vendorCode}</small> : null}
+        <DeboardedPill flag={r.deboarded} />
+      </td>
       <td>{r.weave}</td>
       <td className="num">{money(r.openValue)}</td>
       <td className="num">{Math.round(r.sharePct)}%</td>

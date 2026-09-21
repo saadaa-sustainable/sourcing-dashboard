@@ -149,7 +149,7 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Rejection at goods receipt (%)', source: 'GRN QC (EasyEcom)', formula: 'QC failed ÷ pieces checked × 100', detail: 'The vendor’s rejection rate across all goods receipts, same figure the Vendor Recommendation uses. Blank when the vendor has no QC-checked receipts.' },
     { field: 'Ratings (1–5)', source: 'You rate', detail: 'Behaviour, work style, product quality and understanding of SAADAA’s process — 1 is very poor, 5 is excellent. All four are required.' },
     { field: 'Open POs with this vendor now', source: 'PO pipeline', detail: 'How many approved POs are still in process with the vendor — what de-boarding would strand. Shown for the approver’s judgement; it does not block the request.' },
-    { field: 'Status', source: 'Workflow', detail: 'Submitted → Approved / Rejected / Rework. De-boarding always needs an admin. Approval records the decision here; switching the vendor off in EasyEcom is a separate step.' },
+    { field: 'Status', source: 'Workflow', detail: 'Submitted → Approved / Rejected / Rework. De-boarding always needs an admin. Once approved the vendor is flagged “De-boarded dd/mm” on PO Approval, Vendor Capacity, Vendor Master and Vendor Overview — still listed, never hidden, so open POs can be finished knowingly. Switching the vendor off in EasyEcom is a separate step.' },
   ],
   '/approvals': [
     { field: 'Record', source: 'Submitted work', detail: 'The buying plan, PO, discontinue request or vendor de-boarding awaiting a decision. The sub-line shows its size, variant or the case for it.' },

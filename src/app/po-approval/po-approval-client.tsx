@@ -15,8 +15,10 @@ import {
 } from '@/lib/forms/actions';
 import { addMonths, canApprove, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
+import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import type {
+  DeboardedVendor,
   PoApproval,
   PoApprovalLine,
   PoCategory,
@@ -90,6 +92,7 @@ export function PoApprovalClient({
   productCodes,
   vendorCodes,
   vendorNames = {},
+  deboarded = {},
   submissions = [],
   leadtimes,
   stdCm = {},
@@ -102,6 +105,8 @@ export function PoApprovalClient({
   productCodes: string[];
   vendorCodes: string[];
   vendorNames?: Record<string, string>;
+  /** Approved de-boardings by upper-cased code — the vendor is flagged, not hidden. */
+  deboarded?: Record<string, DeboardedVendor>;
   submissions?: PoSubmissionGroup[];
   leadtimes?: TnaLeadtimes;
   stdCm?: Record<string, number>;
@@ -201,6 +206,9 @@ export function PoApprovalClient({
   const liveLoad = form.vendor_code
     ? capacity[form.vendor_code.toLowerCase()]
     : undefined;
+  // The team has approved stopping work with this vendor. Say so beside the field; the
+  // PO can still be raised (a last, agreed order is a real case) but nobody does it unknowingly.
+  const deboardedPick = form.vendor_code ? deboarded[form.vendor_code.trim().toUpperCase()] : undefined;
   const activeCat = CATEGORIES.find((c) => c.value === form.category);
   // Standard CM for the typed product — pre-fills / hints the PO's CM (spec §5).
   const stdCmForProduct = form.product_code ? stdCm[form.product_code.trim()] : undefined;
@@ -324,9 +332,16 @@ export function PoApprovalClient({
                 {vendorCodes.map((c) => (
                   <option key={c} value={c}>
                     {vendorNames[c] ? `${c} — ${vendorNames[c]}` : c}
+                    {deboarded[c.toUpperCase()] ? ' — DE-BOARDED' : ''}
                   </option>
                 ))}
               </datalist>
+              {deboardedPick && (
+                <Notice tone="warn">
+                  <DeboardedPill flag={deboardedPick} /> This vendor’s de-boarding was approved.
+                  Raise a PO to them only if it is a deliberately agreed last order.
+                </Notice>
+              )}
             </Field>
             <Field label="Vendor name" hint="auto-fills from the code (or pick to back-fill the code)">
               <input

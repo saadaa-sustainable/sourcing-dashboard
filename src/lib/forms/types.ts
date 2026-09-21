@@ -820,6 +820,9 @@ export type VendorDeboardingRequest = {
   edited_before_approval: boolean;
 };
 
+/** An approved de-boarding, keyed by upper-cased vendor code wherever vendors are listed. */
+export type DeboardedVendor = { approvedAt: string; reason: string };
+
 /** A vendor as the de-boarding form offers it, with the evidence already worked out. */
 export type VendorDeboardingVendor = {
   vendor_code: string;

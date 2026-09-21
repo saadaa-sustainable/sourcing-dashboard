@@ -11,6 +11,7 @@ import { canEdit } from '@/lib/forms/approval';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
+import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import {
   KARIGAR_DAILY_OUTPUT,
   VENDOR_TYPE_MULTIPLIER,
@@ -19,6 +20,7 @@ import {
   vendorMonthlyCapacity,
 } from '@/lib/business-logic';
 import type {
+  DeboardedVendor,
   SdRole,
   VendorCapacityLog,
   VendorProductAllocation,
@@ -36,6 +38,7 @@ type Vendor = {
   capacitySigned: number;
   inProcessQty: number;
   current: VendorCapacityLog | null;
+  deboarded?: DeboardedVendor | null;
 };
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -559,6 +562,7 @@ function CapacityRow({
       <td className="vc-vendor-cell">
         <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
         <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
+        <DeboardedPill flag={vendor.deboarded} />
       </td>
       <td>
         <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>

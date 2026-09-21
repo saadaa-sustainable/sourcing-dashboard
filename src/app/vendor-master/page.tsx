@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadDeboardedVendors,
   loadVendorMaster,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -26,7 +27,7 @@ export default async function VendorMasterPage() {
 
   if (!user) redirect('/login');
 
-  const rows = await loadVendorMaster();
+  const [rows, deboarded] = await Promise.all([loadVendorMaster(), loadDeboardedVendors()]);
 
   return (
     <FormLayout
@@ -37,7 +38,7 @@ export default async function VendorMasterPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <VendorMasterClient rows={rows} />
+      <VendorMasterClient rows={rows} deboarded={deboarded} />
     </FormLayout>
   );
 }

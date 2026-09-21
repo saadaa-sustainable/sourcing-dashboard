@@ -1,4 +1,5 @@
-import { loadVendorCapacity, loadVendorOtif } from '@/lib/forms/queries';
+import { loadDeboardedVendors, loadVendorCapacity, loadVendorOtif } from '@/lib/forms/queries';
+import type { DeboardedVendor } from '@/lib/forms/types';
 
 /**
  * Vendor objective one-pager (DAM principle: one base dimension = Vendor, full picture
@@ -28,6 +29,8 @@ export type VendorHubRow = {
   onTimePct: number | null;
   fillPct: number | null;
   ratedPos: number;
+  /** Set when the team has approved de-boarding this vendor. */
+  deboarded: DeboardedVendor | null;
 };
 
 export type VendorHubData = {
@@ -43,9 +46,10 @@ export type VendorHubData = {
 };
 
 export async function loadVendorHub(windowDays = 180): Promise<VendorHubData> {
-  const [cap, otif] = await Promise.all([
+  const [cap, otif, deboarded] = await Promise.all([
     loadVendorCapacity(),
     loadVendorOtif(windowDays),
+    loadDeboardedVendors(),
   ]);
 
   const otifByCode = new Map(
@@ -74,6 +78,7 @@ export async function loadVendorHub(windowDays = 180): Promise<VendorHubData> {
         onTimePct: o ? o.onTimePct : null,
         fillPct: o ? o.fillPct : null,
         ratedPos: o ? o.pos : 0,
+        deboarded: deboarded[String(r.vendorCode ?? '').trim().toUpperCase()] ?? null,
       };
     })
     .sort((a, b) => b.openValue - a.openValue);
