@@ -34,8 +34,6 @@ export const ALL_VIEWS: ViewDef[] = [
   // the view to that team's custom role; /my-dashboard itself (the landing
   // page) is always visible and shows whichever views the user holds.
   { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
-  // Company-wide arrival view — visible to every signed-in SAADAA user (see canView).
-  { path: '/arrivals', label: 'Arrivals', group: 'Workspace' },
   { path: '/ppm-prep', label: 'PPM Prep', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/doq-dashboard', label: 'OOS Dashboard', group: 'Workspace' },
@@ -95,13 +93,15 @@ export function canView(
   role: string,
   allowedPages: string[] | null | undefined,
 ): boolean {
-  // My Dashboard (the landing view), the main dashboard route and its first
-  // tab are always visible. /arrivals is deliberately company-wide (item 5):
-  // every signed-in SAADAA user sees when goods are arriving, not just sourcing.
+  /* My Dashboard (the landing view), the main dashboard route and its first tab are always
+     visible. So is the Inward Plan: its Arrivals tab is deliberately company-wide, so every
+     signed-in SAADAA user can see when goods are arriving without asking sourcing. Entering
+     the plan is still gated — the page passes `canEdit(role)`, so a viewer reads and cannot
+     type. This exemption used to sit on /arrivals, which is now a tab of that page. */
   if (
     path === '/' ||
     path === '/my-dashboard' ||
-    path === '/arrivals' ||
+    path === '/receivable-plan' ||
     path === '/feedback' ||
     path === 'tab:dashboard'
   )

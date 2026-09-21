@@ -262,12 +262,6 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Received / QC pass / fail / pending', source: 'EasyEcom (GCP)', detail: 'Quantities received and how the inbound QC split them — passed, failed, or still pending.' },
     { field: 'Dispositions', source: 'EasyEcom (GCP)', detail: 'What happened to rejected units — damaged, discarded or returned to vendor.' },
   ],
-  '/arrivals': [
-    { field: 'What this is', source: 'Inward plan + PO data', detail: 'What’s arriving when — the monthly approved inward plan against what’s actually confirmed, across the company. Read-only.' },
-    { field: 'Planned inward', source: 'Inward Plan II', detail: 'The quantity the team planned (and management approved) to inward that month.' },
-    { field: 'Confirmed / actual', source: 'Real PO data (GCP)', detail: 'What is actually confirmed to arrive / has arrived against the plan.' },
-    { field: 'Filters', source: 'Workflow', detail: 'Slice by product, category, vendor or month.' },
-  ],
   '/ppm-prep': [
     { field: 'What this is', source: 'Live from each source', detail: 'Everything compiled before the Production Planning Meeting in one place, pulled live. Each section links to its detail page.' },
     { field: 'Sections', source: 'Automatic', detail: 'Each block (open POs, capacity, replenishment, approvals, …) is a live summary of its module — not a stored copy. Click through for the full detail.' },

@@ -90,7 +90,7 @@ export function PpmPrepClient({ prep }: { prep: PpmPrep }) {
                 }`
               : `${fmt.format(prep.inward.actual)} pcs received · nothing planned for this month`
           }
-          href="/arrivals"
+          href="/receivable-plan"
           tone="purple"
         />
         {/* These two used to say "View" and send people to another page for a number that can

@@ -71,7 +71,6 @@ const WORKSPACE_LINKS: NavLink[] = [
   { href: '/po-360', label: 'PO Overview', Icon: FileCheck },
   { href: '/product-360', label: 'Product Overview', Icon: PackageX },
   // Task-specific analytical views.
-  { href: '/arrivals', label: 'Arrivals', Icon: PackageCheck },
   { href: '/ppm-prep', label: 'PPM Prep', Icon: CalendarClock },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/doq-dashboard', label: 'OOS Dashboard', Icon: CalendarClock },
