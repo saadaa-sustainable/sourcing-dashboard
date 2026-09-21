@@ -212,6 +212,9 @@ export async function searchPos(query: string): Promise<CuttingPoOption[]> {
     .select('po_ref_num, po_number, vendor_code, vendor_name, po_date')
     .eq('warehouse', CUTTING_WAREHOUSE)
     .order('po_date', { ascending: false, nullsFirst: false })
+    // A single response caps at 1,000 rows whatever this says, so this is "newest 1,000",
+    // not 1,500. Acceptable here: the search term below filters server-side and the result
+    // is deduped to PICK_LIMIT, so a typed query still reaches older POs.
     .limit(1500);
   if (q) sel = sel.or(`po_ref_num.ilike.%${q}%,po_number.ilike.%${q}%,vendor_code.ilike.%${q}%,vendor_name.ilike.%${q}%`);
   const { data } = await sel;

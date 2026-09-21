@@ -239,20 +239,28 @@ export async function loadAnalyticsExtras(
   /* Inward last week: planned (arrivals due last week, still-open lines) vs actual
      (GRN received last week). Approximate — the two aren't line-matched. */
   try {
-    const [{ data: due }, { data: grn }] = await Promise.all([
-      supabase
-        .from('sd_po_lines_enriched')
-        .select('original_qty, expected_delivery_date')
-        .eq('po_status_code', 3)
-        .gte('expected_delivery_date', weekAgoDate)
-        .lte('expected_delivery_date', todayDate),
-      supabase
-        .from('sd_ee_grn')
-        .select('received_quantity, grn_created_at')
-        .gte('grn_created_at', weekAgoDate),
+    // Both sides page. A single week of GRN is ~2,900 lines against a 1,000-row response cap,
+    // so the unpaged version was summing the first thousand and calling it the week's receipts.
+    const [due, grn] = await Promise.all([
+      pageAll<{ original_qty: number | null }>(() =>
+        supabase
+          .from('sd_po_lines_enriched')
+          .select('original_qty, expected_delivery_date')
+          .eq('po_status_code', 3)
+          .gte('expected_delivery_date', weekAgoDate)
+          .lte('expected_delivery_date', todayDate)
+          .order('expected_delivery_date'),
+      ),
+      pageAll<{ received_quantity: number | null }>(() =>
+        supabase
+          .from('sd_ee_grn')
+          .select('received_quantity, grn_created_at')
+          .gte('grn_created_at', weekAgoDate)
+          .order('grn_detail_id'),
+      ),
     ]);
-    const planned = ((due ?? []) as { original_qty: number | null }[]).reduce((s, r) => s + (Number(r.original_qty) || 0), 0);
-    const actual = ((grn ?? []) as { received_quantity: number | null }[]).reduce((s, r) => s + (Number(r.received_quantity) || 0), 0);
+    const planned = due.reduce((s, r) => s + (Number(r.original_qty) || 0), 0);
+    const actual = grn.reduce((s, r) => s + (Number(r.received_quantity) || 0), 0);
     extras.inwardLastWeek = { planned, actual };
   } catch { /* stays null */ }
 
@@ -267,29 +275,37 @@ export async function loadAnalyticsExtras(
     const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1))
       .toISOString()
       .slice(0, 10);
-    const [{ data: expected }, { data: sheet }, { data: grn }, { count: openLines }] = await Promise.all([
-      supabase
-        .from('sd_receivable_input')
-        .select('qty_expected_this_week, row_key')
-        .gte('delivery_date_this_week', monthStartDate)
-        .lt('delivery_date_this_week', nextMonth)
-        .limit(PAGE_SIZE),
-      supabase
-        .from('sd_inward_plan_entry')
-        .select('inward_qty, approval_status')
-        .eq('plan_month', monthStartDate)
-        .limit(PAGE_SIZE),
-      supabase
-        .from('sd_ee_grn')
-        .select('received_quantity')
-        .gte('grn_created_at', monthStartDate)
-        .lt('grn_created_at', nextMonth)
-        .limit(PAGE_SIZE),
+    // A month of GRN is ~6,700 lines, so this pages. `.limit(PAGE_SIZE)` reads like a page
+    // size but is really a ceiling: it returns the first thousand and no more.
+    const [expected, sheet, grn, { count: openLines }] = await Promise.all([
+      pageAll<{ qty_expected_this_week: number | null; row_key?: string }>(() =>
+        supabase
+          .from('sd_receivable_input')
+          .select('qty_expected_this_week, row_key')
+          .gte('delivery_date_this_week', monthStartDate)
+          .lt('delivery_date_this_week', nextMonth)
+          .order('row_key'),
+      ),
+      pageAll<{ inward_qty: number | null; approval_status: string | null }>(() =>
+        supabase
+          .from('sd_inward_plan_entry')
+          .select('inward_qty, approval_status')
+          .eq('plan_month', monthStartDate)
+          .order('id'),
+      ),
+      pageAll<{ received_quantity: number | null }>(() =>
+        supabase
+          .from('sd_ee_grn')
+          .select('received_quantity')
+          .gte('grn_created_at', monthStartDate)
+          .lt('grn_created_at', nextMonth)
+          .order('grn_detail_id'),
+      ),
       // Open PO lines the team is meant to fill an expected quantity against. When the
       // Receivable Plan is untouched this is the adoption gap, not a data gap.
       supabase.from('sd_receivable_plan').select('row_key', { count: 'exact', head: true }),
     ]);
-    const fromReceivable = ((expected ?? []) as { qty_expected_this_week: number | null; row_key?: string }[]).reduce(
+    const fromReceivable = expected.reduce(
       (sum, r) => sum + (Number(r.qty_expected_this_week) || 0),
       0,
     );
@@ -298,12 +314,12 @@ export async function loadAnalyticsExtras(
       .reduce((sum, r) => sum + (Number(r.inward_qty) || 0), 0);
     const planned = fromReceivable > 0 ? fromReceivable : fromSheet;
     const source = fromReceivable > 0 ? 'receivable' : fromSheet > 0 ? 'inward-plan' : 'none';
-    const actual = ((grn ?? []) as { received_quantity: number | null }[]).reduce(
+    const actual = grn.reduce(
       (sum, r) => sum + (Number(r.received_quantity) || 0),
       0,
     );
     const filledKeys = new Set(
-      ((expected ?? []) as { row_key?: string }[]).map((r) => r.row_key).filter(Boolean) as string[],
+      expected.map((r) => r.row_key).filter(Boolean) as string[],
     );
     const dayOfMonth = Number(today.slice(8, 10));
     const daysInMonth = new Date(
@@ -529,11 +545,18 @@ export async function loadAnalyticsExtras(
      week (by po_updated_date). The gap between them is the delivery slippage. */
   try {
     const from12w = new Date(Date.now() - 12 * 7 * 86_400_000).toISOString().slice(0, 10);
-    const { data } = await supabase
-      .from('sd_po_completed')
-      .select('original_qty, expected_delivery_date, po_updated_date')
-      .or(`expected_delivery_date.gte.${from12w},po_updated_date.gte.${from12w}`)
-      .limit(PAGE_SIZE);
+    // 12 weeks of completed PO lines runs past a thousand, so this pages too.
+    const data = await pageAll<{
+      original_qty: number | null;
+      expected_delivery_date: string | null;
+      po_updated_date: string | null;
+    }>(() =>
+      supabase
+        .from('sd_po_completed')
+        .select('original_qty, expected_delivery_date, po_updated_date')
+        .or(`expected_delivery_date.gte.${from12w},po_updated_date.gte.${from12w}`)
+        .order('po_detail_id'),
+    );
     // Monday-anchored week key for a date string (YYYY-MM-DD).
     const weekKey = (d: string) => {
       const dt = new Date(`${d.slice(0, 10)}T00:00:00Z`);

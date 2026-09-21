@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import type {
   EeProductMaster,
   GrnDetail,
@@ -39,16 +39,23 @@ export async function loadEeProductMaster(): Promise<EeProductMaster[]> {
 // needed (it stays a client-side table, so keep it in the low thousands).
 const GRN_DETAIL_LIMIT = 5000;
 
-/** Inbound-QC GRN detail (sd_ee_grn) — most recent lines, capped (see GRN_DETAIL_LIMIT). */
+/**
+ * Inbound-QC GRN detail (sd_ee_grn) — the most recent lines, capped at GRN_DETAIL_LIMIT.
+ *
+ * Paged to reach that cap. `.limit(5000)` looked like it raised the ceiling but a single
+ * response is capped at 1,000 rows, so the page was quietly showing a fifth of what the
+ * constant promised.
+ */
 export async function loadGrnDetail(): Promise<GrnDetail[]> {
   const supabase = await client();
-  const { data, error } = await supabase
-    .from('sd_ee_grn')
-    .select('*')
-    .order('grn_created_at', { ascending: false, nullsFirst: false })
-    .limit(GRN_DETAIL_LIMIT);
-  if (error) throw new Error(`sd_ee_grn: ${error.message}`);
-  return (data ?? []) as GrnDetail[];
+  const rows = await pageAll<GrnDetail>(() =>
+    supabase
+      .from('sd_ee_grn')
+      .select('*')
+      .order('grn_created_at', { ascending: false, nullsFirst: false })
+      .order('grn_detail_id', { ascending: false }),
+  );
+  return rows.slice(0, GRN_DETAIL_LIMIT);
 }
 
 export const grnDetailLimit = GRN_DETAIL_LIMIT;
