@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
+  loadArrivalPlan,
   loadReceivablePlan,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -26,7 +27,7 @@ export default async function ReceivablePlanPage() {
   } catch (error) {
     if (error instanceof NotConfiguredError) {
       return (
-        <FormLayout title="Receivable Plan" active="/receivable-plan" role="viewer">
+        <FormLayout title="Inward Plan" active="/receivable-plan" role="viewer">
           <Notice tone="error">{error.message}</Notice>
         </FormLayout>
       );
@@ -36,13 +37,14 @@ export default async function ReceivablePlanPage() {
 
   if (!user) redirect('/login');
 
-  const rows = await loadReceivablePlan();
+  // Both tabs load together: the page is one screen with two views, not two pages.
+  const [rows, arrivals] = await Promise.all([loadReceivablePlan(), loadArrivalPlan()]);
   const week = weekRange();
 
   return (
     <FormLayout
-      title="Receivable Plan"
-      subtitle="Open POs pivoted to size level, with DOQ, stock and OOS — plus this week's expected delivery."
+      title="Inward Plan"
+      subtitle="What is arriving and when. Arrivals shows what was expected against what actually landed; Input Inward Plan is where the team enters the quantity and week to expect."
       active="/receivable-plan"
       role={user.role}
       userEmail={user.email}
@@ -50,6 +52,7 @@ export default async function ReceivablePlanPage() {
     >
       <ReceivablePlanClient
         rows={rows}
+        arrivals={arrivals.rows}
         editable={canEdit(user.role, 'draft')}
         weekStart={week.weekStart}
         weekEnd={week.weekEnd}

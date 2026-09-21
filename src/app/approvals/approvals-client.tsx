@@ -40,7 +40,7 @@ const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'po_approval', label: 'PO Approvals' },
   { key: 'standard_cost', label: 'Standard Cost' },
   { key: 'discontinue', label: 'Discontinue' },
-  { key: 'receivable_plan', label: 'Receivable Plan' },
+  { key: 'receivable_plan', label: 'Inward Plan' },
 ];
 
 export function ApprovalsClient({

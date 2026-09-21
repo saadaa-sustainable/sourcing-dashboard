@@ -36,7 +36,6 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
   // Company-wide arrival view — visible to every signed-in SAADAA user (see canView).
   { path: '/arrivals', label: 'Arrivals', group: 'Workspace' },
-  { path: '/inward-plan', label: 'Inward Plan', group: 'Workspace' },
   { path: '/ppm-prep', label: 'PPM Prep', group: 'Workspace' },
   { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
   { path: '/doq-dashboard', label: 'OOS Dashboard', group: 'Workspace' },
@@ -59,7 +58,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/cutting-register', label: 'Cutting Register', group: 'Workflows' },
   { path: '/po-closure', label: 'PO Closure', group: 'Workflows' },
   { path: '/po-manual-adjustment', label: 'Manual Data Ingestion', group: 'Workflows' },
-  { path: '/receivable-plan', label: 'Receivable Plan', group: 'Workflows' },
+  { path: '/receivable-plan', label: 'Inward Plan', group: 'Workflows' },
   { path: '/cash-flow', label: 'Cash Flow', group: 'Workflows', adminOnly: true },
   { path: '/discontinue', label: 'Discontinued Products View', group: 'Workflows' },
   // Not admin-only: routine items (small FG buying plans / POs) route to the TEAM

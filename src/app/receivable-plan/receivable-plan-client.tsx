@@ -7,6 +7,8 @@ import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
 import { STATUS_LABEL } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import type { ReceivablePlanRow } from '@/lib/forms/types';
+import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
+import { ArrivalsClient } from '@/app/arrivals/arrivals-client';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const SIZE_KEYS = [
@@ -78,11 +80,14 @@ const VIEW_TABS: { key: ViewMode; label: string }[] = [
 
 export function ReceivablePlanClient({
   rows,
+  arrivals = [],
   editable,
   weekStart,
   weekEnd,
 }: {
   rows: ReceivablePlanRow[];
+  /** Rows for the Arrivals tab — same data the standalone Arrivals page reads. */
+  arrivals?: ArrivalRow[];
   editable: boolean;
   weekStart: string;
   weekEnd: string;
@@ -94,6 +99,11 @@ export function ReceivablePlanClient({
   const [risk, setRisk] = useState('');
   const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
   const [view, setView] = useState<ViewMode>('lines');
+  /* Two tabs over one subject. Arrivals is the read: what was expected against what landed.
+     Input Inward Plan is the write: where the team says how much to expect and when. They
+     were separate pages, which meant answering "did it arrive" and "when is it coming"
+     required knowing they lived apart. */
+  const [tab, setTab] = useState<'arrivals' | 'input'>('arrivals');
   const [message, setMessage] = useState<string | null>(null);
   const [submitRemark, setSubmitRemark] = useState('');
   const [submitting, startSubmit] = useTransition();
@@ -150,6 +160,31 @@ export function ReceivablePlanClient({
 
   return (
     <>
+      <div className="segment ip-tabs" role="tablist" aria-label="Inward Plan views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'arrivals'}
+          className={tab === 'arrivals' ? 'active' : ''}
+          onClick={() => setTab('arrivals')}
+        >
+          Arrivals
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'input'}
+          className={tab === 'input' ? 'active' : ''}
+          onClick={() => setTab('input')}
+        >
+          Input Inward Plan
+        </button>
+      </div>
+
+      {tab === 'arrivals' ? (
+        <ArrivalsClient rows={arrivals} />
+      ) : (
+      <>
       <Notice tone="info">
         Each row is one colour on an open PO, split by size. Pick when it&rsquo;s expected — either a{' '}
         <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
@@ -302,6 +337,8 @@ export function ReceivablePlanClient({
         </div>
       ) : (
         <GroupedView rows={shown} mode={view} />
+      )}
+      </>
       )}
     </>
   );

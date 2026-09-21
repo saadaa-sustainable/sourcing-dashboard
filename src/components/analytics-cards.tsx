@@ -964,7 +964,7 @@ export function AnalyticsCards({
               cta="Open buying plan"
               span={5}
               href="/buying-plan"
-              info="Two halves of one question. Buying Plan coverage = issued PO value ÷ planned value for the current month (did we commit what we said we would). Inward Plan coverage = GRN quantity received in the month ÷ quantity planned to arrive — taken from the Receivable Plan when the team has filled it, otherwise from the monthly Inward Plan sheet with rejected lines excluded (did what we committed actually arrive). High buying + low inward = vendor/TNA problem, not a planning problem. Month totals, not line-matched. Updates live, not at month-end."
+              info="Two halves of one question. Buying Plan coverage = issued PO value ÷ planned value for the current month (did we commit what we said we would). Inward Plan coverage = GRN quantity received in the month ÷ quantity planned to arrive — taken from the Inward Plan input when the team has filled it, otherwise from the monthly Inward Plan sheet with rejected lines excluded (did what we committed actually arrive). High buying + low inward = vendor/TNA problem, not a planning problem. Month totals, not line-matched. Updates live, not at month-end."
             >
               <div className="ana-pair">
                 <div className="ana-pair-cell">
@@ -991,12 +991,12 @@ export function AnalyticsCards({
                   </span>
                   {inwardMonth && inwardMonth.source === "inward-plan" && (
                     <span className="ana-value-label ana-src-warn">
-                      Receivable Plan is empty
+                      Inward Plan input is empty
                       {inwardMonth.awaitingInput > 0
                         ? ` — ${fmt.format(inwardMonth.awaitingInput)} PO lines awaiting input`
                         : ""}
                       . Denominator is the older monthly Inward Plan sheet, so read it as
-                      indicative until the Receivable Plan is filled.
+                      indicative until the Inward Plan input is filled.
                     </span>
                   )}
                   <div className="ana-plan-track"><i style={{ width: `${clampPct(inwardMonthPct ?? 0)}%` }} /></div>

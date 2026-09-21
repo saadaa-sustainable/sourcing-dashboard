@@ -33,7 +33,7 @@ export default async function ArrivalsPage() {
   return (
     <FormLayout
       title="Arrivals"
-      subtitle="What's arriving when — what was expected (the live Receivable Plan plus the approved past plan) against what actually arrived (GRN), by week. Read-only; filter by source, product, category, vendor or week."
+      subtitle="What's arriving when — what was expected (the live Inward Plan input plus the approved past plan) against what actually arrived (GRN), by week. Read-only; filter by source, product, category, vendor or week."
       active="/arrivals"
       role={user.role}
       userEmail={user.email}

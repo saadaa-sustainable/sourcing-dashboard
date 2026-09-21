@@ -99,7 +99,7 @@ const PLANNING_LINKS: NavLink[] = [
 const PO_WORKFLOW_LINKS: NavLink[] = [
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
-  { href: '/receivable-plan', label: 'Receivable Plan', Icon: PackageCheck },
+  { href: '/receivable-plan', label: 'Inward Plan', Icon: PackageCheck },
   { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
 ];

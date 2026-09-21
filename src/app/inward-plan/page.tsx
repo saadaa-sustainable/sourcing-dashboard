@@ -1,43 +1,11 @@
 import { redirect } from 'next/navigation';
-import { FormLayout, Notice } from '@/components/forms/form-layout';
-import {
-  currentUser,
-  loadInwardPlan,
-  NotConfiguredError,
-} from '@/lib/forms/queries';
-import { InwardPlanClient } from './inward-plan-client';
 
-export const dynamic = 'force-dynamic';
-
-export default async function InwardPlanPage() {
-  let user;
-  try {
-    user = await currentUser();
-  } catch (error) {
-    if (error instanceof NotConfiguredError) {
-      return (
-        <FormLayout title="Inward Plan" active="/inward-plan" role="viewer">
-          <Notice tone="error">{error.message}</Notice>
-        </FormLayout>
-      );
-    }
-    throw error;
-  }
-
-  if (!user) redirect('/login');
-
-  const groups = await loadInwardPlan();
-
-  return (
-    <FormLayout
-      title="Inward Plan"
-      subtitle="Colour-level stock still to arrive from open (Approved) POs — soonest first."
-      active="/inward-plan"
-      role={user.role}
-      userEmail={user.email}
-      allowedPages={user.allowed_pages ?? null}
-    >
-      <InwardPlanClient groups={groups} />
-    </FormLayout>
-  );
+/**
+ * The Inward Plan lives on /receivable-plan, which carries both halves of it: Arrivals (what
+ * was expected against what landed) and Input Inward Plan (where the team enters what to
+ * expect and when). This route used to be a third, read-only view of the same subject, so it
+ * redirects rather than competing with the page that owns the name.
+ */
+export default function InwardPlanRedirect() {
+  redirect('/receivable-plan');
 }

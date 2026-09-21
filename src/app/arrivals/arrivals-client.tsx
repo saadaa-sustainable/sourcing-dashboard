@@ -61,7 +61,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'num',
       accessor: (r) => num(r.expected_qty),
       render: (r) => (r.expected_qty == null ? '—' : fmt.format(num(r.expected_qty))),
-      info: 'Quantity the team expected this week (Receivable Plan).',
+      info: 'Quantity the team expected this week (Inward Plan input).',
     },
     {
       key: 'expected_week',
@@ -112,7 +112,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       accessor: (r) => r.remarks ?? '',
       render: (r) => r.remarks ?? '—',
-      info: 'Remarks from the approved historical plan sheet (live Receivable Plan rows carry their submit remark in the approval history instead).',
+      info: 'Remarks from the approved historical plan sheet (live Inward Plan rows carry their submit remark in the approval history instead).',
     },
   ];
 
@@ -120,7 +120,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
     <>
       <div className="metric-grid compact">
         <div className="metric-card tone-purple">
-          <span className="metric-label">Expected (Receivable Plan)</span>
+          <span className="metric-label">Expected (Inward Plan)</span>
           <strong>{fmt.format(totals.planned)}</strong>
         </div>
         <div className="metric-card tone-teal">

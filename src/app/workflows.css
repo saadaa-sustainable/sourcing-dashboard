@@ -1971,3 +1971,6 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   font-weight: 400;
 }
 .rp-size-head { font-size: 11px; }
+
+/* Inward Plan: the two halves of one subject — what landed, and what to expect. */
+.ip-tabs { margin: 0 0 14px; }
