@@ -90,17 +90,26 @@ export function OosSummaryView({
         </div>
         <div className="oos-kpi-grid three">
           <div className="oos-kpi">
-            <span>Last 365 days</span>
+            <span>
+              Last 365 days
+              <InfoDot text="Empty SKU-days in the last 365 days ÷ (SKUs × 365). A SKU counts on every day it had no stock." label="About last 365 days" />
+            </span>
             <strong>{pct(a.pct365)}</strong>
             <small>{fmt.format(a.oos365)} SKUs empty on at least one day</small>
           </div>
           <div className="oos-kpi">
-            <span>Last 45 days</span>
+            <span>
+              Last 45 days
+              <InfoDot text="Empty SKU-days in the last 45 days ÷ (SKUs × 45). This is the sourcing team's record: a SKU that was empty on any day stays counted until that day rolls out of the window." label="About last 45 days" />
+            </span>
             <strong>{pct(a.pct45)}</strong>
             <small>{fmt.format(a.oos45)} SKUs empty on at least one day · the sourcing record</small>
           </div>
           <div className="oos-kpi is-now">
-            <span>Yesterday</span>
+            <span>
+              Yesterday
+              <InfoDot text="SKUs with no stock on the snapshot day ÷ SKUs. The position now — when empty SKUs are brought down, this is where it shows." label="About yesterday" />
+            </span>
             <strong>{pct(a.pctYesterday)}</strong>
             <small>{fmt.format(a.oosYesterday)} SKUs with no stock · the position now</small>
           </div>
@@ -116,22 +125,34 @@ export function OosSummaryView({
 
       <div className="oos-kpi-grid four">
         <div className="oos-kpi panel">
-          <span>In-stock rate</span>
+          <span>
+            In-stock rate
+            <InfoDot text="1 − OOS %. Yesterday's figure is SKUs with stock ÷ SKUs; the 45-day figure is stocked SKU-days ÷ (SKUs × 45)." label="About in-stock rate" />
+          </span>
           <strong>{pct(1 - a.pctYesterday)}</strong>
           <small>yesterday · {pct(1 - a.pct45)} over the last 45 days</small>
         </div>
         <div className="oos-kpi panel">
-          <span>Recovered from out of stock</span>
+          <span>
+            Recovered from out of stock
+            <InfoDot text="SKUs that were empty on at least one day in the last 45 days AND had stock on the snapshot day. The count that shows the team's work." label="About recovered" />
+          </span>
           <strong>{fmt.format(a.recovered45)}</strong>
           <small>SKUs empty at some point in the last 45 days that had stock yesterday</small>
         </div>
         <div className="oos-kpi panel">
-          <span>Still out of stock</span>
+          <span>
+            Still out of stock
+            <InfoDot text="SKUs with no stock on the snapshot day, shown against every SKU that went empty in the last 45 days. Recovered + still out = the 45-day count." label="About still out of stock" />
+          </span>
           <strong>{fmt.format(a.oosYesterday)}</strong>
           <small>of the {fmt.format(a.oos45)} SKUs that went empty in the last 45 days</small>
         </div>
         <div className="oos-kpi panel">
-          <span>Days on hand</span>
+          <span>
+            Days on hand
+            <InfoDot text="Σ stock ÷ Σ daily demand, over SKUs that sell (daily demand > 0). SKUs with no demand are left out so dead stock cannot inflate cover." label="About days on hand" />
+          </span>
           <strong>{a.daysOnHand == null ? '—' : fmt.format(Math.round(a.daysOnHand))}</strong>
           <small>days the stock lasts at the current sales rate, over SKUs that sell</small>
         </div>
