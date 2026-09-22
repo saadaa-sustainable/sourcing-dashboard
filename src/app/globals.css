@@ -1805,3 +1805,19 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 @media (max-width: 900px) {
   .oos-kpi-grid.three, .oos-kpi-grid.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Category rows open to list their SKUs. */
+.oos-cat-row { cursor: pointer; }
+.oos-cat-row:hover td { background: #faf8f2; }
+.oos-cat-row.is-open td { background: #f5f2ea; }
+.oos-cat-name { display: inline-flex; align-items: center; gap: 6px; }
+.oos-cat-name b { font-weight: 700; }
+.oos-cat-name small { font-size: 11px; }
+.oos-cat-detail > td { padding: 0 0 14px 28px; background: #fbfaf6; }
+.oos-sku-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 6px 0; font-size: 12px; color: var(--ink-3, #6e695e); }
+.oos-sku-scroll { max-height: 360px; overflow-y: auto; }
+.oos-sku-scroll table { font-size: 12px; }
+.oos-sku-state { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.oos-sku-state.is-empty { background: #fbe4e0; color: #b1301f; }
+.oos-sku-state.is-recovered { background: #e4f0e3; color: #3f6b3d; }
+.oos-sku-state.is-ok { background: #ece7d9; color: #6e695e; }

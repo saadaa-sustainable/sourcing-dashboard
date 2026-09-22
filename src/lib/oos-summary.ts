@@ -14,15 +14,36 @@
 
 export type OosSkuInput = {
   sku: string;
+  /** The product code — what the product master calls the category (SDFLK, SMFSK…). */
   category: string | null;
+  /** Product name, colour (variant) and size, for the SKU list under a category. */
+  name?: string | null;
+  variant?: string | null;
+  size?: string | null;
   stock: number;
   dailyDemand: number;
   oosDays45: number;
   oosDays365: number;
 };
 
+/** One SKU as listed under its category: where it stands today. */
+export type OosSkuRow = {
+  sku: string;
+  variant: string;
+  size: string;
+  name: string;
+  stock: number;
+  dailyDemand: number;
+  oosDays45: number;
+  oosDays365: number;
+  /** empty = no stock yesterday · recovered = was empty in 45 days, stocked now · ok = never empty in 45 days. */
+  state: 'empty' | 'recovered' | 'ok';
+};
+
 export type OosScope = {
   scope: string;
+  /** Product name for a category scope (the code is the scope itself); '' for 'all'. */
+  label: string;
   skus: number;
   /** SKUs with no stock as of the snapshot day. */
   oosYesterday: number;
@@ -44,7 +65,12 @@ export type OosScope = {
   daysOnHand: number | null;
 };
 
-export type OosSummary = { all: OosScope; categories: OosScope[] };
+export type OosSummary = {
+  all: OosScope;
+  categories: OosScope[];
+  /** The SKUs behind each category, keyed by scope; empty ones first, then by days empty. */
+  skusByScope: Record<string, OosSkuRow[]>;
+};
 
 export const OOS_WINDOW_45 = 45;
 export const OOS_WINDOW_365 = 365;
@@ -56,15 +82,27 @@ export function isSellingState(raw: string | null | undefined): boolean {
   return v.startsWith('NPD') && !v.includes('NOT LAUNCH');
 }
 
-/** "SHIRT" / "Shirt" / " shirt " are one category. */
+/** The category is the product code as the master holds it: upper-cased, trimmed. */
 export function normaliseCategory(raw: string | null | undefined): string {
-  const v = (raw ?? '').trim().replace(/\s+/g, ' ');
-  if (!v) return 'Uncategorised';
-  return v.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  const v = (raw ?? '').trim().toUpperCase();
+  return v || 'UNCATEGORISED';
 }
+
+const stateOf = (r: OosSkuInput): OosSkuRow['state'] =>
+  r.stock <= 0 ? 'empty' : r.oosDays45 > 0 ? 'recovered' : 'ok';
+
+const STATE_RANK: Record<OosSkuRow['state'], number> = { empty: 0, recovered: 1, ok: 2 };
 
 function scopeOf(scope: string, rows: OosSkuInput[]): OosScope {
   const skus = rows.length;
+  // The product name most of the rows carry — one code is one product, so any row will do,
+  // but the commonest guards against a stray blank.
+  const names = new Map<string, number>();
+  for (const r of rows) {
+    const n = (r.name ?? '').trim();
+    if (n) names.set(n, (names.get(n) ?? 0) + 1);
+  }
+  const label = scope === 'all' ? '' : [...names.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
   let oosYesterday = 0, oos45 = 0, oos365 = 0, oosDays45 = 0, oosDays365 = 0, recovered45 = 0;
   let stockSelling = 0, demand = 0;
   for (const r of rows) {
@@ -87,6 +125,7 @@ function scopeOf(scope: string, rows: OosSkuInput[]): OosScope {
   const pct365 = skus ? oosDays365 / (skus * OOS_WINDOW_365) : 0;
   return {
     scope,
+    label,
     skus,
     oosYesterday,
     oos45,
@@ -114,5 +153,27 @@ export function summariseOos(rows: OosSkuInput[]): OosSummary {
   const categories = [...byCat.entries()]
     .map(([c, list]) => scopeOf(c, list))
     .sort((a, b) => b.pctYesterday - a.pctYesterday || b.pct45 - a.pct45 || a.scope.localeCompare(b.scope));
-  return { all: scopeOf('all', rows), categories };
+  const skusByScope: Record<string, OosSkuRow[]> = {};
+  for (const [c, list] of byCat) {
+    skusByScope[c] = list
+      .map((r) => ({
+        sku: r.sku,
+        variant: (r.variant ?? '').trim(),
+        size: (r.size ?? '').trim(),
+        name: (r.name ?? '').trim(),
+        stock: r.stock,
+        dailyDemand: r.dailyDemand,
+        oosDays45: Math.max(0, r.oosDays45),
+        oosDays365: Math.max(0, r.oosDays365),
+        state: stateOf(r),
+      }))
+      .sort(
+        (a, b) =>
+          STATE_RANK[a.state] - STATE_RANK[b.state] ||
+          b.oosDays45 - a.oosDays45 ||
+          b.dailyDemand - a.dailyDemand ||
+          a.sku.localeCompare(b.sku),
+      );
+  }
+  return { all: scopeOf('all', rows), categories, skusByScope };
 }

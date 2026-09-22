@@ -30,14 +30,17 @@ export async function loadOosSummary(): Promise<OosSummaryData | null> {
       ((excluded ?? []) as { sku: string | null }[]).map((r) => norm(r.sku)).filter(Boolean),
     );
 
+    // `category` on the feed is the product code (SDFLK…), which is exactly what the product
+    // master calls the category — so the rows here group the way the master does.
     type Row = {
-      sku: string | null; sub_category: string | null; product_state: string | null; date_day: string | null;
+      sku: string | null; category: string | null; product_name: string | null; product_variant: string | null; size: string | null;
+      product_state: string | null; date_day: string | null;
       current_stock: number | null; daily_quantity: number | null; oos_days_45: number | null; oos_days_365: number | null;
     };
     const rows = await pageAll<Row>(() =>
       supabase
         .from('sd_inventory_planning')
-        .select('sku, sub_category, product_state, date_day, current_stock, daily_quantity, oos_days_45, oos_days_365')
+        .select('sku, category, product_name, product_variant, size, product_state, date_day, current_stock, daily_quantity, oos_days_45, oos_days_365')
         .eq('warehouse', OOS_SUMMARY_WAREHOUSE)
         .order('sku'),
     );
@@ -55,7 +58,10 @@ export async function loadOosSummary(): Promise<OosSummaryData | null> {
       }
       inputs.push({
         sku: r.sku,
-        category: r.sub_category,
+        category: r.category,
+        name: r.product_name,
+        variant: r.product_variant,
+        size: r.size,
         stock: Number(r.current_stock) || 0,
         dailyDemand: Number(r.daily_quantity) || 0,
         oosDays45: Number(r.oos_days_45) || 0,

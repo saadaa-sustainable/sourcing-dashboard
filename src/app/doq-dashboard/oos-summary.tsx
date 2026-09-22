@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   CartesianGrid,
   Legend,
@@ -11,9 +11,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
+import { downloadCsv } from '@/lib/download';
 import { Notice } from '@/components/forms/form-layout';
-import type { OosScope } from '@/lib/oos-summary';
+import type { OosScope, OosSkuRow } from '@/lib/oos-summary';
 import type { OosSnapshotPoint, OosSummaryData } from '@/lib/forms/queries-modules/oos-summary';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -23,7 +25,7 @@ const day = (iso: string | null | undefined) =>
 
 /** The category table's columns, each with the (i) that says what it counts. */
 const CATEGORY_COLUMNS: { label: string; num?: boolean; info: string }[] = [
-  { label: 'Category', info: "WHAT: the product master's sub-category — Shirt, Casual Pant, Long Kurta and so on.\n\nNOTE: names are case-folded, so SHIRT and Shirt are one row. 'Uncategorised' collects SKUs whose master row has no sub-category." },
+  { label: 'Category', info: "WHAT: the category as the product master holds it — the product code (SDFLK, SMFSK…) with its product name beside it. One code is one product across all its colours and sizes.\n\nHOW: every SKU is grouped under its product code. Click a row to open the list of SKUs behind it — colour, size, stock yesterday, days empty — empty ones first.\n\nUSE: the row is the product to act on; the list under it says which colour and size." },
   { label: 'SKUs', num: true, info: "WHAT: how many SKUs (colour + size) this category has on sale.\n\nWHICH: Ongoing and launched-NPD states at Main Warehouse, test SKUs excluded — the same set as the headline." },
   { label: 'OOS % 365d', num: true, info: "WHAT: the category's long-run out-of-stock share.\n\nHOW: empty SKU-days in the last 365 days ÷ (SKUs × 365). Example: 32 SKUs × 365 = 11,680 SKU-days; 2,490 empty → 21.3%.\n\nUSE: the benchmark for the two columns to its right." },
   { label: 'OOS % 45d', num: true, info: "WHAT: the category's recent out-of-stock share — the sourcing record.\n\nHOW: empty SKU-days in the last 45 days ÷ (SKUs × 45).\n\nMIND: does not fall when a SKU is refilled; it falls as empty days roll out of the window. Read 'OOS % yesterday' for the position now." },
@@ -70,6 +72,9 @@ export function OosSummaryView({
       })),
     [snapshots],
   );
+
+  // Which category row is opened to show its SKUs.
+  const [openScope, setOpenScope] = useState<string | null>(null);
 
   if (!summary) {
     return <Notice tone="error">The out-of-stock summary could not be loaded — the inventory-planning snapshot is not readable right now.</Notice>;
@@ -208,10 +213,10 @@ export function OosSummaryView({
       <section className="panel table-panel">
         <div className="panel-title">
           <div>
-            <span className="panel-kicker">By category</span>
+            <span className="panel-kicker">By category — click a row for its SKUs</span>
             <h3>
               OOS % per category — 365 days · 45 days · yesterday
-              <InfoDot text={"WHAT: the headline numbers broken down by category, so it is clear WHERE stock-outs sit.\n\nHOW: the same three windows and the same change, computed within each category (the product master's sub-category: Shirt, Casual Pant, Long Kurta…). Sorted with the worst 'yesterday' at the top.\n\nUSE: a category well above the overall OOS % yesterday (shown in red) is where the next POs should go. The change column says whether that category is already recovering."} label="About the category table" />
+              <InfoDot text={"WHAT: the headline numbers broken down by category, so it is clear WHERE stock-outs sit.\n\nHOW: the same three windows and the same change, computed within each category — the product code as the product master holds it (SDFLK = Airy Linen Long Kurta, and so on). Sorted with the worst 'yesterday' at the top.\n\nUSE: a category well above the overall OOS % yesterday (shown in red) is where the next POs should go. Click it to see which colours and sizes are empty. The change column says whether that category is already recovering."} label="About the category table" />
             </h3>
           </div>
         </div>
@@ -229,20 +234,14 @@ export function OosSummaryView({
             </thead>
             <tbody>
               {summary.categories.map((c: OosScope) => (
-                <tr key={c.scope}>
-                  <td>{c.scope}</td>
-                  <td className="num tabular">{fmt.format(c.skus)}</td>
-                  <td className="num tabular">{pct(c.pct365)}</td>
-                  <td className="num tabular">{pct(c.pct45)}</td>
-                  <td className={`num tabular${c.pctYesterday > a.pctYesterday ? ' oos-worse' : ''}`}>{pct(c.pctYesterday)}</td>
-                  <td>
-                    <Change value={c.changeVs45} />
-                  </td>
-                  <td className="num tabular">{fmt.format(c.oos45)}</td>
-                  <td className="num tabular">{fmt.format(c.oosYesterday)}</td>
-                  <td className="num tabular">{fmt.format(c.recovered45)}</td>
-                  <td className="num tabular">{c.daysOnHand == null ? '—' : fmt.format(Math.round(c.daysOnHand))}</td>
-                </tr>
+                <CategoryRow
+                  key={c.scope}
+                  c={c}
+                  overallYesterday={a.pctYesterday}
+                  skus={summary.skusByScope[c.scope] ?? []}
+                  open={openScope === c.scope}
+                  onToggle={() => setOpenScope((cur) => (cur === c.scope ? null : c.scope))}
+                />
               ))}
               {!summary.categories.length && (
                 <tr>
@@ -256,5 +255,110 @@ export function OosSummaryView({
         </div>
       </section>
     </div>
+  );
+}
+
+const STATE_LABEL: Record<OosSkuRow['state'], string> = {
+  empty: 'No stock yesterday',
+  recovered: 'Was empty, back in stock',
+  ok: 'In stock all 45 days',
+};
+
+/** One category row; click opens the SKUs behind it, empty ones first. */
+function CategoryRow({
+  c,
+  overallYesterday,
+  skus,
+  open,
+  onToggle,
+}: {
+  c: OosScope;
+  overallYesterday: number;
+  skus: OosSkuRow[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const empty = skus.filter((s) => s.state === 'empty').length;
+  return (
+    <>
+      <tr className={`oos-cat-row${open ? ' is-open' : ''}`} onClick={onToggle} role="button" aria-expanded={open}>
+        <td>
+          <span className="oos-cat-name">
+            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            <b className="mono">{c.scope}</b>
+            {c.label ? <small className="wf-subtle">{c.label}</small> : null}
+          </span>
+        </td>
+        <td className="num tabular">{fmt.format(c.skus)}</td>
+        <td className="num tabular">{pct(c.pct365)}</td>
+        <td className="num tabular">{pct(c.pct45)}</td>
+        <td className={`num tabular${c.pctYesterday > overallYesterday ? ' oos-worse' : ''}`}>{pct(c.pctYesterday)}</td>
+        <td>
+          <Change value={c.changeVs45} />
+        </td>
+        <td className="num tabular">{fmt.format(c.oos45)}</td>
+        <td className="num tabular">{fmt.format(c.oosYesterday)}</td>
+        <td className="num tabular">{fmt.format(c.recovered45)}</td>
+        <td className="num tabular">{c.daysOnHand == null ? '—' : fmt.format(Math.round(c.daysOnHand))}</td>
+      </tr>
+      {open && (
+        <tr className="oos-cat-detail">
+          <td colSpan={10}>
+            <div className="oos-sku-head">
+              <span>
+                <strong>{fmt.format(skus.length)} SKUs</strong> in {c.scope}
+                {c.label ? ` · ${c.label}` : ''} — {fmt.format(empty)} with no stock yesterday, listed first
+              </span>
+              <button
+                type="button"
+                className="download-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  downloadCsv(
+                    `oos-${c.scope.toLowerCase()}-skus`,
+                    ['SKU', 'Product', 'Colour', 'Size', 'Stock yesterday', 'Days empty (45d)', 'Days empty (365d)', 'Daily demand', 'State'],
+                    skus.map((s) => [s.sku, s.name, s.variant, s.size, s.stock, s.oosDays45, s.oosDays365, s.dailyDemand, STATE_LABEL[s.state]]),
+                  );
+                }}
+              >
+                <Download size={13} /> CSV
+              </button>
+            </div>
+            <div className="table-scroll oos-sku-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Colour</th>
+                    <th>Size</th>
+                    <th className="num">Stock yesterday</th>
+                    <th className="num">Days empty, last 45</th>
+                    <th className="num">Days empty, last 365</th>
+                    <th className="num">Sells a day</th>
+                    <th>Where it stands</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skus.map((s) => (
+                    <tr key={s.sku} className={`oos-sku-${s.state}`}>
+                      <td className="mono">{s.sku}</td>
+                      <td className="mono">{s.variant || '—'}</td>
+                      <td>{s.size || '—'}</td>
+                      <td className="num tabular">{fmt.format(s.stock)}</td>
+                      <td className="num tabular">{s.oosDays45}</td>
+                      <td className="num tabular">{s.oosDays365}</td>
+                      <td className="num tabular">{s.dailyDemand ? (Math.round(s.dailyDemand * 10) / 10).toString() : '—'}</td>
+                      <td>
+                        <span className={`oos-sku-state is-${s.state}`}>{STATE_LABEL[s.state]}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

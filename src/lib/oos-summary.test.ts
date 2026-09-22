@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { isSellingState, normaliseCategory, summariseOos } from './oos-summary';
 
 const sku = (o: Partial<Parameters<typeof summariseOos>[0][number]> & { sku: string }) => ({
-  category: 'Shirt',
+  category: 'SDFLK',
+  name: 'Airy Linen Long Kurta',
   stock: 10,
   dailyDemand: 1,
   oosDays45: 0,
@@ -20,10 +21,10 @@ test('selling states: Ongoing and launched NPD only', () => {
   assert.equal(isSellingState(null), false);
 });
 
-test('category names fold case and whitespace', () => {
-  assert.equal(normaliseCategory('SHIRT'), 'Shirt');
-  assert.equal(normaliseCategory(' casual  pant '), 'Casual Pant');
-  assert.equal(normaliseCategory(''), 'Uncategorised');
+test('category is the product code, upper-cased and trimmed', () => {
+  assert.equal(normaliseCategory('sdflk'), 'SDFLK');
+  assert.equal(normaliseCategory(' SMFSK '), 'SMFSK');
+  assert.equal(normaliseCategory(''), 'UNCATEGORISED');
 });
 
 test('the two OOS measures, the shared-basis percentages and the change', () => {
@@ -64,14 +65,28 @@ test('no change when there was nothing to fall from', () => {
   assert.equal(summariseOos([]).all.pct45, 0);
 });
 
-test('categories are folded and ordered worst-yesterday first', () => {
+test('categories are folded, named, and ordered worst-yesterday first', () => {
   const rows = [
-    sku({ sku: 'a', category: 'SHIRT', stock: 0, oosDays45: 1 }),
-    sku({ sku: 'b', category: 'Shirt' }),
-    sku({ sku: 'c', category: 'Pant' }),
+    sku({ sku: 'a', category: 'SDFLK', stock: 0, oosDays45: 1 }),
+    sku({ sku: 'b', category: 'sdflk' }),
+    sku({ sku: 'c', category: 'SDCP', name: 'Casual Pant' }),
   ];
   const { categories } = summariseOos(rows);
-  assert.deepEqual(categories.map((c) => c.scope), ['Shirt', 'Pant']);
+  assert.deepEqual(categories.map((c) => c.scope), ['SDFLK', 'SDCP']);
+  assert.equal(categories[0].label, 'Airy Linen Long Kurta');
+  assert.equal(categories[1].label, 'Casual Pant');
   assert.equal(categories[0].skus, 2);
   assert.equal(categories[0].pctYesterday, 0.5);
+});
+
+test('the SKUs behind a category: empty first, then recovered by days empty, then the rest', () => {
+  const rows = [
+    sku({ sku: 'ok', stock: 5 }),
+    sku({ sku: 'rec-short', stock: 5, oosDays45: 3 }),
+    sku({ sku: 'empty', stock: 0, oosDays45: 12 }),
+    sku({ sku: 'rec-long', stock: 5, oosDays45: 20 }),
+  ];
+  const { skusByScope } = summariseOos(rows);
+  assert.deepEqual(skusByScope.SDFLK.map((r) => r.sku), ['empty', 'rec-long', 'rec-short', 'ok']);
+  assert.deepEqual(skusByScope.SDFLK.map((r) => r.state), ['empty', 'recovered', 'recovered', 'ok']);
 });
