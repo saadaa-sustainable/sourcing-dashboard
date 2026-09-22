@@ -83,7 +83,7 @@ import type { VendorHubData } from "@/lib/vendor-hub.server";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { COINED_TERMS } from "@/lib/glossary";
-import { AnalyticsCards, ObjectiveStockCards } from "@/components/analytics-cards";
+import { AnalyticsCards, ObjectiveStockCards, ObjectiveSynopsisCards } from "@/components/analytics-cards";
 import { canView } from "@/lib/views";
 import type { AnalyticsExtras, PoClosureView, SdRole } from "@/lib/forms/types";
 import { signOut } from "@/lib/auth-actions";
@@ -1129,6 +1129,11 @@ function DashboardTab({
             />
           </div>
           <ObjectiveStockCards extras={extras} onTab={onTab} />
+          <ObjectiveSynopsisCards
+            extras={extras}
+            book={{ open: openRefs.length, overdue: delayedRefs.length, highRisk: highRiskRefs, ageing }}
+            onTab={onTab}
+          />
         </>
       ) : (
       <>

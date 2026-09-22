@@ -175,6 +175,11 @@ export async function loadAnalyticsExtras(
     expectedVsActual: null,
     replenishment: null,
     oosSummary: null,
+    poBook: null,
+    inwardSynopsis: null,
+    oosSynopsis: null,
+    approvalRequisitions: null,
+    isr: null,
     vendorRec: null,
     inwardPipeline: null,
     productStateMix: null,
@@ -283,10 +288,10 @@ export async function loadAnalyticsExtras(
     // A month of GRN is ~6,700 lines, so this pages. `.limit(PAGE_SIZE)` reads like a page
     // size but is really a ceiling: it returns the first thousand and no more.
     const [expected, sheet, grn, { count: openLines }] = await Promise.all([
-      pageAll<{ qty_expected_this_week: number | null; row_key?: string }>(() =>
+      pageAll<{ qty_expected_this_week: number | null; row_key?: string; po_number?: string | null }>(() =>
         supabase
           .from('sd_receivable_input')
-          .select('qty_expected_this_week, row_key')
+          .select('qty_expected_this_week, row_key, po_number')
           .gte('delivery_date_this_week', monthStartDate)
           .lt('delivery_date_this_week', nextMonth)
           .order('row_key'),
@@ -298,10 +303,10 @@ export async function loadAnalyticsExtras(
           .eq('plan_month', monthStartDate)
           .order('id'),
       ),
-      pageAll<{ received_quantity: number | null }>(() =>
+      pageAll<{ received_quantity: number | null; po_number: string | null }>(() =>
         supabase
           .from('sd_ee_grn')
-          .select('received_quantity')
+          .select('received_quantity, po_number')
           .gte('grn_created_at', monthStartDate)
           .lt('grn_created_at', nextMonth)
           .order('grn_detail_id'),
@@ -338,6 +343,42 @@ export async function loadAnalyticsExtras(
       awaitingInput: Math.max(0, (openLines ?? 0) - filledKeys.size),
       dayOfMonth,
       daysInMonth,
+    };
+
+    // Inward Plan vs actual GRN at PO level: for every PO the team planned to receive this
+    // month, did it come short, in excess or on plan — and which receipts had no plan at all.
+    // PO level because the plan is per colour and GRN per SKU; the PO is the grain both share.
+    const poKey = (v: string | null | undefined) => (v ?? '').trim().toUpperCase();
+    const plannedByPo = new Map<string, number>();
+    for (const r of expected) {
+      const k = poKey(r.po_number);
+      if (!k) continue;
+      plannedByPo.set(k, (plannedByPo.get(k) ?? 0) + (Number(r.qty_expected_this_week) || 0));
+    }
+    const receivedByPo = new Map<string, number>();
+    for (const r of grn) {
+      const k = poKey(r.po_number);
+      if (!k) continue;
+      receivedByPo.set(k, (receivedByPo.get(k) ?? 0) + (Number(r.received_quantity) || 0));
+    }
+    let shortPos = 0, excessPos = 0, onPlanPos = 0;
+    for (const [po, plannedQty] of plannedByPo) {
+      const got = receivedByPo.get(po) ?? 0;
+      if (got < plannedQty) shortPos += 1;
+      else if (got > plannedQty) excessPos += 1;
+      else onPlanPos += 1;
+    }
+    const unplannedPos = [...receivedByPo.keys()].filter((po) => !plannedByPo.has(po)).length;
+    extras.inwardSynopsis = {
+      month: today.slice(0, 7),
+      plannedPos: plannedByPo.size,
+      shortPos,
+      excessPos,
+      onPlanPos,
+      receivedPos: receivedByPo.size,
+      unplannedPos,
+      plannedQty: fromReceivable,
+      receivedQty: actual,
     };
   } catch { /* stays null */ }
 
@@ -458,7 +499,77 @@ export async function loadAnalyticsExtras(
       .map((v) => ({ ...v, reason: atRiskOf(v, WATCH_DAYS) }))
       .filter((v): v is typeof v & { reason: 'stopped' | 'short_cover' } => v.reason != null)
       .sort(byPriority);
+
+    // The OOS synopsis by sales class: over every selling variant, how many are empty right
+    // now, how many will run out inside the lead time, and the average days on hand.
+    const classes = ['A', 'B', 'C', 'D'] as const;
+    const byClass = classes.map((cls) => {
+      const rows = assessed.filter((v) => v.abc_class === cls);
+      const doh = rows.map((v) => v.days_on_hand).filter((d): d is number => d != null);
+      return {
+        cls,
+        variants: rows.length,
+        oosNow: rows.filter((v) => v.current_stock <= 0).length,
+        atRisk: rows.filter((v) => atRiskOf(v, LEAD_TIME_DAYS) != null).length,
+        avgDoh: doh.length ? Math.round(doh.reduce((s, d) => s + d, 0) / doh.length) : null,
+      };
+    });
+    extras.oosSynopsis = {
+      total: assessed.length,
+      oosNow: assessed.filter((v) => v.current_stock <= 0).length,
+      atRisk: extras.stockoutGaps.length,
+      byClass,
+    };
   } catch { /* section stays null */ }
+
+  /* PO book — open POs as a share of every PO there has ever been (open + completed). */
+  try {
+    const { data } = await supabase.from('sd_po_book').select('open_pos, completed_pos').maybeSingle();
+    if (data) extras.poBook = { open: Number(data.open_pos) || 0, completed: Number(data.completed_pos) || 0 };
+  } catch { /* stays null */ }
+
+  /* Approval requisitions — everything waiting for a decision, by kind. */
+  try {
+    const pending = (t: string) =>
+      supabase.from(t).select('*', { count: 'exact', head: true }).in('status', ['submitted', 'pending_l2']);
+    const [bp, po, dc, vd, iw] = await Promise.all([
+      pending('sd_buying_plan'),
+      pending('sd_po_approval'),
+      pending('sd_discontinue_request'),
+      pending('sd_vendor_deboarding_request'),
+      pending('sd_receivable_input'),
+    ]);
+    const n = (r: { count: number | null }) => r.count ?? 0;
+    extras.approvalRequisitions = {
+      buyingPlans: n(bp), pos: n(po), discontinue: n(dc), deboarding: n(vd), inward: n(iw),
+      total: n(bp) + n(po) + n(dc) + n(vd) + n(iw),
+    };
+  } catch { /* stays null */ }
+
+  /* ISR — pieces received (GRN) against pieces sold over the same four complete weeks the
+     DOQ windows cover, so the two sides of the ratio are the same days. */
+  try {
+    const { data: meta } = await supabase.from('sd_doq_window_meta').select('windows').eq('id', 1).maybeSingle();
+    const w = (meta as { windows?: { windows?: Record<string, { start: string; end: string }> } } | null)?.windows?.windows;
+    const from = w?.w4?.start;
+    const to = w?.w1?.end;
+    if (from && to) {
+      const toExclusive = new Date(Date.parse(`${to}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      const [{ data: sold }, { data: grn }] = await Promise.all([
+        supabase.from('sd_sold_4w').select('sold_qty, skus').maybeSingle(),
+        supabase.rpc('sd_grn_received', { p_from: from, p_to: toExclusive }),
+      ]);
+      const g = (Array.isArray(grn) ? grn[0] : grn) as { received_qty: number | null; grn_lines: number | null; pos: number | null } | null;
+      extras.isr = {
+        from,
+        to,
+        inwardQty: Number(g?.received_qty) || 0,
+        inwardPos: Number(g?.pos) || 0,
+        soldQty: Number((sold as { sold_qty?: number } | null)?.sold_qty) || 0,
+        skus: Number((sold as { skus?: number } | null)?.skus) || 0,
+      };
+    }
+  } catch { /* stays null */ }
 
   /* 1.9 Delivery reliability — per-vendor delay rate over the Rules-Master window
      (default 2 quarters), combining COMPLETED POs (final delivered status) and

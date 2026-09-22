@@ -15,6 +15,7 @@ import { countOpenIssues, syncAutoIssues } from '@/lib/issues.server';
 import { loadPoHub, type PoHubData } from '@/lib/po-hub.server';
 import { loadProductHub, type ProductHubData } from '@/lib/product-hub.server';
 import { loadVendorHub, type VendorHubData } from '@/lib/vendor-hub.server';
+import { loadBuyingPlanAnalysis } from '@/lib/forms/queries';
 import type { AnalyticsExtras, PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -82,6 +83,27 @@ export default async function Home() {
     // condition is gone; the Objectives tab then shows the open count. Best-effort.
     try { await syncAutoIssues(); } catch { /* never block the dashboard */ }
     if (analyticsExtras) analyticsExtras.openIssues = await countOpenIssues();
+    // Buying Plan synopsis for the month — the same analysis the Buying Plan Analysis page runs.
+    if (analyticsExtras) {
+      try {
+        const a = await loadBuyingPlanAnalysis();
+        const by = (s: string) => a.products.filter((p) => p.status === s).length;
+        analyticsExtras.planSynopsis = {
+          month: a.planMonth.slice(0, 7),
+          hasPlan: a.hasPlan,
+          plannedQty: a.metrics.plannedQty,
+          issuedQty: a.metrics.issuedQty,
+          pendingQty: Math.max(0, a.metrics.plannedQty - a.metrics.issuedQty),
+          plannedProducts: a.metrics.approvedProducts,
+          onPlan: by('on_plan'),
+          over: by('over'),
+          short: by('short'),
+          unissued: by('unissued'),
+          notInPlan: by('not_planned') + by('not_approved'),
+          issuedProducts: a.metrics.issuedProducts,
+        };
+      } catch { analyticsExtras.planSynopsis = null; }
+    }
     // Sub-tab data, built from what is already loaded above; each best-effort.
     const [ph, prh, vh] = await Promise.allSettled([
       loadPoHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras }),

@@ -26,6 +26,11 @@ import {
   Target,
   TrendingUp,
   Truck,
+  ClipboardCheck,
+  PackageCheck,
+  Boxes,
+  ShoppingCart,
+  FileCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -1791,6 +1796,199 @@ export function ObjectiveStockCards({
             </div>
           )}
         </AnaCard>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Objectives synopsis — the team's dashboard sheet, one card per line   */
+/* ------------------------------------------------------------------ */
+
+const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : "—");
+
+/**
+ * The analytics the team listed for the dashboard, as counts with their percentages:
+ * the PO book (open / overdue / high risk, with ageing), Inward Plan vs actual GRN, OOS by
+ * sales class with days on hand, the Buying Plan month, approval requisitions, and ISR.
+ * Every card is built from sections the dashboard already loads; each is best-effort.
+ */
+export function ObjectiveSynopsisCards({
+  extras,
+  book,
+  onTab,
+}: {
+  extras: AnalyticsExtras | null;
+  book: { open: number; overdue: number; highRisk: number; ageing: { name: string; value: number }[] };
+  onTab: (id: TabId) => void;
+}) {
+  const router = useRouter();
+  const pb = extras?.poBook ?? null;
+  const allPos = pb ? pb.open + pb.completed : 0;
+  const iw = extras?.inwardSynopsis ?? null;
+  const oos = extras?.oosSynopsis ?? null;
+  const plan = extras?.planSynopsis ?? null;
+  const ap = extras?.approvalRequisitions ?? null;
+  const isr = extras?.isr ?? null;
+  const isrPct = isr && isr.soldQty > 0 ? Math.round((isr.inwardQty / isr.soldQty) * 100) : null;
+
+  return (
+    <div className="ana-grid ana-tab-grid">
+      <AnaCard
+        title="PO book"
+        icon={FileCheck}
+        tone={book.overdue > 0 ? "red" : "green"}
+        status={`${fmt.format(book.open)} OPEN`}
+        cta="Open the PO Tracker"
+        span={4}
+        onClick={() => onTab("open-po")}
+        info={"WHAT: the purchase-order book in three numbers, each with its share.\n\nHOW: Open = POs with pieces still to arrive, as a share of every PO there has ever been (open + completed). Overdue = open POs past their expected delivery date, as a share of open. High Risk = open POs with a critical-path TNA stage past its planned date, as a share of open. Ageing splits the open POs by how far past their date they are.\n\nUSE: overdue and high-risk shares rising together means the book is slipping, not just one vendor."}
+      >
+        <ul className="ana-list">
+          <li><span>Open POs</span><span className="ana-list-val">{fmt.format(book.open)} · {pct(book.open, allPos)} of all POs</span></li>
+          <li><span>Overdue POs</span><span className="ana-list-val">{fmt.format(book.overdue)} · {pct(book.overdue, book.open)} of open</span></li>
+          <li><span>High Risk POs</span><span className="ana-list-val">{fmt.format(book.highRisk)} · {pct(book.highRisk, book.open)} of open</span></li>
+        </ul>
+        <div className="ana-abcd-row">
+          {book.ageing.map((b) => (
+            <span key={b.name} className="ana-abcd-chip">{b.name} · {fmt.format(b.value)}</span>
+          ))}
+        </div>
+      </AnaCard>
+
+      <AnaCard
+        title="Inward Plan vs actual GRN"
+        icon={PackageCheck}
+        tone={!iw ? "neutral" : iw.shortPos || iw.unplannedPos ? "red" : "green"}
+        status={iw ? `${fmt.format(iw.plannedPos)} POS PLANNED` : "WAITING"}
+        cta="Open the Inward Plan"
+        span={4}
+        href="/receivable-plan"
+        info={"WHAT: this month, did what the team planned to receive actually arrive — and what arrived that nobody planned.\n\nHOW: per PO planned on the Inward Plan for this month: received (GRN) less than planned = short, more = excess, equal = on plan. Not in plan = POs with receipts this month and no Inward Plan entry. Counted at PO level because the plan is per colour and GRN per SKU; the PO is what both share.\n\nUSE: many short POs is a vendor problem; many not-in-plan receipts means the Inward Plan is not being filled."}
+      >
+        {!iw ? (
+          <NoData text="Inward Plan and GRN data are not available." />
+        ) : (
+          <ul className="ana-list">
+            <li><span>Short of plan</span><span className="ana-list-val">{fmt.format(iw.shortPos)} · {pct(iw.shortPos, iw.plannedPos)}</span></li>
+            <li><span>Excess over plan</span><span className="ana-list-val">{fmt.format(iw.excessPos)} · {pct(iw.excessPos, iw.plannedPos)}</span></li>
+            <li><span>On plan</span><span className="ana-list-val">{fmt.format(iw.onPlanPos)} · {pct(iw.onPlanPos, iw.plannedPos)}</span></li>
+            <li><span>Received, not in plan</span><span className="ana-list-val">{fmt.format(iw.unplannedPos)} · {pct(iw.unplannedPos, iw.receivedPos)} of received</span></li>
+            <li><span>Pieces</span><span className="ana-list-val">{fmt.format(iw.receivedQty)} received of {fmt.format(iw.plannedQty)} planned</span></li>
+          </ul>
+        )}
+      </AnaCard>
+
+      <AnaCard
+        title="OOS by sales class"
+        icon={Boxes}
+        tone={!oos ? "neutral" : oos.oosNow ? "red" : "green"}
+        status={oos ? `${fmt.format(oos.oosNow)} OUT NOW` : "WAITING"}
+        cta="Open Product Tracker → In stock"
+        span={4}
+        onClick={() => onTab("products")}
+        info={"WHAT: out of stock by sales class, at variant (colour) level — A sells fastest, D slowest.\n\nHOW: over every selling variant (Ongoing + launched NPD, test SKUs out): Out now = zero stock today; At risk = stock plus what is on order runs out inside the 45-day lead time; DOH = average days on hand (stock + on order ÷ daily demand). Percentages are of the variants in that class.\n\nUSE: an A-class variant out of stock is lost sales every day — those first."}
+      >
+        {!oos ? (
+          <NoData text="Stock and demand data are not available." />
+        ) : (
+          <table className="ana-mini-table">
+            <thead><tr><th>Class</th><th className="num">Variants</th><th className="num">Out now</th><th className="num">At risk</th><th className="num">Avg DOH</th></tr></thead>
+            <tbody>
+              {oos.byClass.map((c) => (
+                <tr key={c.cls}>
+                  <td><span className={`ana-abcd-tag cls-${c.cls}`}>{c.cls}</span></td>
+                  <td className="num">{fmt.format(c.variants)}</td>
+                  <td className="num">{fmt.format(c.oosNow)} · {pct(c.oosNow, c.variants)}</td>
+                  <td className="num">{fmt.format(c.atRisk)} · {pct(c.atRisk, c.variants)}</td>
+                  <td className="num">{c.avgDoh == null ? "—" : `${c.avgDoh}d`}</td>
+                </tr>
+              ))}
+              <tr className="ana-mini-total">
+                <td>All</td>
+                <td className="num">{fmt.format(oos.total)}</td>
+                <td className="num">{fmt.format(oos.oosNow)} · {pct(oos.oosNow, oos.total)}</td>
+                <td className="num">{fmt.format(oos.atRisk)} · {pct(oos.atRisk, oos.total)}</td>
+                <td className="num">—</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </AnaCard>
+
+      <AnaCard
+        title="Buying Plan synopsis"
+        icon={ShoppingCart}
+        tone={!plan || !plan.hasPlan ? "neutral" : plan.over || plan.notInPlan ? "red" : "green"}
+        status={plan?.hasPlan ? `${plan.month} · ${pct(plan.issuedQty, plan.plannedQty)} BOUGHT` : "NO PLAN"}
+        cta="Open Buying Plan analysis"
+        span={4}
+        href="/buying-plan?type=analysis"
+        info={"WHAT: this month's buying plan against what was actually ordered.\n\nHOW: Planned = approved plan pieces; Bought = pieces on real EasyEcom POs dated this month; Pending = planned − bought. Per product: short (bought less than approved), excess (more), not in plan (bought with no approved quantity). Percentages of planned products, or of issued products for not-in-plan.\n\nUSE: pending late in the month = the plan is not being executed; not-in-plan = buying outside the plan."}
+      >
+        {!plan || !plan.hasPlan ? (
+          <NoData text="No approved buying plan for this month." />
+        ) : (
+          <ul className="ana-list">
+            <li><span>Planned</span><span className="ana-list-val">{fmt.format(plan.plannedQty)} pcs · {fmt.format(plan.plannedProducts)} products</span></li>
+            <li><span>Bought</span><span className="ana-list-val">{fmt.format(plan.issuedQty)} pcs · {pct(plan.issuedQty, plan.plannedQty)}</span></li>
+            <li><span>Pending</span><span className="ana-list-val">{fmt.format(plan.pendingQty)} pcs · {pct(plan.pendingQty, plan.plannedQty)}</span></li>
+            <li><span>Short / excess</span><span className="ana-list-val">{fmt.format(plan.short)} · {pct(plan.short, plan.plannedProducts)} / {fmt.format(plan.over)} · {pct(plan.over, plan.plannedProducts)}</span></li>
+            <li><span>Bought, not in plan</span><span className="ana-list-val">{fmt.format(plan.notInPlan)} · {pct(plan.notInPlan, plan.issuedProducts)} of issued</span></li>
+          </ul>
+        )}
+      </AnaCard>
+
+      <AnaCard
+        title="Approval requisitions"
+        icon={ClipboardCheck}
+        tone={!ap ? "neutral" : ap.total ? "red" : "green"}
+        status={ap ? `${fmt.format(ap.total)} WAITING` : "WAITING"}
+        cta="Open Approvals"
+        span={4}
+        href="/approvals"
+        info={"WHAT: everything waiting for someone's decision right now.\n\nHOW: items in Submitted or Pending-admin status across buying plans, purchase orders, discontinue requests, vendor de-boardings and Inward Plan submissions.\n\nUSE: every day these wait adds a day to a delivery or a plan. Approvers see the same list under Approvals."}
+      >
+        {!ap ? (
+          <NoData text="Approval queues are not available." />
+        ) : (
+          <ul className="ana-list">
+            <li><span>Purchase orders</span><span className="ana-list-val">{fmt.format(ap.pos)}</span></li>
+            <li><span>Buying plans</span><span className="ana-list-val">{fmt.format(ap.buyingPlans)}</span></li>
+            <li><span>Inward Plan</span><span className="ana-list-val">{fmt.format(ap.inward)}</span></li>
+            <li><span>Discontinue</span><span className="ana-list-val">{fmt.format(ap.discontinue)}</span></li>
+            <li><span>Vendor de-boarding</span><span className="ana-list-val">{fmt.format(ap.deboarding)}</span></li>
+          </ul>
+        )}
+      </AnaCard>
+
+      <AnaCard
+        title="ISR — inward to sales"
+        icon={Scale}
+        tone={!isr ? "neutral" : isrPct != null && isrPct < 100 ? "red" : "green"}
+        status={isrPct == null ? "WAITING" : `ISR ${isrPct}%`}
+        cta="Open the OOS Dashboard"
+        span={4}
+        onClick={() => router.push("/doq-dashboard")}
+        info={"WHAT: ISR — the inward-to-sales ratio: are we receiving as many pieces as we sell.\n\nHOW: pieces received (GRN) ÷ pieces sold, over the same four complete weeks the DOQ windows cover, × 100. Example: 9,000 received, 12,000 sold → 75%.\n\nUSE: under 100% for weeks means stock is being drawn down faster than it is replaced — stock-outs follow. Over 100% means stock is building."}
+      >
+        {!isr ? (
+          <NoData text="Sales windows or GRN are not available." />
+        ) : (
+          <>
+            <div className="ana-metric-row">
+              <div>
+                <strong className="ana-value ana-value-xl">{isrPct == null ? "—" : `${isrPct}%`}</strong>
+                <span className="ana-value-label">received ÷ sold</span>
+              </div>
+            </div>
+            <ul className="ana-list">
+              <li><span>Inward (received)</span><span className="ana-list-val">{fmt.format(isr.inwardQty)} pcs · {fmt.format(isr.inwardPos)} POs</span></li>
+              <li><span>Sold</span><span className="ana-list-val">{fmt.format(isr.soldQty)} pcs · {fmt.format(isr.skus)} SKUs</span></li>
+              <li><span>Window</span><span className="ana-list-val">{isr.from} → {isr.to}</span></li>
+            </ul>
+          </>
+        )}
+      </AnaCard>
     </div>
   );
 }

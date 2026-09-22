@@ -207,6 +207,47 @@ export type AnalyticsExtras = {
   replenishment: { variants: number; rop30Qty: number; oosVariants: number } | null;
   /** 04 Workspace — OOS Calculation summary (counts; the page has the detail). */
   oosSummary: { totalSkus: number; zeroStock: number; dataAsOf: string | null } | null;
+  /* ---- Objectives synopsis (the team's dashboard sheet) ---- */
+  /** Open POs against all POs ever (open + completed) — the denominator for "open %". */
+  poBook: { open: number; completed: number } | null;
+  /** Inward Plan vs actual GRN this month, PO-level: planned POs short / excess / on plan, and receipts with no plan. */
+  inwardSynopsis: {
+    month: string;
+    plannedPos: number;
+    shortPos: number;
+    excessPos: number;
+    onPlanPos: number;
+    receivedPos: number;
+    unplannedPos: number;
+    plannedQty: number;
+    receivedQty: number;
+  } | null;
+  /** Out-of-stock by sales class over the selling variants: how many are empty now, how many at risk, average days on hand. */
+  oosSynopsis: {
+    total: number;
+    oosNow: number;
+    atRisk: number;
+    byClass: { cls: 'A' | 'B' | 'C' | 'D'; variants: number; oosNow: number; atRisk: number; avgDoh: number | null }[];
+  } | null;
+  /** Everything waiting for someone's decision, by kind. */
+  approvalRequisitions: { total: number; buyingPlans: number; pos: number; discontinue: number; deboarding: number; inward: number } | null;
+  /** Inward-to-sales ratio: pieces received vs pieces sold over the same four complete weeks. */
+  isr: { from: string; to: string; inwardQty: number; inwardPos: number; soldQty: number; skus: number } | null;
+  /** Buying Plan synopsis for the current month (set by the dashboard page from the plan analysis). */
+  planSynopsis?: {
+    month: string;
+    hasPlan: boolean;
+    plannedQty: number;
+    issuedQty: number;
+    pendingQty: number;
+    plannedProducts: number;
+    onPlan: number;
+    over: number;
+    short: number;
+    unissued: number;
+    notInPlan: number;
+    issuedProducts: number;
+  } | null;
   /** 04 Workspace — vendor recommendation extremes (≥3 completed POs). */
   vendorRec: {
     rated: number;
