@@ -1649,7 +1649,7 @@ function DashboardTab({
         tall
         title="TNA critical path — planned stage dates"
         kicker="Is the work on time"
-        info="One row per open PO across its planned TNA stages (PP sample → GPT → cutting → inline QC → first delivery → PO close), on a dated axis with today marked. Each piece of the bar is coloured by the stage it leads to: green done, red past its planned date with nothing recorded (what makes a PO High Risk), grey still to come. A red stage shows how many days it is past. Read with the bubbles above: those say when goods are due, this says whether the work behind them is running to time. Most-slipped POs first, top 14."
+        info="One row per open PO across its planned TNA stages (PP sample → GPT → cutting → inline QC → first delivery → PO close), on a dated axis with today marked. Each piece of the bar is coloured by the stage it leads to: green done, red past its planned date with nothing recorded (what makes a PO High Risk), grey still to come. The chips under the PO number list every stage — red with the days it is past, green ticked when done. Hover a dot for the planned date. Read with the bubbles above: those say when goods are due, this says whether the work behind them is running to time. Most-slipped POs first, top 14; scroll inside the card for the rest."
         actions={
           <span className="legend-pills">
             <span className="legend-pill" style={{ "--pill-color": "#4f7c4d" } as CSSProperties}>
@@ -1687,6 +1687,20 @@ function DashboardTab({
                     {g.vendorCode} · {fmt.format(g.pendingQty)} pcs
                     {g.slipped ? <strong className="gantt-late-count"> · {g.slipped} stage{g.slipped > 1 ? "s" : ""} late</strong> : null}
                   </small>
+                  {/* Stage names and days-late live here, not on the bar: chips wrap, so
+                      they can never overprint each other or run out of the track. */}
+                  <span className="gantt-stages">
+                    {g.stages.map((st) => (
+                      <span
+                        key={st.key}
+                        className={`gantt-chip is-${st.done ? "done" : st.late ? "late" : "ahead"}`}
+                        title={`${st.label} — planned ${new Date(st.plannedAt!).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}`}
+                      >
+                        {st.short}
+                        {st.late ? ` +${st.daysLate}d` : st.done ? " ✓" : ""}
+                      </span>
+                    ))}
+                  </span>
                 </span>
                 <span className="gantt-track">
                   {ganttTicks.map((tk) => (
@@ -1703,23 +1717,13 @@ function DashboardTab({
                       }}
                     />
                   ))}
-                  {g.stages.map((st, i) => (
+                  {g.stages.map((st) => (
                     <em
                       key={st.key}
-                      // Neighbouring stages are often days apart, so their names alternate
-                      // above and below the bar; a stage within a few % of either edge
-                      // anchors its name inward so nothing spills out of the track.
-                      className={`gantt-dot${st.done ? " is-done" : st.late ? " is-late" : ""}${i % 2 ? " is-above" : ""}${
-                        ganttPct(st.plannedAt!) < 6 ? " at-left" : ganttPct(st.plannedAt!) > 94 ? " at-right" : ""
-                      }`}
+                      className={`gantt-dot${st.done ? " is-done" : st.late ? " is-late" : ""}`}
                       style={{ left: `${ganttPct(st.plannedAt!)}%` }}
                       title={`${st.label} — planned ${new Date(st.plannedAt!).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}${st.done ? " · done" : st.late ? ` · ${st.daysLate} days past, not done` : " · not due yet"}`}
-                    >
-                      <span className="gantt-stage">
-                        {st.short}
-                        {st.late ? <b> +{st.daysLate}d</b> : null}
-                      </span>
-                    </em>
+                    />
                   ))}
                 </span>
               </div>
