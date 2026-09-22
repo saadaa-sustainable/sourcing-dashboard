@@ -23,16 +23,16 @@ const day = (iso: string | null | undefined) =>
 
 /** The category table's columns, each with the (i) that says what it counts. */
 const CATEGORY_COLUMNS: { label: string; num?: boolean; info: string }[] = [
-  { label: 'Category', info: "The product master's sub-category (Shirt, Casual Pant, Long Kurta…), case-folded so SHIRT and Shirt are one row." },
-  { label: 'SKUs', num: true, info: 'SKUs on sale in this category at Main Warehouse — Ongoing and launched NPD, test SKUs excluded.' },
-  { label: 'OOS % 365d', num: true, info: 'Empty SKU-days in the last 365 days ÷ (SKUs × 365).' },
-  { label: 'OOS % 45d', num: true, info: 'Empty SKU-days in the last 45 days ÷ (SKUs × 45). The sourcing record for the window.' },
-  { label: 'OOS % yesterday', num: true, info: 'SKUs with no stock on the snapshot day ÷ SKUs. Red when worse than the overall figure.' },
-  { label: 'Change vs 45d', info: '(OOS % yesterday − OOS % 45d) ÷ OOS % 45d. Green ▼ when yesterday is below the 45-day record, red ▲ when above.' },
-  { label: 'Empty SKUs 45d', num: true, info: 'SKUs that had no stock on at least one day in the last 45 days.' },
-  { label: 'Empty yesterday', num: true, info: 'SKUs with no stock on the snapshot day.' },
-  { label: 'Recovered', num: true, info: 'Empty on some day in the last 45 days and stocked on the snapshot day. Recovered + empty yesterday = empty SKUs 45d.' },
-  { label: 'Days on hand', num: true, info: 'Σ stock ÷ Σ daily demand over SKUs in this category that sell; "—" when none of them has demand.' },
+  { label: 'Category', info: "WHAT: the product master's sub-category — Shirt, Casual Pant, Long Kurta and so on.\n\nNOTE: names are case-folded, so SHIRT and Shirt are one row. 'Uncategorised' collects SKUs whose master row has no sub-category." },
+  { label: 'SKUs', num: true, info: "WHAT: how many SKUs (colour + size) this category has on sale.\n\nWHICH: Ongoing and launched-NPD states at Main Warehouse, test SKUs excluded — the same set as the headline." },
+  { label: 'OOS % 365d', num: true, info: "WHAT: the category's long-run out-of-stock share.\n\nHOW: empty SKU-days in the last 365 days ÷ (SKUs × 365). Example: 32 SKUs × 365 = 11,680 SKU-days; 2,490 empty → 21.3%.\n\nUSE: the benchmark for the two columns to its right." },
+  { label: 'OOS % 45d', num: true, info: "WHAT: the category's recent out-of-stock share — the sourcing record.\n\nHOW: empty SKU-days in the last 45 days ÷ (SKUs × 45).\n\nMIND: does not fall when a SKU is refilled; it falls as empty days roll out of the window. Read 'OOS % yesterday' for the position now." },
+  { label: 'OOS % yesterday', num: true, info: "WHAT: the category's position now.\n\nHOW: SKUs with zero stock on the snapshot day ÷ SKUs in the category. Example: 3 of 32 → 9.4%.\n\nRED: when this category is worse than the overall yesterday figure at the top of the page — the categories to act on first." },
+  { label: 'Change vs 45d', info: "WHAT: how far yesterday sits from the category's own 45-day record.\n\nHOW: (OOS % yesterday − OOS % 45d) ÷ OOS % 45d. Example: 45-day 58.1%, yesterday 9.4% → 84% down. '—' when nothing was out of stock in the 45 days, so there is no record to compare with.\n\nREAD: green ▼ = recovering (yesterday better than the recent record). Red ▲ = worsening. Both columns it compares are on the same basis (share of SKU-days empty)." },
+  { label: 'Empty SKUs 45d', num: true, info: "WHAT: how many of the category's SKUs went out of stock at some point in the last 45 days.\n\nHOW: SKUs with at least one empty day in the window — whether or not they are back in stock now.\n\nUSE: the size of the problem the team had to work through. Split into Recovered and Empty yesterday in the next columns." },
+  { label: 'Empty yesterday', num: true, info: "WHAT: the category's SKUs that are empty right now.\n\nHOW: SKUs with zero stock at Main Warehouse on the snapshot day.\n\nUSE: the to-do list for this category. Which SKUs, and whether a PO is on the way, is on DOQ Calculation and the Stock Out Risk tab." },
+  { label: 'Recovered', num: true, info: "WHAT: SKUs that went empty in the last 45 days and have since been refilled.\n\nHOW: empty on at least one day in the window AND stock > 0 on the snapshot day. Recovered + Empty yesterday = Empty SKUs 45d.\n\nUSE: the team's work in this category, visible the morning after each refill lands." },
+  { label: 'Days on hand', num: true, info: "WHAT: how many days this category's stock lasts at its current sales rate.\n\nHOW: total stock ÷ total daily demand, over the category's SKUs that sell. Example: 650 pieces, 50 a day → 13 days.\n\n'—': none of the category's SKUs has recorded demand (nothing sold in the 45-day window), so cover cannot be worked out. Read it against the lead time in the Rules Master." },
 ];
 
 /** "−50%" in green when OOS fell, "+20%" in red when it rose. */
@@ -81,11 +81,11 @@ export function OosSummaryView({
       <div className="chip-row">
         <span className="wf-chip">
           Position as of <strong>{day(summary.asOf)}</strong>
-          <InfoDot text="The latest nightly inventory-planning snapshot. 'Yesterday' everywhere on this page means this day." />
+          <InfoDot text={"WHAT: the date of the stock position this page is built on. Stock is copied from EasyEcom once a night, so the freshest position is always the day before.\n\nSO: wherever this page says 'yesterday', it means this date. If the date is older than yesterday, the nightly sync has not run — check Sync Health."} />
         </span>
         <span className="wf-chip">
           {summary.warehouse} · {fmt.format(a.skus)} SKUs on sale
-          <InfoDot text="Main Warehouse only — the warehouse the demand figures belong to. SKUs in the Ongoing and launched-NPD states; discontinued, to-be-discontinued and not-yet-launched SKUs are out, as are the test SKUs on the shared exclusion list." />
+          <InfoDot text={"WHAT: how many SKUs (colour + size) these numbers cover, and which stock.\n\nWHICH SKUs: product state Ongoing, or NPD that has launched. Discontinued, To-Be-Discontinued and NPD-Not-Launched are left out — they cannot be 'out of stock' against demand they do not have. Test SKUs on the shared exclusion list are left out too.\n\nWHICH STOCK: Main Warehouse only. It is the warehouse online orders ship from and the only one with a daily demand figure. Store, FBA and Holisol stock is not counted — a SKU with 0 at Main and 5 in a store counts as out of stock here."} />
         </span>
         {summary.excludedSkus > 0 && <span className="wf-chip">{summary.excludedSkus} test SKUs excluded</span>}
       </div>
@@ -97,7 +97,7 @@ export function OosSummaryView({
             <span className="panel-kicker">Share of SKU-days out of stock</span>
             <h3>
               OOS % — last 365 days · last 45 days · yesterday
-              <InfoDot text="Every SKU-day counts once: over 45 days that is empty SKU-days ÷ (SKUs × 45); over one day it is simply empty SKUs ÷ SKUs. Same basis in every column, so the change is like for like." label="About OOS %" />
+              <InfoDot text={"WHAT: the share of selling opportunity lost to empty shelves, over three windows.\n\nHOW: count every day a SKU had no stock (one SKU × one empty day = one SKU-day), divide by all the SKU-days in the window. Example: 10 SKUs over 45 days = 450 SKU-days; 90 of them empty → 20%. Over one day it is simply empty SKUs ÷ SKUs: 1 of 10 empty yesterday → 10%.\n\nWHY THREE WINDOWS: 365 days is the long-run benchmark, 45 days is the recent record, yesterday is the position now. All three are on the same basis, so the pill on the right (yesterday vs 45 days) is a true fall or rise: 20% → 10% reads as 50% down."} label="About OOS %" />
             </h3>
           </div>
           <Change value={a.changeVs45} />
@@ -106,7 +106,7 @@ export function OosSummaryView({
           <div className="oos-kpi">
             <span>
               Last 365 days
-              <InfoDot text="Empty SKU-days in the last 365 days ÷ (SKUs × 365). A SKU counts on every day it had no stock." label="About last 365 days" />
+              <InfoDot text={"WHAT: the long-run benchmark — how much of the last year the range was out of stock.\n\nHOW: empty SKU-days in the last 365 days ÷ (SKUs × 365). The count underneath is SKUs that were empty on at least one day in the year.\n\nUSE: compare the 45-day and yesterday figures against this. Below it = better than the year's norm; above it = worse."} label="About last 365 days" />
             </span>
             <strong>{pct(a.pct365)}</strong>
             <small>{fmt.format(a.oos365)} SKUs empty on at least one day</small>
@@ -114,7 +114,7 @@ export function OosSummaryView({
           <div className="oos-kpi">
             <span>
               Last 45 days
-              <InfoDot text="Empty SKU-days in the last 45 days ÷ (SKUs × 45). This is the sourcing team's record: a SKU that was empty on any day stays counted until that day rolls out of the window." label="About last 45 days" />
+              <InfoDot text={"WHAT: the recent record — how much of the last 45 days the range was out of stock. This is the sourcing / replenishment team's efficiency measure.\n\nHOW: empty SKU-days in the last 45 days ÷ (SKUs × 45). The count underneath is SKUs that were empty on at least one of those days.\n\nMIND: by design this does NOT drop the day a SKU is refilled. A SKU empty on 1 Sep stays in this count until 1 Sep rolls out of the window, 45 days later. To see today's improvement, read 'Yesterday'."} label="About last 45 days" />
             </span>
             <strong>{pct(a.pct45)}</strong>
             <small>{fmt.format(a.oos45)} SKUs empty on at least one day · the sourcing record</small>
@@ -122,7 +122,7 @@ export function OosSummaryView({
           <div className="oos-kpi is-now">
             <span>
               Yesterday
-              <InfoDot text="SKUs with no stock on the snapshot day ÷ SKUs. The position now — when empty SKUs are brought down, this is where it shows." label="About yesterday" />
+              <InfoDot text={"WHAT: the position now — how much of the range had no stock as of the snapshot day.\n\nHOW: SKUs with zero stock at Main Warehouse ÷ SKUs. The count underneath is those SKUs.\n\nUSE: this is the trend number. When the team brings 50 empty SKUs down to 30, the 45-day figure will not move for weeks, but this one shows it the next morning. Compare it with the 45-day figure via the pill on the right."} label="About yesterday" />
             </span>
             <strong>{pct(a.pctYesterday)}</strong>
             <small>{fmt.format(a.oosYesterday)} SKUs with no stock · the position now</small>
@@ -141,7 +141,7 @@ export function OosSummaryView({
         <div className="oos-kpi panel">
           <span>
             In-stock rate
-            <InfoDot text="1 − OOS %. Yesterday's figure is SKUs with stock ÷ SKUs; the 45-day figure is stocked SKU-days ÷ (SKUs × 45)." label="About in-stock rate" />
+            <InfoDot text={"WHAT: the other side of OOS % — the share of the range that WAS on the shelf.\n\nHOW: 1 − OOS %. Yesterday: SKUs with stock ÷ SKUs. Last 45 days: stocked SKU-days ÷ (SKUs × 45). Example: 139 of 2,479 SKUs empty → 94.4% in stock.\n\nUSE: the number to quote upwards. Higher is better; the 45-day figure beside it says whether yesterday was a good day or the norm."} label="About in-stock rate" />
           </span>
           <strong>{pct(1 - a.pctYesterday)}</strong>
           <small>yesterday · {pct(1 - a.pct45)} over the last 45 days</small>
@@ -149,7 +149,7 @@ export function OosSummaryView({
         <div className="oos-kpi panel">
           <span>
             Recovered from out of stock
-            <InfoDot text="SKUs that were empty on at least one day in the last 45 days AND had stock on the snapshot day. The count that shows the team's work." label="About recovered" />
+            <InfoDot text={"WHAT: SKUs that went out of stock in the last 45 days and have since been refilled.\n\nHOW: empty on at least one day in the last 45 days AND stock > 0 on the snapshot day. Recovered + still out of stock = every SKU that went empty in the window.\n\nUSE: this is the team's work made visible. The 45-day OOS count cannot fall until the window rolls; this count rises the morning after each refill lands."} label="About recovered" />
           </span>
           <strong>{fmt.format(a.recovered45)}</strong>
           <small>SKUs empty at some point in the last 45 days that had stock yesterday</small>
@@ -157,7 +157,7 @@ export function OosSummaryView({
         <div className="oos-kpi panel">
           <span>
             Still out of stock
-            <InfoDot text="SKUs with no stock on the snapshot day, shown against every SKU that went empty in the last 45 days. Recovered + still out = the 45-day count." label="About still out of stock" />
+            <InfoDot text={"WHAT: the SKUs that are empty right now — the to-do list.\n\nHOW: SKUs with zero stock at Main Warehouse on the snapshot day, shown against every SKU that went empty in the last 45 days. Recovered + still out = that 45-day count.\n\nUSE: the detail — which SKUs, and whether a PO is already on the way — is on DOQ Calculation and the Main Dashboard's Stock Out Risk tab."} label="About still out of stock" />
           </span>
           <strong>{fmt.format(a.oosYesterday)}</strong>
           <small>of the {fmt.format(a.oos45)} SKUs that went empty in the last 45 days</small>
@@ -165,7 +165,7 @@ export function OosSummaryView({
         <div className="oos-kpi panel">
           <span>
             Days on hand
-            <InfoDot text="Σ stock ÷ Σ daily demand, over SKUs that sell (daily demand > 0). SKUs with no demand are left out so dead stock cannot inflate cover." label="About days on hand" />
+            <InfoDot text={"WHAT: how many days the stock on hand would last if sales continued at the current rate and nothing arrived.\n\nHOW: total stock ÷ total daily demand, over SKUs that actually sell (daily demand above 0). Example: 4,400 pieces in stock, 100 pieces a day sold → 44 days. SKUs with no sales are left out, otherwise dead stock would make cover look better than it is.\n\nUSE: read it against the lead time — a FOB order takes about 90 days to land, so 44 days of cover means the next order is already late unless it is in process. The Rules Master holds the lead times."} label="About days on hand" />
           </span>
           <strong>{a.daysOnHand == null ? '—' : fmt.format(Math.round(a.daysOnHand))}</strong>
           <small>days the stock lasts at the current sales rate, over SKUs that sell</small>
@@ -178,7 +178,7 @@ export function OosSummaryView({
             <span className="panel-kicker">Trend</span>
             <h3>
               OOS % by day
-              <InfoDot text="One point per data day, recorded the first time this page is opened for that day. The 45-day line moves slowly (it is the rolling record); the yesterday line is the position each day. History starts from the day this page went live." label="About the trend" />
+              <InfoDot text={"WHAT: OOS % day by day, so the direction is visible — not just today's number.\n\nHOW: the nightly stock feed keeps only the latest day, so this page saves its own point each day, the first time anyone opens it. The red line is each day's position (empty SKUs ÷ SKUs); the blue line is the rolling 45-day record.\n\nREAD: red falling under blue = the team is improving on its recent record. History starts from 21 Sep 2026, the first day recorded, so the chart is short at first and fills in daily."} label="About the trend" />
             </h3>
           </div>
           <span className="wf-subtle">{trend.length} day{trend.length === 1 ? '' : 's'} recorded</span>
@@ -211,7 +211,7 @@ export function OosSummaryView({
             <span className="panel-kicker">By category</span>
             <h3>
               OOS % per category — 365 days · 45 days · yesterday
-              <InfoDot text="Same measures as the headline, per category (the product master's sub-category). Worst yesterday at the top." label="About the category table" />
+              <InfoDot text={"WHAT: the headline numbers broken down by category, so it is clear WHERE stock-outs sit.\n\nHOW: the same three windows and the same change, computed within each category (the product master's sub-category: Shirt, Casual Pant, Long Kurta…). Sorted with the worst 'yesterday' at the top.\n\nUSE: a category well above the overall OOS % yesterday (shown in red) is where the next POs should go. The change column says whether that category is already recovering."} label="About the category table" />
             </h3>
           </div>
         </div>
