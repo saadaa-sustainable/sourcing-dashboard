@@ -750,8 +750,16 @@ function DashboardTab({
      One bar per open PO, running from the earliest planned stage date to the last, with the
      stage that has slipped marked on it. Read together with the bubbles above: those say when
      goods are due, this says whether the work behind them is running to time. */
-  const gantt = stillOpen
-    .filter((row) => row.tna)
+  // The tracker rows are per PO LINE (one per colour), so a PO with four colours came out
+  // as four identical bars. The TNA is one per PO: roll the lines up and sum the pending.
+  const ganttByPo = new Map<string, (typeof stillOpen)[number]>();
+  for (const row of stillOpen) {
+    if (!row.tna) continue;
+    const cur = ganttByPo.get(row.poRef);
+    if (cur) cur.pendingQty += row.pendingQty;
+    else ganttByPo.set(row.poRef, { ...row });
+  }
+  const gantt = [...ganttByPo.values()]
     .map((row) => {
       // TNA_STAGES is the shared critical path (business-logic) — same list the High Risk
       // rule walks, so the chart cannot drift from the flag.
@@ -760,17 +768,29 @@ function DashboardTab({
         const planned = t[stage.tnaField] as string | null | undefined;
         const actual = t[stage.actualField] as string | null | undefined;
         const plannedAt = planned ? parseIsoDate(planned) : null;
+        const daysLate = plannedAt && !actual ? Math.floor((today.getTime() - plannedAt.getTime()) / dayMs) : 0;
         return {
           key: stage.tnaField,
           label: stage.name === "Inline / Midline QC" ? "Inline QC" : stage.name,
+          short: TNA_STAGE_SHORT[stage.name] ?? stage.name,
           plannedAt: plannedAt ? plannedAt.getTime() : null,
           done: Boolean(actual),
           late: Boolean(plannedAt && !actual && plannedAt.getTime() < today.getTime()),
+          daysLate: Math.max(0, daysLate),
         };
       }).filter((st) => st.plannedAt != null);
       if (!stages.length) return null;
       const from = Math.min(...stages.map((st) => st.plannedAt!));
       const to = Math.max(...stages.map((st) => st.plannedAt!));
+      // The bar is drawn in pieces, one per gap between stages, coloured by the state of the
+      // stage the piece leads to: green when that stage is done, red when its date has passed
+      // with nothing recorded, grey when it is still to come.
+      const segments = stages.slice(1).map((st, i) => ({
+        key: st.key,
+        from: stages[i].plannedAt!,
+        to: st.plannedAt!,
+        state: st.done ? "done" : st.late ? "late" : "ahead",
+      }));
       return {
         poRef: row.poRef,
         vendorCode: row.vendorCode || row.vendorName,
@@ -779,16 +799,33 @@ function DashboardTab({
         from,
         to,
         stages,
+        segments,
         slipped: stages.filter((st) => st.late).length,
+        worstLate: Math.max(0, ...stages.map((st) => st.daysLate)),
       };
     })
     .filter((g): g is NonNullable<typeof g> => g != null)
-    .sort((a, b) => b.slipped - a.slipped || a.from - b.from)
+    .sort((a, b) => b.slipped - a.slipped || b.worstLate - a.worstLate || a.from - b.from)
     .slice(0, 14);
-  const ganttFrom = gantt.length ? Math.min(...gantt.map((g) => g.from)) : 0;
-  const ganttTo = gantt.length ? Math.max(...gantt.map((g) => g.to)) : 1;
+  // The axis always includes today, with a week of air either side, so the Today line is
+  // never on the edge and "how far past" can be read off the month ticks.
+  const ganttFrom = gantt.length ? Math.min(today.getTime(), ...gantt.map((g) => g.from)) - 7 * dayMs : 0;
+  const ganttTo = gantt.length ? Math.max(today.getTime(), ...gantt.map((g) => g.to)) + 7 * dayMs : 1;
   const ganttSpan = Math.max(1, ganttTo - ganttFrom);
   const ganttPct = (t: number) => ((t - ganttFrom) / ganttSpan) * 100;
+  const ganttTicks: { at: number; label: string }[] = [];
+  if (gantt.length) {
+    const d = new Date(ganttFrom);
+    let tick = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    while (tick < ganttTo) {
+      ganttTicks.push({
+        at: tick,
+        label: new Date(tick).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" }),
+      });
+      const n = new Date(tick);
+      tick = Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 1);
+    }
+  }
   /* One bubble per vendor per WEEK, not per PO.
 
      Plotted per PO the chart was mostly white space: twenty vendor rows, dots too small to
@@ -1612,43 +1649,72 @@ function DashboardTab({
         tall
         title="TNA critical path — planned stage dates"
         kicker="Is the work on time"
-        info="One bar per open PO across its planned TNA stages, earliest to last. A filled dot is a stage completed; a hollow red dot is a stage whose planned date has passed with nothing recorded, which is what makes a PO High Risk. Read with the bubbles above: those say when goods are due, this says whether the work behind them is running to time. Most-slipped POs first, top 14."
+        info="One row per open PO across its planned TNA stages (PP sample → GPT → cutting → inline QC → first delivery → PO close), on a dated axis with today marked. Each piece of the bar is coloured by the stage it leads to: green done, red past its planned date with nothing recorded (what makes a PO High Risk), grey still to come. A red stage shows how many days it is past. Read with the bubbles above: those say when goods are due, this says whether the work behind them is running to time. Most-slipped POs first, top 14."
         actions={
           <span className="legend-pills">
             <span className="legend-pill" style={{ "--pill-color": "#4f7c4d" } as CSSProperties}>
-              <i /> stage done
+              <i /> done
             </span>
             <span className="legend-pill" style={{ "--pill-color": "#c0392b" } as CSSProperties}>
-              <i /> planned date passed, not done
+              <i /> past planned date, not done
+            </span>
+            <span className="legend-pill" style={{ "--pill-color": "#b9b3a4" } as CSSProperties}>
+              <i /> still to come
             </span>
           </span>
         }
       >
         {gantt.length ? (
           <div className="gantt">
+            <div className="gantt-row gantt-axis">
+              <span className="gantt-label" />
+              <span className="gantt-track">
+                {ganttTicks.map((tk) => (
+                  <b key={tk.at} className="gantt-tick" style={{ left: `${ganttPct(tk.at)}%` }}>
+                    {tk.label}
+                  </b>
+                ))}
+                <b className="gantt-tick is-today" style={{ left: `${ganttPct(today.getTime())}%` }}>
+                  Today
+                </b>
+              </span>
+            </div>
             {gantt.map((g) => (
               <div className="gantt-row" key={g.poRef}>
                 <span className="gantt-label">
                   <b>{g.poRef}</b>
                   <small>
                     {g.vendorCode} · {fmt.format(g.pendingQty)} pcs
+                    {g.slipped ? <strong className="gantt-late-count"> · {g.slipped} stage{g.slipped > 1 ? "s" : ""} late</strong> : null}
                   </small>
                 </span>
                 <span className="gantt-track">
-                  <i
-                    className={g.slipped ? "gantt-bar is-slipped" : "gantt-bar"}
-                    style={{
-                      left: `${ganttPct(g.from)}%`,
-                      width: `${Math.max(1.5, ganttPct(g.to) - ganttPct(g.from))}%`,
-                    }}
-                  />
+                  {ganttTicks.map((tk) => (
+                    <u key={tk.at} className="gantt-grid" style={{ left: `${ganttPct(tk.at)}%` }} />
+                  ))}
+                  <u className="gantt-grid is-today" style={{ left: `${ganttPct(today.getTime())}%` }} />
+                  {g.segments.map((sg) => (
+                    <i
+                      key={sg.key}
+                      className={`gantt-bar is-${sg.state}`}
+                      style={{
+                        left: `${ganttPct(sg.from)}%`,
+                        width: `${Math.max(0.4, ganttPct(sg.to) - ganttPct(sg.from))}%`,
+                      }}
+                    />
+                  ))}
                   {g.stages.map((st) => (
                     <em
                       key={st.key}
                       className={`gantt-dot${st.done ? " is-done" : st.late ? " is-late" : ""}`}
                       style={{ left: `${ganttPct(st.plannedAt!)}%` }}
-                      title={`${st.label} — planned ${new Date(st.plannedAt!).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}${st.done ? " · done" : st.late ? " · overdue, not done" : " · not due yet"}`}
-                    />
+                      title={`${st.label} — planned ${new Date(st.plannedAt!).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}${st.done ? " · done" : st.late ? ` · ${st.daysLate} days past, not done` : " · not due yet"}`}
+                    >
+                      <span className="gantt-stage">
+                        {st.short}
+                        {st.late ? <b> +{st.daysLate}d</b> : null}
+                      </span>
+                    </em>
                   ))}
                 </span>
               </div>
@@ -1664,6 +1730,16 @@ function DashboardTab({
   );
 }
 
+
+/* Stage names short enough to sit on the Gantt bar; the full name is in the tooltip. */
+const TNA_STAGE_SHORT: Record<string, string> = {
+  "PP Sample": "PP",
+  GPT: "GPT",
+  Cutting: "Cut",
+  "Inline / Midline QC": "QC",
+  "First Delivery": "1st del",
+  "PO Closer": "Close",
+};
 
 /* EDD bubbles are coloured by what to do about them, not by product. "To close" is the one
    worth chasing: goods are in but the PO is still open. */
