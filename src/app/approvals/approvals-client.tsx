@@ -202,17 +202,22 @@ export function ApprovalsClient({
                     </dd>
                   </div>
                   <div>
-                    <dt>PO capacity for this PO type</dt>
+                    <dt>PO capacity ({item.vendorLeadDays ?? '—'}-day lead)</dt>
                     <dd>
-                      {item.vendorPoCapacity
-                        ? `${item.vendorPoCapacity.toLocaleString('en-IN')} pcs in ${item.vendorLeadDays ?? '—'} lead days · ${
-                            item.vendorCapacityPerMonth?.toLocaleString('en-IN') ?? '—'
-                          } pcs/mo${
-                            item.vendorCapacityUpdatedAt
-                              ? ` · sheet updated ${new Date(item.vendorCapacityUpdatedAt).toLocaleDateString('en-IN')}`
-                              : ''
-                          }${item.vendorCapacityUtil != null ? ` · ${item.vendorCapacityUtil}% used` : ''}`
-                        : 'Not entered on Vendor Capacity'}
+                      {item.vendorPoCapacity ? (
+                        <>
+                          <strong>{item.vendorPoCapacity.toLocaleString('en-IN')} pcs</strong>
+                          {item.vendorCapacityUtil != null ? ` · ${item.vendorCapacityUtil}% used` : ''}
+                          <small className="wf-subtle wf-block">
+                            {item.vendorCapacityPerMonth?.toLocaleString('en-IN') ?? '—'} pcs/mo
+                            {item.vendorCapacityUpdatedAt
+                              ? ` · sheet ${new Date(item.vendorCapacityUpdatedAt).toLocaleDateString('en-IN')}`
+                              : ''}
+                          </small>
+                        </>
+                      ) : (
+                        'Not entered on Vendor Capacity'
+                      )}
                     </dd>
                   </div>
                 </>

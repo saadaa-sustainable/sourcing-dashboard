@@ -1765,3 +1765,15 @@
     justify-content: space-between;
   }
 }
+
+/* Approvals — approval card: the tiles fit one row when there is room (the fifth used to
+   drop to a row of its own), the decision bar is one full-width row with the comment
+   beside the buttons, and the record/rework buttons sit on their own row above it. */
+.ui-view-approvals .wf-queue-meta { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.ui-view-approvals .wf-queue-meta dd { line-height: 1.35; }
+.ui-view-approvals .wf-block { display: block; margin-top: 2px; font-size: 11.5px; }
+.ui-view-approvals .wf-queue-foot { align-items: center; }
+.ui-view-approvals .wf-queue-foot .wf-approval-bar { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 10px; min-width: 0; }
+.ui-view-approvals .wf-queue-foot .wf-approval-bar .wf-textarea { flex: 1 1 320px; min-height: 42px; }
+.ui-view-approvals .wf-queue-foot .wf-approval-actions { flex: 0 0 auto; align-items: flex-start; }
+.ui-view-approvals .wf-queue-foot .wf-approval-bar .wf-error-text { flex: 1 1 100%; }
