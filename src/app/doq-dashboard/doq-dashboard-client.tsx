@@ -15,6 +15,8 @@ import {
   type DoqWindowKey,
 } from '@/lib/doq-dashboard';
 import type { DoqWindowMeta, OosSkuExclusion } from '@/lib/forms/types';
+import type { OosSnapshotPoint, OosSummaryData } from '@/lib/forms/queries-modules/oos-summary';
+import { OosSummaryView } from './oos-summary';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
@@ -241,15 +243,22 @@ export function DoqDashboardClient({
   meta,
   exclusions,
   editable,
+  summary = null,
+  snapshots = [],
 }: {
   tables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   comTables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   meta: DoqWindowMeta | null;
   exclusions: OosSkuExclusion[];
   editable: boolean;
+  /** The one-pager (KPI numbers only) and its daily history. */
+  summary?: OosSummaryData | null;
+  snapshots?: OosSnapshotPoint[];
 }) {
   const [win, setWin] = useState<DoqWindowKey>('d1');
   const [weave, setWeave] = useState<DoqWeave>('All');
+  // Summary first: the numbers people quote. Detail is the window tables underneath.
+  const [view, setView] = useState<'summary' | 'detail'>('summary');
 
   const w = meta?.windows?.[win];
   const kicker = w
@@ -258,6 +267,19 @@ export function DoqDashboardClient({
 
   return (
     <>
+      <div className="role-tabs" role="tablist" aria-label="OOS views">
+        <button role="tab" aria-selected={view === 'summary'} className={view === 'summary' ? 'active' : ''} onClick={() => setView('summary')}>
+          Summary — one page
+        </button>
+        <button role="tab" aria-selected={view === 'detail'} className={view === 'detail' ? 'active' : ''} onClick={() => setView('detail')}>
+          Detail — windows
+        </button>
+      </div>
+
+      {view === 'summary' && <OosSummaryView summary={summary} snapshots={snapshots} />}
+
+      {view === 'detail' && (
+      <>
       <div className="chip-row">
         <span className="wf-chip">
           Data through <strong>{meta?.latest ?? '—'}</strong>
@@ -313,6 +335,8 @@ export function DoqDashboardClient({
         rows={comTables[win]?.[weave] ?? []}
         csvName={`doq-dashboard-${win}-${weave.toLowerCase()}-com`}
       />
+      </>
+      )}
     </>
   );
 }

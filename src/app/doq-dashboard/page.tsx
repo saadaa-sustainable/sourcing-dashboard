@@ -8,6 +8,9 @@ import {
   loadOosCalculation,
   loadOosExclusions,
   loadPmLaunchPrice,
+  loadOosSummary,
+  loadOosSnapshots,
+  recordOosSnapshot,
   loadSkuClassInputs,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -45,7 +48,10 @@ export default async function DoqDashboardPage() {
   if (!user) redirect('/login');
   if (!canView('/doq-dashboard', user.role, user.allowed_pages ?? null)) redirect('/');
 
-  const [windows, meta, oosRaw, exclusions, classInputs, rules, pm] = await Promise.all([
+  const [windows, meta, oosRaw, exclusions, classInputs, rules, pm,
+    summary,
+    snapshots,
+  ] = await Promise.all([
     loadDoqWindows(),
     loadDoqWindowMeta(),
     loadOosCalculation(),
@@ -53,7 +59,24 @@ export default async function DoqDashboardPage() {
     loadSkuClassInputs(),
     loadAnalyticsRules(),
     loadPmLaunchPrice(),
+    loadOosSummary(),
+    loadOosSnapshots(),
   ]);
+  // Record today's position for the trend (idempotent per data day), then fold it into
+  // the history the chart reads so the first day shows without a reload.
+  if (summary) {
+    await recordOosSnapshot(summary.asOf, [summary.all, ...summary.categories]);
+    if (summary.asOf && !snapshots.some((p) => p.snapshot_date === summary.asOf)) {
+      snapshots.push({
+        snapshot_date: summary.asOf,
+        skus: summary.all.skus,
+        oos_yesterday: summary.all.oosYesterday,
+        oos_45: summary.all.oos45,
+        oos_days_45: summary.all.oosDays45,
+        recovered_45: summary.all.recovered45,
+      });
+    }
+  }
   // Same selling-price rule as OOS Calculation: Shopify SP, else product-master MRP —
   // so Sales Leakage reconciles between the two pages.
   const oosMeta = oosRaw.map((m) => ({ ...m, sales_value: m.sales_value ?? pm[m.sku]?.mrp ?? null }));
@@ -118,6 +141,8 @@ export default async function DoqDashboardPage() {
         meta={meta}
         exclusions={exclusions}
         editable={user.role !== 'viewer'}
+        summary={summary}
+        snapshots={snapshots}
       />
     </FormLayout>
   );
