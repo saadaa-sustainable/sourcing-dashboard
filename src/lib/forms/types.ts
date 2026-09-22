@@ -82,6 +82,8 @@ export type StockoutRiskVariant = {
 };
 
 export type AnalyticsExtras = {
+  /** Part 3 — open + in-progress issues on the tracker; null when it could not be read. */
+  openIssues?: number | null;
   /**
    * 1.4 — every variant with no stock and no open PO covering it (NO demand
    * threshold: a stockout is a stockout). Each carries its ABC/D class so the

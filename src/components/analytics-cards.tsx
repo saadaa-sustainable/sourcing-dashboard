@@ -6,6 +6,7 @@
  * protect the business, allocate smarter, and stay on plan.
  */
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import {
@@ -1503,7 +1504,12 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
                   text="No discontinued product is being bought or planned."
                 />
               )}
-            </AnaCard>
+                          <p className="ana-foot-link">
+                <Link href="/issues?category=product" onClick={(e) => e.stopPropagation()}>
+                  Each one is raised on the Issue Tracker →
+                </Link>
+              </p>
+</AnaCard>
             <AnaCard
               title="Product Master Mix"
               icon={Database}
@@ -1563,7 +1569,12 @@ USE: if a feed is stale, every card built on it is showing yesterday's or older 
                   ))}
                 </ul>
               )}
-            </AnaCard>
+                          <p className="ana-foot-link">
+                <Link href="/issues?category=data" onClick={(e) => e.stopPropagation()}>
+                  Stale feeds are raised on the Issue Tracker →
+                </Link>
+              </p>
+</AnaCard>
           </div>
         )}
       </div>

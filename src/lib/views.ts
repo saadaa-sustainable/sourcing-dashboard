@@ -63,6 +63,7 @@ export const ALL_VIEWS: ViewDef[] = [
   // Not admin-only: routine items (small FG buying plans / POs) route to the TEAM
   // level, and this queue is the only place PO decisions are taken.
   { path: '/approvals', label: 'Approvals', group: 'Workflows' },
+  { path: '/issues', label: 'Issue Tracker', group: 'Workflows' },
   // Data & Admin — masters and datasets.
   // One "Master" hub gathers the individual masters below as inner tabs; the
   // per-master routes stay registered (reachable + grantable) and the hub shows

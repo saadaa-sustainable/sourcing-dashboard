@@ -13,6 +13,7 @@ import {
   CalendarClock,
   CheckCheck,
   ClipboardCheck,
+  ClipboardList,
   Database,
   Factory,
   FileCheck,
@@ -107,6 +108,7 @@ const PO_WORKFLOW_LINKS: NavLink[] = [
 // Cross-cutting governance: the approval queue, data corrections, lifecycle exits.
 const GOVERNANCE_LINKS: NavLink[] = [
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
+  { href: '/issues', label: 'Issue Tracker', Icon: ClipboardList },
   { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
   { href: '/vendor-deboarding', label: 'Vendor De-Boarding', Icon: UserX },

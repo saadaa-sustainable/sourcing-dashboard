@@ -151,6 +151,13 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Open POs with this vendor now', source: 'PO pipeline', detail: 'How many approved POs are still in process with the vendor — what de-boarding would strand. Shown for the approver’s judgement; it does not block the request.' },
     { field: 'Status', source: 'Workflow', detail: 'Submitted → Approved / Rejected / Rework. De-boarding always needs an admin. Once approved the vendor is flagged “De-boarded dd/mm” on PO Approval, Vendor Capacity, Vendor Master and Vendor Overview — still listed, never hidden, so open POs can be finished knowingly. Switching the vendor off in EasyEcom is a separate step.' },
   ],
+  '/issues': [
+    { field: 'What this is', source: 'Workflow', detail: 'The team’s issue tracker. Anyone raises an issue to anyone — a PO coming wrong, a vendor problem, a missing timeline — and the dashboard raises its own from the checks it already runs. Separate from Feedback & Issues, which is the developer’s inbox for the dashboard itself.' },
+    { field: 'Raised by the dashboard (robot icon)', source: 'Automatic', formula: 'one issue per: open PO with no TNA timeline · open PO with no delivery date · discontinued product still on order · feed older than the stale threshold', detail: 'Raised the first time the check finds it, routed by category, and closed by the dashboard itself with “No longer detected” when the condition goes away — so the days it stayed open are a real measure.' },
+    { field: 'Routing by category', source: 'Admin setting', detail: 'Each category (POs, TNA, vendors, products, stock, plan, cost, data, other) routes to one person. An issue raised without a named person goes to that route; a blank route leaves it unassigned until someone picks it up.' },
+    { field: 'Days', source: 'Automatic', formula: 'resolved date − raised date (or today − raised date while open)', detail: 'Whole days. Red at 7 or more while still open. The four numbers at the top — open, unassigned, average days to resolve over the last 30 days, oldest open — are the team’s response record.' },
+    { field: 'Resolve / Dismiss', source: 'Your action', detail: 'Resolve needs a line on what was done; Dismiss needs a line on why it is not an issue. Both are kept on the issue for the next person. Anyone on the team can act — it is shared work, not a personal inbox.' },
+  ],
   '/approvals': [
     { field: 'Record', source: 'Submitted work', detail: 'The buying plan, PO, discontinue request or vendor de-boarding awaiting a decision. The sub-line shows its size, variant or the case for it.' },
     { field: 'Submitted by / when', source: 'Automatic', detail: 'Who sent the item for approval and when.' },

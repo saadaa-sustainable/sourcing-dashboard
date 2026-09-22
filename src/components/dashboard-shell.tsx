@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } fr
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  ClipboardList,
   ArrowUpRight,
   Boxes,
   CalendarClock,
@@ -1103,6 +1104,15 @@ function DashboardTab({
               }
               onClick={otif ? () => router.push("/vendor-otif") : undefined}
             />
+            <Card
+              label="Open issues"
+              value={extras?.openIssues == null ? "—" : fmt.format(extras.openIssues)}
+              note="raised by people and by the dashboard's own checks · open the tracker"
+              tone={extras?.openIssues ? "orange" : "teal"}
+              icon={ClipboardList}
+              info={"WHAT: how many issues are open on the Issue Tracker right now — raised by people to each other, and raised by the dashboard from its own checks.\n\nHOW: issues in Open or In progress. The dashboard raises one per open PO with no TNA timeline, per open PO with no delivery date, per discontinued product still on order, and per stale feed; it closes them itself when the condition is gone.\n\nUSE: click to open the tracker. This number should trend down; days from raise to resolve are tracked there."}
+              onClick={() => router.push("/issues")}
+            />
           </div>
           <ObjectiveStockCards extras={extras} onTab={onTab} />
         </>
@@ -1957,6 +1967,8 @@ function TrackerTab({
           label="Missing TNA"
           value={fmt.format(missingTnaCount)}
           tone="red"
+          note="each one is an issue on the tracker · open it"
+          onClick={() => window.location.assign("/issues?category=tna")}
           info={"WHAT: open lines with no production timeline (TNA) entered.\n\nHOW: no TNA record found for the PO.\n\nUSE: the High Risk rule cannot see these lines — they can be late on every stage and never flag. This is a data-entry gap for the merchandiser to close, not a production problem."}
         />
         <Card

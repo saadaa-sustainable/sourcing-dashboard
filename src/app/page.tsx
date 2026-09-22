@@ -11,6 +11,7 @@ import {
   recordTnaSnapshot,
 } from '@/lib/forms/queries';
 import { buildTrackerRows } from '@/lib/business-logic';
+import { countOpenIssues, syncAutoIssues } from '@/lib/issues.server';
 import type { AnalyticsExtras, PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -69,6 +70,11 @@ export default async function Home() {
         openTotal: rows.length,
       });
     } catch { /* snapshot must never block the dashboard */ }
+    // Part 3 — the dashboard raises its own issues from its checks (missing TNA, no
+    // delivery date, discontinued product on order, stale feed) and closes them when the
+    // condition is gone; the Objectives tab then shows the open count. Best-effort.
+    try { await syncAutoIssues(); } catch { /* never block the dashboard */ }
+    if (analyticsExtras) analyticsExtras.openIssues = await countOpenIssues();
   }
   return (
     <DashboardShell

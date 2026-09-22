@@ -1825,3 +1825,43 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .oos-coverage { margin: 0 0 8px; }
 .oos-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 2px 2px; flex-wrap: wrap; }
 .oos-pager-btns { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+/* ---- Issue Tracker ---- */
+.iss { display: flex; flex-direction: column; gap: 16px; }
+.iss-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.iss-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.iss-filters select, .iss-filters input { min-height: 34px; font: inherit; font-size: 12.5px; padding: 4px 8px; border: 1px solid var(--line, #e6e1d4); border-radius: 8px; background: #fff; }
+.iss-filters input { min-width: 240px; }
+.iss-row { cursor: pointer; }
+.iss-row:hover td { background: #faf8f2; }
+.iss-row.is-open td { background: #f5f2ea; }
+.iss-row.is-closed td { color: #8a8477; }
+.iss-title { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.iss-title b { font-weight: 600; }
+.iss-bot { color: #4d6fa9; }
+.iss-sev { padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+.iss-sev.is-high { background: #fdecea; color: #c0392b; }
+.iss-sev.is-blocker { background: #c0392b; color: #fff; }
+.iss-cat { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: #ece7d9; color: #4a463f; }
+.iss-unassigned { color: #b1301f; font-weight: 600; }
+.iss-status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.iss-status.is-open { background: #fff1d6; color: #8a6116; }
+.iss-status.is-in_progress { background: #eaf4ff; color: #2463a8; }
+.iss-status.is-resolved { background: #e4f5ef; color: #006e52; }
+.iss-status.is-dismissed { background: #ece7d9; color: #6e695e; }
+.iss-detail > td { padding: 0 0 14px 28px; background: #fbfaf6; }
+.iss-detail-body { display: flex; flex-direction: column; gap: 12px; padding-top: 10px; }
+.iss-detail-text { margin: 0; font-size: 13px; white-space: pre-line; }
+.iss-resolution { margin: 4px 0 0; font-style: italic; }
+.iss-thread { display: flex; flex-direction: column; gap: 8px; }
+.iss-msg { padding: 8px 10px; border: 1px solid var(--line, #e6e1d4); border-radius: 8px; background: #fff; }
+.iss-msg p { margin: 4px 0 0; font-size: 13px; white-space: pre-line; }
+.iss-msg-who { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--ink-3, #6e695e); }
+.iss-reply { display: flex; gap: 8px; }
+.iss-reply input, .iss-note { flex: 1; min-height: 34px; font: inherit; font-size: 12.5px; padding: 4px 8px; border: 1px solid var(--line, #e6e1d4); border-radius: 8px; }
+.iss-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.iss-actions select { min-height: 32px; font: inherit; font-size: 12.5px; padding: 3px 8px; border: 1px solid var(--line, #e6e1d4); border-radius: 8px; background: #fff; }
+.iss-routes .panel-title { padding-bottom: 6px; }
+.ana-foot-link { margin: 10px 0 0; font-size: 12px; }
+.ana-foot-link a { color: #2463a8; font-weight: 600; text-decoration: none; }
+.ana-foot-link a:hover { text-decoration: underline; }
