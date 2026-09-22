@@ -564,11 +564,16 @@ export async function loadApprovalQueue(): Promise<{
         href: '/po-approval',
         // Spec item 6 — plan relationship is shown to the approver, never enforced.
         submitNote:
-          po.in_buying_plan === true
-            ? `In the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.plan_qty_at_submit ? ` — approved ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs` : ''}`
-            : po.in_buying_plan === false
-              ? `Ad-hoc purchase — outside the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ' (no reason given)'}`
-              : undefined,
+          [
+            po.in_buying_plan === true
+              ? `In the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.plan_qty_at_submit ? ` — approved ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs` : ''}`
+              : po.in_buying_plan === false
+                ? `Ad-hoc purchase — outside the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ' (no reason given)'}`
+                : undefined,
+            po.submit_remark ? `Remark: ${po.submit_remark}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || undefined,
         vendorCode: vendor || null,
         vendorInProcessQty: vendor
           ? inProcessByVendor.get(vendor.toLowerCase()) ?? null

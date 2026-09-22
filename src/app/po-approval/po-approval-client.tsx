@@ -8,6 +8,7 @@ import {
   checkPlanMembership,
   confirmTna,
   issuePoApproval,
+  previewPoSubmission,
   savePoApproval,
   savePoLines,
   saveTnaLeadtimes,
@@ -18,6 +19,8 @@ import { addMonths, canApprove, canEdit, canSubmit, isPlanFrozen, monthLabel, mo
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
+import { SubmitChecksModal } from './submit-checks-modal';
+import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
   DeboardedVendor,
   PoApproval,
@@ -183,7 +186,9 @@ export function PoApprovalClient({
     return p;
   };
 
-  // Save creates/keeps a draft. Submit saves first, then routes it for approval.
+  // Spec 7.1: submit = save the draft, show the three validations as a pop-up, confirm
+  // with a remark, then route it for approval.
+  const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
   function run(submitAfter: boolean) {
     setError(null);
     setMessage(null);
@@ -193,12 +198,27 @@ export function PoApprovalClient({
       if (submitAfter && saved.id) {
         const sub = new FormData();
         sub.set('id', String(saved.id));
-        const res = await submitPoApproval(sub);
-        if (!res.ok) return setError(res.error);
-        setMessage(res.message ?? 'Submitted.');
-      } else {
-        setMessage(saved.message ?? 'Saved.');
+        const pv = await previewPoSubmission(sub);
+        if (!pv.ok) return setError(pv.error);
+        setChecks({ id: saved.id, checks: pv.checks });
+        return; // the pop-up takes it from here
       }
+      setMessage(saved.message ?? 'Saved.');
+      setForm({ ...BLANK });
+      reloadWithToast();
+    });
+  }
+  function confirmSubmit(remark: string) {
+    if (!checks) return;
+    setError(null);
+    start(async () => {
+      const sub = new FormData();
+      sub.set('id', String(checks.id));
+      sub.set('submit_remark', remark);
+      const res = await submitPoApproval(sub);
+      if (!res.ok) return setError(res.error);
+      setChecks(null);
+      setMessage(res.message ?? 'Submitted.');
       setForm({ ...BLANK });
       reloadWithToast();
     });
@@ -242,6 +262,9 @@ export function PoApprovalClient({
 
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
+      {checks && (
+        <SubmitChecksModal checks={checks.checks} pending={pending} onConfirm={confirmSubmit} onCancel={() => setChecks(null)} />
+      )}
 
       <ReportingScreen pos={pos} />
 
@@ -895,14 +918,29 @@ function PoRow({
     });
   }
 
+  // Spec 7.1: the pop-up with the three validations before the row is submitted.
+  const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
   function submit() {
     setError(null);
     const p = new FormData();
     p.set('id', String(po.id));
     start(async () => {
+      const pv = await previewPoSubmission(p);
+      if (!pv.ok) return setError(pv.error);
+      setRowChecks(pv.checks);
+    });
+  }
+  function confirmRowSubmit(remark: string) {
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(po.id));
+    p.set('submit_remark', remark);
+    start(async () => {
       const res = await submitPoApproval(p);
-      if (res.ok) reloadWithToast();
-      else setError(res.error);
+      if (res.ok) {
+        setRowChecks(null);
+        reloadWithToast();
+      } else setError(res.error);
     });
   }
 
@@ -929,6 +967,9 @@ function PoRow({
 
   return (
     <>
+      {rowChecks && (
+        <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
+      )}
       <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
         <td className="mono">{po.po_ref_num ?? `#${po.id}`}</td>
         <td>

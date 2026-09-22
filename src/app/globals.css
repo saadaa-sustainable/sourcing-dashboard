@@ -1872,3 +1872,33 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .sidebar nav .nav-pair-sep { color: var(--ink-4); font-size: 12px; padding: 0 1px; flex: 0 0 auto; }
 .sidebar nav .nav-pair-alt { flex: 0 1 auto; padding: 6px 8px; font-size: 11px; white-space: nowrap; }
 .sidebar nav .nav-pair-alt span { overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- PO submission checks pop-up (spec 7.1) ---- */
+.pc-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-start; justify-content: center; padding: 28px 16px; overflow-y: auto; background: rgba(31, 29, 26, .45); }
+.pc-modal { width: min(860px, 100%); background: #fff; border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.28); padding: 18px 22px 16px; display: flex; flex-direction: column; gap: 14px; }
+.pc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pc-head h3 { margin: 2px 0 4px; font-size: 16px; }
+.pc-section { border: 1px solid var(--line, #e6e1d4); border-radius: 10px; padding: 10px 14px 12px; }
+.pc-section.is-flag { border-color: #e6a23c; background: #fffaf0; }
+.pc-section h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; }
+.pc-section h4 svg { color: #c0392b; }
+.pc-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pc-table th { text-align: left; font-weight: 500; padding: 5px 8px 5px 0; width: 46%; }
+.pc-table th small { font-weight: 400; }
+.pc-table td { padding: 5px 8px; }
+.pc-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pc-table tr.pc-sub th, .pc-table tr.pc-sub td { color: var(--ink-3, #6e695e); font-size: 12px; }
+.pc-delta { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.pc-delta.is-up { background: #fbe4e0; color: #b1301f; }
+.pc-delta.is-down { background: #e4f0e3; color: #3f6b3d; }
+.pc-delta.is-same { background: #ece7d9; color: #4a463f; }
+.pc-delta.is-none { color: #9a9384; font-weight: 400; }
+.pc-path { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.pc-stage { display: flex; flex-direction: column; padding: 5px 9px; border-radius: 8px; background: #f5f2ea; font-size: 11px; }
+.pc-stage b { font-weight: 600; }
+.pc-stage small { color: var(--ink-3, #6e695e); }
+.pc-stage.is-empty { opacity: .55; }
+.pc-plan { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
+.pc-remark { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.pc-remark em { font-style: normal; color: #b1301f; }
+.pc-foot { display: flex; justify-content: flex-end; gap: 10px; }

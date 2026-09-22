@@ -23,6 +23,7 @@ export * from './queries-modules/buying-plan';
 export * from './queries-modules/buying-plan-analysis';
 export * from './queries-modules/inward-receivable';
 export * from './queries-modules/po-approval';
+export * from './queries-modules/po-checks';
 export * from './queries-modules/approvals';
 export * from './queries-modules/discontinue';
 export * from './queries-modules/vendor-deboarding';

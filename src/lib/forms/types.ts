@@ -1283,6 +1283,8 @@ export type PoCategory = 'fg' | 'mat' | 'npd';
  * Field set is the sheet-verified spec: 18 inputs + DiGiO-signed issuance fields.
  */
 export type PoApproval = {
+  /** The remark typed on the pre-submission pop-up (spec 7.1). */
+  submit_remark?: string | null;
   id: number;
   timestamp_created: string;
   created_by: string | null;

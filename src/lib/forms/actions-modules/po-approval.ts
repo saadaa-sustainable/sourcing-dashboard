@@ -10,6 +10,8 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance, istToday } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
+import { loadPoSubmissionChecks } from '../queries';
+import type { PoSubmissionChecks } from '../queries-modules/po-checks';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import {
@@ -229,12 +231,37 @@ function escapeLike(s: string): string {
   return s.split('\\').join('\\\\').split('%').join('\\%').split('_').join('\\_');
 }
 
+/**
+ * Spec 7.1 — the three validations shown before a PO is submitted: cost against standard /
+ * last PO / cheapest ever (CM and fabric apart), TNA against the type's lead time and this
+ * vendor's actual days, quantity against replenishment need and vendor capacity, plus
+ * whether the product is in the buying plan. Nothing here blocks; it is what the submitter
+ * confirms, with a remark, before the PO goes to approval.
+ */
+export async function previewPoSubmission(
+  formData: FormData,
+): Promise<{ ok: true; checks: PoSubmissionChecks } | { ok: false; error: string }> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  const id = Number(formData.get('id'));
+  if (!id) return { ok: false, error: 'Save the PO before submitting it.' };
+  try {
+    const checks = await loadPoSubmissionChecks(id);
+    if (!checks) return { ok: false, error: 'PO not found.' };
+    return { ok: true, checks };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Could not run the checks.' };
+  }
+}
+
 export async function submitPoApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
 
   const id = Number(formData.get('id'));
   if (!id) return fail('Save the PO before submitting it.');
+  // The remark typed on the pre-submission pop-up (spec 7.1) — travels with the PO.
+  const submitRemark = String(formData.get('submit_remark') ?? '').trim() || null;
 
   const supabase = await supa();
   const { data: po } = await supabase
@@ -289,6 +316,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
       rejection_notes: null,
       in_buying_plan: membership.inPlan,
       plan_qty_at_submit: membership.inPlan ? membership.qty.total : null,
+      submit_remark: submitRemark,
     })
     .eq('id', id)
     .in('status', ['draft', 'rework'])
@@ -296,9 +324,10 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
 
-  const adHocNote = membership.inPlan
-    ? undefined
+  const planNote = membership.inPlan
+    ? null
     : `Ad-hoc — outside the ${membership.planMonth.slice(0, 7)} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ''}`;
+  const adHocNote = [planNote, submitRemark ? `Remark: ${submitRemark}` : null].filter(Boolean).join(' · ') || undefined;
   await writeLog(
     'po_approval',
     String(id),
