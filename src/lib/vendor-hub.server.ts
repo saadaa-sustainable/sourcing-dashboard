@@ -21,8 +21,10 @@ export type VendorHubRow = {
   // Reliability
   delayedPoCount: number;
   delayPct: number;
-  // Capacity
+  // Capacity (the one model): monthly, and what fits inside the PO type's lead time.
   capacityPerMonth: number;
+  poCapacity: number;
+  capacityEntered: boolean;
   utilizationPct: number;
   // OTIF scoring (window-based; null when the vendor has no rated POs)
   otifPct: number | null;
@@ -73,6 +75,8 @@ export async function loadVendorHub(windowDays = 180): Promise<VendorHubData> {
         delayedPoCount: r.delayedPoCount,
         delayPct: r.delayPct,
         capacityPerMonth: r.capacityPerMonth,
+        poCapacity: r.poCapacity,
+        capacityEntered: r.capacityEntered,
         utilizationPct: r.utilizationPct,
         otifPct: o ? o.otifPct : null,
         onTimePct: o ? o.onTimePct : null,

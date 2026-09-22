@@ -201,15 +201,17 @@ export function ApprovalsClient({
                     </dd>
                   </div>
                   <div>
-                    <dt>Capacity (last updated)</dt>
+                    <dt>PO capacity for this PO type</dt>
                     <dd>
-                      {item.vendorCapacityPerMonth
-                        ? `${item.vendorCapacityPerMonth.toLocaleString('en-IN')} pcs/mo${
+                      {item.vendorPoCapacity
+                        ? `${item.vendorPoCapacity.toLocaleString('en-IN')} pcs in ${item.vendorLeadDays ?? '—'} lead days · ${
+                            item.vendorCapacityPerMonth?.toLocaleString('en-IN') ?? '—'
+                          } pcs/mo${
                             item.vendorCapacityUpdatedAt
-                              ? ` · ${new Date(item.vendorCapacityUpdatedAt).toLocaleDateString('en-IN')}`
+                              ? ` · sheet updated ${new Date(item.vendorCapacityUpdatedAt).toLocaleDateString('en-IN')}`
                               : ''
-                          }`
-                        : 'Not logged yet'}
+                          }${item.vendorCapacityUtil != null ? ` · ${item.vendorCapacityUtil}% used` : ''}`
+                        : 'Not entered on Vendor Capacity'}
                     </dd>
                   </div>
                 </>
@@ -585,7 +587,8 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
       ? d.poFinishedFabric - d.stdFinishedFabric
       : null;
   const inproc = item.vendorInProcessQty ?? null;
-  const cap = item.vendorCapacityPerMonth ?? null;
+  // Headroom against PO capacity for this PO's type (the one capacity model), not the month.
+  const cap = item.vendorPoCapacity ?? null;
   const headroom = cap != null && inproc != null ? cap - inproc : null;
 
   return (

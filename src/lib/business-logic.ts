@@ -448,6 +448,119 @@ export function normaliseVendorType(raw: string | null | undefined): string {
 export const KARIGAR_DAILY_OUTPUT = 20;
 export const WORKING_DAYS_PER_MONTH = 26;
 
+/* ------------------------------------------------------------------ */
+/* THE capacity model — one function, every screen                     */
+/* ------------------------------------------------------------------ */
+
+/** Everything the capacity maths reads from Rules Master. No constant in code decides a number. */
+export type CapacityRules = {
+  /** Pieces one worker makes in a day (karigar_daily_output). */
+  dailyOutput: number;
+  /** Working days in a month (working_days_per_month). */
+  workingDays: number;
+  /** Lead time per PO type in calendar days (lead_days_job / lead_days_efob / lead_days_fob). */
+  leadDays: { job_work: number; efob: number; fob: number };
+  /** capacity_driver_min_machines = 1: workers = min(machines, karigars); 0: workers = karigars. */
+  driverMinMachines: boolean;
+};
+
+export const DEFAULT_CAPACITY_RULES: CapacityRules = {
+  dailyOutput: KARIGAR_DAILY_OUTPUT,
+  workingDays: WORKING_DAYS_PER_MONTH,
+  leadDays: { job_work: 30, efob: 45, fob: 90 },
+  driverMinMachines: false,
+};
+
+/** Read the capacity rules out of the Rules Master map, defaults where a key is missing. */
+export function capacityRulesFrom(rules: Record<string, number> | null | undefined): CapacityRules {
+  const r = rules ?? {};
+  const n = (v: number | undefined, d: number) => (Number.isFinite(v) && (v as number) > 0 ? (v as number) : d);
+  return {
+    dailyOutput: n(r.karigar_daily_output, KARIGAR_DAILY_OUTPUT),
+    workingDays: n(r.working_days_per_month, WORKING_DAYS_PER_MONTH),
+    leadDays: {
+      job_work: n(r.lead_days_job, 30),
+      efob: n(r.lead_days_efob, 45),
+      fob: n(r.lead_days_fob, 90),
+    },
+    driverMinMachines: Number(r.capacity_driver_min_machines) === 1,
+  };
+}
+
+export type CapacityModel = {
+  /** False when nothing usable has been entered — every figure below is then 0 / null and
+   *  the vendor must be left out of totals and utilisation, not counted as zero capacity. */
+  entered: boolean;
+  /** The workers the output is limited by (karigars, or min(machines, karigars) by rule). */
+  workers: number;
+  /** Lead days for this vendor's PO type. */
+  leadDays: number;
+  capacityPerDay: number;
+  capacityPerMonth: number;
+  /** What the vendor can make inside one PO's lead time — the pipeline it can legitimately hold. */
+  poCapacity: number;
+  /** poCapacity − in process; null when not entered. Negative = past capacity. */
+  available: number | null;
+  /** in process ÷ poCapacity × 100, one decimal, NOT capped: 148 means 148%. null when not entered. */
+  capacityUtil: number | null;
+  /** karigars ÷ machines × 100; null when no machines. */
+  machineUtil: number | null;
+  /** in process exceeds poCapacity (only ever true when entered). */
+  over: boolean;
+};
+
+/**
+ * The single capacity calculation. Entry, Reporting, Vendor Performance, PO Approval and
+ * the dashboard's over-capacity count all call this; nothing recomputes it on its own.
+ *
+ *     workers            = karigars (or min(machines, karigars) when the rule says so)
+ *     capacity per day   = workers × pieces per worker per day
+ *     capacity per month = capacity per day × working days in a month
+ *     PO capacity        = capacity per day × working days inside the PO type's lead time
+ *                        = capacity per month × lead days ÷ 30
+ *     available          = PO capacity − in process
+ *     utilisation        = in process ÷ PO capacity
+ *
+ * Why PO capacity and not the month: an E-FOB order occupies a vendor for 45 days and a
+ * FOB order for 90, so their pipelines legitimately hold more than one month of output.
+ * Comparing in-process to one month flagged every normal FOB vendor as over capacity.
+ * Job Work (30 days) is unchanged by this; the multiplier was 1.0 and hid the bug.
+ */
+export function vendorCapacityModel(
+  input: {
+    machines: number | null | undefined;
+    karigar: number | null | undefined;
+    vendorType: string | null | undefined;
+    inProcessQty: number | null | undefined;
+  },
+  rules: CapacityRules = DEFAULT_CAPACITY_RULES,
+): CapacityModel {
+  const machines = Math.max(0, number(input.machines));
+  const karigar = Math.max(0, number(input.karigar));
+  const inProcess = Math.max(0, number(input.inProcessQty));
+  const typeKey = normaliseVendorType(input.vendorType) as keyof CapacityRules['leadDays'];
+  const leadDays = rules.leadDays[typeKey] ?? rules.leadDays.job_work;
+  const workers = rules.driverMinMachines ? Math.min(machines, karigar) : karigar;
+  const entered = workers > 0;
+  const capacityPerDay = entered ? workers * rules.dailyOutput : 0;
+  const capacityPerMonth = Math.round(capacityPerDay * rules.workingDays);
+  // Lead days are calendar days; the working days inside them scale by workingDays/30.
+  const poCapacity = Math.round(capacityPerDay * leadDays * (rules.workingDays / 30));
+  const machineUtil = machines > 0 ? Math.round((karigar / machines) * 100) : null;
+  return {
+    entered,
+    workers,
+    leadDays,
+    capacityPerDay,
+    capacityPerMonth,
+    poCapacity,
+    available: entered ? poCapacity - inProcess : null,
+    capacityUtil: entered && poCapacity > 0 ? Math.round((inProcess / poCapacity) * 1000) / 10 : null,
+    machineUtil,
+    over: entered && inProcess > poCapacity,
+  };
+}
+
 /**
  * A vendor's monthly capacity, in pieces:
  *
@@ -467,13 +580,17 @@ export function vendorMonthlyCapacity(
   dailyOutput = KARIGAR_DAILY_OUTPUT,
   workingDays = WORKING_DAYS_PER_MONTH,
 ): number {
-  return Math.round(number(karigar) * number(dailyOutput) * number(workingDays));
+  return vendorCapacityModel(
+    { machines: null, karigar, vendorType: 'job', inProcessQty: 0 },
+    { ...DEFAULT_CAPACITY_RULES, dailyOutput: number(dailyOutput), workingDays: number(workingDays) },
+  ).capacityPerMonth;
 }
 
 export function buildVendorRollups(
   pendingPos: PendingPo[], vendorTypes: VendorType[], vendorMasters: VendorMaster[], tnaRecords: TnaRecord[],
   today = istToday(),
   capacityByVendor: Map<string, { machines: number; karigar: number }> = new Map(),
+  rules: CapacityRules = DEFAULT_CAPACITY_RULES,
 ): VendorRollup[] {
   const tracker = buildTrackerRows(pendingPos, vendorTypes, vendorMasters, tnaRecords, today);
   const lookups = createLookups(vendorTypes, vendorMasters, tnaRecords);
@@ -489,13 +606,20 @@ export function buildVendorRollups(
     const first = rows[0];
     const sample = rows[0].skuRows[0];
     const resolved = resolveVendor(sample, lookups);
-    const capacity = number(resolved.master?.capacity_per_month);
+    const capacitySigned = number(resolved.master?.capacity_per_month);
     const live = capacityByVendor.get(key(first.vendorCode)) ?? capacityByVendor.get(key(first.vendorName));
-    // Karigars only. Machines and the commercial type no longer enter the capacity figure.
-    const poCapacity = vendorMonthlyCapacity(
-      live?.karigar ?? resolved.master?.total_active_karigar,
-    );
     const openQty = rows.reduce((sum, row) => sum + row.pendingQty, 0);
+    // The one capacity model. Live sheet figures first, the master's onboarding figures as
+    // the fallback; the PO type comes from the vendor type master.
+    const model = vendorCapacityModel(
+      {
+        machines: live?.machines ?? resolved.master?.machines_for_saadaa ?? resolved.master?.total_machines,
+        karigar: live?.karigar ?? resolved.master?.total_active_karigar,
+        vendorType: resolved.type?.vendor_type ?? resolved.master?.primary_type,
+        inProcessQty: openQty,
+      },
+      rules,
+    );
     const openPoRefs = unique(rows.map((row) => row.poRef));
     const delayedRefs = unique(rows.filter((row) => row.delayDays > 0).map((row) => row.poRef));
     return {
@@ -505,10 +629,11 @@ export function buildVendorRollups(
       openQty, openValue: rows.reduce((sum, row) => sum + row.pendingValue, 0),
       totalMachines: number(resolved.master?.total_machines),
       totalActiveKarigar: number(resolved.master?.total_active_karigar),
-      karigarLatest: number(resolved.master?.karigar_latest), capacityPerMonth: capacity, poCapacity,
-      // Utilisation = open qty ÷ monthly capacity (the master's signed capacity/month),
-      // matching the Merchant rollup and the documented formula.
-      utilizationPct: capacity ? Math.round(openQty / capacity * 100) : 0,
+      karigarLatest: number(resolved.master?.karigar_latest),
+      capacityPerMonth: model.capacityPerMonth, poCapacity: model.poCapacity, capacitySigned,
+      capacityEntered: model.entered,
+      // Utilisation = open qty ÷ PO capacity, from the one model. Real percentage, not capped.
+      utilizationPct: model.capacityUtil ?? 0,
     };
   }).sort((a, b) => b.openValue - a.openValue);
 }

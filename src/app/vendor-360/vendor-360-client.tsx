@@ -66,7 +66,7 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
           <small>{data.summary.worstDelay?.vendorName ?? 'none'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Over capacity <InfoDot text={"WHAT: how many vendors have more on order than they can make in a month.\n\nHOW: vendors where open-PO pieces ÷ monthly capacity is above 100% (capacity = karigars × daily output × working days, from Vendor Capacity).\n\nUSE: each of these will be late on something — decide which PO matters most rather than letting the vendor decide."} /></span>
+          <span className="ca-kpi-label">Over capacity <InfoDot text={"WHAT: how many vendors have more on order than they can make in a month.\n\nHOW: vendors where open-PO pieces ÷ PO capacity is above 100% — PO capacity being what the vendor can make inside its PO type's lead time (capacity/month × lead days ÷ 30, from Vendor Capacity and Rules Master).\n\nUSE: each of these will be late on something — decide which PO matters most rather than letting the vendor decide."} /></span>
           <strong className={data.summary.overUtilised > 0 ? 'ca-over' : ''}>{data.summary.overUtilised}</strong>
           <small>vendors &gt; 100% util</small>
         </div>
@@ -99,7 +99,7 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
                 <th className="num">OTIF</th>
                 <th className="num">On-time</th>
                 <th className="num">Fill</th>
-                <th className="num">Capacity/mo</th>
+                <th className="num">PO capacity</th>
                 <th className="num">Utilisation</th>
               </tr>
             </thead>
@@ -139,8 +139,8 @@ function VendorRow({ r }: { r: VendorHubRow }) {
       <td className={`num ${otifTone(r.otifPct)}`}>{pct(r.otifPct)}</td>
       <td className="num">{pct(r.onTimePct)}</td>
       <td className="num">{pct(r.fillPct)}</td>
-      <td className="num">{r.capacityPerMonth ? inr.format(r.capacityPerMonth) : '—'}</td>
-      <td className={`num ${r.utilizationPct > 100 ? 'ca-over' : ''}`}>{r.capacityPerMonth ? `${Math.round(r.utilizationPct)}%` : '—'}</td>
+      <td className="num">{r.capacityEntered ? inr.format(r.poCapacity) : '—'}</td>
+      <td className={`num ${r.utilizationPct > 100 ? 'ca-over' : ''}`}>{r.capacityEntered ? `${Math.round(r.utilizationPct)}%` : '—'}</td>
     </tr>
   );
 }

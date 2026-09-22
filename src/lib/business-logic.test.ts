@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeClosureCompliance, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorMonthlyCapacity } from './business-logic';
+import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, computeClosureCompliance, computeInternalStatus, deriveTnaStage, easycomBucket, hasTnaSequenceError, isTnaDueToday, isEasycomActive, isTnaDataMissing, isTnaHighRisk, istToday, stageDelay, normaliseVendorType, tnaSequenceErrors, vendorBucket, vendorMonthlyCapacity,
+  DEFAULT_CAPACITY_RULES,
+  capacityRulesFrom,
+  vendorCapacityModel,
+} from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
 
@@ -163,6 +167,47 @@ describe('sourcing business rules', () => {
     const [vendor]=buildVendorRollups([overdue,upcoming],[],[],[tna],new Date('2026-07-15T00:00:00Z'));
     assert.equal(vendor.openPoCount,1); assert.equal(vendor.delayedPoCount,1); assert.equal(vendor.openQty,10);
   });
+  it('the one capacity model: PO capacity scales by lead days, utilisation is real, not entered is not zero', () => {
+    const rules = { ...DEFAULT_CAPACITY_RULES, leadDays: { job_work: 30, efob: 45, fob: 75 } };
+    // Aarushi, Job Work: 20 karigars → 10,400 a month; 30-day lead → PO capacity 10,400.
+    const aarushi = vendorCapacityModel({ machines: 38, karigar: 20, vendorType: 'Job Work', inProcessQty: 4748 }, rules);
+    assert.equal(aarushi.capacityPerMonth, 10400);
+    assert.equal(aarushi.poCapacity, 10400);
+    assert.equal(aarushi.available, 5652);
+    assert.equal(aarushi.capacityUtil, 45.7);
+    assert.equal(aarushi.machineUtil, 53);
+    assert.equal(aarushi.over, false);
+    // Chandan, E-FOB: 16 → 8,320 a month; 45-day lead → 12,480; 12,293 on order → 98.5%, not over.
+    const chandan = vendorCapacityModel({ machines: 40, karigar: 16, vendorType: 'E-FOB', inProcessQty: 12293 }, rules);
+    assert.equal(chandan.poCapacity, 12480);
+    assert.equal(chandan.available, 187);
+    assert.equal(chandan.capacityUtil, 98.5);
+    assert.equal(chandan.over, false);
+    // AARA FAB, FOB at 75 days: 25 → 13,000 a month; PO capacity 32,500; 16,084 on order → 49.5%.
+    const aara = vendorCapacityModel({ machines: 40, karigar: 25, vendorType: 'FOB', inProcessQty: 16084 }, rules);
+    assert.equal(aara.poCapacity, 32500);
+    assert.equal(aara.available, 16416);
+    assert.equal(aara.capacityUtil, 49.5);
+    // Over capacity shows the real percentage, not 100.
+    const over = vendorCapacityModel({ machines: 10, karigar: 10, vendorType: 'job', inProcessQty: 7696 }, rules);
+    assert.equal(over.poCapacity, 5200);
+    assert.equal(over.capacityUtil, 148);
+    assert.equal(over.over, true);
+    // Nothing entered is "not entered", not zero capacity.
+    const none = vendorCapacityModel({ machines: 0, karigar: 0, vendorType: 'FOB', inProcessQty: 500 }, rules);
+    assert.equal(none.entered, false);
+    assert.equal(none.available, null);
+    assert.equal(none.capacityUtil, null);
+    assert.equal(none.over, false);
+    // The driver switch: min(machines, karigars) when the rule is on.
+    const capped = vendorCapacityModel({ machines: 10, karigar: 25, vendorType: 'job', inProcessQty: 0 }, { ...rules, driverMinMachines: true });
+    assert.equal(capped.workers, 10);
+    assert.equal(capped.capacityPerMonth, 5200);
+    // Rules come from the Rules Master map; a FOB lead change flows straight through.
+    const r90 = capacityRulesFrom({ lead_days_fob: 90, karigar_daily_output: 20, working_days_per_month: 26 });
+    assert.equal(vendorCapacityModel({ machines: 40, karigar: 25, vendorType: 'FOB', inProcessQty: 0 }, r90).poCapacity, 39000);
+    assert.equal(capacityRulesFrom({ capacity_driver_min_machines: 1 }).driverMinMachines, true);
+  });
   it('derives monthly capacity from karigars x daily output x working days', () => {
     // Capacity is people × daily output × working days. Machines and the commercial type
     // no longer enter it: 25 karigars × 20 a day × 26 days = 13,000 a month.
@@ -183,9 +228,12 @@ describe('sourcing business rules', () => {
     };
     const [v] = buildVendorRollups([line], [vt], [vm], [], new Date('2026-07-15T00:00:00Z'), cap);
     // 25 karigars × 20 a day × 26 days.
-    assert.equal(v.poCapacity, 13000);
+    // E-FOB vendor: 13,000 a month, 45-day lead → PO capacity 19,500; 300 on order → 1.5%.
+    assert.equal(v.capacityPerMonth, 13000);
+    assert.equal(v.poCapacity, 19500);
+    assert.equal(v.capacityEntered, true);
+    assert.equal(v.utilizationPct, 1.5);
     // Utilisation = open qty (300) ÷ the vendor master's stated monthly capacity (1000) = 30%.
-    assert.equal(v.utilizationPct, 30);
   });
 });
 

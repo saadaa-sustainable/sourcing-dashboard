@@ -196,7 +196,13 @@ export type VendorRollup = {
   totalMachines: number;
   totalActiveKarigar: number;
   karigarLatest: number;
+  /** From the one capacity model (business-logic.vendorCapacityModel). */
   capacityPerMonth: number;
   poCapacity: number;
+  /** The master's signed capacity/month, kept for reference only. */
+  capacitySigned: number;
+  /** False when the vendor has no usable capacity entry — leave it out of totals. */
+  capacityEntered: boolean;
+  /** in process ÷ PO capacity × 100, one decimal, not capped. 0 when not entered. */
   utilizationPct: number;
 };

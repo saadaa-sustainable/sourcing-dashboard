@@ -41,6 +41,7 @@ import {
 import {
   buildTrackerRows,
   buildVendorRollups,
+  capacityRulesFrom,
   istToday,
 } from "@/lib/business-logic";
 import type { DashboardData } from "@/lib/types";
@@ -275,9 +276,10 @@ export function AnalyticsCards({
       data.tnaRecords,
       today,
       capacityByVendor,
+      capacityRulesFrom(rules),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, rules]);
 
   const tnaDataPresent = data.tnaRecords.length > 0;
   /*
@@ -314,7 +316,8 @@ export function AnalyticsCards({
     totalOpenValue > 0 ? Math.round((top3Value / totalOpenValue) * 100) : 0;
   const concentrationAlert = rules.vendor_concentration_alert ?? 40;
 
-  const withCapacity = rollups.filter((row) => row.capacityPerMonth > 0);
+  // Only vendors with a capacity entry can be judged; "not entered" is not zero capacity.
+  const withCapacity = rollups.filter((row) => row.capacityEntered && row.poCapacity > 0);
   const over = withCapacity
     .filter((row) => row.utilizationPct > (rules.utilization_over_pct ?? 100))
     .sort((a, b) => b.utilizationPct - a.utilizationPct);
@@ -563,7 +566,7 @@ export function AnalyticsCards({
               onClick={() => onTab("vendors")}
               info={`WHAT: which vendors have room and which are over-committed.
 
-HOW: open-PO pieces ÷ monthly capacity per vendor (capacity = karigars × daily output × working days, from Vendor Capacity). Under ${rules.utilization_under_pct ?? 70}% = has room; above ${rules.utilization_over_pct ?? 100}% = over-committed. Bands are editable in Rules Master.
+HOW: open-PO pieces ÷ PO capacity per vendor — what the vendor can make inside its PO type's lead time: capacity/month (karigars × daily output × working days) × lead days ÷ 30, all from Rules Master via Vendor Capacity. Under ${rules.utilization_under_pct ?? 70}% = has room; above ${rules.utilization_over_pct ?? 100}% = over-committed. Bands are editable in Rules Master.
 
 USE: place new POs with the vendors that have room; expect delays from the over-committed ones and decide which of their POs matters most.`}
             >
@@ -591,7 +594,7 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                         over.slice(0, 5).map((vendor) => {
                           const excess = Math.max(
                             0,
-                            vendor.openQty - vendor.capacityPerMonth,
+                            vendor.openQty - vendor.poCapacity,
                           );
                           return (
                             <div
@@ -610,7 +613,7 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                                 />
                               </div>
                               <small>
-                                {fmt.format(excess)} pcs above capacity
+                                {fmt.format(excess)} pcs above PO capacity
                               </small>
                             </div>
                           );
@@ -630,7 +633,7 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                         under.slice(0, 5).map((vendor) => {
                           const spare = Math.max(
                             0,
-                            vendor.capacityPerMonth - vendor.openQty,
+                            vendor.poCapacity - vendor.openQty,
                           );
                           return (
                             <div

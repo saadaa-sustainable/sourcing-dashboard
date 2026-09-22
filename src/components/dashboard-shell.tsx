@@ -51,6 +51,9 @@ import {
   aggregateProductRows,
   buildTrackerRows,
   buildVendorRollups,
+  capacityRulesFrom,
+  DEFAULT_CAPACITY_RULES,
+  type CapacityRules,
   createLookups,
   isDelayedPo,
   isHighRiskLine,
@@ -561,6 +564,7 @@ const DASH_GROUPS = [
 type DashGroup = (typeof DASH_GROUPS)[number][0];
 
 function DashboardTab({
+  capacityRules = DEFAULT_CAPACITY_RULES,
   data,
   bucket,
   setBucket,
@@ -572,6 +576,7 @@ function DashboardTab({
   expectedVsActual = null,
   extras = null,
 }: {
+  capacityRules?: CapacityRules;
   data: DashboardData;
   bucket: string;
   setBucket: (v: string) => void;
@@ -696,6 +701,8 @@ function DashboardTab({
     data.vendorMasters,
     data.tnaRecords,
     today,
+    new Map(),
+    capacityRules,
   );
   const dayMs = 86_400_000;
   /* EDD schedule: one bubble per open PO, X = expected delivery date, Y = vendor code,
@@ -2492,12 +2499,14 @@ function VendorTable({
                   <td>{fmt.format(row.capacityPerMonth)}</td>
                   <td>{fmt.format(row.poCapacity)}</td>
                   <td>
-                    {row.utilizationPct > 100 ? (
+                    {!row.capacityEntered ? (
+                      <span className="badge">Not entered</span>
+                    ) : row.utilizationPct > 100 ? (
                       <span
                         className="badge danger"
-                        title={`Booked at ${row.utilizationPct}% of capacity`}
+                        title="More on order than the vendor can make inside its PO lead time"
                       >
-                        100% · Over utilised
+                        {row.utilizationPct}% · over
                       </span>
                     ) : (
                       <span className="badge info">{row.utilizationPct}%</span>
@@ -2521,7 +2530,7 @@ function VendorTable({
   );
 }
 
-function VendorTab({ data }: { data: DashboardData }) {
+function VendorTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: DashboardData; capacityRules?: CapacityRules }) {
   const today = istToday();
   // Item 4 — period for the PDF export: All time / YTD / a specific quarter.
   // Filters the underlying POs by po_date before the rollups the report exports.
@@ -2564,8 +2573,9 @@ function VendorTab({ data }: { data: DashboardData }) {
       data.tnaRecords,
       today,
       capacityByVendor,
+      capacityRules,
     );
-  }, [data, periodPos]);
+  }, [data, periodPos, capacityRules]);
   const openCodes = new Set(rows.map((row) => norm(row.vendorCode)));
   const zero = data.vendorTypes.filter(
     (v) => norm(v.status) === "active" && !openCodes.has(norm(v.vendor_code)),
@@ -2585,15 +2595,16 @@ function VendorTab({ data }: { data: DashboardData }) {
   // Capacity-load donut: vendors bucketed by open-qty ÷ modelled monthly capacity.
   // Capacity is vendor-level; a vendor split across Woven + Knit rows carries the
   // same figure on each row, so count it once per vendor.
-  const totalCap = [...new Map(rows.map((r) => [norm(r.vendorCode) || r.vendorName, r.capacityPerMonth])).values()]
+  // PO capacity (the one model), counted once per vendor; "not entered" is left out.
+  const totalCap = [...new Map(rows.filter((r) => r.capacityEntered).map((r) => [norm(r.vendorCode) || r.vendorName, r.poCapacity])).values()]
     .reduce((s, c) => s + c, 0);
-  const totalOpen = rows.reduce((s, r) => s + r.openQty, 0);
+  const totalOpen = rows.filter((r) => r.capacityEntered).reduce((s, r) => s + r.openQty, 0);
   const overallUtil = totalCap ? Math.round((totalOpen / totalCap) * 100) : 0;
   const utilBands = (() => {
     let over = 0, near = 0, under = 0, noData = 0;
     for (const r of rows) {
-      if (!r.capacityPerMonth) { noData++; continue; }
-      const ratio = r.openQty / r.capacityPerMonth;
+      if (!r.capacityEntered || !r.poCapacity) { noData++; continue; }
+      const ratio = r.openQty / r.poCapacity;
       if (ratio > 1) over++;
       else if (ratio >= 0.7) near++;
       else under++;
@@ -2633,7 +2644,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           label="Total monthly capacity"
           value={fmt.format(totalCap)}
           tone="teal"
-          info={"WHAT: how many pieces all vendors together can make in a month.\n\nHOW: per vendor, karigars allocated to SAADAA × pieces a karigar makes a day × working days a month (both figures in Rules Master), summed. Example: 25 karigars × 20 × 26 = 13,000 a month for one vendor.\n\nUSE: read against 'Pending pieces' beside it — if pending is more than one month's capacity, the backlog is longer than a month whatever the delivery dates say."}
+          info={"WHAT: how many pieces all vendors together can make in a month.\n\nHOW: per vendor, workers × pieces a worker makes a day × working days a month (Rules Master), summed over vendors with an entry. Example: 25 karigars × 20 × 26 = 13,000 a month for one vendor. Utilisation elsewhere is judged on PO capacity (this × lead days ÷ 30), not on this monthly figure.\n\nUSE: read against 'Pending pieces' beside it for a rough months-of-backlog."}
         />
         <Card
           label="Total open PO quantity"
@@ -2645,7 +2656,7 @@ function VendorTab({ data }: { data: DashboardData }) {
       <div className="bento-grid">
         <ChartCard
           title="Open quantity vs monthly capacity"
-          info={"WHAT: per vendor, the pieces on order against what the vendor can make in a month.\n\nHOW: open-PO pieces (bar) vs monthly capacity (karigars × daily output × working days). Over 100% = more on order than a month's work.\n\nUSE: an over-committed vendor will be late on something; decide which PO, rather than let the vendor decide. Under-used vendors are where new orders can go."}
+          info={"WHAT: per vendor, the pieces on order against what the vendor can make inside its PO type's lead time (PO capacity).\n\nHOW: open-PO pieces (bar) vs PO capacity = capacity/month × lead days ÷ 30, where capacity/month = karigars × daily output × working days (all Rules Master). An E-FOB vendor is judged on 45 days of output, a FOB vendor on 90 — not one month. Over 100% = more on order than that.\n\nUSE: an over-committed vendor will be late on something; decide which PO, rather than let the vendor decide. Under-used vendors are where new orders can go."}
           download={{
             filename: "vendor-open-qty-vs-capacity",
             headers: vendorCsvHeaders,
@@ -2674,7 +2685,7 @@ function VendorTab({ data }: { data: DashboardData }) {
                 <YAxis tickLine={false} />
                 <Tooltip />
                 <Bar dataKey="openQty" name="Open quantity" fill="#7b4fbf" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="capacityPerMonth" name="Monthly capacity" fill="#3d9e6b" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="poCapacity" name="PO capacity" fill="#3d9e6b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -2688,7 +2699,7 @@ function VendorTab({ data }: { data: DashboardData }) {
               <h3>
                 Capacity utilisation
                 <InfoDot
-                  text={"WHAT: how vendors are loaded, in four bands.\n\nHOW: open pieces ÷ monthly capacity per vendor. Over = above 100%, Near = 70–100%, Under = below 70%, 'No data' = no capacity entered on Vendor Capacity. The centre is the vendor count; the bar is book-wide open pieces ÷ total capacity. Bands are editable in Rules Master.\n\nUSE: many in 'No data' means the capacity sheet is not being kept up — fix that before reading the rest."}
+                  text={"WHAT: how vendors are loaded, in four bands.\n\nHOW: open pieces ÷ PO capacity per vendor (what it can make inside its PO type's lead time). Over = above 100%, Near = 70–100%, Under = below 70%, 'No data' = no capacity entered on Vendor Capacity. The centre is the vendor count; the bar is book-wide open pieces ÷ total PO capacity. Bands are editable in Rules Master.\n\nUSE: many in 'No data' means the capacity sheet is not being kept up — fix that before reading the rest."}
                   label="About Capacity utilisation"
                 />
               </h3>
@@ -2785,7 +2796,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           </table>
         </div>
       </ChartCard>
-      <VendorTypeCharts data={data} />
+      <VendorTypeCharts data={data} capacityRules={capacityRules} />
       <section className="panel table-panel">
         <div className="panel-title">
           <h3>
@@ -2832,7 +2843,7 @@ function VendorTab({ data }: { data: DashboardData }) {
   );
 }
 
-function VendorTypeCharts({ data }: { data: DashboardData }) {
+function VendorTypeCharts({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: DashboardData; capacityRules?: CapacityRules }) {
   const today = istToday();
   const all = useMemo(
     () =>
@@ -2842,8 +2853,10 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
         data.vendorMasters,
         data.tnaRecords,
         today,
+        new Map(),
+        capacityRules,
       ),
-    [data],
+    [data, capacityRules],
   );
   const allTracker = useMemo(
     () =>
@@ -2957,7 +2970,7 @@ USE: a vendor whose dark part is most of the bar is late on nearly everything �
     </div>
   );
 }
-function MerchantTab({ data }: { data: DashboardData }) {
+function MerchantTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: DashboardData; capacityRules?: CapacityRules }) {
   const today = istToday();
   const vendors = useMemo(
     () =>
@@ -2967,8 +2980,10 @@ function MerchantTab({ data }: { data: DashboardData }) {
         data.vendorMasters,
         data.tnaRecords,
         today,
+        new Map(),
+        capacityRules,
       ),
-    [data],
+    [data, capacityRules],
   );
   const rows = Object.values(
     vendors.reduce<Record<string, VendorRollup>>((acc, row) => {
@@ -2985,6 +3000,9 @@ function MerchantTab({ data }: { data: DashboardData }) {
         totalActiveKarigar: 0,
         karigarLatest: 0,
         capacityPerMonth: 0,
+        poCapacity: 0,
+        capacitySigned: 0,
+        capacityEntered: false,
         utilizationPct: 0,
       };
       current.openPoCount += row.openPoCount;
@@ -2992,6 +3010,8 @@ function MerchantTab({ data }: { data: DashboardData }) {
       current.openQty += row.openQty;
       current.openValue += row.openValue;
       current.capacityPerMonth += row.capacityPerMonth;
+      current.poCapacity += row.capacityEntered ? row.poCapacity : 0;
+      current.capacityEntered = current.capacityEntered || row.capacityEntered;
       current.totalMachines += row.totalMachines;
       current.totalActiveKarigar += row.totalActiveKarigar;
       current.karigarLatest += row.karigarLatest;
@@ -3004,8 +3024,8 @@ function MerchantTab({ data }: { data: DashboardData }) {
       delayPct: row.openPoCount
         ? Math.round((row.delayedPoCount / row.openPoCount) * 100)
         : 0,
-      utilizationPct: row.capacityPerMonth
-        ? Math.round((row.openQty / row.capacityPerMonth) * 100)
+      utilizationPct: row.poCapacity
+        ? Math.round((row.openQty / row.poCapacity) * 1000) / 10
         : 0,
     }))
     .sort((a, b) => b.openValue - a.openValue);
@@ -3870,6 +3890,8 @@ export function DashboardShell({
   /** Server-computed sections for the cross-module cards. */
   analyticsExtras?: AnalyticsExtras | null;
 }) {
+  // Every capacity figure on every tab reads the same Rules Master values.
+  const capacityRules = capacityRulesFrom(analyticsRules);
   const [tab, setTab] = useState<TabId>("dashboard");
   const [dashGroup, setDashGroup] = useState<DashGroup>("objectives");
   const [info, setInfo] = useState(false);
@@ -3959,6 +3981,7 @@ export function DashboardShell({
                 <>
                   <DashboardTab
                     data={data}
+                    capacityRules={capacityRules}
                     bucket={bucket}
                     setBucket={setBucket}
                     extras={analyticsExtras}
@@ -3996,8 +4019,8 @@ export function DashboardShell({
             </>
           )}{" "}
           {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} initialVendorCode={vendorFilter} />}{" "}
-          {tab === "vendors" && <VendorTab data={data} />}{" "}
-          {tab === "merchants" && <MerchantTab data={data} />}{" "}
+          {tab === "vendors" && <VendorTab data={data} capacityRules={capacityRules} />}{" "}
+          {tab === "merchants" && <MerchantTab data={data} capacityRules={capacityRules} />}{" "}
           {tab === "products" && <ProductTab data={data} />}{" "}
           {tab === "urgent-replenish" && <UrgentReplenishmentTab data={data} />}{" "}
           {tab === "matrix" && <MatrixTab data={data} />}

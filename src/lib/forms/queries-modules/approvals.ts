@@ -3,6 +3,8 @@ import { client, PAGE_SIZE } from './_shared';
 import { canApprove, routeApproval } from '../approval';
 import { loadApprovedStandardCosts, loadApprovedMaterialCosts } from './standard-cost';
 import { loadInProcessByVendor, loadLatestVendorCapacity } from './vendor';
+import { loadAnalyticsRules } from './analytics';
+import { capacityRulesFrom, vendorCapacityModel } from '@/lib/business-logic';
 import { DEBOARDING_REASON_LABEL, DEBOARDING_SCORES } from '../deboarding';
 import type {
   ApprovalNotification,
@@ -462,11 +464,13 @@ export async function loadApprovalQueue(): Promise<{
 
   if ((pos ?? []).length) {
     const poList = (pos ?? []) as PoApproval[];
-    const [inProcessByVendor, latestCapacity, stdCosts] = await Promise.all([
+    const [inProcessByVendor, latestCapacity, stdCosts, analyticsRules] = await Promise.all([
       loadInProcessByVendor(),
       loadLatestVendorCapacity(),
       loadApprovedStandardCosts(),
+      loadAnalyticsRules(),
     ]);
+    const capacityRules = capacityRulesFrom(analyticsRules);
     // Product-level inventory snapshot (DOQ / stock / days) for the PO products.
     const poCodes = [...new Set(poList.map((p) => p.product_code).filter(Boolean))] as string[];
     const invByProduct: Record<string, { stock: number; inProgress: number; daily: number; doq45: number }> = {};
@@ -532,6 +536,19 @@ export async function loadApprovalQueue(): Promise<{
         .select('id, product_variant, size, qty')
         .eq('po_id', po.id);
       const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
+      // The one capacity model, for THIS PO's type: an E-FOB PO is judged against what the
+      // vendor can make in 45 days, a FOB PO against 90 — not against one month.
+      const capModel = cap
+        ? vendorCapacityModel(
+            {
+              machines: cap.machines,
+              karigar: cap.karigar,
+              vendorType: po.po_type ?? po.category,
+              inProcessQty: vendor ? inProcessByVendor.get(vendor.toLowerCase()) ?? 0 : 0,
+            },
+            capacityRules,
+          )
+        : null;
       const stdCost = po.product_code ? stdCosts[po.product_code] ?? null : null;
       const inv = po.product_code ? invByProduct[po.product_code] ?? null : null;
       items.push({
@@ -556,7 +573,10 @@ export async function loadApprovalQueue(): Promise<{
         vendorInProcessQty: vendor
           ? inProcessByVendor.get(vendor.toLowerCase()) ?? null
           : null,
-        vendorCapacityPerMonth: cap?.capacityPerMonth ?? null,
+        vendorCapacityPerMonth: capModel?.entered ? capModel.capacityPerMonth : null,
+        vendorPoCapacity: capModel?.entered ? capModel.poCapacity : null,
+        vendorCapacityUtil: capModel?.capacityUtil ?? null,
+        vendorLeadDays: capModel?.leadDays ?? null,
         vendorCapacityUpdatedAt: cap?.weekOf ?? null,
         lines: ((poLines ?? []) as { id: number; product_variant: string | null; size: string | null; qty: number | null }[]).map((l) => ({
           id: String(l.id),

@@ -1,6 +1,7 @@
 import 'server-only';
 import { client, PAGE_SIZE } from './_shared';
-import { buildVendorRollups, buildTrackerRows } from '@/lib/business-logic';
+import { buildVendorRollups, buildTrackerRows, capacityRulesFrom } from '@/lib/business-logic';
+import { loadAnalyticsRules } from './analytics';
 import { loadDashboardData } from '@/lib/data';
 import type {
   EeVendorMasterRow,
@@ -111,28 +112,35 @@ export async function loadInProcessByVendor(): Promise<Map<string, number>> {
  * so the PO approval card can show "last-updated capacity". Keyed lower-case.
  */
 export async function loadLatestVendorCapacity(): Promise<
-  Map<string, { capacityPerMonth: number; weekOf: string | null }>
+  Map<string, { capacityPerMonth: number; weekOf: string | null; machines: number; karigar: number }>
 > {
   const supabase = await client();
   const { data } = await supabase
     .from('sd_vendor_capacity_log')
-    .select('vendor_code, capacity_per_month, week_of')
-    .order('week_of', { ascending: false });
+    .select('vendor_code, capacity_per_month, week_of, entry_date, machines_allocated, active_karigar')
+    .order('entry_date', { ascending: false });
 
-  const map = new Map<string, { capacityPerMonth: number; weekOf: string | null }>();
+  const map = new Map<string, { capacityPerMonth: number; weekOf: string | null; machines: number; karigar: number }>();
   (
     (data ?? []) as {
       vendor_code: string | null;
       capacity_per_month: number | null;
       week_of: string | null;
+      entry_date: string | null;
+      machines_allocated: number | null;
+      active_karigar: number | null;
     }[]
   ).forEach((row) => {
     const code = (row.vendor_code ?? '').trim().toLowerCase();
-    // Rows arrive newest-first, so the first one seen per vendor is the latest.
+    // Rows arrive newest-first, so the first one seen per vendor is the latest. The two
+    // inputs travel too, so the approval card can run the one capacity model for the
+    // PO's own type instead of trusting a stored monthly figure.
     if (code && !map.has(code)) {
       map.set(code, {
         capacityPerMonth: Number(row.capacity_per_month) || 0,
-        weekOf: row.week_of ?? null,
+        weekOf: row.entry_date ?? row.week_of ?? null,
+        machines: Number(row.machines_allocated) || 0,
+        karigar: Number(row.active_karigar) || 0,
       });
     }
   });
@@ -169,12 +177,22 @@ export async function loadVendorCapacity() {
     .from('sd_vendor_type_multiplier')
     .select('*');
 
-  const dashboard = await loadDashboardData();
+  const [dashboard, rules] = await Promise.all([loadDashboardData(), loadAnalyticsRules()]);
+  // The sheet's live inputs feed the one capacity model, with the Rules Master values.
+  const capacityByVendor = new Map(
+    ((logs ?? []) as VendorCapacityLog[]).map((l) => [
+      (l.vendor_code ?? '').trim().toLowerCase(),
+      { machines: Number(l.machines_allocated) || 0, karigar: Number(l.active_karigar) || 0 },
+    ]),
+  );
   const rollups = buildVendorRollups(
     dashboard.pendingPos,
     dashboard.vendorTypes,
     dashboard.vendorMasters,
     dashboard.tnaRecords,
+    undefined,
+    capacityByVendor,
+    capacityRulesFrom(rules),
   );
 
   return {

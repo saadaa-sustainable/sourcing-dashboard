@@ -13,12 +13,14 @@ import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import {
-  KARIGAR_DAILY_OUTPUT,
+  DEFAULT_CAPACITY_RULES,
   VENDOR_TYPE_MULTIPLIER,
-  WORKING_DAYS_PER_MONTH,
   normaliseVendorType,
-  vendorMonthlyCapacity,
+  vendorCapacityModel,
+  type CapacityModel,
+  type CapacityRules,
 } from '@/lib/business-logic';
+import { capacityLocked, capacityWeekNext, capacityWeekStart } from '@/lib/forms/approval';
 import type {
   DeboardedVendor,
   SdRole,
@@ -48,9 +50,17 @@ const STALE_MS = STALE_DAYS * 86_400_000;
 
 const typeConfig = (type: string) => VENDOR_TYPE_MULTIPLIER[normaliseVendorType(type)];
 
-// Live monthly capacity for a vendor: karigars × pieces per karigar per day × working days.
-function poCapacityOf(vendor: Vendor, dailyOutput = KARIGAR_DAILY_OUTPUT, workingDays = WORKING_DAYS_PER_MONTH): number {
-  return vendorMonthlyCapacity(vendor.current?.active_karigar, dailyOutput, workingDays);
+/** The one capacity model, fed from the vendor's current sheet row. */
+function modelOf(vendor: Vendor, rules: CapacityRules): CapacityModel {
+  return vendorCapacityModel(
+    {
+      machines: vendor.current?.machines_allocated,
+      karigar: vendor.current?.active_karigar,
+      vendorType: vendor.vendor_type,
+      inProcessQty: vendor.inProcessQty,
+    },
+    rules,
+  );
 }
 
 function ageLabel(iso: string | null, now: number | null) {
@@ -99,7 +109,7 @@ function CapacityMetric({
  */
 function UtilCell({ value }: { value: number | null }) {
   if (value == null) return <span className="wf-subtle">—</span>;
-  if (value >= 100) return <span className="vc-over-text">100% and Over Utilised</span>;
+  if (value > 100) return <span className="vc-over-text">{value}% · over</span>;
   return (
     <>
       <span className={`vc-pill ${value >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{value}%</span>
@@ -140,8 +150,7 @@ export function VendorCapacityClient({
   catalog = [],
   leadDays,
   multipliers = [],
-  dailyOutput = KARIGAR_DAILY_OUTPUT,
-  workingDays = WORKING_DAYS_PER_MONTH,
+  rules = DEFAULT_CAPACITY_RULES,
 }: {
   vendors: Vendor[];
   role: SdRole;
@@ -150,9 +159,8 @@ export function VendorCapacityClient({
   leadDays: { job: number; efob: number; fob: number };
   /** Vendor-type multipliers straight from the sd_vendor_type_multiplier master. */
   multipliers?: VendorTypeMultiplier[];
-  /** Both from Rules Master, so the capacity formula changes without a deploy. */
-  dailyOutput?: number;
-  workingDays?: number;
+  /** Every capacity number reads these; from Rules Master (capacityRulesFrom). */
+  rules?: CapacityRules;
 }) {
   const [tab, setTab] = useState<TabId>('entry');
   // Click-through: Reporting → Entry/Allocation focused on one vendor.
@@ -181,8 +189,7 @@ export function VendorCapacityClient({
           initialSearch={focusVendor}
           allocations={allocations}
           catalog={catalog}
-          dailyOutput={dailyOutput}
-          workingDays={workingDays}
+          rules={rules}
         />
       )}
       {tab === 'allocation' && (
@@ -198,15 +205,13 @@ export function VendorCapacityClient({
         <RulesTab
           leadDays={leadDays}
           multipliers={multipliers}
-          dailyOutput={dailyOutput}
-          workingDays={workingDays}
+          rules={rules}
         />
       )}
       {tab === 'reporting' && (
         <ReportingTab
           vendors={vendors}
-          dailyOutput={dailyOutput}
-          workingDays={workingDays}
+          rules={rules}
           onVendor={(code) => {
             setFocusVendor(code);
             setTab('allocation');
@@ -225,8 +230,7 @@ function EntryTab({
   initialSearch,
   allocations = [],
   catalog = [],
-  dailyOutput = KARIGAR_DAILY_OUTPUT,
-  workingDays = WORKING_DAYS_PER_MONTH,
+  rules = DEFAULT_CAPACITY_RULES,
 }: {
   vendors: Vendor[];
   role: SdRole;
@@ -234,8 +238,7 @@ function EntryTab({
   /** Product allocations, so the sheet can be narrowed to who makes a given product. */
   allocations?: VendorProductAllocation[];
   catalog?: ProductCatalogItem[];
-  dailyOutput?: number;
-  workingDays?: number;
+  rules?: CapacityRules;
 }) {
   const editable = canEdit(role, 'draft');
   const [search, setSearch] = useState(initialSearch ?? '');
@@ -288,8 +291,15 @@ function EntryTab({
     [vendors, now],
   );
 
-  const overCount = decorated.filter(({ vendor }) => poCapacityOf(vendor) - vendor.inProcessQty < 0).length;
+  const overCount = decorated.filter(({ vendor }) => modelOf(vendor, rules).over).length;
   const staleCount = decorated.filter((d) => d.isStale).length;
+  // Section 8 of the spec: the formulas are pointless while the data is a month old.
+  const oldestUpdate = decorated.reduce<number | null>((m, d) => {
+    const t = d.lastUpdated ? new Date(d.lastUpdated).getTime() : null;
+    return t == null ? m : m == null ? t : Math.max(m, t);
+  }, null);
+  const weekStart = capacityWeekStart();
+  const weekNext = capacityWeekNext();
 
   const q = search.trim().toLowerCase();
   const filtered = decorated
@@ -308,9 +318,14 @@ function EntryTab({
       return at - bt;
     });
   const sort = useColumnSort<(typeof filtered)[number]>();
-  const visibleCapacity = filtered.reduce((total, { vendor }) => total + poCapacityOf(vendor), 0);
-  const visibleInProcess = filtered.reduce((total, { vendor }) => total + vendor.inProcessQty, 0);
-  const visibleOver = filtered.filter(({ vendor }) => poCapacityOf(vendor) < vendor.inProcessQty).length;
+  // Totals count only vendors with a capacity entry; "Not entered" is not zero capacity.
+  const visibleModels = filtered.map(({ vendor }) => ({ vendor, m: modelOf(vendor, rules) }));
+  const entered = visibleModels.filter((x) => x.m.entered);
+  const visiblePoCapacity = entered.reduce((t, x) => t + x.m.poCapacity, 0);
+  const visibleMonthly = entered.reduce((t, x) => t + x.m.capacityPerMonth, 0);
+  const visibleInProcess = entered.reduce((t, x) => t + x.vendor.inProcessQty, 0);
+  const visibleOver = entered.filter((x) => x.m.over).length;
+  const visibleNotEntered = visibleModels.length - entered.length;
   const visibleStale = filtered.filter(({ isStale }) => isStale).length;
 
   function exportRows() {
@@ -319,8 +334,10 @@ function EntryTab({
       ...sort.apply(filtered).map(({ vendor, lastUpdated }) => {
         const machines = Number(vendor.current?.machines_allocated ?? 0);
         const karigar = Number(vendor.current?.active_karigar ?? 0);
-        const poCapacity = poCapacityOf(vendor);
-        return [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, machines * karigar, vendor.machinesAtOnboarding, poCapacity, vendor.inProcessQty, poCapacity - vendor.inProcessQty, machines ? Math.round(karigar / machines * 100) : null, poCapacity ? Math.round(vendor.inProcessQty / poCapacity * 100) : null, lastUpdated];
+        const m = modelOf(vendor, rules);
+        return m.entered
+          ? [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, m.capacityPerMonth, vendor.machinesAtOnboarding, m.poCapacity, vendor.inProcessQty, m.available, m.machineUtil, m.capacityUtil, lastUpdated]
+          : [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, 'Not entered', vendor.machinesAtOnboarding, 'Not entered', vendor.inProcessQty, '', '', '', lastUpdated];
       }),
     ]);
   }
@@ -328,11 +345,29 @@ function EntryTab({
   return (
     <div className="vc-section">
       <div className="vc-metrics">
-        <CapacityMetric label="PO capacity" value={fmt.format(visibleCapacity)} detail={`${filtered.length} vendors · pcs/month`} />
-        <CapacityMetric label="In process" value={fmt.format(visibleInProcess)} detail={visibleCapacity ? `${Math.round(visibleInProcess / visibleCapacity * 100)}% of capacity` : 'pcs in production'} tone="blue" />
-        <CapacityMetric label="100% and over Utilised" value={String(visibleOver)} detail="vendors at or past capacity" tone="red" />
+        <CapacityMetric
+          label="PO capacity"
+          value={fmt.format(visiblePoCapacity)}
+          detail={`${entered.length} vendors entered · ${fmt.format(visibleMonthly)} pcs/month capacity${visibleNotEntered ? ` · ${visibleNotEntered} not entered` : ''}`}
+        />
+        <CapacityMetric
+          label="On order (in process)"
+          value={fmt.format(visibleInProcess)}
+          detail={visiblePoCapacity ? `${Math.round((visibleInProcess / visiblePoCapacity) * 1000) / 10}% of PO capacity` : 'pcs in production'}
+          tone="blue"
+        />
+        <CapacityMetric label="Over PO capacity" value={String(visibleOver)} detail="vendors with more on order than their PO capacity" tone="red" />
         <CapacityMetric label="Stale updates" value={String(visibleStale)} detail={`older than ${STALE_DAYS} days`} tone="amber" />
       </div>
+      {staleCount > 0 && staleCount >= Math.max(1, Math.round(decorated.length * 0.5)) && (
+        <Notice tone="warn">
+          <strong>{staleCount} of {decorated.length} vendors have not been updated in over {STALE_DAYS} days</strong>
+          {oldestUpdate ? ` — the most recent entry anywhere is ${new Date(oldestUpdate).toLocaleDateString('en-IN')}` : ''}.
+          Every capacity, availability and utilisation figure on this page is only as current
+          as that. Get this week&apos;s submission from each merchandiser before these numbers are
+          presented. This week opened Saturday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}; it locks per vendor on submission and reopens {new Date(`${weekNext}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.
+        </Notice>
+      )}
 
       <div className="wf-toolbar vc-toolbar">
         <div className="wf-toolbar-left">
@@ -396,7 +431,7 @@ function EntryTab({
             )}
             {overCount > 0 && (
               <em className="wf-chip-warn">
-                <AlertTriangle size={13} /> {overCount} at 100% and over Utilised
+                <AlertTriangle size={13} /> {overCount} over PO capacity
               </em>
             )}
           </span>
@@ -406,10 +441,15 @@ function EntryTab({
       <Notice tone="info">
         Only <strong>two fields are ever typed</strong>:{' '}
         <span className="wf-live-tag">LIVE</span> Machines allocated and Karigar allocated.
-        Everything in an <span className="wf-computed-tag">orange</span> cell is computed —
-        Capacity/month = Karigars × pieces per karigar per day × working days a month
-        (both editable in Rules Master); On order is the quantity on open POs,
-        Available = PO capacity − in-process. First machines and Type are{' '}
+        Everything in an <span className="wf-computed-tag">orange</span> cell is computed by one
+        formula (Rules Master): capacity/day = {rules.driverMinMachines ? 'min(machines, karigars)' : 'karigars'} × {rules.dailyOutput} pieces;
+        <strong> Capacity/month</strong> = capacity/day × {rules.workingDays} working days;
+        <strong> PO capacity</strong> = what the vendor can make inside its PO type&apos;s lead time
+        (Job Work {rules.leadDays.job_work}d · E-FOB {rules.leadDays.efob}d · FOB {rules.leadDays.fob}d), i.e.
+        capacity/month × lead days ÷ 30. <strong>Available</strong> = PO capacity − on order;
+        <strong> Capacity util</strong> = on order ÷ PO capacity, shown as the real percentage
+        even past 100%. A vendor with nothing entered reads <strong>Not entered</strong> and is
+        left out of every total. First machines and Type are{' '}
         <span className="wf-fixed-tag">
           <Lock size={10} /> FIXED
         </span>{' '}
@@ -419,8 +459,8 @@ function EntryTab({
 
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          <div><h2>Capacity worklist</h2><p>Update machines and karigar for one vendor, then save that row.</p></div>
-          <span className="vc-pill vc-pill-blue">Per-vendor save · no approval</span>
+          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and submit that row. It locks for the week; next week opens on Saturday.</p></div>
+          <span className="vc-pill vc-pill-blue">Weekly submission · locks until Saturday</span>
         </div>
         <div className="table-scroll">
           <table className="wide-table wf-grid">
@@ -437,6 +477,7 @@ function EntryTab({
                   Karigar allocated <span className="wf-live-tag">LIVE</span> {sort.ind('karigar')}
                 </th>
                 <th className="num">Capacity / month</th>
+                <th className="num">PO capacity</th>
                 <th className="num">
                   First machines <span className="wf-fixed-tag"><Lock size={9} /></span>
                 </th>
@@ -457,13 +498,13 @@ function EntryTab({
                   lastUpdated={lastUpdated}
                   isStale={isStale}
                   now={now}
-                  dailyOutput={dailyOutput}
-                  workingDays={workingDays}
+                  rules={rules}
+                  isAdmin={role === 'admin'}
                 />
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={editable ? 12 : 11} className="wf-empty-cell">
+                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
                     {staleOnly
                       ? 'No stale vendors — everyone is up to date.'
                       : 'No vendors match your filters.'}
@@ -493,17 +534,17 @@ function CapacityRow({
   lastUpdated,
   isStale,
   now,
-  dailyOutput = KARIGAR_DAILY_OUTPUT,
-  workingDays = WORKING_DAYS_PER_MONTH,
+  rules = DEFAULT_CAPACITY_RULES,
+  isAdmin = false,
 }: {
   vendor: Vendor;
   editable: boolean;
   lastUpdated: string | null;
   isStale: boolean;
   now: number | null;
-  /** Both from Rules Master, so the formula is editable without a deploy. */
-  dailyOutput?: number;
-  workingDays?: number;
+  rules?: CapacityRules;
+  /** An admin can correct a locked row; the team waits for Saturday. */
+  isAdmin?: boolean;
 }) {
   const initial = {
     machines_allocated: vendor.current?.machines_allocated?.toString() ?? '',
@@ -519,24 +560,18 @@ function CapacityRow({
     fields.active_karigar !== initial.active_karigar;
 
   const config = typeConfig(vendor.vendor_type);
-  const stockDays = config?.stockDays ?? 0;
-
   const machines = num(fields.machines_allocated);
   const karigar = num(fields.active_karigar);
-  /* Capacity is what the people can make in a month: karigars × pieces per karigar per day ×
-     working days. Machines are still recorded and still drive machine utilisation, but they
-     no longer decide output, and neither does the commercial type — a vendor does not sew
-     faster because the terms are FOB.
-
-     The column beside it is the quantity actually on order, which is the thing to compare
-     capacity against. It used to be capacity multiplied again by the type, which was not a
-     second fact, just the same guess scaled. */
-  const capacityMonth = vendorMonthlyCapacity(karigar, dailyOutput, workingDays);
+  // One model for every figure on the row — the same function Reporting, Vendor Performance
+  // and PO Approval use — fed from what is typed right now.
+  const model = vendorCapacityModel(
+    { machines, karigar, vendorType: vendor.vendor_type, inProcessQty: vendor.inProcessQty },
+    rules,
+  );
   const inProcess = vendor.inProcessQty;
-  const available = capacityMonth - inProcess;
-  const overProduction = available < 0;
-  const machineUtil = machines > 0 ? Math.round((karigar / machines) * 100) : null;
-  const capacityUtil = capacityMonth > 0 ? Math.round((inProcess / capacityMonth) * 100) : null;
+  // Submitted inside the current capacity week → locked until Saturday (admins can correct).
+  const locked = capacityLocked(saved) && !dirty;
+  const canType = editable && (!locked || isAdmin);
 
   function set(field: keyof typeof fields, value: string) {
     setFields((cur) => ({ ...cur, [field]: value }));
@@ -549,7 +584,7 @@ function CapacityRow({
     payload.set('vendor_name', vendor.vendor_name);
     payload.set('machines_allocated', fields.machines_allocated);
     payload.set('active_karigar', fields.active_karigar);
-    payload.set('capacity_per_month', String(capacityMonth || ''));
+    payload.set('capacity_per_month', String(model.capacityPerMonth || ''));
     start(async () => {
       const result = await saveVendorCapacityRow(payload);
       if (result.ok) setSaved(new Date().toISOString());
@@ -558,7 +593,7 @@ function CapacityRow({
   }
 
   return (
-    <tr className={overProduction ? 'wf-row-over' : isStale ? 'wf-row-stale' : ''}>
+    <tr className={model.over ? 'wf-row-over' : isStale ? 'wf-row-stale' : ''}>
       <td className="vc-vendor-cell">
         <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
         <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
@@ -566,7 +601,7 @@ function CapacityRow({
       </td>
       <td>
         <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>
-        <small className="wf-subtle">stock {stockDays}d</small>
+        <small className="wf-subtle">lead {model.leadDays}d</small>
       </td>
       {(['machines_allocated', 'active_karigar'] as const).map((field) => (
         <td key={field} className="num input-col">
@@ -574,49 +609,71 @@ function CapacityRow({
             type="number"
             min={0}
             value={fields[field]}
-            disabled={!editable}
+            disabled={!canType}
             aria-label={`${field === 'machines_allocated' ? 'Machines allocated' : 'Karigar allocated'} for ${vendor.vendor_name || vendor.vendor_code}`}
             onChange={(event) => set(field, event.target.value)}
           />
         </td>
       ))}
-      <td className="num wf-computed">{fmt.format(capacityMonth)}</td>
+      {model.entered ? (
+        <>
+          <td className="num wf-computed">{fmt.format(model.capacityPerMonth)}</td>
+          <td className="num wf-computed" title={`capacity/day ${fmt.format(model.capacityPerDay)} × ${model.leadDays} lead days × ${rules.workingDays}/30`}>
+            {fmt.format(model.poCapacity)}
+          </td>
+        </>
+      ) : (
+        <>
+          <td className="num wf-subtle">Not entered</td>
+          <td className="num wf-subtle">Not entered</td>
+        </>
+      )}
       <td className="num wf-fixed-value">
         {vendor.machinesAtOnboarding ? fmt.format(vendor.machinesAtOnboarding) : '—'}
       </td>
       <td className="num">{fmt.format(inProcess)}</td>
-      {/* Once a vendor is past capacity the headroom number is negative and only says how
-          far past, which is not a figure anyone acts on. Say the state instead. */}
+      {/* Past capacity the headroom is negative and only says how far past; the state is the
+          thing to read, and the real percentage beside it says how far. */}
       <td className="num wf-computed strong">
-        {overProduction ? (
+        {!model.entered ? (
+          <span className="wf-subtle">—</span>
+        ) : model.over ? (
           <span className="vc-over-text">Over Utilised</span>
         ) : (
-          fmt.format(available)
+          fmt.format(model.available ?? 0)
         )}
       </td>
-      <td className="num wf-computed">{machineUtil == null ? '—' : `${machineUtil}%`}</td>
-      {/* Full is full. A vendor reading 147% is not half again as busy as one reading 100%
-          — both are booked out, and the figure past 100 only reflects how far the backlog
-          runs beyond a month. So the column stops at 100% and turns red; Available beside it
-          already says "Over Utilised". */}
-      <td className={`num wf-computed${capacityUtil != null && capacityUtil >= 100 ? ' vc-util-over' : ''}`}>
-        {capacityUtil == null ? '—' : `${Math.min(capacityUtil, 100)}%`}
+      <td className="num wf-computed">{model.machineUtil == null ? '—' : `${model.machineUtil}%`}</td>
+      {/* The real percentage, not capped: 148% tells the approver how far over, which is the
+          information they need. */}
+      <td className={`num wf-computed${model.over ? ' vc-util-over' : ''}`}>
+        {model.capacityUtil == null ? '—' : `${model.capacityUtil}%`}
       </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}
-        {isStale && !dirty && <span className="vc-pill vc-pill-amber">Stale</span>}
+        {locked && (
+          <span className="vc-pill vc-pill-green" title={`Submitted this week; reopens Saturday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`}>
+            <Lock size={9} /> Submitted · locked
+          </span>
+        )}
+        {isStale && !dirty && !locked && <span className="vc-pill vc-pill-amber">Stale</span>}
         {error && <small className="wf-error-text">{error}</small>}
       </td>
       {editable && (
         <td>
-          <button
-            type="button"
-            className="wf-btn wf-btn-primary wf-btn-sm"
-            onClick={save}
-            disabled={pending || !dirty}
-          >
-            <Save size={14} /> {pending ? 'Saving…' : 'Save'}
-          </button>
+          {locked && !isAdmin ? (
+            <span className="wf-subtle">Opens Sat</span>
+          ) : (
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              onClick={save}
+              disabled={pending || !dirty}
+              title={locked ? 'Admin correction to a submitted week' : 'Submit this week and lock the row until Saturday'}
+            >
+              <Save size={14} /> {pending ? 'Submitting…' : locked ? 'Correct' : 'Submit this week'}
+            </button>
+          )}
         </td>
       )}
     </tr>
@@ -843,15 +900,13 @@ function AllocationEditor({
 function RulesTab({
   leadDays,
   multipliers = [],
-  dailyOutput = KARIGAR_DAILY_OUTPUT,
-  workingDays = WORKING_DAYS_PER_MONTH,
+  rules = DEFAULT_CAPACITY_RULES,
 }: {
   leadDays: { job: number; efob: number; fob: number };
   multipliers?: VendorTypeMultiplier[];
-  dailyOutput?: number;
-  workingDays?: number;
+  rules?: CapacityRules;
 }) {
-  const rules = [
+  const leadRules = [
     { key: 'lead_days_job', label: 'Job Work lead-time', value: leadDays.job },
     { key: 'lead_days_efob', label: 'E-FOB lead-time', value: leadDays.efob },
     { key: 'lead_days_fob', label: 'FOB lead-time', value: leadDays.fob },
@@ -872,6 +927,11 @@ function RulesTab({
         stockDays: v.stockDays,
       }))
   ).sort((a, b) => a.stockDays - b.stockDays);
+  const leadByType: Record<string, number> = {
+    job_work: rules.leadDays.job_work,
+    efob: rules.leadDays.efob,
+    fob: rules.leadDays.fob,
+  };
 
   return (
     <div className="vc-section">
@@ -892,7 +952,7 @@ function RulesTab({
           </a>
         </div>
         <div className="vc-formula-grid">
-          {rules.map((r) => (
+          {leadRules.map((r) => (
             <div key={r.key}>
               <span>{r.label}</span>
               <strong>{r.value} days</strong>
@@ -903,8 +963,8 @@ function RulesTab({
       <section className="vc-card">
         <div className="vc-card-head">
           <div>
-            <h2>Stock cover by PO type</h2>
-            <p>Days of stock each PO type is expected to carry</p>
+            <h2>Lead time by PO type</h2>
+            <p>Production window per PO type — the days a PO occupies the vendor</p>
           </div>
           <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/rules-master">
             Edit in Rules Master →
@@ -914,14 +974,15 @@ function RulesTab({
           {types.map((t) => (
             <div key={t.key}>
               <span>{t.label}</span>
-              <strong>{t.stockDays} days of stock</strong>
+              <strong>{leadByType[t.key] ?? t.stockDays} lead days</strong>
             </div>
           ))}
         </div>
         <p className="wf-subtle vc-formula-hold">
-          Vendors typed <strong>EFOB/FOB</strong> in the vendor master are read as E-FOB.
-          The PO type sets lead time and stock cover only — it does not change how much a
-          vendor can make, so it no longer enters the capacity figure above.
+          Vendors typed <strong>EFOB/FOB</strong> in the vendor master are read as E-FOB. The
+          PO type does not change how fast a vendor sews; it changes how long a PO occupies
+          the vendor, which is why PO capacity = capacity/month × lead days ÷ 30. These are
+          the same lead days the Buying Plan and coverage calculations use.
         </p>
       </section>
       {/*
@@ -939,28 +1000,36 @@ function RulesTab({
         </div>
         <div className="vc-rule-grid">
           <div>
-            <span>Capacity a month</span>
-            <strong>Karigars × {dailyOutput} × {workingDays}</strong>
+            <span>Workers</span>
+            <strong>{rules.driverMinMachines ? 'min(machines, karigars)' : 'Karigars allocated'}</strong>
           </div>
           <div>
-            <span>Pieces a karigar makes in a day</span>
-            <strong>{dailyOutput}</strong>
+            <span>Pieces a worker makes in a day</span>
+            <strong>{rules.dailyOutput}</strong>
           </div>
           <div>
             <span>Working days in a month</span>
-            <strong>{workingDays}</strong>
+            <strong>{rules.workingDays}</strong>
           </div>
           <div>
-            <span>Available</span>
-            <strong>Capacity a month − quantity on order</strong>
+            <span>Capacity a month</span>
+            <strong>workers × {rules.dailyOutput} × {rules.workingDays}</strong>
+          </div>
+          <div>
+            <span>PO capacity</span>
+            <strong>capacity a month × lead days ÷ 30</strong>
+          </div>
+          <div>
+            <span>Available · utilisation</span>
+            <strong>PO capacity − on order · on order ÷ PO capacity</strong>
           </div>
         </div>
         <p className="wf-subtle vc-formula-hold">
-          Karigars are the ones who sew, so karigars set the output. Machines are still
-          recorded and still drive machine utilisation, but they do not decide how much a
-          vendor can make, and neither does the commercial type — a vendor does not sew faster
-          because the terms are FOB. The type sets lead time and stock days, above.
-          Both numbers in this formula come from Rules Master and can be changed there.
+          One function computes these for every screen — Entry, Reporting, Vendor Performance,
+          PO Approval and the dashboard&apos;s over-capacity count — so no two pages can disagree.
+          Every input above is a Rules Master value: change it there and every figure follows
+          on the next load, no deploy. The workers switch (karigars alone, or the smaller of
+          machines and karigars) is the rule <code>capacity_driver_min_machines</code>.
         </p>
       </section>
     </div>
@@ -972,13 +1041,11 @@ function RulesTab({
 function ReportingTab({
   vendors,
   onVendor,
-  dailyOutput = KARIGAR_DAILY_OUTPUT,
-  workingDays = WORKING_DAYS_PER_MONTH,
+  rules = DEFAULT_CAPACITY_RULES,
 }: {
   vendors: Vendor[];
   onVendor: (code: string) => void;
-  dailyOutput?: number;
-  workingDays?: number;
+  rules?: CapacityRules;
 }) {
   // Per-vendor utilisation: capacity a month against the quantity actually on order.
   // Only vendors with a current entry are meaningful.
@@ -986,20 +1053,21 @@ function ReportingTab({
     () =>
       vendors
         .map((v) => {
-          const cap = poCapacityOf(v, dailyOutput, workingDays);
+          const m = modelOf(v, rules);
           return {
             code: v.vendor_code,
             name: v.vendor_name,
             type: typeConfig(v.vendor_type)?.label ?? (v.vendor_type || '—'),
             typeKey: normaliseVendorType(v.vendor_type),
-            cap,
+            entered: m.entered,
+            cap: m.poCapacity,
             inProc: v.inProcessQty,
-            util: cap > 0 ? Math.round((v.inProcessQty / cap) * 100) : null,
+            util: m.capacityUtil,
           };
         })
-        .filter((r) => r.cap > 0 || r.inProc > 0)
+        .filter((r) => r.entered)
         .sort((a, b) => (b.util ?? -1) - (a.util ?? -1)),
-    [vendors, dailyOutput, workingDays],
+    [vendors, rules],
   );
 
   // PO-type pivot: aggregate capacity + in-process per vendor type → util per type.
@@ -1008,19 +1076,21 @@ function ReportingTab({
     for (const v of vendors) {
       const key = normaliseVendorType(v.vendor_type);
       const label = typeConfig(v.vendor_type)?.label ?? (v.vendor_type || 'Unknown');
+      const model = modelOf(v, rules);
+      if (!model.entered) continue; // "Not entered" is not zero capacity
       const cur = m.get(key) ?? { label, cap: 0, inProc: 0 };
-      cur.cap += poCapacityOf(v, dailyOutput, workingDays);
+      cur.cap += model.poCapacity;
       cur.inProc += v.inProcessQty;
       m.set(key, cur);
     }
     return [...m.values()]
       .filter((r) => r.cap > 0 || r.inProc > 0)
-      .map((r) => ({ ...r, util: r.cap > 0 ? Math.round((r.inProc / r.cap) * 100) : null }));
-  }, [vendors, dailyOutput, workingDays]);
+      .map((r) => ({ ...r, util: r.cap > 0 ? Math.round((r.inProc / r.cap) * 1000) / 10 : null }));
+  }, [vendors, rules]);
 
   const totalCapacity = pivot.reduce((sum, row) => sum + row.cap, 0);
   const totalInProcess = pivot.reduce((sum, row) => sum + row.inProc, 0);
-  const overallUtil = totalCapacity ? Math.round(totalInProcess / totalCapacity * 100) : null;
+  const overallUtil = totalCapacity ? Math.round((totalInProcess / totalCapacity) * 1000) / 10 : null;
 
   function exportRows() {
     downloadCsv('vendor-capacity-report.csv', [
@@ -1032,13 +1102,11 @@ function ReportingTab({
   return (
     <div className="vc-section">
       <div className="vc-metrics">
-        <CapacityMetric label="Total PO capacity" value={fmt.format(totalCapacity)} detail="pcs / month" />
+        <CapacityMetric label="Total PO capacity" value={fmt.format(totalCapacity)} detail="pcs the vendors can make inside their lead times" />
         <CapacityMetric label="In process" value={fmt.format(totalInProcess)} detail="open production quantity" tone="blue" />
         <CapacityMetric
           label="Overall utilization"
-          value={
-            overallUtil == null ? '—' : overallUtil >= 100 ? '100% and Over Utilised' : `${overallUtil}%`
-          }
+          value={overallUtil == null ? '—' : `${overallUtil}%`}
           detail={
             !totalCapacity
               ? 'No capacity entered'
@@ -1048,13 +1116,15 @@ function ReportingTab({
           }
           tone={overallUtil != null && overallUtil >= 100 ? 'red' : 'amber'}
         />
-        <CapacityMetric label="100% and over Utilised" value={String(rows.filter((row) => row.util != null && row.util >= 100).length)} detail="vendors at or past capacity" tone="red" />
+        <CapacityMetric label="Over PO capacity" value={String(rows.filter((row) => row.util != null && row.util > 100).length)} detail="vendors with more on order than their PO capacity" tone="red" />
       </div>
       <Notice tone="info">
-        Utilization = in-process ÷ PO capacity, where PO capacity uses the <strong>interim</strong>{' '}
-        capacity multiplier (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5) — the same basis as Vendor
-        Performance. At or past 100% a row reads <strong>100% and Over Utilised</strong> instead
-        of a percentage. Click a vendor to open its product allocation.
+        Utilisation = on order ÷ <strong>PO capacity</strong>, where PO capacity is what the
+        vendor can make inside its PO type&apos;s lead time (capacity/month × lead days ÷ 30; lead
+        days in Rules Master: Job Work {rules.leadDays.job_work} · E-FOB {rules.leadDays.efob} · FOB {rules.leadDays.fob}).
+        The same model as the Entry tab, Vendor Performance and PO Approval. Past 100% the real
+        percentage is shown. Vendors with nothing entered are left out. Click a vendor to open
+        its product allocation.
       </Notice>
 
       <div className="vc-report-grid">

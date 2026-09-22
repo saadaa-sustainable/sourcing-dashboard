@@ -1379,6 +1379,11 @@ export type ApprovalQueueItem = {
   vendorInProcessQty?: number | null;
   vendorCapacityPerMonth?: number | null;
   vendorCapacityUpdatedAt?: string | null;
+  /** What the vendor can make inside this PO type's lead time (the one capacity model). */
+  vendorPoCapacity?: number | null;
+  /** in process ÷ PO capacity × 100, real percentage, not capped. */
+  vendorCapacityUtil?: number | null;
+  vendorLeadDays?: number | null;
   // PO Approval only: the inline "4 things Mahesh verifies" detail.
   poDetail?: PoApprovalDetail;
 };

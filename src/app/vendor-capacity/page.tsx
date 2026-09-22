@@ -10,7 +10,7 @@ import {
   loadDeboardedVendors,
   NotConfiguredError,
 } from '@/lib/forms/queries';
-import { eeVendorActive } from '@/lib/business-logic';
+import { capacityRulesFrom, eeVendorActive } from '@/lib/business-logic';
 import { VendorCapacityClient } from './vendor-capacity-client';
 
 export const dynamic = 'force-dynamic';
@@ -107,8 +107,7 @@ export default async function VendorCapacityPage() {
           efob: rules.lead_days_efob,
           fob: rules.lead_days_fob,
         }}
-        dailyOutput={rules.karigar_daily_output}
-        workingDays={rules.working_days_per_month}
+        rules={capacityRulesFrom(rules)}
       />
     </FormLayout>
   );

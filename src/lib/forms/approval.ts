@@ -154,6 +154,32 @@ export function weekLabel(isoDate: string): string {
   })}`;
 }
 
+/**
+ * The vendor-capacity week runs Saturday to Friday: a vendor's figures are submitted once
+ * a week and lock on submission; the next week opens automatically on Saturday. Returns
+ * the Saturday (IST) that started the current capacity week, as an ISO date.
+ */
+export function capacityWeekStart(date = new Date()): string {
+  const ist = new Date(date.getTime() + 5.5 * 3600_000);
+  const dow = ist.getUTCDay(); // 0 = Sunday … 6 = Saturday
+  const back = (dow + 1) % 7; // days since the last Saturday
+  const saturday = new Date(ist.getTime() - back * 86_400_000);
+  return saturday.toISOString().slice(0, 10);
+}
+
+/** The Saturday the next capacity week opens on, as an ISO date. */
+export function capacityWeekNext(date = new Date()): string {
+  const start = new Date(`${capacityWeekStart(date)}T00:00:00Z`);
+  return new Date(start.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Was this submission made inside the current capacity week (so the row is locked)? */
+export function capacityLocked(submittedAt: string | null | undefined, date = new Date()): boolean {
+  if (!submittedAt) return false;
+  const weekStartUtc = Date.parse(`${capacityWeekStart(date)}T00:00:00Z`) - 5.5 * 3600_000;
+  return Date.parse(submittedAt) >= weekStartUtc;
+}
+
 /** Buying plan for month M opens 7 days before M starts. */
 export function isPlanWindowOpen(planMonth: string, today = new Date()): boolean {
   const [y, m] = planMonth.split('-').map(Number);

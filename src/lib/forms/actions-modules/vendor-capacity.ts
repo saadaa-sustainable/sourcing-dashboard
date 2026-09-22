@@ -8,7 +8,7 @@ import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { canApprove, canEdit, canSubmit, capacityLocked, capacityWeekNext, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -45,6 +45,21 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   const vendor_code = String(formData.get('vendor_code') ?? '').trim();
   if (!vendor_code) return fail('Vendor code is required.');
 
+  const supabase = await supa();
+  // Weekly submit-lock: once a vendor's figures are submitted inside the current capacity
+  // week (Saturday to Friday) they stay as submitted until the next Saturday. An admin may
+  // correct a locked row; the team waits.
+  if (user.role !== 'admin') {
+    const { data: existing } = await supabase
+      .from('sd_vendor_capacity_log')
+      .select('submitted_at')
+      .eq('vendor_code', vendor_code)
+      .maybeSingle();
+    if (capacityLocked((existing as { submitted_at?: string | null } | null)?.submitted_at)) {
+      return fail(`Already submitted this week — it reopens on Saturday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.`);
+    }
+  }
+
   // One current row per vendor: this save overwrites just this vendor's record and
   // re-stamps entry_date, without touching or requiring any other vendor.
   const now = new Date().toISOString();
@@ -59,7 +74,6 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
     entry_date: now,
   };
 
-  const supabase = await supa();
   const { error } = await supabase
     .from('sd_vendor_capacity_log')
     .upsert(row, { onConflict: 'vendor_code' });
@@ -69,7 +83,7 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   // Capacity/month feeds the PO Approval vendor headroom tab (main page + queue).
   revalidatePath('/po-approval');
   revalidatePath('/approvals');
-  return done(`Saved capacity for ${vendor_code}.`);
+  return done(`Submitted ${vendor_code} for this week — locked until Saturday.`);
 }
 
 /** Vendor Capacity item 1 — upsert one vendor+product capacity allocation (pieces/month). */
