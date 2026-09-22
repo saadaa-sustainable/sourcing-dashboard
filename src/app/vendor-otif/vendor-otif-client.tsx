@@ -45,7 +45,7 @@ export function VendorOtifClient({
       accessor: (r) => r.criticalPathPct ?? -1,
       render: (r) =>
         r.criticalPathPct == null ? '—' : `${pct(r.criticalPathPct)}`,
-      info: "WHAT: of this vendor's OPEN POs, how many are running to time right now.\n\nHOW: open POs with no critical-path TNA stage past its planned date ÷ the vendor's open POs — the same rule the Open PO Tracker uses. Blank when the vendor has nothing open.\n\nUSE: the forward-looking number: On-time and In-full say what the vendor did, this says what is about to happen.",
+      info: "WHAT: of this vendor's OPEN POs, how many are running to time right now.\n\nHOW: open POs with no critical-path TNA stage past its planned date ÷ the vendor's open POs — the same rule the PO Tracker uses. Blank when the vendor has nothing open.\n\nUSE: the forward-looking number: On-time and In-full say what the vendor did, this says what is about to happen.",
     },
     {
       key: 'onTimePct',

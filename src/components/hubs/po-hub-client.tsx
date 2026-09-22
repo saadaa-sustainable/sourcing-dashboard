@@ -36,7 +36,7 @@ export function Po360Client({ data }: { data: PoHubData }) {
           <small>{money(s.openValue)} open value</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Capital at risk <InfoDot text={"WHAT: how much of the open value is on POs that are late or running late.\n\nHOW: pending value of POs that are Overdue (past expected delivery) or High Risk (a critical-path TNA stage past its planned date with nothing recorded).\n\nUSE: the money most exposed to slippage. Compare with the total open value beside it."} /></span>
+          <span className="ca-kpi-label">Open value at risk <InfoDot text={"WHAT: how much of the open value is on POs that are late or running late.\n\nHOW: pending value of POs that are Overdue (past expected delivery) or High Risk (a critical-path TNA stage past its planned date with nothing recorded).\n\nUSE: the money most exposed to slippage. Compare with the total open value beside it."} /></span>
           <strong className={s.atRiskValue > 0 ? 'ca-over' : ''}>{money(s.atRiskValue)}</strong>
           <small>{s.atRiskCount} high-risk / overdue POs</small>
         </div>
@@ -106,12 +106,6 @@ export function Po360Client({ data }: { data: PoHubData }) {
           </table>
         </div>
       </div>
-      <p className="wf-subtle" style={{ marginTop: 10 }}>
-        One PO objective, one view — financial risk (capital at risk + cost variance), timeline
-        compliance (TNA), closure compliance and issuance flow, anchored on the PO. Reuses the same
-        sources as the individual dashboard cards (tracker + analytics extras), consolidated per the
-        DAM one-pager principle.
-      </p>
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { loadDashboardData } from '@/lib/data';
 import { loadAnalyticsExtras, loadAnalyticsRules } from '@/lib/forms/queries';
+import type { DashboardData } from '@/lib/types';
+import type { AnalyticsExtras } from '@/lib/forms/types';
 
 /**
  * Product objective one-pager (DAM principle: one base dimension = Product, full
@@ -40,21 +42,33 @@ export type ProductHubData = {
 
 const CLASS_ORDER: Record<AbcClass, number> = { A: 0, B: 1, C: 2, D: 3 };
 
-export async function loadProductHub(): Promise<ProductHubData> {
-  const [dash, rules] = await Promise.all([loadDashboardData(), loadAnalyticsRules()]);
+/** `pre` lets the dashboard page hand over what it has already loaded instead of loading it again. */
+export async function loadProductHub(pre?: {
+  dash?: DashboardData;
+  rules?: Record<string, number>;
+  extras?: AnalyticsExtras | null;
+}): Promise<ProductHubData> {
+  const [dash, rules] = await Promise.all([
+    pre?.dash ?? loadDashboardData(),
+    pre?.rules ?? loadAnalyticsRules(),
+  ]);
 
   let extras: Awaited<ReturnType<typeof loadAnalyticsExtras>> | null = null;
-  try {
-    extras = await loadAnalyticsExtras(
-      dash.pendingPos.map((p) => ({
-        code: (p.product_code ?? '').trim(),
-        variant: (p.product_variant ?? '').trim(),
-        qty: Number(p.pending_qty_actual) || 0,
-      })),
-      rules,
-    );
-  } catch {
-    extras = null;
+  if (pre && 'extras' in pre) {
+    extras = pre.extras ?? null;
+  } else {
+    try {
+      extras = await loadAnalyticsExtras(
+        dash.pendingPos.map((p) => ({
+          code: (p.product_code ?? '').trim(),
+          variant: (p.product_variant ?? '').trim(),
+          qty: Number(p.pending_qty_actual) || 0,
+        })),
+        rules,
+      );
+    } catch {
+      extras = null;
+    }
   }
 
   const gaps = extras?.stockoutGaps ?? [];

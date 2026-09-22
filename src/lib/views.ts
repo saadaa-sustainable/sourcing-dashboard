@@ -23,7 +23,7 @@ export const ALL_VIEWS: ViewDef[] = [
   // Dashboard tabs — in-page tabs on '/', granted individually via the
   // pseudo-path tab:<id> (the sidebar filters its tab buttons with these).
   // The Dashboard tab itself is the landing view and always visible.
-  { path: 'tab:open-po', label: 'Open PO Tracker', group: 'Dashboard' },
+  { path: 'tab:open-po', label: 'PO Tracker', group: 'Dashboard' },
   { path: 'tab:vendors', label: 'Vendor Performance', group: 'Dashboard' },
   { path: 'tab:merchants', label: 'Merchant Performance', group: 'Dashboard' },
   { path: 'tab:products', label: 'Product Tracker', group: 'Dashboard' },
@@ -38,9 +38,6 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/replenishment', label: 'Replenishment', group: 'Operations', adminOnly: true },
   { path: '/doq-dashboard', label: 'OOS Dashboard', group: 'Operations' },
   { path: '/oos-calculation', label: 'DOQ Calculation', group: 'Operations' },
-  { path: '/vendor-360', label: 'Vendor Overview', group: 'Overview' },
-  { path: '/po-360', label: 'PO Overview', group: 'Overview' },
-  { path: '/product-360', label: 'Product Overview', group: 'Overview' },
   { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Operations' },
   // Vendor OTIF stays a reachable route (linked from Vendor Overview) but is off
   // the main sidebar — its scoring is summarised in Vendor Overview.
@@ -90,11 +87,19 @@ export const VIEW_GROUPS = ['Dashboard', 'Overview', 'Operations', 'Planning', '
  * Can this user open `path`? allowedPages null/undefined = unrestricted.
  * Admin-only routes require the admin base role regardless of custom roles.
  */
+/** The one-pagers that became sub-tabs: an old grant keeps working for the tab it folded into. */
+const FOLDED_PAGES: Record<string, string> = {
+  '/po-360': 'tab:open-po',
+  '/product-360': 'tab:products',
+  '/vendor-360': 'tab:vendors',
+};
+
 export function canView(
   path: string,
   role: string,
   allowedPages: string[] | null | undefined,
 ): boolean {
+  if (FOLDED_PAGES[path]) path = FOLDED_PAGES[path];
   /* My Dashboard (the landing view), the main dashboard route and its first tab are always
      visible. So is the Inward Plan: its Arrivals tab is deliberately company-wide, so every
      signed-in SAADAA user can see when goods are arriving without asking sourcing. Entering
@@ -116,7 +121,9 @@ export function canView(
   const def = ALL_VIEWS.find((v) => v.path === path);
   if (def?.adminOnly && role !== 'admin') return false;
   if (role === 'admin' || allowedPages == null) return true;
-  return allowedPages.includes(path);
+  if (allowedPages.includes(path)) return true;
+  // A role that was granted the old page keeps the tab it folded into.
+  return Object.entries(FOLDED_PAGES).some(([page, tab]) => tab === path && allowedPages.includes(page));
 }
 
 /** The per-master routes gathered under the /master hub. */

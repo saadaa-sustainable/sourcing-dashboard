@@ -122,7 +122,7 @@ const HELP: Record<string, HelpItem[]> = {
   '/receivable-plan': [
     { field: 'PO / Product / colour', source: 'Real PO data (GCP)', detail: 'Each row is one colour on an open (Approved) PO, split out by size. The PO number is the highlighted key column.' },
     { field: 'Arriving + size split (XS…5XL)', source: 'Real PO data (GCP)', formula: 'Σ pending qty per size', detail: 'Pieces still to arrive on this PO line, pivoted by size (top = arriving, muted = in stock).' },
-    { field: 'Status (TNA risk)', source: 'Automatic', formula: 'Overdue if EDD passed · else High Risk if any critical-path TNA stage is past its planned date with no actual · else On Track', detail: 'Live TNA/risk status, recomputed each load from the merged tna_tracker + form actuals (same rule as the Open PO Tracker). The raw ERP status shows beneath.' },
+    { field: 'Status (TNA risk)', source: 'Automatic', formula: 'Overdue if EDD passed · else High Risk if any critical-path TNA stage is past its planned date with no actual · else On Track', detail: 'Live TNA/risk status, recomputed each load from the merged tna_tracker + form actuals (same rule as the PO Tracker). The raw ERP status shows beneath.' },
     { field: 'DOQ / Stock / OOS', source: 'Inventory planning (GCP)', detail: 'Days-of-quantity, current stock and out-of-stock flag for the colour, from the latest inventory-planning snapshot.' },
     { field: 'Sizes in stock', source: 'Automatic', formula: 'sizes with stock ÷ sizes arriving on this line', detail: 'How many of the arriving sizes are currently covered by stock — the SKU-level read on the aggregate OOS count. Amber when not all sizes are covered.' },
     { field: 'Deliver this week / Qty this week', source: 'You enter', detail: 'The only two editable fields — when and how much you expect this week. Saved per row.' },
@@ -251,7 +251,7 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'On-Time', source: 'Automatic', formula: 'GRN receipt date ≤ EDD', detail: 'Whether the PO’s goods were received on or before the expected delivery date.' },
     { field: 'In-Full', source: 'Automatic', formula: 'received qty ≥ ordered qty (within tolerance)', detail: 'Whether the full ordered quantity actually arrived.' },
     { field: 'OTIF', source: 'Automatic', formula: 'On-Time AND In-Full', detail: 'A PO passes OTIF only when it is both on time and in full. The vendor’s OTIF % is passing POs ÷ rated POs.' },
-    { field: 'Critical-Path note', source: 'Open PO Tracker', detail: 'TNA-stage (critical-path) compliance is a different lens and lives on the Open PO Tracker, not here.' },
+    { field: 'Critical-Path note', source: 'PO Tracker', detail: 'TNA-stage (critical-path) compliance is a different lens and lives on the PO Tracker, not here.' },
   ],
   '/cost-analytics': [
     { field: 'What this is', source: 'Standard cost + PO rates', detail: 'Standard cost vs actual PO cost, sliced by vendor, product or category and drillable to PO level. A separate EFOB lens covers EFOB volume and EFOB-vs-FOB overpay/underpay.' },

@@ -12,6 +12,9 @@ import {
 } from '@/lib/forms/queries';
 import { buildTrackerRows } from '@/lib/business-logic';
 import { countOpenIssues, syncAutoIssues } from '@/lib/issues.server';
+import { loadPoHub, type PoHubData } from '@/lib/po-hub.server';
+import { loadProductHub, type ProductHubData } from '@/lib/product-hub.server';
+import { loadVendorHub, type VendorHubData } from '@/lib/vendor-hub.server';
 import type { AnalyticsExtras, PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -33,10 +36,14 @@ export default async function Home() {
     allowedPages = user.allowed_pages ?? null;
   }
   const dashboardData = await loadDashboardData();
-  // Pending-closure panel on the Open PO Tracker (best-effort — never block the dashboard).
+  // Pending-closure panel on the PO Tracker (best-effort — never block the dashboard).
   let closures: PoClosureView[] = [];
   let analyticsRules = ANALYTICS_RULE_DEFAULTS;
   let analyticsExtras: AnalyticsExtras | null = null;
+  // The one-pagers that are now sub-tabs of PO Tracker / Product Tracker / Vendor Performance.
+  let poHub: PoHubData | null = null;
+  let productHub: ProductHubData | null = null;
+  let vendorHub: VendorHubData | null = null;
   if (!fixtureMode) {
     try { closures = await loadOpenClosures(); } catch { closures = []; }
     analyticsRules = await loadAnalyticsRules(); // never throws
@@ -75,6 +82,15 @@ export default async function Home() {
     // condition is gone; the Objectives tab then shows the open count. Best-effort.
     try { await syncAutoIssues(); } catch { /* never block the dashboard */ }
     if (analyticsExtras) analyticsExtras.openIssues = await countOpenIssues();
+    // Sub-tab data, built from what is already loaded above; each best-effort.
+    const [ph, prh, vh] = await Promise.allSettled([
+      loadPoHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras }),
+      loadProductHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras }),
+      loadVendorHub(180, { dash: dashboardData }),
+    ]);
+    poHub = ph.status === 'fulfilled' ? ph.value : null;
+    productHub = prh.status === 'fulfilled' ? prh.value : null;
+    vendorHub = vh.status === 'fulfilled' ? vh.value : null;
   }
   return (
     <DashboardShell
@@ -85,6 +101,9 @@ export default async function Home() {
       allowedPages={allowedPages}
       analyticsRules={analyticsRules}
       analyticsExtras={analyticsExtras}
+      poHub={poHub}
+      productHub={productHub}
+      vendorHub={vendorHub}
     />
   );
 }

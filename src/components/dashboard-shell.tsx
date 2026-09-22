@@ -74,6 +74,12 @@ import type {
   VendorRollup,
 } from "@/lib/types";
 import { TnaBreakdown } from "./tna-breakdown";
+import { Po360Client } from "./hubs/po-hub-client";
+import { Product360Client } from "./hubs/product-hub-client";
+import { Vendor360Client } from "./hubs/vendor-hub-client";
+import type { PoHubData } from "@/lib/po-hub.server";
+import type { ProductHubData } from "@/lib/product-hub.server";
+import type { VendorHubData } from "@/lib/vendor-hub.server";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { COINED_TERMS } from "@/lib/glossary";
@@ -1155,7 +1161,7 @@ function DashboardTab({
         <ChartCard
           title="Expected vs actual delivery"
           kicker="Delivery slippage"
-          info={"WHAT: week by week, how much was due to arrive against how much actually did — the delivery slippage.\n\nHOW: from completed POs over the last 12 weeks. Expected = pieces whose expected delivery date fell in that week. Actual = pieces whose PO completed in that week. The shaded band is the gap. Example: 8,000 due in week 36, 5,200 completed → a 2,800 shortfall that week.\n\nUSE: a widening band means vendors are falling further behind plan; a band that closes after a bad week means the backlog was caught up. Completed POs only — open POs are on the Open PO Tracker."}
+          info={"WHAT: week by week, how much was due to arrive against how much actually did — the delivery slippage.\n\nHOW: from completed POs over the last 12 weeks. Expected = pieces whose expected delivery date fell in that week. Actual = pieces whose PO completed in that week. The shaded band is the gap. Example: 8,000 due in week 36, 5,200 completed → a 2,800 shortfall that week.\n\nUSE: a widening band means vendors are falling further behind plan; a band that closes after a bad week means the backlog was caught up. Completed POs only — open POs are on the PO Tracker."}
           actions={
             <span className="legend-pills">
               <span className="legend-pill" style={{ "--pill-color": "#3b6fd4" } as CSSProperties}>
@@ -1803,7 +1809,7 @@ const TASK_TABS: { label: string; test: (r: TrackerRow) => boolean }[] = [
   { label: "Due Today", test: (r) => r.dueToday },
 ];
 
-// Open PO Tracker column headers, in order — index drives the freeze-panes feature.
+// PO Tracker column headers, in order — index drives the freeze-panes feature.
 const TRACKER_COLS = [
   "PO number", "PO reference", "Vendor", "Product", "Product variant", "Pending qty",
   "Pending value", "Delivered", "EasyCom", "EDD", "Delay", "Days Overdue",
@@ -1811,7 +1817,7 @@ const TRACKER_COLS = [
 ];
 
 /**
- * Pending-closure surface on the Open PO Tracker tab. Completed POs leave the
+ * Pending-closure surface on the PO Tracker tab. Completed POs leave the
  * Approved-only tracker feed, so their closure status can't ride on the tracker
  * rows — this panel puts it on the same screen instead (spec §7).
  */
@@ -1846,17 +1852,23 @@ function PendingClosurePanel({ closures }: { closures: PoClosureView[] }) {
 }
 
 function TrackerTab({
+  hub = null,
+  initialView,
   data,
   closures = [],
   onView,
   initialVendorCode = "",
 }: {
+  hub?: PoHubData | null;
+  initialView?: string;
   data: DashboardData;
   closures?: PoClosureView[];
   onView: (row: TrackerRow) => void;
   /** Item 6 — seed the vendor filter when arrived-at from a vendor-chart click. */
   initialVendorCode?: string;
 }) {
+  // Sub-tabs: the tracker's own view, and the one-pager that used to be a page of its own.
+  const [view, setView] = useState<'lines' | 'pos'>(initialView === 'pos' ? 'pos' : 'lines');
   const today = istToday();
   const all = useMemo(
     () =>
@@ -1958,6 +1970,14 @@ function TrackerTab({
 
   return (
     <>
+      <div className="role-tabs" role="tablist" aria-label="PO Tracker views">
+        <button role="tab" aria-selected={view === 'lines'} className={view === 'lines' ? "active" : ""} onClick={() => setView('lines')}>Open PO lines</button>
+        <button role="tab" aria-selected={view === 'pos'} className={view === 'pos' ? "active" : ""} onClick={() => setView('pos')}>PO summary</button>
+      </div>
+      {view === 'pos' ? (
+        hub ? <Po360Client data={hub} /> : <Empty text="This view is not available right now — the summary data did not load." />
+      ) : (
+      <>
       <PendingClosurePanel closures={closures} />
       <div className="metric-grid compact">
         <Card
@@ -2302,6 +2322,8 @@ function TrackerTab({
           total={paged.total}
         />
       </div>
+      </>
+      )}
     </>
   );
 }
@@ -2531,7 +2553,11 @@ function VendorTable({
   );
 }
 
-function VendorTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: DashboardData; capacityRules?: CapacityRules }) {
+function VendorTab({ hub = null, initialView, data, capacityRules = DEFAULT_CAPACITY_RULES }: {
+  hub?: VendorHubData | null;
+  initialView?: string; data: DashboardData; capacityRules?: CapacityRules }) {
+  // Sub-tabs: the tracker's own view, and the one-pager that used to be a page of its own.
+  const [view, setView] = useState<'load' | 'otif'>(initialView === 'otif' ? 'otif' : 'load');
   const today = istToday();
   // Item 4 — period for the PDF export: All time / YTD / a specific quarter.
   // Filters the underlying POs by po_date before the rollups the report exports.
@@ -2621,6 +2647,14 @@ function VendorTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: Das
 
   return (
     <>
+      <div className="role-tabs" role="tablist" aria-label="Vendor Performance views">
+        <button role="tab" aria-selected={view === 'load'} className={view === 'load' ? "active" : ""} onClick={() => setView('load')}>Load & delivery</button>
+        <button role="tab" aria-selected={view === 'otif'} className={view === 'otif' ? "active" : ""} onClick={() => setView('otif')}>OTIF scorecard</button>
+      </div>
+      {view === 'otif' ? (
+        hub ? <Vendor360Client data={hub} /> : <Empty text="This view is not available right now — the summary data did not load." />
+      ) : (
+      <>
       <div className="metric-grid compact">
         <Card
           label="Active vendors"
@@ -2840,6 +2874,8 @@ function VendorTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: Das
           withFilters
         />
       </section>
+      </>
+      )}
     </>
   );
 }
@@ -3225,7 +3261,11 @@ function MerchantTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: D
   );
 }
 
-function ProductTab({ data }: { data: DashboardData }) {
+function ProductTab({ hub = null, initialView, data }: {
+  hub?: ProductHubData | null;
+  initialView?: string; data: DashboardData }) {
+  // Sub-tabs: the tracker's own view, and the one-pager that used to be a page of its own.
+  const [view, setView] = useState<'order' | 'stock'>(initialView === 'stock' ? 'stock' : 'order');
   const today = istToday();
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
@@ -3303,6 +3343,14 @@ function ProductTab({ data }: { data: DashboardData }) {
   );
   return (
     <>
+      <div className="role-tabs" role="tablist" aria-label="Product Tracker views">
+        <button role="tab" aria-selected={view === 'order'} className={view === 'order' ? "active" : ""} onClick={() => setView('order')}>On order</button>
+        <button role="tab" aria-selected={view === 'stock'} className={view === 'stock' ? "active" : ""} onClick={() => setView('stock')}>In stock</button>
+      </div>
+      {view === 'stock' ? (
+        hub ? <Product360Client data={hub} /> : <Empty text="This view is not available right now — the summary data did not load." />
+      ) : (
+      <>
       <div className="filter-bar">
         <label className="search-field">
           <Search size={16} />
@@ -3426,6 +3474,8 @@ function ProductTab({ data }: { data: DashboardData }) {
           download={{ filename: "product-code-summary" }}
         />
       </section>
+      </>
+      )}
     </>
   );
 }
@@ -3880,6 +3930,9 @@ export function DashboardShell({
   allowedPages = null,
   analyticsRules = {},
   analyticsExtras = null,
+  poHub = null,
+  productHub = null,
+  vendorHub = null,
 }: {
   data: DashboardData;
   closures?: PoClosureView[];
@@ -3890,6 +3943,10 @@ export function DashboardShell({
   analyticsRules?: Record<string, number>;
   /** Server-computed sections for the cross-module cards. */
   analyticsExtras?: AnalyticsExtras | null;
+  /** The one-pagers that used to be /po-360, /product-360 and /vendor-360 — now sub-tabs. */
+  poHub?: PoHubData | null;
+  productHub?: ProductHubData | null;
+  vendorHub?: VendorHubData | null;
 }) {
   // Every capacity figure on every tab reads the same Rules Master values.
   const capacityRules = capacityRulesFrom(analyticsRules);
@@ -3904,6 +3961,8 @@ export function DashboardShell({
   // tracker pre-filtered to that vendor. Held here (above both tabs) so the click on
   // the Dashboard tab seeds the tracker's vendor filter when it mounts.
   const [vendorFilter, setVendorFilter] = useState("");
+  // /?tab=<id>&view=<sub-tab> deep-links a sub-tab (the old one-pager routes redirect here).
+  const [initialView, setInitialView] = useState<string | undefined>(undefined);
   const openVendorPos = (code: string) => {
     setVendorFilter(code);
     setTab("open-po");
@@ -3912,13 +3971,18 @@ export function DashboardShell({
   // Tabs are individually grantable views (tab:<id>) — a deep-link to a tab the
   // caller's roles don't include stays on the Dashboard tab.
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const requested = params.get("tab");
+    const view = params.get("view");
     if (
       requested &&
       tabs.some(([id]) => id === requested) &&
       canView(`tab:${requested}`, role, allowedPages)
     ) {
-      const timer = window.setTimeout(() => setTab(requested as TabId), 0);
+      const timer = window.setTimeout(() => {
+        setTab(requested as TabId);
+        if (view) setInitialView(view);
+      }, 0);
       return () => window.clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4019,10 +4083,10 @@ export function DashboardShell({
               )}
             </>
           )}{" "}
-          {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} initialVendorCode={vendorFilter} />}{" "}
-          {tab === "vendors" && <VendorTab data={data} capacityRules={capacityRules} />}{" "}
+          {tab === "open-po" && <TrackerTab data={data} closures={closures} onView={setDetail} initialVendorCode={vendorFilter} hub={poHub} initialView={initialView} />}{" "}
+          {tab === "vendors" && <VendorTab data={data} capacityRules={capacityRules} hub={vendorHub} initialView={initialView} />}{" "}
           {tab === "merchants" && <MerchantTab data={data} capacityRules={capacityRules} />}{" "}
-          {tab === "products" && <ProductTab data={data} />}{" "}
+          {tab === "products" && <ProductTab data={data} hub={productHub} initialView={initialView} />}{" "}
           {tab === "urgent-replenish" && <UrgentReplenishmentTab data={data} />}{" "}
           {tab === "matrix" && <MatrixTab data={data} />}
         </div>

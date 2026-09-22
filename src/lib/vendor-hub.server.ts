@@ -1,5 +1,6 @@
 import { loadDeboardedVendors, loadVendorCapacity, loadVendorOtif } from '@/lib/forms/queries';
 import type { DeboardedVendor } from '@/lib/forms/types';
+import type { DashboardData } from '@/lib/types';
 
 /**
  * Vendor objective one-pager (DAM principle: one base dimension = Vendor, full picture
@@ -47,10 +48,11 @@ export type VendorHubData = {
   };
 };
 
-export async function loadVendorHub(windowDays = 180): Promise<VendorHubData> {
+/** `pre.dash` lets the dashboard page hand over what it has already loaded. */
+export async function loadVendorHub(windowDays = 180, pre?: { dash?: DashboardData }): Promise<VendorHubData> {
   const [cap, otif, deboarded] = await Promise.all([
-    loadVendorCapacity(),
-    loadVendorOtif(windowDays),
+    loadVendorCapacity(pre?.dash),
+    loadVendorOtif(windowDays, pre?.dash),
     loadDeboardedVendors(),
   ]);
 

@@ -6,7 +6,7 @@ import { VendorOtifClient } from './vendor-otif-client';
 export const dynamic = 'force-dynamic';
 
 // Item 2 — OTIF (On Time In Full) vendor scorecard: three separately-tracked
-// variables (Critical Path lives on the Open PO Tracker; On-Time + Fill Rate
+// variables (Critical Path lives on the PO Tracker; On-Time + Fill Rate
 // here) combined into a joint pass/fail OTIF per vendor.
 export default async function VendorOtifPage() {
   let user;
@@ -30,7 +30,7 @@ export default async function VendorOtifPage() {
   return (
     <FormLayout
       title="Vendor OTIF"
-      subtitle="On Time In Full per vendor — On-Time and In-Full tracked separately, then combined as a joint pass/fail per PO. Critical-Path (TNA stage) compliance is on the Open PO Tracker."
+      subtitle="On Time In Full per vendor — On-Time and In-Full tracked separately, then combined as a joint pass/fail per PO. Critical-Path (TNA stage) compliance is on the PO Tracker."
       active="/vendor-otif"
       role={user.role}
       userEmail={user.email}

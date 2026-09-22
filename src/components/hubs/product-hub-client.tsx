@@ -80,7 +80,7 @@ export function Product360Client({ data }: { data: ProductHubData }) {
                 <th>Class <HeaderInfo label="Class" /></th>
                 <th className="num">Current stock <HeaderInfo label="Current stock" /></th>
                 <th className="num">DOQ (45d) <HeaderInfo label="DOQ (45d)" /></th>
-                <th>Status <HeaderInfo label="Status" /></th>
+                <th>Status <HeaderInfo label="Status" text="Out of stock = nothing in stock and nothing on order; At risk = stock plus what is on order runs out inside the lead time." /></th>
               </tr>
             </thead>
             <tbody>

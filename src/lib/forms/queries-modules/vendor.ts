@@ -3,6 +3,7 @@ import { client, PAGE_SIZE } from './_shared';
 import { buildVendorRollups, buildTrackerRows, capacityRulesFrom } from '@/lib/business-logic';
 import { loadAnalyticsRules } from './analytics';
 import { loadDashboardData } from '@/lib/data';
+import type { DashboardData } from '@/lib/types';
 import type {
   EeVendorMasterRow,
   VendorOtifRow,
@@ -39,6 +40,7 @@ export async function loadVendorMaster(): Promise<EeVendorMasterRow[]> {
  */
 export async function loadVendorOtif(
   windowDays = 180,
+  dashboard?: DashboardData,
 ): Promise<{ windowDays: number; vendors: VendorOtifRow[] }> {
   const supabase = await client();
   const vkey = (code: string | null | undefined, name: string | null | undefined) =>
@@ -46,7 +48,7 @@ export async function loadVendorOtif(
 
   const [{ data }, dash] = await Promise.all([
     supabase.rpc('sd_vendor_otif', { p_window_days: windowDays }),
-    loadDashboardData(),
+    dashboard ?? loadDashboardData(),
   ]);
 
   // Critical Path (3rd TNA variable) — on-track % of each vendor's OPEN POs,
@@ -163,7 +165,7 @@ export async function loadVendorProductAllocations(): Promise<VendorProductAlloc
   return (data ?? []) as VendorProductAllocation[];
 }
 
-export async function loadVendorCapacity() {
+export async function loadVendorCapacity(dashboard?: DashboardData) {
   const supabase = await client();
 
   // One live row per vendor — no week bucketing. entry_date carries when it was
@@ -177,7 +179,7 @@ export async function loadVendorCapacity() {
     .from('sd_vendor_type_multiplier')
     .select('*');
 
-  const [dashboard, rules] = await Promise.all([loadDashboardData(), loadAnalyticsRules()]);
+  const [dash, rules] = await Promise.all([dashboard ?? loadDashboardData(), loadAnalyticsRules()]);
   // The sheet's live inputs feed the one capacity model, with the Rules Master values.
   const capacityByVendor = new Map(
     ((logs ?? []) as VendorCapacityLog[]).map((l) => [
@@ -186,10 +188,10 @@ export async function loadVendorCapacity() {
     ]),
   );
   const rollups = buildVendorRollups(
-    dashboard.pendingPos,
-    dashboard.vendorTypes,
-    dashboard.vendorMasters,
-    dashboard.tnaRecords,
+    dash.pendingPos,
+    dash.vendorTypes,
+    dash.vendorMasters,
+    dash.tnaRecords,
     undefined,
     capacityByVendor,
     capacityRulesFrom(rules),
@@ -199,7 +201,7 @@ export async function loadVendorCapacity() {
     logs: (logs ?? []) as VendorCapacityLog[],
     multipliers: (multipliers ?? []) as VendorTypeMultiplier[],
     rollups,
-    vendorMasters: dashboard.vendorMasters,
-    vendorTypes: dashboard.vendorTypes,
+    vendorMasters: dash.vendorMasters,
+    vendorTypes: dash.vendorTypes,
   };
 }

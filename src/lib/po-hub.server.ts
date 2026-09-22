@@ -1,7 +1,8 @@
 import { loadDashboardData } from '@/lib/data';
 import { buildTrackerRows } from '@/lib/business-logic';
 import { loadAnalyticsExtras, loadAnalyticsRules } from '@/lib/forms/queries';
-import type { InternalStatus } from '@/lib/types';
+import type { DashboardData, InternalStatus } from '@/lib/types';
+import type { AnalyticsExtras } from '@/lib/forms/types';
 
 /**
  * PO objective one-pager (DAM principle: one base dimension = PO, full picture around
@@ -47,8 +48,16 @@ export type PoHubData = {
   rows: PoHubRow[];
 };
 
-export async function loadPoHub(): Promise<PoHubData> {
-  const [dash, rules] = await Promise.all([loadDashboardData(), loadAnalyticsRules()]);
+/** `pre` lets the dashboard page hand over what it has already loaded instead of loading it again. */
+export async function loadPoHub(pre?: {
+  dash?: DashboardData;
+  rules?: Record<string, number>;
+  extras?: AnalyticsExtras | null;
+}): Promise<PoHubData> {
+  const [dash, rules] = await Promise.all([
+    pre?.dash ?? loadDashboardData(),
+    pre?.rules ?? loadAnalyticsRules(),
+  ]);
   const tracker = buildTrackerRows(
     dash.pendingPos,
     dash.vendorTypes,
@@ -59,17 +68,21 @@ export async function loadPoHub(): Promise<PoHubData> {
   // Reuse the same PO-facet sources as the dashboard cards (cost variance, closure
   // SLA, issuance flow, pending approval). Best-effort — never blocks the page.
   let extras: Awaited<ReturnType<typeof loadAnalyticsExtras>> | null = null;
-  try {
-    extras = await loadAnalyticsExtras(
-      dash.pendingPos.map((p) => ({
-        code: (p.product_code ?? '').trim(),
-        variant: (p.product_variant ?? '').trim(),
-        qty: Number(p.pending_qty_actual) || 0,
-      })),
-      rules,
-    );
-  } catch {
-    extras = null;
+  if (pre && 'extras' in pre) {
+    extras = pre.extras ?? null;
+  } else {
+    try {
+      extras = await loadAnalyticsExtras(
+        dash.pendingPos.map((p) => ({
+          code: (p.product_code ?? '').trim(),
+          variant: (p.product_variant ?? '').trim(),
+          qty: Number(p.pending_qty_actual) || 0,
+        })),
+        rules,
+      );
+    } catch {
+      extras = null;
+    }
   }
 
   // Per-PO cost-variance flag (this month's above-standard issues), keyed by PO ref.

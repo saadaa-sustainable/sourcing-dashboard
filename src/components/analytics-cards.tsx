@@ -1350,7 +1350,7 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
               cta="Open Inward Plan"
               span={4}
               href="/inward-plan"
-              info={"WHAT: last week — what was due to arrive against what actually did.\n\nHOW: pending pieces on lines whose expected delivery date fell last week, vs pieces received (GRN) last week. Totals, not matched line by line.\n\nUSE: a big gap means last week's due dates were missed; check the Open PO Tracker's overdue band for which ones."}
+              info={"WHAT: last week — what was due to arrive against what actually did.\n\nHOW: pending pieces on lines whose expected delivery date fell last week, vs pieces received (GRN) last week. Totals, not matched line by line.\n\nUSE: a big gap means last week's due dates were missed; check the PO Tracker's overdue band for which ones."}
             >
               {!inward ? (
                 <NoData text="Inward-plan / GRN data is not available." />

@@ -43,7 +43,7 @@ import {
 // from anywhere else. Shared with dashboard-shell.tsx.
 export const tabs = [
   ['dashboard', 'Main Dashboard', LayoutDashboard],
-  ['open-po', 'Open PO Tracker', PackageSearch],
+  ['open-po', 'PO Tracker', PackageSearch],
   ['vendors', 'Vendor Performance', Factory],
   ['merchants', 'Merchant Performance', Users],
   ['products', 'Product Tracker', Boxes],
@@ -66,14 +66,9 @@ type NavLink = {
 // canView (custom roles) and by the User Panel's show/hide overrides; the grouping is
 // only where a link sits. Admin-only flags live in lib/views.ts.
 
-// OVERVIEW — the entity one-pagers, each paired with the dashboard tab that tracks the
-// same thing, plus the two dashboard tabs that have no page of their own.
-const OVERVIEW_PAIRS: { page: NavLink; tab: TabId; tabLabel: string }[] = [
-  { page: { href: '/po-360', label: 'PO Overview', Icon: FileCheck }, tab: 'open-po', tabLabel: 'PO Tracker' },
-  { page: { href: '/product-360', label: 'Product Overview', Icon: PackageX }, tab: 'products', tabLabel: 'Product Tracker' },
-  { page: { href: '/vendor-360', label: 'Vendor Overview', Icon: Factory }, tab: 'vendors', tabLabel: 'Vendor Performance' },
-];
-const OVERVIEW_TABS: TabId[] = ['merchants', 'matrix'];
+// OVERVIEW — the dashboard tabs. The old PO / Product / Vendor Overview pages are sub-tabs
+// of the first three now (PO summary · In stock · OTIF scorecard).
+const OVERVIEW_TABS: TabId[] = ['open-po', 'products', 'vendors', 'merchants', 'matrix'];
 
 // OPERATIONS — the day-to-day analytical views.
 const OPERATIONS_LINKS: NavLink[] = [
@@ -144,7 +139,6 @@ export function navPathVisible(href: string, overrides: Record<string, boolean>,
 /** Flat list of every sidebar-manageable tab (base + surfaceable extras), for the
  *  User Panel → Tabs manager. `defaultOff` marks pages hidden unless turned on. */
 export const NAV_ITEMS: { href: string; label: string; group: string; defaultOff: boolean }[] = [
-  ...OVERVIEW_PAIRS.map((p) => ({ href: p.page.href, label: p.page.label, group: 'Overview', defaultOff: !!p.page.defaultOff })),
   ...OPERATIONS_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Operations', defaultOff: !!l.defaultOff })),
   ...PLANNING_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Planning', defaultOff: !!l.defaultOff })),
   ...PO_WORKFLOW_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'PO Workflow', defaultOff: !!l.defaultOff })),
@@ -193,24 +187,20 @@ export function SideNav({
     { title: 'Master Data & Datasets', links: visible(MASTERS_LINKS) },
     { title: 'Admin', links: visible(ADMIN_LINKS) },
   ];
-  const overviewPairs = OVERVIEW_PAIRS.filter(
-    (p) => (navPathVisible(p.page.href, navOverrides, p.page.defaultOff) && canView(p.page.href, role, allowedPages)) || tabVisible(p.tab),
-  );
   const overviewTabs = OVERVIEW_TABS.filter(tabVisible);
   // A dashboard tab: a button on the dashboard itself (instant), a link from anywhere else.
-  const renderTab = (id: TabId, labelOverride?: string, alt = false) => {
+  const renderTab = (id: TabId) => {
     const [, label, Icon] = tabMeta(id);
-    const text = labelOverride ?? label;
-    const cls = `${activeTab === id ? 'active' : ''}${alt ? ' nav-pair-alt' : ''}`.trim();
+    const cls = activeTab === id ? 'active' : '';
     return onTab ? (
-      <button key={id} className={cls} onClick={() => { onTab(id); close(); }} title={text}>
-        {!alt && <Icon size={18} />}
-        <span>{text}</span>
+      <button key={id} className={cls} onClick={() => { onTab(id); close(); }} title={label}>
+        <Icon size={18} />
+        <span>{label}</span>
       </button>
     ) : (
-      <a key={id} href={`/?tab=${id}`} className={cls} onClick={close} title={text}>
-        {!alt && <Icon size={18} />}
-        <span>{text}</span>
+      <a key={id} href={`/?tab=${id}`} className={cls} onClick={close} title={label}>
+        <Icon size={18} />
+        <span>{label}</span>
       </a>
     );
   };
@@ -260,27 +250,7 @@ export function SideNav({
           </a>
           {renderTab('dashboard')}
 
-          {(overviewPairs.length > 0 || overviewTabs.length > 0) && (
-            <div className="wf-nav-divider">Overview</div>
-          )}
-          {/* "PO Overview / PO Tracker": the one-pager and the dashboard tab that tracks the
-              same thing share a row; both halves are links. */}
-          {overviewPairs.map((p) => {
-            const pageOk =
-              navPathVisible(p.page.href, navOverrides, p.page.defaultOff) && canView(p.page.href, role, allowedPages);
-            const tabOk = tabVisible(p.tab);
-            return (
-              <div className="nav-pair" key={p.page.href}>
-                {pageOk ? renderLink(p.page) : renderTab(p.tab, p.tabLabel)}
-                {pageOk && tabOk && (
-                  <>
-                    <span className="nav-pair-sep" aria-hidden="true">/</span>
-                    {renderTab(p.tab, p.tabLabel, true)}
-                  </>
-                )}
-              </div>
-            );
-          })}
+          {overviewTabs.length > 0 && <div className="wf-nav-divider">Overview</div>}
           {overviewTabs.map((id) => renderTab(id))}
 
           {groups.map(({ title, links }) =>

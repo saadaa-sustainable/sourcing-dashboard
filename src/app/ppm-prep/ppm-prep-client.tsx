@@ -172,7 +172,7 @@ export function PpmPrepClient({ prep }: { prep: PpmPrep }) {
         </div>
         <p className="wf-subtle" style={{ padding: '8px 12px' }}>
           Full audit on the{' '}
-          <Link href="/?tab=open-po">Open PO Tracker</Link>.
+          <Link href="/?tab=open-po">PO Tracker</Link>.
         </p>
       </section>
     </>
