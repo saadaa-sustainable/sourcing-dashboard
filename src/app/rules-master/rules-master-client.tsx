@@ -27,7 +27,7 @@ const GROUPS: { title: string; blurb: string; keys: string[] }[] = [
   },
   {
     title: 'PO lifecycle',
-    blurb: 'Closure SLA and the PO-type lead times that drive the Buying Plan time-buckets and Vendor Capacity's PO capacity.',
+    blurb: 'Closure SLA and the PO-type lead times that drive the Buying Plan time-buckets and the PO capacity on Vendor Capacity.',
     keys: ['closure_sla_days', 'lead_days_job', 'lead_days_efob', 'lead_days_fob'],
   },
   {
