@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { ChevronDown, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -669,7 +670,7 @@ function EfobFabricCostPanel({
       )}
       {rows.length > 0 && (
         <table className="wf-grid wf-cost-lines">
-          <thead><tr><th>Fabric</th><th>Month</th><th className="num">Rate</th><th>Set by</th></tr></thead>
+          <thead><tr><th>Fabric <HeaderInfo label="Fabric" /></th><th>Month <HeaderInfo label="Month" /></th><th className="num">Rate <HeaderInfo label="Rate" /></th><th>Set by <HeaderInfo label="Set by" /></th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={`${r.fabric_code}-${r.month}`}>
@@ -1292,12 +1293,12 @@ export function CostDetail({
             <table className="wf-grid wf-cost-lines">
               <thead>
                 <tr>
-                  <th>Size</th>
-                  <th className="num wf-cell-calc">Fabric</th>
-                  <th className="num wf-cell-calc">CMTP</th>
-                  <th className="num wf-cell-calc">Garment</th>
-                  <th className="num wf-cell-calc">Margin</th>
-                  <th className="num wf-cell-calc">Final price</th>
+                  <th>Size <HeaderInfo label="Size" /></th>
+                  <th className="num wf-cell-calc">Fabric <HeaderInfo label="Fabric" /></th>
+                  <th className="num wf-cell-calc">CMTP <HeaderInfo label="CMTP" /></th>
+                  <th className="num wf-cell-calc">Garment <HeaderInfo label="Garment" /></th>
+                  <th className="num wf-cell-calc">Margin <HeaderInfo label="Margin" /></th>
+                  <th className="num wf-cell-calc">Final price <HeaderInfo label="Final price" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -1381,12 +1382,12 @@ export function RateHistoryPanel({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Accepted on</th>
+                <th>Accepted on <HeaderInfo label="Accepted on" /></th>
                 <th className="num">{lbl.job}</th>
                 <th className="num">{lbl.fob}</th>
                 <th className="num">{lbl.efob}</th>
-                <th>By</th>
-                <th>Note</th>
+                <th>By <HeaderInfo label="By" /></th>
+                <th>Note <HeaderInfo label="Note" /></th>
               </tr>
             </thead>
             <tbody>
@@ -1425,12 +1426,12 @@ export function RateHistoryPanel({
               <table className="wf-grid">
                 <thead>
                   <tr>
-                    <th>Revised on</th>
-                    <th>Line</th>
-                    <th className="num">Old</th>
-                    <th className="num">New</th>
-                    <th>By</th>
-                    <th>Reason</th>
+                    <th>Revised on <HeaderInfo label="Revised on" /></th>
+                    <th>Line <HeaderInfo label="Line" /></th>
+                    <th className="num">Old <HeaderInfo label="Old" /></th>
+                    <th className="num">New <HeaderInfo label="New" /></th>
+                    <th>By <HeaderInfo label="By" /></th>
+                    <th>Reason <HeaderInfo label="Reason" /></th>
                   </tr>
                 </thead>
                 <tbody>

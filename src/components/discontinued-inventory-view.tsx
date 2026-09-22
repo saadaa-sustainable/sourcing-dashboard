@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import {
   Bar,
   BarChart,
@@ -311,16 +312,16 @@ export function DiscontinuedInventoryView({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th>SKU</th>
-                <th>Product</th>
-                <th>Colour / size</th>
-                <th className="num">Qty</th>
-                <th className="num">Oldest (days)</th>
-                <th>Ageing</th>
-                <th>Recommended Discount</th>
-                <th>Recommended action</th>
-                <th className="num">Value (cost)</th>
-                <th className="num">Value (MRP)</th>
+                <th>SKU <HeaderInfo label="SKU" /></th>
+                <th>Product <HeaderInfo label="Product" /></th>
+                <th>Colour / size <HeaderInfo label="Colour / size" /></th>
+                <th className="num">Qty <HeaderInfo label="Qty" /></th>
+                <th className="num">Oldest (days) <HeaderInfo label="Oldest (days)" /></th>
+                <th>Ageing <HeaderInfo label="Ageing" /></th>
+                <th>Recommended Discount <HeaderInfo label="Recommended Discount" /></th>
+                <th>Recommended action <HeaderInfo label="Recommended action" /></th>
+                <th className="num">Value (cost) <HeaderInfo label="Value (cost)" /></th>
+                <th className="num">Value (MRP) <HeaderInfo label="Value (MRP)" /></th>
               </tr>
             </thead>
             <tbody>

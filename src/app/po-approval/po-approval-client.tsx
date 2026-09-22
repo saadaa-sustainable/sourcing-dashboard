@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, FileCheck, Layers, Save, Send, X } from 'lucide-react';
 import {
@@ -604,14 +605,14 @@ export function PoApprovalClient({
           <table className="wide-table">
             <thead>
               <tr>
-                <th>PO ref</th>
-                <th>Category</th>
-                <th>Product</th>
-                <th>Vendor (live load)</th>
-                <th>Qty</th>
-                <th>Status</th>
-                <th>Cycle (days)</th>
-                <th>Action</th>
+                <th>PO ref <HeaderInfo label="PO ref" /></th>
+                <th>Category <HeaderInfo label="Category" /></th>
+                <th>Product <HeaderInfo label="Product" /></th>
+                <th>Vendor (live load) <HeaderInfo label="Vendor (live load)" /></th>
+                <th>Qty <HeaderInfo label="Qty" /></th>
+                <th>Status <HeaderInfo label="Status" /></th>
+                <th>Cycle (days) <HeaderInfo label="Cycle (days)" /></th>
+                <th>Action <HeaderInfo label="Action" /></th>
               </tr>
             </thead>
             <tbody>
@@ -1227,10 +1228,10 @@ function PoRow({
               <table className="wide-table wf-grid">
                 <thead>
                   <tr>
-                    <th>Colour / variant</th>
-                    <th>Size</th>
-                    <th className="num">Qty</th>
-                    <th>Line status</th>
+                    <th>Colour / variant <HeaderInfo label="Colour / variant" /></th>
+                    <th>Size <HeaderInfo label="Size" /></th>
+                    <th className="num">Qty <HeaderInfo label="Qty" /></th>
+                    <th>Line status <HeaderInfo label="Line status" /></th>
                     {linesEditable && <th aria-label="Remove" />}
                   </tr>
                 </thead>
@@ -1385,13 +1386,13 @@ function PoSubmissionTable({
             <thead>
               <tr>
                 <th />
-                <th>PO</th>
-                <th>Vendor</th>
-                <th>Products</th>
-                <th className="num">Ordered</th>
-                <th className="num">Pending</th>
-                <th>EDD</th>
-                <th>Closure</th>
+                <th>PO <HeaderInfo label="PO" /></th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Products <HeaderInfo label="Products" /></th>
+                <th className="num">Ordered <HeaderInfo label="Ordered" /></th>
+                <th className="num">Pending <HeaderInfo label="Pending" /></th>
+                <th>EDD <HeaderInfo label="EDD" /></th>
+                <th>Closure <HeaderInfo label="Closure" /></th>
                 {editable && <th aria-label="Decide" />}
               </tr>
             </thead>
@@ -1457,13 +1458,13 @@ function PoSubmissionTable({
                         <table className="wf-grid wf-cost-lines">
                           <thead>
                             <tr>
-                              <th>SKU</th>
-                              <th>Variant</th>
-                              <th>Size</th>
-                              <th className="num">Ordered</th>
-                              <th className="num">Pending</th>
-                              <th className="num">Price</th>
-                              <th>EDD</th>
+                              <th>SKU <HeaderInfo label="SKU" /></th>
+                              <th>Variant <HeaderInfo label="Variant" /></th>
+                              <th>Size <HeaderInfo label="Size" /></th>
+                              <th className="num">Ordered <HeaderInfo label="Ordered" /></th>
+                              <th className="num">Pending <HeaderInfo label="Pending" /></th>
+                              <th className="num">Price <HeaderInfo label="Price" /></th>
+                              <th>EDD <HeaderInfo label="EDD" /></th>
                             </tr>
                           </thead>
                           <tbody>

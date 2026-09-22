@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { AlertTriangle, Clock, Download, Lock, Save, Plus, Trash2, ArrowUpRight } from 'lucide-react';
 import {
   saveVendorCapacityRow,
@@ -466,26 +467,26 @@ function EntryTab({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')}</th>
+                <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')} <HeaderInfo label="Vendor" /></th>
                 <th {...sort.th('type', (d) => d.vendor.vendor_type)}>
                   Type <span className="wf-fixed-tag"><Lock size={9} /></span> {sort.ind('type')}
-                </th>
+                 <HeaderInfo label="Type" /></th>
                 <th className="num input-col" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>
                   Machines allocated <span className="wf-live-tag">LIVE</span> {sort.ind('machines')}
-                </th>
+                 <HeaderInfo label="Machines allocated LIVE" /></th>
                 <th className="num input-col" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>
                   Karigar allocated <span className="wf-live-tag">LIVE</span> {sort.ind('karigar')}
-                </th>
-                <th className="num">Capacity / month</th>
-                <th className="num">PO capacity</th>
+                 <HeaderInfo label="Karigar allocated LIVE" /></th>
+                <th className="num">Capacity / month <HeaderInfo label="Capacity / month" /></th>
+                <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
                 <th className="num">
                   First machines <span className="wf-fixed-tag"><Lock size={9} /></span>
-                </th>
-                <th className="num">On order (in process)</th>
-                <th className="num">Available</th>
-                <th className="num">Machine util</th>
-                <th className="num">Capacity util</th>
-                <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')}</th>
+                 <HeaderInfo label="First machines" /></th>
+                <th className="num">On order (in process) <HeaderInfo label="On order (in process)" /></th>
+                <th className="num">Available <HeaderInfo label="Available" /></th>
+                <th className="num">Machine util <HeaderInfo label="Machine util" /></th>
+                <th className="num">Capacity util <HeaderInfo label="Capacity util" /></th>
+                <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')} <HeaderInfo label="Last updated" /></th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
@@ -757,7 +758,7 @@ function ProductAllocationTab({
           </div>
           <div className="table-scroll">
             <table className="wide-table wf-grid vc-allocation-table">
-              <thead><tr><th>Product</th><th className="num input-col">Allocated (pcs/month)</th><th>Last set</th>{editable && <th aria-label="Actions" />}</tr></thead>
+              <thead><tr><th>Product <HeaderInfo label="Product" /></th><th className="num input-col">Allocated (pcs/month) <HeaderInfo label="Allocated (pcs/month)" /></th><th>Last set <HeaderInfo label="Last set" /></th>{editable && <th aria-label="Actions" />}</tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <AllocationRow key={r.id} row={r} editable={editable} productName={catalog.find((item) => item.product_code === r.product_code)?.product_name ?? null} />
@@ -1134,10 +1135,10 @@ function ReportingTab({
           <table className="wide-table vc-type-table">
             <thead>
               <tr>
-                <th>PO type</th>
-                <th className="num">PO capacity</th>
-                <th className="num">In process</th>
-                <th className="num">Utilization</th>
+                <th>PO type <HeaderInfo label="PO type" /></th>
+                <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
+                <th className="num">In process <HeaderInfo label="In process" /></th>
+                <th className="num">Utilization <HeaderInfo label="Utilization" /></th>
               </tr>
             </thead>
             <tbody>
@@ -1165,11 +1166,11 @@ function ReportingTab({
           <table className="wide-table">
             <thead>
               <tr>
-                <th>Vendor</th>
-                <th>Type</th>
-                <th className="num">PO capacity</th>
-                <th className="num">In process</th>
-                <th className="num">Utilization</th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Type <HeaderInfo label="Type" /></th>
+                <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
+                <th className="num">In process <HeaderInfo label="In process" /></th>
+                <th className="num">Utilization <HeaderInfo label="Utilization" /></th>
                 <th aria-label="Open" />
               </tr>
             </thead>

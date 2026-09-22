@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Plus, Save } from 'lucide-react';
@@ -223,12 +224,12 @@ export function MaterialMasterClient({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th {...sort.th('material_code', (m) => m.material_code)}>Material code {sort.ind('material_code')}</th>
-                <th {...sort.th('name', (m) => m.name)}>Name {sort.ind('name')}</th>
-                {type === 'dyed' && <th {...sort.th('base', (m) => m.base_fabric_code)}>Base fabric {sort.ind('base')}</th>}
-                {type === 'dyed' && <th {...sort.th('colour', (m) => m.colour)}>Colour {sort.ind('colour')}</th>}
-                <th {...sort.th('uom', (m) => m.default_uom)}>UOM {sort.ind('uom')}</th>
-                <th {...sort.th('active', (m) => (m.is_active ? 1 : 0))}>Active {sort.ind('active')}</th>
+                <th {...sort.th('material_code', (m) => m.material_code)}>Material code {sort.ind('material_code')} <HeaderInfo label="Material code" /></th>
+                <th {...sort.th('name', (m) => m.name)}>Name {sort.ind('name')} <HeaderInfo label="Name" /></th>
+                {type === 'dyed' && <th {...sort.th('base', (m) => m.base_fabric_code)}>Base fabric {sort.ind('base')} <HeaderInfo label="Base fabric" /></th>}
+                {type === 'dyed' && <th {...sort.th('colour', (m) => m.colour)}>Colour {sort.ind('colour')} <HeaderInfo label="Colour" /></th>}
+                <th {...sort.th('uom', (m) => m.default_uom)}>UOM {sort.ind('uom')} <HeaderInfo label="UOM" /></th>
+                <th {...sort.th('active', (m) => (m.is_active ? 1 : 0))}>Active {sort.ind('active')} <HeaderInfo label="Active" /></th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>

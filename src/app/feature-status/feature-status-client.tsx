@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { Check } from 'lucide-react';
 import { setFeatureStatus } from '@/lib/feature-status-actions';
 import { FeatureBadge } from '@/components/feature-badge';
@@ -46,10 +47,10 @@ export function FeatureStatusClient({ rows }: { rows: FeatureRow[] }) {
             <table className="wf-grid">
               <thead>
                 <tr>
-                  <th>Feature</th>
-                  <th>Status</th>
-                  <th>Note (optional)</th>
-                  <th>Preview</th>
+                  <th>Feature <HeaderInfo label="Feature" /></th>
+                  <th>Status <HeaderInfo label="Status" /></th>
+                  <th>Note (optional) <HeaderInfo label="Note (optional)" /></th>
+                  <th>Preview <HeaderInfo label="Preview" /></th>
                   <th></th>
                 </tr>
               </thead>

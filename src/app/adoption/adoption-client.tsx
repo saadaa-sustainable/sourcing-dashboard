@@ -1,6 +1,7 @@
 'use client';
 
 import { FilterTable, type Column } from '@/components/filter-table';
+import { HeaderInfo } from '@/components/header-info';
 import type { AdoptionData, AdoptionUser } from '@/lib/forms/queries-modules/adoption';
 
 const rel = (iso: string | null) => {
@@ -78,7 +79,7 @@ export function AdoptionClient({ data }: { data: AdoptionData }) {
           <div className="table-scroll">
             <table className="wf-grid">
               <thead>
-                <tr><th>Module</th><th className="num">Entries 7d</th><th className="num">Entries 30d</th></tr>
+                <tr><th>Module <HeaderInfo label="Module" /></th><th className="num">Entries 7d <HeaderInfo label="Entries 7d" /></th><th className="num">Entries 30d <HeaderInfo label="Entries 30d" /></th></tr>
               </thead>
               <tbody>
                 {data.modules.map((m) => (

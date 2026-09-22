@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { Ban } from 'lucide-react';
 import { createDiscontinueRequest } from '@/lib/forms/actions';
@@ -184,13 +185,13 @@ export function DiscontinueClient({
           <table className="wide-table">
             <thead>
               <tr>
-                <th>Scope</th>
-                <th>Product code</th>
-                <th>Target</th>
-                <th>Reason</th>
-                <th>Status</th>
-                <th>Requested by</th>
-                <th>Decision</th>
+                <th>Scope <HeaderInfo label="Scope" /></th>
+                <th>Product code <HeaderInfo label="Product code" /></th>
+                <th>Target <HeaderInfo label="Target" /></th>
+                <th>Reason <HeaderInfo label="Reason" /></th>
+                <th>Status <HeaderInfo label="Status" /></th>
+                <th>Requested by <HeaderInfo label="Requested by" /></th>
+                <th>Decision <HeaderInfo label="Decision" /></th>
               </tr>
             </thead>
             <tbody>

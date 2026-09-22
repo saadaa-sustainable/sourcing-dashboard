@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { AlertTriangle, ChevronRight, Download, FileText, Send, TrendingDown, TrendingUp } from 'lucide-react';
 import { addMonths, monthLabel } from '@/lib/forms/approval';
 import { generatePlanReportAction, getPlanReportUrl } from '@/lib/forms/actions';
@@ -394,7 +395,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         ) : (
           <div className="table-scroll">
             <table className="wf-grid">
-              <thead><tr><th>Product</th><th>Reason</th><th className="num">Issued qty</th><th className="num">Issued value</th><th className="num">POs</th><th>PO references</th></tr></thead>
+              <thead><tr><th>Product <HeaderInfo label="Product" /></th><th>Reason <HeaderInfo label="Reason" /></th><th className="num">Issued qty <HeaderInfo label="Issued qty" /></th><th className="num">Issued value <HeaderInfo label="Issued value" /></th><th className="num">POs <HeaderInfo label="POs" /></th><th>PO references <HeaderInfo label="PO references" /></th></tr></thead>
               <tbody>
                 {exceptions.notBudgeted.map((r) => (
                   <tr key={r.product_code}>
@@ -437,7 +438,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         ) : (
           <div className="table-scroll">
             <table className="wf-grid">
-              <thead><tr><th>Product</th><th className="num">Approved</th><th className="num">Issued</th><th className="num">Excess</th><th className="num">Excess %</th><th className="num">Excess value</th><th>PO references</th></tr></thead>
+              <thead><tr><th>Product <HeaderInfo label="Product" /></th><th className="num">Approved <HeaderInfo label="Approved" /></th><th className="num">Issued <HeaderInfo label="Issued" /></th><th className="num">Excess <HeaderInfo label="Excess" /></th><th className="num">Excess % <HeaderInfo label="Excess %" /></th><th className="num">Excess value <HeaderInfo label="Excess value" /></th><th>PO references <HeaderInfo label="PO references" /></th></tr></thead>
               <tbody>
                 {exceptions.overApproved.map((r) => (
                   <tr key={r.product_code}>

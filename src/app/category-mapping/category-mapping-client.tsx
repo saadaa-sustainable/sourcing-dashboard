@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Check, CircleAlert, Save } from 'lucide-react';
 import { saveProductCategory } from '@/lib/forms/actions';
@@ -85,11 +86,11 @@ export function CategoryMappingClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th {...sort.th('product', (r) => r.product_code)}>Product {sort.ind('product')}</th>
-                <th {...sort.th('category', (r) => r.effectiveCategory)}>Category {sort.ind('category')}</th>
-                <th {...sort.th('sub', (r) => r.effectiveSubCategory)}>Sub-category {sort.ind('sub')}</th>
-                <th {...sort.th('source', (r) => (r.overrideCategory ? 'Team override' : r.effectiveCategory ? 'EasyEcom' : ''))}>Source {sort.ind('source')}</th>
-                {editable && <th>Save</th>}
+                <th {...sort.th('product', (r) => r.product_code)}>Product {sort.ind('product')} <HeaderInfo label="Product" /></th>
+                <th {...sort.th('category', (r) => r.effectiveCategory)}>Category {sort.ind('category')} <HeaderInfo label="Category" /></th>
+                <th {...sort.th('sub', (r) => r.effectiveSubCategory)}>Sub-category {sort.ind('sub')} <HeaderInfo label="Sub-category" /></th>
+                <th {...sort.th('source', (r) => (r.overrideCategory ? 'Team override' : r.effectiveCategory ? 'EasyEcom' : ''))}>Source {sort.ind('source')} <HeaderInfo label="Source" /></th>
+                {editable && <th>Save <HeaderInfo label="Save" /></th>}
               </tr>
             </thead>
             <tbody>

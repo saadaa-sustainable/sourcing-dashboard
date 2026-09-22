@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { Check, Copy, ExternalLink, Link2, MessageCircle, Trash2 } from 'lucide-react';
 import { generateDynamicLink, revokeDynamicLink, signCuttingApproval } from '@/lib/forms/actions';
@@ -120,7 +121,7 @@ function ActiveLinks({ links, editable }: { links: DynamicLink[]; editable: bool
       <div className="table-scroll">
         <table className="wf-grid">
           <thead>
-            <tr><th>PO</th><th>Created by</th><th>Expires</th><th>Status</th><th aria-label="Actions" /></tr>
+            <tr><th>PO <HeaderInfo label="PO" /></th><th>Created by <HeaderInfo label="Created by" /></th><th>Expires <HeaderInfo label="Expires" /></th><th>Status <HeaderInfo label="Status" /></th><th aria-label="Actions" /></tr>
           </thead>
           <tbody>
             {links.map((l) => (

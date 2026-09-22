@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { Save, CheckCircle2, Clock } from 'lucide-react';
 import { searchPos, loadPoSkus, saveManualAdjustments, loadRecentManualAdjustments } from '@/lib/forms/actions';
@@ -125,11 +126,11 @@ export function ManualAdjustmentInput({ editable }: { editable: boolean }) {
             <table className="wf-grid">
               <thead>
                 <tr>
-                  <th>SKU</th>
-                  <th>Item</th>
-                  <th>Size</th>
-                  <th>Description</th>
-                  <th style={{ width: 140 }}>Adjust qty (±)</th>
+                  <th>SKU <HeaderInfo label="SKU" /></th>
+                  <th>Item <HeaderInfo label="Item" /></th>
+                  <th>Size <HeaderInfo label="Size" /></th>
+                  <th>Description <HeaderInfo label="Description" /></th>
+                  <th style={{ width: 140 }}>Adjust qty (±) <HeaderInfo label="Adjust qty (±)" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -185,7 +186,7 @@ export function ManualAdjustmentInput({ editable }: { editable: boolean }) {
             <table className="wf-grid">
               <thead>
                 <tr>
-                  <th>Entered</th><th>PO</th><th>SKU</th><th>Adjust qty</th><th>PO type</th><th>By</th><th>BigQuery</th>
+                  <th>Entered <HeaderInfo label="Entered" /></th><th>PO <HeaderInfo label="PO" /></th><th>SKU <HeaderInfo label="SKU" /></th><th>Adjust qty <HeaderInfo label="Adjust qty" /></th><th>PO type <HeaderInfo label="PO type" /></th><th>By <HeaderInfo label="By" /></th><th>BigQuery <HeaderInfo label="BigQuery" /></th>
                 </tr>
               </thead>
               <tbody>

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import type { CostAnalyticsRow } from '@/lib/cost-analytics.server';
 
 type Dim = 'vendor' | 'product' | 'category';
@@ -124,11 +125,11 @@ function StdActualLens({ rows }: { rows: CostAnalyticsRow[] }) {
             <thead>
               <tr>
                 <th>{dim[0].toUpperCase() + dim.slice(1)}</th>
-                <th className="num">POs</th>
-                <th className="num">Avg Δ / unit</th>
-                <th className="num">Avg Δ %</th>
-                <th className="num">Total Δ value</th>
-                <th>Tendency</th>
+                <th className="num">POs <HeaderInfo label="POs" /></th>
+                <th className="num">Avg Δ / unit <HeaderInfo label="Avg Δ / unit" /></th>
+                <th className="num">Avg Δ % <HeaderInfo label="Avg Δ %" /></th>
+                <th className="num">Total Δ value <HeaderInfo label="Total Δ value" /></th>
+                <th>Tendency <HeaderInfo label="Tendency" /></th>
               </tr>
             </thead>
             <tbody>
@@ -175,16 +176,16 @@ function PoLevelTable({ rows }: { rows: CostAnalyticsRow[] }) {
     <table className="wf-grid ca-po-table">
       <thead>
         <tr>
-          <th>PO</th>
-          <th>Product</th>
-          <th>Vendor</th>
-          <th>Type</th>
-          <th className="num">Qty</th>
-          <th className="num">Standard</th>
-          <th className="num">Expected</th>
-          <th className="num">Actual</th>
-          <th className="num">Δ / unit</th>
-          <th className="num">Δ value</th>
+          <th>PO <HeaderInfo label="PO" /></th>
+          <th>Product <HeaderInfo label="Product" /></th>
+          <th>Vendor <HeaderInfo label="Vendor" /></th>
+          <th>Type <HeaderInfo label="Type" /></th>
+          <th className="num">Qty <HeaderInfo label="Qty" /></th>
+          <th className="num">Standard <HeaderInfo label="Standard" /></th>
+          <th className="num">Expected <HeaderInfo label="Expected" /></th>
+          <th className="num">Actual <HeaderInfo label="Actual" /></th>
+          <th className="num">Δ / unit <HeaderInfo label="Δ / unit" /></th>
+          <th className="num">Δ value <HeaderInfo label="Δ value" /></th>
         </tr>
       </thead>
       <tbody>
@@ -262,10 +263,10 @@ function EfobLens({ rows }: { rows: CostAnalyticsRow[] }) {
             <thead>
               <tr>
                 <th>{dim[0].toUpperCase() + dim.slice(1)}</th>
-                <th className="num">EFOB POs</th>
-                <th className="num">Avg Δ / unit</th>
-                <th className="num">Avg Δ %</th>
-                <th className="num">Total Δ value</th>
+                <th className="num">EFOB POs <HeaderInfo label="EFOB POs" /></th>
+                <th className="num">Avg Δ / unit <HeaderInfo label="Avg Δ / unit" /></th>
+                <th className="num">Avg Δ % <HeaderInfo label="Avg Δ %" /></th>
+                <th className="num">Total Δ value <HeaderInfo label="Total Δ value" /></th>
               </tr>
             </thead>
             <tbody>

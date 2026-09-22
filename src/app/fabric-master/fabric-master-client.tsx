@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Plus, Save } from 'lucide-react';
@@ -168,7 +169,7 @@ export function FabricMasterClient({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th {...sort.th('fabric_code', (f) => f.fabric_code)}>Fabric code {sort.ind('fabric_code')}</th>
+                <th {...sort.th('fabric_code', (f) => f.fabric_code)}>Fabric code {sort.ind('fabric_code')} <HeaderInfo label="Fabric code" /></th>
                 {FIELDS.map(({ key, label }) => (
                   <th
                     key={key}
@@ -178,7 +179,7 @@ export function FabricMasterClient({
                     {label} {sort.ind(key)}
                   </th>
                 ))}
-                <th {...sort.th('active', (f) => (f.is_active ? 1 : 0))}>Active {sort.ind('active')}</th>
+                <th {...sort.th('active', (f) => (f.is_active ? 1 : 0))}>Active {sort.ind('active')} <HeaderInfo label="Active" /></th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>

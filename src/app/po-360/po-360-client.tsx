@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { InfoDot } from '@/components/info-dot';
 import type { PoHubData, PoHubRow } from '@/lib/po-hub.server';
 import type { InternalStatus } from '@/lib/types';
@@ -83,15 +84,15 @@ export function Po360Client({ data }: { data: PoHubData }) {
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>PO</th>
-                <th>Product</th>
-                <th>Vendor</th>
-                <th>Type</th>
-                <th className="num">Open value</th>
-                <th>EDD</th>
-                <th className="num">Delay</th>
-                <th>Status · blocking stage</th>
-                <th className="num">Cost Δ (₹ total, top 3 this month)</th>
+                <th>PO <HeaderInfo label="PO" /></th>
+                <th>Product <HeaderInfo label="Product" /></th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Type <HeaderInfo label="Type" /></th>
+                <th className="num">Open value <HeaderInfo label="Open value" /></th>
+                <th>EDD <HeaderInfo label="EDD" /></th>
+                <th className="num">Delay <HeaderInfo label="Delay" /></th>
+                <th>Status · blocking stage <HeaderInfo label="Status · blocking stage" /></th>
+                <th className="num">Cost Δ (₹ total, top 3 this month) <HeaderInfo label="Cost Δ (₹ total, top 3 this month)" /></th>
               </tr>
             </thead>
             <tbody>

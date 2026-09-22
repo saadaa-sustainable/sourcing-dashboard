@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { HeaderInfo } from '@/components/header-info';
 import { ArrowUpRight } from 'lucide-react';
 import type { PpmPrep } from '@/lib/forms/types';
 
@@ -140,10 +141,10 @@ export function PpmPrepClient({ prep }: { prep: PpmPrep }) {
           <table className="wide-table">
             <thead>
               <tr>
-                <th>PO</th>
-                <th>Vendor</th>
-                <th>Status</th>
-                <th>Why (current stage)</th>
+                <th>PO <HeaderInfo label="PO" /></th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Status <HeaderInfo label="Status" /></th>
+                <th>Why (current stage) <HeaderInfo label="Why (current stage)" /></th>
               </tr>
             </thead>
             <tbody>

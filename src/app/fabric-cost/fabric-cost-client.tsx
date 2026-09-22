@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { Calculator, Download, Save, Upload } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
@@ -202,14 +203,14 @@ export function FabricCostClient({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th {...sort.th('fabric_code', (d) => d.fabric_code)}>Fabric code {sort.ind('fabric_code')}</th>
-                <th className="num input-col wf-yarn-col" {...sort.th('yarn_cost', (d) => n(d.yarn_cost))}>Yarn cost {sort.ind('yarn_cost')}</th>
-                <th className="num input-col wf-yarn-col" {...sort.th('conversion_cost', (d) => n(d.conversion_cost))}>Conversion {sort.ind('conversion_cost')}</th>
+                <th {...sort.th('fabric_code', (d) => d.fabric_code)}>Fabric code {sort.ind('fabric_code')} <HeaderInfo label="Fabric code" /></th>
+                <th className="num input-col wf-yarn-col" {...sort.th('yarn_cost', (d) => n(d.yarn_cost))}>Yarn cost {sort.ind('yarn_cost')} <HeaderInfo label="Yarn cost" /></th>
+                <th className="num input-col wf-yarn-col" {...sort.th('conversion_cost', (d) => n(d.conversion_cost))}>Conversion {sort.ind('conversion_cost')} <HeaderInfo label="Conversion" /></th>
                 <th className="wf-yarn-col" aria-label="Compute grey" />
-                <th className="num input-col" {...sort.th('grey_rate', (d) => n(d.grey_rate))}>Grey rate {sort.ind('grey_rate')}</th>
-                <th className="num input-col" {...sort.th('processing_cost', (d) => n(d.processing_cost))}>Processing {sort.ind('processing_cost')}</th>
-                <th className="num input-col" {...sort.th('finished_fabric_cost', (d) => n(d.finished_fabric_cost))}>Finished cost {sort.ind('finished_fabric_cost')}</th>
-                <th className="input-col">Notes</th>
+                <th className="num input-col" {...sort.th('grey_rate', (d) => n(d.grey_rate))}>Grey rate {sort.ind('grey_rate')} <HeaderInfo label="Grey rate" /></th>
+                <th className="num input-col" {...sort.th('processing_cost', (d) => n(d.processing_cost))}>Processing {sort.ind('processing_cost')} <HeaderInfo label="Processing" /></th>
+                <th className="num input-col" {...sort.th('finished_fabric_cost', (d) => n(d.finished_fabric_cost))}>Finished cost {sort.ind('finished_fabric_cost')} <HeaderInfo label="Finished cost" /></th>
+                <th className="input-col">Notes <HeaderInfo label="Notes" /></th>
               </tr>
             </thead>
             <tbody>

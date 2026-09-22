@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
@@ -485,14 +486,14 @@ export function MaterialPlanClient({
                         text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."}
                       />
                     </th>
-                    {type === 'dyed' && <th className="input-col wf-cell-input">Colour</th>}
-                    <th className="num input-col wf-cell-input">Job Work qty</th>
-                    <th className="num wf-cell-calc">Job rate</th>
-                    <th className="num input-col wf-cell-input">Purchase qty</th>
-                    <th className="num wf-cell-calc">Purchase rate</th>
-                    <th className="input-col wf-cell-input">UOM</th>
-                    <th className="input-col wf-cell-input">Remark</th>
-                    <th className="num wf-cell-calc">Value</th>
+                    {type === 'dyed' && <th className="input-col wf-cell-input">Colour <HeaderInfo label="Colour" /></th>}
+                    <th className="num input-col wf-cell-input">Job Work qty <HeaderInfo label="Job Work qty" /></th>
+                    <th className="num wf-cell-calc">Job rate <HeaderInfo label="Job rate" /></th>
+                    <th className="num input-col wf-cell-input">Purchase qty <HeaderInfo label="Purchase qty" /></th>
+                    <th className="num wf-cell-calc">Purchase rate <HeaderInfo label="Purchase rate" /></th>
+                    <th className="input-col wf-cell-input">UOM <HeaderInfo label="UOM" /></th>
+                    <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
+                    <th className="num wf-cell-calc">Value <HeaderInfo label="Value" /></th>
                     {editable && <th aria-label="Remove" />}
                   </tr>
                 </thead>
@@ -667,13 +668,13 @@ USE: read-only; the Input view is where quantities change.`} />
             <table className="wide-table">
               <thead>
                 <tr>
-                  <th>Code</th>
-                  {g.key === 'dyed' && <th>Colour</th>}
-                  <th className="num">Job qty</th>
-                  <th className="num">Purchase qty</th>
-                  <th>UOM</th>
-                  <th>Remark</th>
-                  <th className="num">Value</th>
+                  <th>Code <HeaderInfo label="Code" /></th>
+                  {g.key === 'dyed' && <th>Colour <HeaderInfo label="Colour" /></th>}
+                  <th className="num">Job qty <HeaderInfo label="Job qty" /></th>
+                  <th className="num">Purchase qty <HeaderInfo label="Purchase qty" /></th>
+                  <th>UOM <HeaderInfo label="UOM" /></th>
+                  <th>Remark <HeaderInfo label="Remark" /></th>
+                  <th className="num">Value <HeaderInfo label="Value" /></th>
                 </tr>
               </thead>
               <tbody>

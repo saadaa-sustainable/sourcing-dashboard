@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import type { VendorRecommendationRow } from '@/lib/forms/types';
@@ -218,11 +219,11 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
             <table className="wide-table wf-grid vr-grid">
               <thead>
                 <tr>
-                  <th>Vendor</th>
-                  <th className="num">Completion</th>
-                  <th className="num">On-time</th>
-                  <th className="num">Delay</th>
-                  <th className="num">POs</th>
+                  <th>Vendor <HeaderInfo label="Vendor" /></th>
+                  <th className="num">Completion <HeaderInfo label="Completion" /></th>
+                  <th className="num">On-time <HeaderInfo label="On-time" /></th>
+                  <th className="num">Delay <HeaderInfo label="Delay" /></th>
+                  <th className="num">POs <HeaderInfo label="POs" /></th>
                 </tr>
               </thead>
               <tbody>

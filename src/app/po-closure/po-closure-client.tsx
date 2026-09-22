@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { ChevronDown, ChevronRight, Play, Save } from 'lucide-react';
 import { initiateClosure, submitFinanceLeg, submitSourcingLeg } from '@/lib/forms/actions';
@@ -96,8 +97,8 @@ export function PoClosureClient({
             <thead>
               <tr>
                 <th aria-label="SLA" />
-                <th>PO</th><th>Product</th><th>Completed</th><th className="num">Days open</th>
-                <th>Stage</th><th className="num">Surplus</th><th aria-label="expand" />
+                <th>PO <HeaderInfo label="PO" /></th><th>Product <HeaderInfo label="Product" /></th><th>Completed <HeaderInfo label="Completed" /></th><th className="num">Days open <HeaderInfo label="Days open" /></th>
+                <th>Stage <HeaderInfo label="Stage" /></th><th className="num">Surplus <HeaderInfo label="Surplus" /></th><th aria-label="expand" />
               </tr>
             </thead>
             <tbody>

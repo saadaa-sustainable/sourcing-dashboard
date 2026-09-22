@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
@@ -398,14 +399,14 @@ function BuyingPlanApprovalLines({
             <thead>
               <tr>
                 <th rowSpan={2}>{item.track === 'material' ? 'Type' : 'Fabric'}</th>
-                <th className="num" colSpan={2}>Pending</th>
-                <th className="num" colSpan={2}>Approved</th>
+                <th className="num" colSpan={2}>Pending <HeaderInfo label="Pending" /></th>
+                <th className="num" colSpan={2}>Approved <HeaderInfo label="Approved" /></th>
               </tr>
               <tr>
-                <th className="num">Qty</th>
-                <th className="num">Value</th>
-                <th className="num">Qty</th>
-                <th className="num">Value</th>
+                <th className="num">Qty <HeaderInfo label="Qty" /></th>
+                <th className="num">Value <HeaderInfo label="Value" /></th>
+                <th className="num">Qty <HeaderInfo label="Qty" /></th>
+                <th className="num">Value <HeaderInfo label="Value" /></th>
               </tr>
             </thead>
             <tbody>
@@ -436,10 +437,10 @@ function BuyingPlanApprovalLines({
                 />
               </th>
               <th>{item.track === 'material' ? 'Material' : 'Product'}</th>
-              <th className="num">Qty</th>
-              <th className="num">Value</th>
+              <th className="num">Qty <HeaderInfo label="Qty" /></th>
+              <th className="num">Value <HeaderInfo label="Value" /></th>
               <th>{item.track === 'material' ? 'Type' : 'Fabric'}</th>
-              <th>State</th>
+              <th>State <HeaderInfo label="State" /></th>
             </tr>
           </thead>
           <tbody>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Bot, ChevronDown, ChevronRight, Plus, Send, UserRound } from 'lucide-react';
@@ -171,12 +172,12 @@ export function IssuesClient({
           <table className="wide-table iss-table">
             <thead>
               <tr>
-                <th>Issue</th>
-                <th>About</th>
-                <th>Raised by</th>
-                <th>Assigned to</th>
-                <th className="num">Days</th>
-                <th>Status</th>
+                <th>Issue <HeaderInfo label="Issue" /></th>
+                <th>About <HeaderInfo label="About" /></th>
+                <th>Raised by <HeaderInfo label="Raised by" /></th>
+                <th>Assigned to <HeaderInfo label="Assigned to" /></th>
+                <th className="num">Days <HeaderInfo label="Days" /></th>
+                <th>Status <HeaderInfo label="Status" /></th>
               </tr>
             </thead>
             <tbody>
@@ -535,8 +536,8 @@ function RoutingPanel({ routes, people, isAdmin }: { routes: IssueRoute[]; peopl
         <table className="wide-table">
           <thead>
             <tr>
-              <th>Category</th>
-              <th>Routes to</th>
+              <th>Category <HeaderInfo label="Category" /></th>
+              <th>Routes to <HeaderInfo label="Routes to" /></th>
               {isAdmin && <th />}
             </tr>
           </thead>

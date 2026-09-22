@@ -1,6 +1,7 @@
 'use client';
 
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
+import { HeaderInfo } from '@/components/header-info';
 import { useMemo, useState } from 'react';
 import { InfoDot } from '@/components/info-dot';
 import type { VendorHubData, VendorHubRow } from '@/lib/vendor-hub.server';
@@ -90,17 +91,17 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Vendor</th>
-                <th>Weave</th>
-                <th className="num">Open value</th>
-                <th className="num">Share</th>
-                <th className="num">Open POs</th>
-                <th className="num">Delay %</th>
-                <th className="num">OTIF</th>
-                <th className="num">On-time</th>
-                <th className="num">Fill</th>
-                <th className="num">PO capacity</th>
-                <th className="num">Utilisation</th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Weave <HeaderInfo label="Weave" /></th>
+                <th className="num">Open value <HeaderInfo label="Open value" /></th>
+                <th className="num">Share <HeaderInfo label="Share" /></th>
+                <th className="num">Open POs <HeaderInfo label="Open POs" /></th>
+                <th className="num">Delay % <HeaderInfo label="Delay %" /></th>
+                <th className="num">OTIF <HeaderInfo label="OTIF" /></th>
+                <th className="num">On-time <HeaderInfo label="On-time" /></th>
+                <th className="num">Fill <HeaderInfo label="Fill" /></th>
+                <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
+                <th className="num">Utilisation <HeaderInfo label="Utilisation" /></th>
               </tr>
             </thead>
             <tbody>

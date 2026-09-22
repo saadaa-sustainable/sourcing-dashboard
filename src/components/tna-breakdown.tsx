@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import { HeaderInfo } from '@/components/header-info';
 import { FileText } from "lucide-react";
 import { stageDelay } from "@/lib/business-logic";
 import type { StageInspection, TnaRecord, TrackerRow } from "@/lib/types";
@@ -56,12 +57,12 @@ export function TnaBreakdown({ row }: { row: TrackerRow }) {
       <table className="tna-breakdown-table">
         <thead>
           <tr>
-            <th>Stage</th>
-            <th>Planned (TNA)</th>
-            <th>Actual (pass)</th>
-            <th>On-time / delay</th>
-            <th>Inspections</th>
-            <th>Report</th>
+            <th>Stage <HeaderInfo label="Stage" /></th>
+            <th>Planned (TNA) <HeaderInfo label="Planned (TNA)" /></th>
+            <th>Actual (pass) <HeaderInfo label="Actual (pass)" /></th>
+            <th>On-time / delay <HeaderInfo label="On-time / delay" /></th>
+            <th>Inspections <HeaderInfo label="Inspections" /></th>
+            <th>Report <HeaderInfo label="Report" /></th>
           </tr>
         </thead>
         <tbody>

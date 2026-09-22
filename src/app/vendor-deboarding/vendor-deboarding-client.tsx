@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { UserX } from 'lucide-react';
 import { reloadWithToast } from '@/lib/toast';
 import { createVendorDeboardingRequest } from '@/lib/forms/actions';
@@ -279,17 +280,17 @@ export function VendorDeboardingClient({
           <table className="wide-table">
             <thead>
               <tr>
-                <th>Vendor</th>
-                <th>Reason</th>
-                <th>Ratings (1–5)</th>
-                <th className="num">POs done</th>
-                <th className="num">Late 15–29d / 30–60d / &gt;60d</th>
-                <th className="num">Rejection %</th>
-                <th>Resolvable</th>
-                <th>Remarks</th>
-                <th>Status</th>
-                <th>Requested by</th>
-                <th>Decision</th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Reason <HeaderInfo label="Reason" /></th>
+                <th>Ratings (1–5) <HeaderInfo label="Ratings (1–5)" /></th>
+                <th className="num">POs done <HeaderInfo label="POs done" /></th>
+                <th className="num">Late 15–29d / 30–60d / &gt;60d <HeaderInfo label="Late 15–29d / 30–60d / &gt;60d" /></th>
+                <th className="num">Rejection % <HeaderInfo label="Rejection %" /></th>
+                <th>Resolvable <HeaderInfo label="Resolvable" /></th>
+                <th>Remarks <HeaderInfo label="Remarks" /></th>
+                <th>Status <HeaderInfo label="Status" /></th>
+                <th>Requested by <HeaderInfo label="Requested by" /></th>
+                <th>Decision <HeaderInfo label="Decision" /></th>
               </tr>
             </thead>
             <tbody>

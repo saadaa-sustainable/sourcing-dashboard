@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { CalendarClock, Check, CircleAlert } from 'lucide-react';
 import { submitFabricRate } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
@@ -57,11 +58,11 @@ export function FabricRateSubmissionPanel({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Fabric</th>
-                <th className="num">Grey (live)</th>
-                <th className="num">Finished (live)</th>
-                <th>This month</th>
-                {editable && <th>Submit</th>}
+                <th>Fabric <HeaderInfo label="Fabric" /></th>
+                <th className="num">Grey (live) <HeaderInfo label="Grey (live)" /></th>
+                <th className="num">Finished (live) <HeaderInfo label="Finished (live)" /></th>
+                <th>This month <HeaderInfo label="This month" /></th>
+                {editable && <th>Submit <HeaderInfo label="Submit" /></th>}
               </tr>
             </thead>
             <tbody>

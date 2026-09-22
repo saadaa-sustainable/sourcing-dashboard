@@ -1,3 +1,4 @@
+import { HeaderInfo } from '@/components/header-info';
 /**
  * Woven-vs-Knitted pivot summary for the Buying Plan, shared by the plan's View
  * mode and the Approvals screen. Shows two prominent big-number totals (Total
@@ -71,14 +72,14 @@ export function PlanPivot({ rows, title }: { rows: PivotRow[]; title?: string })
             <thead>
               <tr>
                 <th rowSpan={2}>Fabric</th>
-                <th colSpan={2} className="num wf-pivot-pending">Pending approval</th>
-                <th colSpan={2} className="num wf-pivot-approved">Approved</th>
+                <th colSpan={2} className="num wf-pivot-pending">Pending approval <HeaderInfo label="Pending approval" /></th>
+                <th colSpan={2} className="num wf-pivot-approved">Approved <HeaderInfo label="Approved" /></th>
               </tr>
               <tr>
-                <th className="num wf-pivot-pending">Qty</th>
-                <th className="num wf-pivot-pending">Value</th>
-                <th className="num wf-pivot-approved">Qty</th>
-                <th className="num wf-pivot-approved">Value</th>
+                <th className="num wf-pivot-pending">Qty <HeaderInfo label="Qty" /></th>
+                <th className="num wf-pivot-pending">Value <HeaderInfo label="Value" /></th>
+                <th className="num wf-pivot-approved">Qty <HeaderInfo label="Qty" /></th>
+                <th className="num wf-pivot-approved">Value <HeaderInfo label="Value" /></th>
               </tr>
             </thead>
             <tbody>

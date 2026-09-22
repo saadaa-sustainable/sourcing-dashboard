@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
@@ -419,12 +420,12 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
           <thead>
             <tr>
               <th>{head}</th>
-              <th className="num">POs</th>
-              {mode === 'product' && <th className="num">Variants</th>}
-              <th className="num">Arriving qty</th>
-              <th className="num">Planned qty</th>
-              <th className="num">% planned</th>
-              <th className="num">OOS lines</th>
+              <th className="num">POs <HeaderInfo label="POs" /></th>
+              {mode === 'product' && <th className="num">Variants <HeaderInfo label="Variants" /></th>}
+              <th className="num">Arriving qty <HeaderInfo label="Arriving qty" /></th>
+              <th className="num">Planned qty <HeaderInfo label="Planned qty" /></th>
+              <th className="num">% planned <HeaderInfo label="% planned" /></th>
+              <th className="num">OOS lines <HeaderInfo label="OOS lines" /></th>
             </tr>
           </thead>
           <tbody>

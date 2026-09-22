@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { ChevronDown, Eye, EyeOff, LayoutList, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
@@ -164,7 +165,7 @@ function TabsManager({
           <div className="table-scroll">
             <table className="wf-grid">
               <thead>
-                <tr><th>Tab</th><th>Path</th><th>Status</th><th aria-label="Toggle" /></tr>
+                <tr><th>Tab <HeaderInfo label="Tab" /></th><th>Path <HeaderInfo label="Path" /></th><th>Status <HeaderInfo label="Status" /></th><th aria-label="Toggle" /></tr>
               </thead>
               <tbody>
                 {items.map((it) => {
@@ -315,12 +316,12 @@ function MembersTab({
           <table className="wf-grid">
             <thead>
               <tr>
-                <th {...sort.th('email', (u) => u.email)}>Email {sort.ind('email')}</th>
-                <th {...sort.th('name', (u) => u.full_name)}>Name {sort.ind('name')}</th>
-                <th {...sort.th('role', (u) => u.role)}>Access level {sort.ind('role')}</th>
-                <th>Roles (views)</th>
-                <th {...sort.th('active', (u) => (u.is_active ? 1 : 0))}>Active {sort.ind('active')}</th>
-                <th {...sort.th('seen', (u) => u.last_seen_at ?? '')}>Last active {sort.ind('seen')}</th>
+                <th {...sort.th('email', (u) => u.email)}>Email {sort.ind('email')} <HeaderInfo label="Email" /></th>
+                <th {...sort.th('name', (u) => u.full_name)}>Name {sort.ind('name')} <HeaderInfo label="Name" /></th>
+                <th {...sort.th('role', (u) => u.role)}>Access level {sort.ind('role')} <HeaderInfo label="Access level" /></th>
+                <th>Roles (views) <HeaderInfo label="Roles (views)" /></th>
+                <th {...sort.th('active', (u) => (u.is_active ? 1 : 0))}>Active {sort.ind('active')} <HeaderInfo label="Active" /></th>
+                <th {...sort.th('seen', (u) => u.last_seen_at ?? '')}>Last active {sort.ind('seen')} <HeaderInfo label="Last active" /></th>
                 <th aria-label="Save" />
               </tr>
             </thead>

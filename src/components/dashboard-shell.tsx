@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { HeaderInfo } from '@/components/header-info';
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -2463,19 +2464,19 @@ function VendorTable({
           <table>
             <thead>
               <tr>
-                <th>Vendor</th>
-                <th>Merchant</th>
-                <th>Open POs</th>
-                <th>Delayed</th>
-                <th>Delay %</th>
-                <th>Open qty</th>
-                <th>Open value</th>
-                <th>Machines</th>
-                <th>Active karigar</th>
-                <th>Latest karigar</th>
-                <th>Capacity/mo</th>
-                <th>PO capacity</th>
-                <th>Utilization</th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Merchant <HeaderInfo label="Merchant" /></th>
+                <th>Open POs <HeaderInfo label="Open POs" /></th>
+                <th>Delayed <HeaderInfo label="Delayed" /></th>
+                <th>Delay % <HeaderInfo label="Delay %" /></th>
+                <th>Open qty <HeaderInfo label="Open qty" /></th>
+                <th>Open value <HeaderInfo label="Open value" /></th>
+                <th>Machines <HeaderInfo label="Machines" /></th>
+                <th>Active karigar <HeaderInfo label="Active karigar" /></th>
+                <th>Latest karigar <HeaderInfo label="Latest karigar" /></th>
+                <th>Capacity/mo <HeaderInfo label="Capacity/mo" /></th>
+                <th>PO capacity <HeaderInfo label="PO capacity" /></th>
+                <th>Utilization <HeaderInfo label="Utilization" /></th>
               </tr>
             </thead>
             <tbody>
@@ -2775,7 +2776,7 @@ function VendorTab({ data, capacityRules = DEFAULT_CAPACITY_RULES }: { data: Das
           <table>
             <thead>
               <tr>
-                <th>Vendor</th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
                 {types.map((t) => (
                   <th key={t}>{t}</th>
                 ))}
@@ -3807,7 +3808,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
                   {displayVendors.map((v) => (
                     <th key={v}>{v}</th>
                   ))}
-                  <th>Total</th>
+                  <th>Total <HeaderInfo label="Total" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -4108,12 +4109,12 @@ export function DashboardShell({
             <table>
               <thead>
                 <tr>
-                  <th>SKU</th>
-                  <th>Variant</th>
-                  <th>Size</th>
-                  <th>Original</th>
-                  <th>Pending actual</th>
-                  <th>Price</th>
+                  <th>SKU <HeaderInfo label="SKU" /></th>
+                  <th>Variant <HeaderInfo label="Variant" /></th>
+                  <th>Size <HeaderInfo label="Size" /></th>
+                  <th>Original <HeaderInfo label="Original" /></th>
+                  <th>Pending actual <HeaderInfo label="Pending actual" /></th>
+                  <th>Price <HeaderInfo label="Price" /></th>
                 </tr>
               </thead>
               <tbody>
@@ -4162,12 +4163,12 @@ export function DashboardShell({
                 <table>
                   <thead>
                     <tr>
-                      <th>PO</th>
-                      <th>Vendor</th>
-                      <th>SKU</th>
-                      <th>EDD</th>
-                      <th>Original</th>
-                      <th>Pending</th>
+                      <th>PO <HeaderInfo label="PO" /></th>
+                      <th>Vendor <HeaderInfo label="Vendor" /></th>
+                      <th>SKU <HeaderInfo label="SKU" /></th>
+                      <th>EDD <HeaderInfo label="EDD" /></th>
+                      <th>Original <HeaderInfo label="Original" /></th>
+                      <th>Pending <HeaderInfo label="Pending" /></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4224,12 +4225,12 @@ export function DashboardShell({
                 <table>
                   <thead>
                     <tr>
-                      <th>PO</th>
-                      <th>Vendor</th>
-                      <th>SKU</th>
-                      <th>EDD</th>
-                      <th>Original</th>
-                      <th>Pending</th>
+                      <th>PO <HeaderInfo label="PO" /></th>
+                      <th>Vendor <HeaderInfo label="Vendor" /></th>
+                      <th>SKU <HeaderInfo label="SKU" /></th>
+                      <th>EDD <HeaderInfo label="EDD" /></th>
+                      <th>Original <HeaderInfo label="Original" /></th>
+                      <th>Pending <HeaderInfo label="Pending" /></th>
                     </tr>
                   </thead>
                   <tbody>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import {
   ChevronDown,
@@ -1058,24 +1059,24 @@ export function BuyingPlanClient({
                     <table className="wide-table wf-grid">
                       <thead>
                         <tr>
-                          <th>Product code</th>
-                          <th>Category</th>
-                          <th>Product State</th>
-                          <th>Woven / Knitted</th>
-                          <th className="num wf-cell-calc">Pending qty</th>
-                          <th className="num input-col wf-cell-input">Job work qty</th>
-                          <th className="num input-col wf-cell-input">E-FOB qty</th>
-                          <th className="num input-col wf-cell-input">FOB qty</th>
-                          <th className="num wf-cell-calc">Total quantity</th>
+                          <th>Product code <HeaderInfo label="Product code" /></th>
+                          <th>Category <HeaderInfo label="Category" /></th>
+                          <th>Product State <HeaderInfo label="Product State" /></th>
+                          <th>Woven / Knitted <HeaderInfo label="Woven / Knitted" /></th>
+                          <th className="num wf-cell-calc">Pending qty <HeaderInfo label="Pending qty" /></th>
+                          <th className="num input-col wf-cell-input">Job work qty <HeaderInfo label="Job work qty" /></th>
+                          <th className="num input-col wf-cell-input">E-FOB qty <HeaderInfo label="E-FOB qty" /></th>
+                          <th className="num input-col wf-cell-input">FOB qty <HeaderInfo label="FOB qty" /></th>
+                          <th className="num wf-cell-calc">Total quantity <HeaderInfo label="Total quantity" /></th>
                           <th className="num wf-cell-calc">
                             Standard cost
                             <small className="wf-subtle">Job · E-FOB · FOB</small>
-                          </th>
-                          <th className="num wf-cell-calc">Value to be bought</th>
-                          <th className="num wf-cell-calc">Actual issued quantity</th>
-                          <th className="num wf-cell-calc">Actual issued value</th>
-                          <th className="input-col wf-cell-input">Remark</th>
-                          <th>Validation</th>
+                           <HeaderInfo label="Standard cost Job · E-FOB · FOB" /></th>
+                          <th className="num wf-cell-calc">Value to be bought <HeaderInfo label="Value to be bought" /></th>
+                          <th className="num wf-cell-calc">Actual issued quantity <HeaderInfo label="Actual issued quantity" /></th>
+                          <th className="num wf-cell-calc">Actual issued value <HeaderInfo label="Actual issued value" /></th>
+                          <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
+                          <th>Validation <HeaderInfo label="Validation" /></th>
                           {editable && <th aria-label="Remove" />}
                         </tr>
                       </thead>

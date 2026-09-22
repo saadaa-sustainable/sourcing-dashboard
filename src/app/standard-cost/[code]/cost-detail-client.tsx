@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import Link from 'next/link';
 import { ArrowLeft, Lock, Pencil, X } from 'lucide-react';
 import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor } from '@/lib/forms/cost';
@@ -171,22 +172,22 @@ export function StandardCostDetailClient({
             <table className="wf-grid wf-cost-sheet">
               <thead>
                 <tr>
-                  <th>Product</th>
-                  <th className="num">Proposed</th>
-                  <th className="num">Target</th>
+                  <th>Product <HeaderInfo label="Product" /></th>
+                  <th className="num">Proposed <HeaderInfo label="Proposed" /></th>
+                  <th className="num">Target <HeaderInfo label="Target" /></th>
                   {isMat ? (
                     <>
-                      <th className="num input-col">{rateLabels.fob} rate</th>
-                      <th className="num input-col">{rateLabels.job} rate</th>
+                      <th className="num input-col">{rateLabels.fob} rate <HeaderInfo label="rate" /></th>
+                      <th className="num input-col">{rateLabels.job} rate <HeaderInfo label="rate" /></th>
                     </>
                   ) : (
                     <>
-                      <th className="num input-col">{rateLabels.job} rate</th>
-                      <th className="num input-col">{rateLabels.fob} rate</th>
+                      <th className="num input-col">{rateLabels.job} rate <HeaderInfo label="rate" /></th>
+                      <th className="num input-col">{rateLabels.fob} rate <HeaderInfo label="rate" /></th>
                     </>
                   )}
-                  <th className="num input-col">{rateLabels.efob} rate</th>
-                  <th>Stage</th>
+                  <th className="num input-col">{rateLabels.efob} rate <HeaderInfo label="rate" /></th>
+                  <th>Stage <HeaderInfo label="Stage" /></th>
                   <th aria-label="Actions" />
                 </tr>
               </thead>

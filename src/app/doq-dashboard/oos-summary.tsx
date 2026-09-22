@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import {
   CartesianGrid,
   Legend,
@@ -390,14 +391,14 @@ function CategoryRow({
               <table>
                 <thead>
                   <tr>
-                    <th>SKU</th>
-                    <th>Colour</th>
-                    <th>Size</th>
-                    <th className="num">Stock yesterday</th>
-                    <th className="num">Days empty, last 45</th>
-                    <th className="num">Days empty, last 365</th>
-                    <th className="num">Sells a day</th>
-                    <th>Where it stands</th>
+                    <th>SKU <HeaderInfo label="SKU" /></th>
+                    <th>Colour <HeaderInfo label="Colour" /></th>
+                    <th>Size <HeaderInfo label="Size" /></th>
+                    <th className="num">Stock yesterday <HeaderInfo label="Stock yesterday" /></th>
+                    <th className="num">Days empty, last 45 <HeaderInfo label="Days empty, last 45" /></th>
+                    <th className="num">Days empty, last 365 <HeaderInfo label="Days empty, last 365" /></th>
+                    <th className="num">Sells a day <HeaderInfo label="Sells a day" /></th>
+                    <th>Where it stands <HeaderInfo label="Where it stands" /></th>
                   </tr>
                 </thead>
                 <tbody>

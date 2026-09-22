@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { saveVendorTerms } from '@/lib/forms/actions';
@@ -90,11 +91,11 @@ export function CashFlowClient({
           <table className="wide-table wf-grid">
             <thead>
               <tr>
-                <th>Month due</th>
-                <th className="num">Received (invoiced)</th>
-                <th className="num">Projected (open PO)</th>
-                <th className="num">Total</th>
-                <th>Share</th>
+                <th>Month due <HeaderInfo label="Month due" /></th>
+                <th className="num">Received (invoiced) <HeaderInfo label="Received (invoiced)" /></th>
+                <th className="num">Projected (open PO) <HeaderInfo label="Projected (open PO)" /></th>
+                <th className="num">Total <HeaderInfo label="Total" /></th>
+                <th>Share <HeaderInfo label="Share" /></th>
               </tr>
             </thead>
             <tbody>
@@ -142,8 +143,8 @@ export function CashFlowClient({
             <table className="wf-grid">
               <thead>
                 <tr>
-                  <th {...termSort.th('vendor', (t) => t.vendor_name || t.vendor_code)}>Vendor {termSort.ind('vendor')}</th>
-                  <th className="num input-col" {...termSort.th('days', (t) => t.payment_terms_days)}>Payment terms (days) {termSort.ind('days')}</th>
+                  <th {...termSort.th('vendor', (t) => t.vendor_name || t.vendor_code)}>Vendor {termSort.ind('vendor')} <HeaderInfo label="Vendor" /></th>
+                  <th className="num input-col" {...termSort.th('days', (t) => t.payment_terms_days)}>Payment terms (days) {termSort.ind('days')} <HeaderInfo label="Payment terms (days)" /></th>
                   {editable && <th aria-label="Save" />}
                 </tr>
               </thead>

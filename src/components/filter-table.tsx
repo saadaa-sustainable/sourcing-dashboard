@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Download, ListFilter } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
+import { HeaderInfo } from '@/components/header-info';
 import { SourceLegend, SourceBar } from '@/components/source-legend';
 import { sourceOrder, type DataSourceKey } from '@/lib/data-source';
 import { downloadCsv, downloadPdf } from '@/lib/download';
@@ -470,7 +471,7 @@ export function FilterTable<T>({
                           {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}
                         </span>
                       )}
-                      {col.info && <InfoDot text={col.info} label={`About ${col.label}`} />}
+                      {col.info ? <InfoDot text={col.info} label={`About ${col.label}`} /> : <HeaderInfo label={col.label} />}
                       {(col.source ?? defaultSource) && <SourceBar source={(col.source ?? defaultSource)!} />}
                     </th>
                   );

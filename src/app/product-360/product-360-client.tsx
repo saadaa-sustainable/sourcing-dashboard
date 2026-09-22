@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { HeaderInfo } from '@/components/header-info';
 import { InfoDot } from '@/components/info-dot';
 import type { AbcClass, ProductHubData, ProductHubRow } from '@/lib/product-hub.server';
 
@@ -74,12 +75,12 @@ export function Product360Client({ data }: { data: ProductHubData }) {
           <table className="wf-grid">
             <thead>
               <tr>
-                <th>Variant</th>
-                <th>Product</th>
-                <th>Class</th>
-                <th className="num">Current stock</th>
-                <th className="num">DOQ (45d)</th>
-                <th>Status</th>
+                <th>Variant <HeaderInfo label="Variant" /></th>
+                <th>Product <HeaderInfo label="Product" /></th>
+                <th>Class <HeaderInfo label="Class" /></th>
+                <th className="num">Current stock <HeaderInfo label="Current stock" /></th>
+                <th className="num">DOQ (45d) <HeaderInfo label="DOQ (45d)" /></th>
+                <th>Status <HeaderInfo label="Status" /></th>
               </tr>
             </thead>
             <tbody>
