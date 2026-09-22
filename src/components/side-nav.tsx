@@ -62,66 +62,63 @@ type NavLink = {
   defaultOff?: boolean;
 };
 
-// Read-only analytical views. They're separate routes (not the SPA tabs above),
-// but they're just information to look at — so they belong in the Workspace
-// section with the dashboards, not among the operational Workflows below.
-// Admin-only flags live in the views registry (lib/views.ts) — canView applies
-// them together with the caller's custom-role page set.
-const WORKSPACE_LINKS: NavLink[] = [
-  // Entity one-pagers first (headline consolidated views).
-  { href: '/vendor-360', label: 'Vendor Overview', Icon: Factory },
-  { href: '/po-360', label: 'PO Overview', Icon: FileCheck },
-  { href: '/product-360', label: 'Product Overview', Icon: PackageX },
-  // Task-specific analytical views.
+// Sidebar groups, in the order the team asked for. Every href is still gated per user by
+// canView (custom roles) and by the User Panel's show/hide overrides; the grouping is
+// only where a link sits. Admin-only flags live in lib/views.ts.
+
+// OVERVIEW — the entity one-pagers, each paired with the dashboard tab that tracks the
+// same thing, plus the two dashboard tabs that have no page of their own.
+const OVERVIEW_PAIRS: { page: NavLink; tab: TabId; tabLabel: string }[] = [
+  { page: { href: '/po-360', label: 'PO Overview', Icon: FileCheck }, tab: 'open-po', tabLabel: 'PO Tracker' },
+  { page: { href: '/product-360', label: 'Product Overview', Icon: PackageX }, tab: 'products', tabLabel: 'Product Tracker' },
+  { page: { href: '/vendor-360', label: 'Vendor Overview', Icon: Factory }, tab: 'vendors', tabLabel: 'Vendor Performance' },
+];
+const OVERVIEW_TABS: TabId[] = ['merchants', 'matrix'];
+
+// OPERATIONS — the day-to-day analytical views.
+const OPERATIONS_LINKS: NavLink[] = [
   { href: '/ppm-prep', label: 'PPM Prep', Icon: CalendarClock },
   { href: '/replenishment', label: 'Replenishment', Icon: Repeat },
   { href: '/doq-dashboard', label: 'OOS Dashboard', Icon: CalendarClock },
   { href: '/oos-calculation', label: 'DOQ Calculation', Icon: PackageX },
   { href: '/vendor-recommendation', label: 'Vendor Recommendation', Icon: Award },
   { href: '/cost-analytics', label: 'Cost Analytics', Icon: IndianRupee },
-  // Off by default (folded elsewhere) — an admin can surface them via User Panel → Tabs.
-  { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Award, defaultOff: true },
+  { href: '/vendor-otif', label: 'Vendor OTIF', Icon: Award },
+  // Off by default (reachable from the bell); an admin can surface it via User Panel → Tabs.
   { href: '/feedback', label: 'Feedback & Issues', Icon: MessageSquare, defaultOff: true },
 ];
 
-// Operational pages, grouped by use case (DAM nav model: chronological
-// workflow sections, then masters, then system). Regrouping is cosmetic —
-// role gating stays per-href via canView.
-
-// Decide the buy: cost baseline, capacity check, the plan itself.
+// PLANNING — decide the buy: cost baseline, capacity, the plan, the receipts.
 const PLANNING_LINKS: NavLink[] = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
+  { href: '/receivable-plan', label: 'Inward Plan', Icon: PackageCheck },
 ];
 
-// The PO lifecycle in order: raise/approve → document → plan receipts →
-// production (cutting) → close out → pay.
+// PO WORKFLOW — raise/approve → document → close out → pay.
 const PO_WORKFLOW_LINKS: NavLink[] = [
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
-  { href: '/receivable-plan', label: 'Inward Plan', Icon: PackageCheck },
   { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
 ];
 
-// Cross-cutting governance: the approval queue, data corrections, lifecycle exits.
+// GOVERNANCE & DATA — the approval queue, data corrections, lifecycle exits, issues.
 const GOVERNANCE_LINKS: NavLink[] = [
   { href: '/approvals', label: 'Approvals', Icon: ClipboardCheck },
-  { href: '/issues', label: 'Issue Tracker', Icon: ClipboardList },
   { href: '/po-manual-adjustment', label: 'Manual Data Ingestion', Icon: FilePen },
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
+  { href: '/issues', label: 'Issue Tracker', Icon: ClipboardList },
   { href: '/vendor-deboarding', label: 'Vendor De-Boarding', Icon: UserX },
 ];
 
-// Reference data the workflows read from. All the masters now live under one
-// "Master" hub (inner tabs); the two raw datasets stay as their own entries.
+// MASTER DATA & DATASETS — the Master hub, the raw datasets, and each master on its own
+// (off by default because the hub holds them; an admin can surface any via User Panel → Tabs).
 const MASTERS_LINKS: NavLink[] = [
   { href: '/master', label: 'Master', Icon: Tags },
   { href: '/grn-detail', label: 'GRN Detail', Icon: PackageCheck },
   { href: '/doq', label: 'DOQ Dataset', Icon: Database },
-  // The individual masters live inside the Master hub by default; an admin can surface
-  // any of them as its own sidebar link via User Panel → Tabs.
   { href: '/product-master', label: 'Product Master', Icon: Tags, defaultOff: true },
   { href: '/category-mapping', label: 'Category Mapping', Icon: Tags, defaultOff: true },
   { href: '/vendor-master', label: 'Vendor Master', Icon: Factory, defaultOff: true },
@@ -130,7 +127,7 @@ const MASTERS_LINKS: NavLink[] = [
   { href: '/fabric-cost', label: 'Fabric Cost', Icon: IndianRupee, defaultOff: true },
 ];
 
-// System administration.
+// ADMIN — system administration.
 const ADMIN_LINKS: NavLink[] = [
   { href: '/users', label: 'User Panel', Icon: UserCog },
   { href: '/adoption', label: 'Adoption & Activity', Icon: Activity },
@@ -147,11 +144,12 @@ export function navPathVisible(href: string, overrides: Record<string, boolean>,
 /** Flat list of every sidebar-manageable tab (base + surfaceable extras), for the
  *  User Panel → Tabs manager. `defaultOff` marks pages hidden unless turned on. */
 export const NAV_ITEMS: { href: string; label: string; group: string; defaultOff: boolean }[] = [
-  ...WORKSPACE_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Workspace', defaultOff: !!l.defaultOff })),
+  ...OVERVIEW_PAIRS.map((p) => ({ href: p.page.href, label: p.page.label, group: 'Overview', defaultOff: !!p.page.defaultOff })),
+  ...OPERATIONS_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Operations', defaultOff: !!l.defaultOff })),
   ...PLANNING_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Planning', defaultOff: !!l.defaultOff })),
   ...PO_WORKFLOW_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'PO Workflow', defaultOff: !!l.defaultOff })),
   ...GOVERNANCE_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Governance & Data', defaultOff: !!l.defaultOff })),
-  ...MASTERS_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Masters & Datasets', defaultOff: !!l.defaultOff })),
+  ...MASTERS_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Master Data & Datasets', defaultOff: !!l.defaultOff })),
   ...ADMIN_LINKS.map((l) => ({ href: l.href, label: l.label, group: 'Admin', defaultOff: !!l.defaultOff })),
 ];
 
@@ -184,16 +182,38 @@ export function SideNav({
   const navOverrides = useNavOverrides();
   const visible = (links: NavLink[]) =>
     links.filter((l) => navPathVisible(l.href, navOverrides, l.defaultOff) && canView(l.href, role, allowedPages));
-  const workspace = visible(WORKSPACE_LINKS);
-  // Use-case sections below the Workspace block; a divider renders only when
-  // the caller can see at least one page in the group.
+  const tabVisible = (id: TabId) => canView(`tab:${id}`, role, allowedPages);
+  const tabMeta = (id: TabId) => tabs.find(([tid]) => tid === id)!;
+  // A divider renders only when the caller can see at least one item in the group.
   const groups: { title: string; links: NavLink[] }[] = [
+    { title: 'Operations', links: visible(OPERATIONS_LINKS) },
     { title: 'Planning', links: visible(PLANNING_LINKS) },
     { title: 'PO Workflow', links: visible(PO_WORKFLOW_LINKS) },
     { title: 'Governance & Data', links: visible(GOVERNANCE_LINKS) },
-    { title: 'Masters & Datasets', links: visible(MASTERS_LINKS) },
+    { title: 'Master Data & Datasets', links: visible(MASTERS_LINKS) },
     { title: 'Admin', links: visible(ADMIN_LINKS) },
   ];
+  const overviewPairs = OVERVIEW_PAIRS.filter(
+    (p) => (navPathVisible(p.page.href, navOverrides, p.page.defaultOff) && canView(p.page.href, role, allowedPages)) || tabVisible(p.tab),
+  );
+  const overviewTabs = OVERVIEW_TABS.filter(tabVisible);
+  // A dashboard tab: a button on the dashboard itself (instant), a link from anywhere else.
+  const renderTab = (id: TabId, labelOverride?: string, alt = false) => {
+    const [, label, Icon] = tabMeta(id);
+    const text = labelOverride ?? label;
+    const cls = `${activeTab === id ? 'active' : ''}${alt ? ' nav-pair-alt' : ''}`.trim();
+    return onTab ? (
+      <button key={id} className={cls} onClick={() => { onTab(id); close(); }} title={text}>
+        {!alt && <Icon size={18} />}
+        <span>{text}</span>
+      </button>
+    ) : (
+      <a key={id} href={`/?tab=${id}`} className={cls} onClick={close} title={text}>
+        {!alt && <Icon size={18} />}
+        <span>{text}</span>
+      </a>
+    );
+  };
   const renderLink = ({ href, label, Icon, external }: NavLink) => (
     <a
       key={href}
@@ -228,6 +248,7 @@ export function SideNav({
           </button>
         </div>
         <nav>
+          <div className="wf-nav-divider">Dashboard</div>
           {/* My Dashboard — the role-specific landing view, always first. */}
           <a
             href="/my-dashboard"
@@ -237,30 +258,31 @@ export function SideNav({
             <Handshake size={18} />
             <span>My Dashboard</span>
           </a>
-          {tabs
-            .filter(([id]) => id !== 'urgent-replenish')
-            .filter(([id]) => canView(`tab:${id}`, role, allowedPages))
-            .map(([id, label, Icon]) =>
-              onTab ? (
-                <button
-                  key={id}
-                  className={activeTab === id ? 'active' : ''}
-                  onClick={() => {
-                    onTab(id);
-                    close();
-                  }}
-                >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </button>
-              ) : (
-                <a key={id} href={`/?tab=${id}`} onClick={close}>
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </a>
-              ),
-            )}
-          {workspace.map(renderLink)}
+          {renderTab('dashboard')}
+
+          {(overviewPairs.length > 0 || overviewTabs.length > 0) && (
+            <div className="wf-nav-divider">Overview</div>
+          )}
+          {/* "PO Overview / PO Tracker": the one-pager and the dashboard tab that tracks the
+              same thing share a row; both halves are links. */}
+          {overviewPairs.map((p) => {
+            const pageOk =
+              navPathVisible(p.page.href, navOverrides, p.page.defaultOff) && canView(p.page.href, role, allowedPages);
+            const tabOk = tabVisible(p.tab);
+            return (
+              <div className="nav-pair" key={p.page.href}>
+                {pageOk ? renderLink(p.page) : renderTab(p.tab, p.tabLabel)}
+                {pageOk && tabOk && (
+                  <>
+                    <span className="nav-pair-sep" aria-hidden="true">/</span>
+                    {renderTab(p.tab, p.tabLabel, true)}
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {overviewTabs.map((id) => renderTab(id))}
+
           {groups.map(({ title, links }) =>
             links.length > 0 ? (
               <Fragment key={title}>

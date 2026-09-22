@@ -1865,3 +1865,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ana-foot-link { margin: 10px 0 0; font-size: 12px; }
 .ana-foot-link a { color: #2463a8; font-weight: 600; text-decoration: none; }
 .ana-foot-link a:hover { text-decoration: underline; }
+
+/* Sidebar: an Overview page paired with its dashboard tab on one row — "PO Overview / PO Tracker". */
+.sidebar nav .nav-pair { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.sidebar nav .nav-pair > a:first-child, .sidebar nav .nav-pair > button:first-child { flex: 1 1 auto; min-width: 0; }
+.sidebar nav .nav-pair-sep { color: var(--ink-4); font-size: 12px; padding: 0 1px; flex: 0 0 auto; }
+.sidebar nav .nav-pair-alt { flex: 0 1 auto; padding: 6px 8px; font-size: 11px; white-space: nowrap; }
+.sidebar nav .nav-pair-alt span { overflow: hidden; text-overflow: ellipsis; }

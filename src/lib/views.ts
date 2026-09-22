@@ -15,7 +15,7 @@
 export type ViewDef = {
   path: string;
   label: string;
-  group: 'Dashboard' | 'Workspace' | 'Workflows' | 'Data & Admin';
+  group: 'Dashboard' | 'Overview' | 'Operations' | 'Planning' | 'PO Workflow' | 'Governance & Data' | 'Master Data & Datasets' | 'Admin';
   adminOnly?: boolean;
 };
 
@@ -33,58 +33,58 @@ export const ALL_VIEWS: ViewDef[] = [
   // My Dashboard role views: my:<id> pseudo-paths, one per role view. Grant
   // the view to that team's custom role; /my-dashboard itself (the landing
   // page) is always visible and shows whichever views the user holds.
-  { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Workspace' },
-  { path: '/ppm-prep', label: 'PPM Prep', group: 'Workspace' },
-  { path: '/replenishment', label: 'Replenishment', group: 'Workspace', adminOnly: true },
-  { path: '/doq-dashboard', label: 'OOS Dashboard', group: 'Workspace' },
-  { path: '/oos-calculation', label: 'DOQ Calculation', group: 'Workspace' },
-  { path: '/vendor-360', label: 'Vendor Overview', group: 'Workspace' },
-  { path: '/po-360', label: 'PO Overview', group: 'Workspace' },
-  { path: '/product-360', label: 'Product Overview', group: 'Workspace' },
-  { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Workspace' },
+  { path: 'my:sourcing', label: 'My Dashboard — Sourcing view', group: 'Dashboard' },
+  { path: '/ppm-prep', label: 'PPM Prep', group: 'Operations' },
+  { path: '/replenishment', label: 'Replenishment', group: 'Operations', adminOnly: true },
+  { path: '/doq-dashboard', label: 'OOS Dashboard', group: 'Operations' },
+  { path: '/oos-calculation', label: 'DOQ Calculation', group: 'Operations' },
+  { path: '/vendor-360', label: 'Vendor Overview', group: 'Overview' },
+  { path: '/po-360', label: 'PO Overview', group: 'Overview' },
+  { path: '/product-360', label: 'Product Overview', group: 'Overview' },
+  { path: '/vendor-recommendation', label: 'Vendor Recommendation', group: 'Operations' },
   // Vendor OTIF stays a reachable route (linked from Vendor Overview) but is off
   // the main sidebar — its scoring is summarised in Vendor Overview.
-  { path: '/vendor-otif', label: 'Vendor OTIF', group: 'Workspace' },
-  { path: '/cost-analytics', label: 'Cost Analytics', group: 'Workspace' },
-  { path: '/feedback', label: 'Feedback & Issues', group: 'Workspace' },
+  { path: '/vendor-otif', label: 'Vendor OTIF', group: 'Operations' },
+  { path: '/cost-analytics', label: 'Cost Analytics', group: 'Operations' },
+  { path: '/feedback', label: 'Feedback & Issues', group: 'Operations' },
   // Workflows — operational pages.
-  { path: '/buying-plan', label: 'Buying Plan', group: 'Workflows' },
-  { path: '/standard-cost', label: 'Standard Cost', group: 'Workflows' },
-  { path: '/vendor-capacity', label: 'Vendor Capacity', group: 'Workflows' },
-  { path: '/po-approval', label: 'PO Approval', group: 'Workflows' },
-  { path: '/po-details', label: 'PO Details (Form)', group: 'Workflows' },
-  { path: '/cutting-register', label: 'Cutting Register', group: 'Workflows' },
-  { path: '/po-closure', label: 'PO Closure', group: 'Workflows' },
-  { path: '/po-manual-adjustment', label: 'Manual Data Ingestion', group: 'Workflows' },
-  { path: '/receivable-plan', label: 'Inward Plan', group: 'Workflows' },
-  { path: '/cash-flow', label: 'Cash Flow', group: 'Workflows', adminOnly: true },
-  { path: '/discontinue', label: 'Discontinued Products View', group: 'Workflows' },
-  { path: '/vendor-deboarding', label: 'Vendor De-Boarding', group: 'Workflows' },
+  { path: '/buying-plan', label: 'Buying Plan', group: 'Planning' },
+  { path: '/standard-cost', label: 'Standard Cost', group: 'Planning' },
+  { path: '/vendor-capacity', label: 'Vendor Capacity', group: 'Planning' },
+  { path: '/po-approval', label: 'PO Approval', group: 'PO Workflow' },
+  { path: '/po-details', label: 'PO Details (Form)', group: 'PO Workflow' },
+  { path: '/cutting-register', label: 'Cutting Register', group: 'PO Workflow' },
+  { path: '/po-closure', label: 'PO Closure', group: 'PO Workflow' },
+  { path: '/po-manual-adjustment', label: 'Manual Data Ingestion', group: 'Governance & Data' },
+  { path: '/receivable-plan', label: 'Inward Plan', group: 'Planning' },
+  { path: '/cash-flow', label: 'Cash Flow', group: 'PO Workflow', adminOnly: true },
+  { path: '/discontinue', label: 'Discontinued Products View', group: 'Governance & Data' },
+  { path: '/vendor-deboarding', label: 'Vendor De-Boarding', group: 'Governance & Data' },
   // Not admin-only: routine items (small FG buying plans / POs) route to the TEAM
   // level, and this queue is the only place PO decisions are taken.
-  { path: '/approvals', label: 'Approvals', group: 'Workflows' },
-  { path: '/issues', label: 'Issue Tracker', group: 'Workflows' },
+  { path: '/approvals', label: 'Approvals', group: 'Governance & Data' },
+  { path: '/issues', label: 'Issue Tracker', group: 'Governance & Data' },
   // Data & Admin — masters and datasets.
   // One "Master" hub gathers the individual masters below as inner tabs; the
   // per-master routes stay registered (reachable + grantable) and the hub shows
   // only the tabs a user's roles allow.
-  { path: '/master', label: 'Master', group: 'Data & Admin' },
-  { path: '/product-master', label: 'Product Master', group: 'Data & Admin' },
-  { path: '/category-mapping', label: 'Category Mapping', group: 'Data & Admin' },
-  { path: '/grn-detail', label: 'GRN Detail', group: 'Data & Admin' },
-  { path: '/doq', label: 'DOQ Dataset', group: 'Data & Admin' },
-  { path: '/vendor-master', label: 'Vendor Master', group: 'Data & Admin' },
-  { path: '/fabric-master', label: 'Fabric Master', group: 'Data & Admin' },
-  { path: '/material-master', label: 'Material Master', group: 'Data & Admin' },
-  { path: '/fabric-cost', label: 'Fabric Cost', group: 'Data & Admin' },
-  { path: '/users', label: 'User Panel', group: 'Data & Admin', adminOnly: true },
-  { path: '/adoption', label: 'Adoption & Activity', group: 'Data & Admin', adminOnly: true },
-  { path: '/rules-master', label: 'Rules Master', group: 'Data & Admin', adminOnly: true },
-  { path: '/feature-status', label: 'Feature Status', group: 'Data & Admin', adminOnly: true },
-  { path: '/sync-status', label: 'Sync Health', group: 'Data & Admin' },
+  { path: '/master', label: 'Master', group: 'Master Data & Datasets' },
+  { path: '/product-master', label: 'Product Master', group: 'Master Data & Datasets' },
+  { path: '/category-mapping', label: 'Category Mapping', group: 'Master Data & Datasets' },
+  { path: '/grn-detail', label: 'GRN Detail', group: 'Master Data & Datasets' },
+  { path: '/doq', label: 'DOQ Dataset', group: 'Master Data & Datasets' },
+  { path: '/vendor-master', label: 'Vendor Master', group: 'Master Data & Datasets' },
+  { path: '/fabric-master', label: 'Fabric Master', group: 'Master Data & Datasets' },
+  { path: '/material-master', label: 'Material Master', group: 'Master Data & Datasets' },
+  { path: '/fabric-cost', label: 'Fabric Cost', group: 'Master Data & Datasets' },
+  { path: '/users', label: 'User Panel', group: 'Admin', adminOnly: true },
+  { path: '/adoption', label: 'Adoption & Activity', group: 'Admin', adminOnly: true },
+  { path: '/rules-master', label: 'Rules Master', group: 'Admin', adminOnly: true },
+  { path: '/feature-status', label: 'Feature Status', group: 'Admin', adminOnly: true },
+  { path: '/sync-status', label: 'Sync Health', group: 'Admin' },
 ];
 
-export const VIEW_GROUPS = ['Dashboard', 'Workspace', 'Workflows', 'Data & Admin'] as const;
+export const VIEW_GROUPS = ['Dashboard', 'Overview', 'Operations', 'Planning', 'PO Workflow', 'Governance & Data', 'Master Data & Datasets', 'Admin'] as const;
 
 /**
  * Can this user open `path`? allowedPages null/undefined = unrestricted.
