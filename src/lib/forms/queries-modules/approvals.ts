@@ -537,7 +537,7 @@ export async function loadApprovalQueue(): Promise<{
         .eq('po_id', po.id);
       const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
       // The one capacity model, for THIS PO's type: an E-FOB PO is judged against what the
-      // vendor can make in 45 days, a FOB PO against 90 — not against one month.
+      // vendor can make in 45 days, a FOB PO against 75 — not against one month.
       const capModel = cap
         ? vendorCapacityModel(
             {

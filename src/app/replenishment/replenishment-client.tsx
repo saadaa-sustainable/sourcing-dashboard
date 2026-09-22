@@ -86,7 +86,7 @@ const buildCols = (
   },
   { key: 'rop_30', source: 'computed', label: '30d', kind: 'num', info: "WHAT: ROP 30 — how many pieces to order to stay in stock for the next 30 days.\n\nHOW: 30 × IPDOQ − stock − in-process, never below 0. Example: 3 a day × 30 = 90 needed; 40 in stock, 20 on order → order 30.\n\nUSE: the 30-day horizon suits Job Work (30-day lead time). Zero means covered.", render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
   { key: 'rop_60', source: 'computed', label: '60d', kind: 'num', info: "WHAT: ROP 60 — pieces to order to stay in stock for 60 days.\n\nHOW: 60 × IPDOQ − stock − in-process, never below 0.\n\nUSE: the horizon for E-FOB (45-day lead time plus buffer)." },
-  { key: 'rop_90', source: 'computed', label: '90d', kind: 'num', info: "WHAT: ROP 90 — pieces to order to stay in stock for 90 days.\n\nHOW: 90 × IPDOQ − stock − in-process, never below 0.\n\nUSE: the horizon for FOB (90-day lead time). If this is large and nothing is on order, the FOB PO is already late." },
+  { key: 'rop_90', source: 'computed', label: '90d', kind: 'num', info: "WHAT: ROP 90 — pieces to order to stay in stock for 90 days.\n\nHOW: 90 × IPDOQ − stock − in-process, never below 0.\n\nUSE: the horizon for FOB (75-day lead time plus buffer). If this is large and nothing is on order, the FOB PO is already late." },
 ];
 
 /** Admin strip: the two IPDOQ judgement numbers, edited in the Rules Master. */

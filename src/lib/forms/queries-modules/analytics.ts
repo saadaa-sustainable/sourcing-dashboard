@@ -28,7 +28,7 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   // PO-type lead times (days) — Buying Plan time-buckets (spec §7).
   lead_days_job: 30,
   lead_days_efob: 45,
-  lead_days_fob: 90,
+  lead_days_fob: 75,
   // IPDOQ (Replenishment): OOS-day fallback threshold + floor on the final rate.
   oos_day_threshold: 30,
   ipdoq_floor: 0.25,

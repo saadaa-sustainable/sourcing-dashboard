@@ -182,7 +182,7 @@ export function SubmitChecksModal({
         <section className={`pc-section${qtyOver || capOver ? ' is-flag' : ''}`}>
           <h4>
             {(qtyOver || capOver) && <AlertTriangle size={14} />} Quantity
-            <InfoDot text={"WHAT: the PO quantity against what the product needs and what the vendor can make.\n\nHOW: Needed = Replenishment's reorder quantity for this PO type's horizon (Job Work 30 days, E-FOB 60, FOB 90): pieces to stay in stock through the lead time, net of stock and what is already on order. Vendor capacity = the one capacity model for this PO type, with this PO added to the vendor's in-process load.\n\nUSE: a PO well above the need ties up cash; a vendor pushed past PO capacity will be late. The rule that PO quantity must be the lower is not enforced yet (deferred until Replenishment is built out) — it is shown so the choice is deliberate."} />
+            <InfoDot text={"WHAT: the PO quantity against what the product needs and what the vendor can make.\n\nHOW: Needed = Replenishment's reorder quantity for the horizon at or above this PO type's lead time (Job Work → 30-day, E-FOB → 60-day, FOB → 90-day reorder): pieces to stay in stock through the lead time, net of stock and what is already on order. Vendor capacity = the one capacity model for this PO type, with this PO added to the vendor's in-process load.\n\nUSE: a PO well above the need ties up cash; a vendor pushed past PO capacity will be late. The rule that PO quantity must be the lower is not enforced yet (deferred until Replenishment is built out) — it is shown so the choice is deliberate."} />
           </h4>
           <table className="pc-table">
             <tbody>

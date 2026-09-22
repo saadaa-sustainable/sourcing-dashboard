@@ -35,7 +35,7 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'launch_date', label: 'Launch Date', kind: 'text', info: "WHAT: the product's launch date.\n\nHOW: from the inventory feed when it has one, otherwise from the EasyEcom Product Master.\n\nUSE: a SKU launched inside the window has fewer days of history — read its DOQ with caution." },
   { key: 'product_class', label: 'Product Class', kind: 'text', filter: 'select', source: 'computed', info: "WHAT: the sales class — how fast this SKU sells.\n\nHOW: from IPDOQ: A above 10 a day, B 7 or more, C 3 or more, else D. Thresholds in Rules Master.\n\nMIND: this is speed only. It is independent of the product state — an NPD or To-Be-Discontinued product still has a class, and D does NOT mean discontinued. A is the first to keep in stock." },
   { key: 'current_stock', label: 'Current Stock', kind: 'num' },
-  { key: 'doh', label: 'DOH', kind: 'num', info: "WHAT: DOH — how many days the stock lasts.\n\nHOW: current stock ÷ DOQ 45. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against the lead time (Job 30, E-FOB 45, FOB 90 days in Rules Master). Under the lead time = order now." },
+  { key: 'doh', label: 'DOH', kind: 'num', info: "WHAT: DOH — how many days the stock lasts.\n\nHOW: current stock ÷ DOQ 45. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against the lead time (Job 30, E-FOB 45, FOB 75 days in Rules Master). Under the lead time = order now." },
   {
     key: 'sales_value',
     label: 'Selling Price',

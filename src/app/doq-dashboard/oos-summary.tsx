@@ -172,7 +172,7 @@ export function OosSummaryView({
         <div className="oos-kpi panel">
           <span>
             Days on hand
-            <InfoDot text={"WHAT: how many days the stock on hand would last if sales continued at the current rate and nothing arrived.\n\nHOW: total stock ÷ total daily demand, over SKUs that actually sell (daily demand above 0). Example: 4,400 pieces in stock, 100 pieces a day sold → 44 days. SKUs with no sales are left out, otherwise dead stock would make cover look better than it is.\n\nUSE: read it against the lead time — a FOB order takes about 90 days to land, so 44 days of cover means the next order is already late unless it is in process. The Rules Master holds the lead times."} label="About days on hand" />
+            <InfoDot text={"WHAT: how many days the stock on hand would last if sales continued at the current rate and nothing arrived.\n\nHOW: total stock ÷ total daily demand, over SKUs that actually sell (daily demand above 0). Example: 4,400 pieces in stock, 100 pieces a day sold → 44 days. SKUs with no sales are left out, otherwise dead stock would make cover look better than it is.\n\nUSE: read it against the lead time — a FOB order takes about 75 days to land, so 44 days of cover means the next order is already late unless it is in process. The Rules Master holds the lead times."} label="About days on hand" />
           </span>
           <strong>{a.daysOnHand == null ? '—' : fmt.format(Math.round(a.daysOnHand))}</strong>
           <small>days the stock lasts at the current sales rate, over SKUs that sell</small>

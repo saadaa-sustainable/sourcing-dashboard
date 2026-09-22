@@ -121,7 +121,7 @@ export function BuyingPlanClient({
   pickerItems = [],
   restrictPicker = false,
   npdBudgetSet = true,
-  leadDays = { job: 30, efob: 45, fob: 90 },
+  leadDays = { job: 30, efob: 45, fob: 75 },
   deadlineDay = 7,
   firstActionAt = null,
   role,
@@ -1371,7 +1371,7 @@ function PlanSplitCard({ split, leadDays }: { split: { job: number; fob: number;
       <div className="bp-cardhead">
         <h2>
           Plan split
-          <InfoDot text={"WHAT: how much of the plan goes each route, and how long each route takes.\n\nHOW: planned pieces summed by PO type, with the lead time from Rules Master beside each — Job Work 30, E-FOB 45, FOB 90 days.\n\nUSE: FOB pieces planned this month will not land for three months — plan the cash and the stock-outs accordingly."} />
+          <InfoDot text={"WHAT: how much of the plan goes each route, and how long each route takes.\n\nHOW: planned pieces summed by PO type, with the lead time from Rules Master beside each — Job Work 30, E-FOB 45, FOB 75 days.\n\nUSE: FOB pieces planned this month will not land for three months — plan the cash and the stock-outs accordingly."} />
         </h2>
         <span className="wf-subtle">quantity by PO type</span>
       </div>
@@ -1668,7 +1668,7 @@ function LeadTimesCard({
       <div className="bp-cardhead">
         <h2>
           PO lead times
-          <InfoDot text={"WHAT: how many pieces each route needs to cover demand through its lead time.\n\nHOW: 30-day reorder demand (from Replenishment) scaled to each route's lead time from Rules Master. Example: 3 a day → 90 pieces for a 30-day Job Work route, 270 for a 90-day FOB route.\n\nUSE: a sanity check on the typed quantities — planning 100 FOB pieces of a 3-a-day product buys about a month."} />
+          <InfoDot text={"WHAT: how many pieces each route needs to cover demand through its lead time.\n\nHOW: 30-day reorder demand (from Replenishment) scaled to each route's lead time from Rules Master. Example: 3 a day → 90 pieces for a 30-day Job Work route, 225 for a 75-day FOB route.\n\nUSE: a sanity check on the typed quantities — planning 100 FOB pieces of a 3-a-day product buys about a month."} />
         </h2>
         <span className="wf-subtle">coverage from 30-day ROP</span>
       </div>

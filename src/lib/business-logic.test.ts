@@ -203,7 +203,7 @@ describe('sourcing business rules', () => {
     const capped = vendorCapacityModel({ machines: 10, karigar: 25, vendorType: 'job', inProcessQty: 0 }, { ...rules, driverMinMachines: true });
     assert.equal(capped.workers, 10);
     assert.equal(capped.capacityPerMonth, 5200);
-    // Rules come from the Rules Master map; a FOB lead change flows straight through.
+    // Rules come from the Rules Master map; a FOB lead change (75 → 90 here) flows straight through.
     const r90 = capacityRulesFrom({ lead_days_fob: 90, karigar_daily_output: 20, working_days_per_month: 26 });
     assert.equal(vendorCapacityModel({ machines: 40, karigar: 25, vendorType: 'FOB', inProcessQty: 0 }, r90).poCapacity, 39000);
     assert.equal(capacityRulesFrom({ capacity_driver_min_machines: 1 }).driverMinMachines, true);

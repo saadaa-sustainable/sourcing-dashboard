@@ -401,8 +401,8 @@ export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent
 
 /**
  * The three PO types, with the stock cover each is expected to carry. stockDays is the live
- * value; the FOB count was confirmed 2026-09-04 at 90 (was 75) and matches the Rules Master
- * (sd_analytics_rule.lead_days_fob = 90), which stays the authoritative day-count for
+ * value; the FOB count is 75 (confirmed 2026-09-22, full and final) and matches the Rules Master
+ * (sd_analytics_rule.lead_days_fob = 75), which stays the authoritative day-count for
  * lead-time and coverage everywhere.
  *
  * multiplier mirrors the sd_vendor_type_multiplier master so the two do not drift, but it no
@@ -417,7 +417,7 @@ export function buildTnaEvents(rows: TrackerRow[], today = istToday()): TnaEvent
 export const VENDOR_TYPE_MULTIPLIER: Record<string, { label: string; multiplier: number; stockDays: number }> = {
   job_work: { label: 'Job work', multiplier: 1.0, stockDays: 30 },
   efob: { label: 'E-FOB', multiplier: 1.5, stockDays: 45 },
-  fob: { label: 'FOB', multiplier: 2.5, stockDays: 90 },
+  fob: { label: 'FOB', multiplier: 2.5, stockDays: 75 },
 };
 
 // EasyEcom's raw vendor status (vendor_master_data.ee_status, pulled through GCP)
@@ -467,7 +467,7 @@ export type CapacityRules = {
 export const DEFAULT_CAPACITY_RULES: CapacityRules = {
   dailyOutput: KARIGAR_DAILY_OUTPUT,
   workingDays: WORKING_DAYS_PER_MONTH,
-  leadDays: { job_work: 30, efob: 45, fob: 90 },
+  leadDays: { job_work: 30, efob: 45, fob: 75 },
   driverMinMachines: false,
 };
 
@@ -522,7 +522,7 @@ export type CapacityModel = {
  *     utilisation        = in process ÷ PO capacity
  *
  * Why PO capacity and not the month: an E-FOB order occupies a vendor for 45 days and a
- * FOB order for 90, so their pipelines legitimately hold more than one month of output.
+ * FOB order for 75, so their pipelines legitimately hold more than one month of output.
  * Comparing in-process to one month flagged every normal FOB vendor as over capacity.
  * Job Work (30 days) is unchanged by this; the multiplier was 1.0 and hid the bug.
  */

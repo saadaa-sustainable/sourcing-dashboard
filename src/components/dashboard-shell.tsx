@@ -2696,7 +2696,7 @@ function VendorTab({ hub = null, initialView, data, capacityRules = DEFAULT_CAPA
       <div className="bento-grid">
         <ChartCard
           title="Open quantity vs monthly capacity"
-          info={"WHAT: per vendor, the pieces on order against what the vendor can make inside its PO type's lead time (PO capacity).\n\nHOW: open-PO pieces (bar) vs PO capacity = capacity/month × lead days ÷ 30, where capacity/month = karigars × daily output × working days (all Rules Master). An E-FOB vendor is judged on 45 days of output, a FOB vendor on 90 — not one month. Over 100% = more on order than that.\n\nUSE: an over-committed vendor will be late on something; decide which PO, rather than let the vendor decide. Under-used vendors are where new orders can go."}
+          info={"WHAT: per vendor, the pieces on order against what the vendor can make inside its PO type's lead time (PO capacity).\n\nHOW: open-PO pieces (bar) vs PO capacity = capacity/month × lead days ÷ 30, where capacity/month = karigars × daily output × working days (all Rules Master). An E-FOB vendor is judged on 45 days of output, a FOB vendor on 75 — not one month. Over 100% = more on order than that.\n\nUSE: an over-committed vendor will be late on something; decide which PO, rather than let the vendor decide. Under-used vendors are where new orders can go."}
           download={{
             filename: "vendor-open-qty-vs-capacity",
             headers: vendorCsvHeaders,
