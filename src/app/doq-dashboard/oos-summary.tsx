@@ -73,8 +73,9 @@ export function OosSummaryView({
     [snapshots],
   );
 
-  // Which category row is opened to show its SKUs.
+  // Which category row is opened to show its SKUs, and which page of the table is shown.
   const [openScope, setOpenScope] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   if (!summary) {
     return <Notice tone="error">The out-of-stock summary could not be loaded — the inventory-planning snapshot is not readable right now.</Notice>;
@@ -220,6 +221,22 @@ export function OosSummaryView({
             </h3>
           </div>
         </div>
+        <p className="wf-subtle oos-sum-read oos-coverage">
+          <strong>{fmt.format(summary.categories.length)} product codes</strong> — every code with a SKU on sale
+          (Ongoing or launched NPD) at {summary.warehouse}.
+          {summary.codesLeftOut.length ? (
+            <>
+              {' '}Not in this table:{' '}
+              {summary.codesLeftOut.map((x, i) => (
+                <span key={x.state}>
+                  {i ? ' · ' : ''}
+                  {fmt.format(x.codes)} {x.state}
+                </span>
+              ))}
+              {' '}— those states cannot be out of stock against demand they do not have.
+            </>
+          ) : null}
+        </p>
         <div className="table-scroll">
           <table>
             <thead>
@@ -233,7 +250,7 @@ export function OosSummaryView({
               </tr>
             </thead>
             <tbody>
-              {summary.categories.map((c: OosScope) => (
+              {summary.categories.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((c: OosScope) => (
                 <CategoryRow
                   key={c.scope}
                   c={c}
@@ -253,7 +270,52 @@ export function OosSummaryView({
             </tbody>
           </table>
         </div>
+        {summary.categories.length > PAGE_SIZE && (
+          <Pager
+            page={page}
+            pages={Math.ceil(summary.categories.length / PAGE_SIZE)}
+            total={summary.categories.length}
+            onPage={(p) => {
+              setPage(p);
+              setOpenScope(null);
+            }}
+          />
+        )}
       </section>
+    </div>
+  );
+}
+
+/** Rows per page of the category table. */
+const PAGE_SIZE = 15;
+
+function Pager({ page, pages, total, onPage }: { page: number; pages: number; total: number; onPage: (p: number) => void }) {
+  const from = page * PAGE_SIZE + 1;
+  const to = Math.min(total, (page + 1) * PAGE_SIZE);
+  return (
+    <div className="oos-pager">
+      <span className="wf-subtle">
+        Showing {from}–{to} of {total} product codes
+      </span>
+      <span className="oos-pager-btns">
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={page === 0} onClick={() => onPage(page - 1)}>
+          ← Previous
+        </button>
+        {Array.from({ length: pages }, (_, i) => (
+          <button
+            key={i}
+            type="button"
+            className={`wf-btn wf-btn-sm${i === page ? ' wf-btn-primary' : ' wf-btn-ghost'}`}
+            aria-current={i === page ? 'page' : undefined}
+            onClick={() => onPage(i)}
+          >
+            {i + 1}
+          </button>
+        ))}
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={page >= pages - 1} onClick={() => onPage(page + 1)}>
+          Next →
+        </button>
+      </span>
     </div>
   );
 }

@@ -19,6 +19,8 @@ export type OosSummaryData = OosSummary & {
   asOf: string | null;
   warehouse: string;
   excludedSkus: number;
+  /** Product codes on the feed that are NOT in the table, by the product state that keeps them out. */
+  codesLeftOut: { state: string; codes: number }[];
 };
 
 export async function loadOosSummary(): Promise<OosSummaryData | null> {
@@ -48,10 +50,19 @@ export async function loadOosSummary(): Promise<OosSummaryData | null> {
     let asOf: string | null = null;
     let dropped = 0;
     const inputs: OosSkuInput[] = [];
+    // Codes the table does not show, and why — so "is every category here?" has an answer.
+    const leftOut = new Map<string, Set<string>>();
     for (const r of rows) {
       if (!r.sku) continue;
       if (r.date_day && (!asOf || r.date_day > asOf)) asOf = r.date_day;
-      if (!isSellingState(r.product_state)) continue;
+      if (!isSellingState(r.product_state)) {
+        const state = (r.product_state ?? '').trim() || 'No product state';
+        const key = state.toUpperCase() === 'DISCONTINUED' ? 'Discontinued' : state;
+        const set = leftOut.get(key) ?? new Set<string>();
+        set.add(norm(r.category) || 'UNCATEGORISED');
+        leftOut.set(key, set);
+        continue;
+      }
       if (excludedSkus.has(norm(r.sku))) {
         dropped += 1;
         continue;
@@ -68,7 +79,10 @@ export async function loadOosSummary(): Promise<OosSummaryData | null> {
         oosDays365: Number(r.oos_days_365) || 0,
       });
     }
-    return { ...summariseOos(inputs), asOf, warehouse: OOS_SUMMARY_WAREHOUSE, excludedSkus: dropped };
+    const codesLeftOut = [...leftOut.entries()]
+      .map(([state, set]) => ({ state, codes: set.size }))
+      .sort((a, b) => b.codes - a.codes);
+    return { ...summariseOos(inputs), asOf, warehouse: OOS_SUMMARY_WAREHOUSE, excludedSkus: dropped, codesLeftOut };
   } catch {
     return null; // the page must render; the summary shows "not available"
   }

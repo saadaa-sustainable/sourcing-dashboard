@@ -1821,3 +1821,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .oos-sku-state.is-empty { background: #fbe4e0; color: #b1301f; }
 .oos-sku-state.is-recovered { background: #e4f0e3; color: #3f6b3d; }
 .oos-sku-state.is-ok { background: #ece7d9; color: #6e695e; }
+
+.oos-coverage { margin: 0 0 8px; }
+.oos-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 2px 2px; flex-wrap: wrap; }
+.oos-pager-btns { display: inline-flex; gap: 4px; flex-wrap: wrap; }
