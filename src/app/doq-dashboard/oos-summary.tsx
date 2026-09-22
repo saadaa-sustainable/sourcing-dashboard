@@ -21,6 +21,20 @@ const pct = (v: number | null | undefined, digits = 1) => (v == null ? '—' : `
 const day = (iso: string | null | undefined) =>
   iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—';
 
+/** The category table's columns, each with the (i) that says what it counts. */
+const CATEGORY_COLUMNS: { label: string; num?: boolean; info: string }[] = [
+  { label: 'Category', info: "The product master's sub-category (Shirt, Casual Pant, Long Kurta…), case-folded so SHIRT and Shirt are one row." },
+  { label: 'SKUs', num: true, info: 'SKUs on sale in this category at Main Warehouse — Ongoing and launched NPD, test SKUs excluded.' },
+  { label: 'OOS % 365d', num: true, info: 'Empty SKU-days in the last 365 days ÷ (SKUs × 365).' },
+  { label: 'OOS % 45d', num: true, info: 'Empty SKU-days in the last 45 days ÷ (SKUs × 45). The sourcing record for the window.' },
+  { label: 'OOS % yesterday', num: true, info: 'SKUs with no stock on the snapshot day ÷ SKUs. Red when worse than the overall figure.' },
+  { label: 'Change vs 45d', info: '(OOS % yesterday − OOS % 45d) ÷ OOS % 45d. Green ▼ when yesterday is below the 45-day record, red ▲ when above.' },
+  { label: 'Empty SKUs 45d', num: true, info: 'SKUs that had no stock on at least one day in the last 45 days.' },
+  { label: 'Empty yesterday', num: true, info: 'SKUs with no stock on the snapshot day.' },
+  { label: 'Recovered', num: true, info: 'Empty on some day in the last 45 days and stocked on the snapshot day. Recovered + empty yesterday = empty SKUs 45d.' },
+  { label: 'Days on hand', num: true, info: 'Σ stock ÷ Σ daily demand over SKUs in this category that sell; "—" when none of them has demand.' },
+];
+
 /** "−50%" in green when OOS fell, "+20%" in red when it rose. */
 function Change({ value }: { value: number | null }) {
   if (value == null) return <span className="oos-change is-flat">—</span>;
@@ -205,16 +219,12 @@ export function OosSummaryView({
           <table>
             <thead>
               <tr>
-                <th>Category</th>
-                <th className="num">SKUs</th>
-                <th className="num">OOS % 365d</th>
-                <th className="num">OOS % 45d</th>
-                <th className="num">OOS % yesterday</th>
-                <th>Change vs 45d</th>
-                <th className="num">Empty SKUs 45d</th>
-                <th className="num">Empty yesterday</th>
-                <th className="num">Recovered</th>
-                <th className="num">Days on hand</th>
+                {CATEGORY_COLUMNS.map((c) => (
+                  <th key={c.label} className={c.num ? 'num' : undefined}>
+                    {c.label}
+                    <InfoDot text={c.info} label={`About ${c.label}`} />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
