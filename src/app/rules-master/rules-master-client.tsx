@@ -20,8 +20,14 @@ const GROUPS: { title: string; blurb: string; keys: string[] }[] = [
     ],
   },
   {
+    title: 'Vendor capacity',
+    blurb:
+      'The capacity formula on Vendor Capacity: pieces one karigar makes in a day, working days in a month, and whether workers are capped by machines. Capacity/month = workers × pieces/day × working days; PO capacity = capacity/month × lead days ÷ 30 (lead days are in PO lifecycle below). Change a value here and every capacity figure on every page follows on the next load.',
+    keys: ['karigar_daily_output', 'working_days_per_month', 'capacity_driver_min_machines'],
+  },
+  {
     title: 'PO lifecycle',
-    blurb: 'Closure SLA and the PO-type lead times that drive the Buying Plan time-buckets.',
+    blurb: 'Closure SLA and the PO-type lead times that drive the Buying Plan time-buckets and Vendor Capacity's PO capacity.',
     keys: ['closure_sla_days', 'lead_days_job', 'lead_days_efob', 'lead_days_fob'],
   },
   {
