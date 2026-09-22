@@ -1703,10 +1703,15 @@ function DashboardTab({
                       }}
                     />
                   ))}
-                  {g.stages.map((st) => (
+                  {g.stages.map((st, i) => (
                     <em
                       key={st.key}
-                      className={`gantt-dot${st.done ? " is-done" : st.late ? " is-late" : ""}`}
+                      // Neighbouring stages are often days apart, so their names alternate
+                      // above and below the bar; a stage within a few % of either edge
+                      // anchors its name inward so nothing spills out of the track.
+                      className={`gantt-dot${st.done ? " is-done" : st.late ? " is-late" : ""}${i % 2 ? " is-above" : ""}${
+                        ganttPct(st.plannedAt!) < 6 ? " at-left" : ganttPct(st.plannedAt!) > 94 ? " at-right" : ""
+                      }`}
                       style={{ left: `${ganttPct(st.plannedAt!)}%` }}
                       title={`${st.label} — planned ${new Date(st.plannedAt!).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}${st.done ? " · done" : st.late ? ` · ${st.daysLate} days past, not done` : " · not due yet"}`}
                     >

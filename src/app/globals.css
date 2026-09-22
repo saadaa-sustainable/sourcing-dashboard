@@ -233,7 +233,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .status-dot i { width: 7px; height: 7px; border-radius: 50%; background: #4f7c4d; box-shadow: 0 0 0 4px rgba(79,124,77,.14), 0 0 10px rgba(79,124,77,.35); }
 .mobile-close { display: none !important; width: auto !important; margin-left: auto !important; }
 
-.app-shell > main { min-height: 100vh; margin-left: 258px; }
+.app-shell > main { min-height: 100vh; margin-left: 258px; padding-bottom: 72px; }
 
 .app-shell header {
   position: sticky;
@@ -1705,7 +1705,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
    One row per open PO on a dated axis with a Today line. The bar is drawn in pieces, one per
    gap between stages, coloured by the state of the stage it leads to (done / past date / still
    to come); each stage is named on the bar, and a late one carries its days past. */
-.gantt { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+.gantt { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 10px; }
 .gantt-row { display: grid; grid-template-columns: minmax(150px, 190px) 1fr; gap: 12px; align-items: center; }
 .gantt-label { line-height: 1.25; min-width: 0; }
 .gantt-label b { display: block; font-size: 11.5px; font-family: var(--font-mono, monospace); }
@@ -1714,7 +1714,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .gantt-track {
   position: relative;
   display: block;
-  height: 34px;
+  height: 44px;
   border-radius: 4px;
   background: var(--color-ecru-100, #f5f2ea);
 }
@@ -1739,7 +1739,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .gantt-grid.is-today { border-left: 2px solid #1f1d1a; z-index: 1; }
 .gantt-bar {
   position: absolute;
-  top: 9px;
+  top: 19px;
   height: 6px;
   background: #b9b3a4;
 }
@@ -1748,7 +1748,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .gantt-bar.is-ahead { background: #cfc9ba; }
 .gantt-dot {
   position: absolute;
-  top: 7px;
+  top: 17px;
   width: 10px;
   height: 10px;
   margin-left: -5px;
@@ -1770,6 +1770,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   white-space: nowrap;
   color: var(--ink-2, #4a463f);
 }
+/* Odd stages name themselves above the bar, even ones below — neighbours never collide. */
+.gantt-dot.is-above .gantt-stage { top: auto; bottom: 12px; }
+/* Near an edge the name hangs inward from the dot instead of centring on it. */
+.gantt-dot.at-left .gantt-stage { left: -2px; transform: none; }
+.gantt-dot.at-right .gantt-stage { left: auto; right: -2px; transform: none; }
 .gantt-dot.is-late .gantt-stage { color: #c0392b; font-weight: 600; }
 .gantt-dot.is-done .gantt-stage { color: #4f7c4d; }
 .gantt-stage b { font-weight: 700; }
