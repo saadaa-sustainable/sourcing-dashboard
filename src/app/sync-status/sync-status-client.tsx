@@ -48,7 +48,7 @@ const makeCols = (staleAfter: number): Column<SyncStatusRow>[] => [
   {
     key: 'fetched_from',
     label: 'Fetched from',
-    info: 'The exact object this source pulls: BigQuery table (MAPLEMONK dataset), Google Sheet tab, or API endpoint — and the Supabase table it lands in.',
+    info: "WHAT: where this feed comes from and where it lands.\n\nHOW: the BigQuery table (MAPLEMONK dataset), Google Sheet tab or API endpoint it reads, and the dashboard table it writes.\n\nUSE: when a number looks wrong, this is the chain to check — source first, then the landing table.",
     render: (r) => r.fetched_from ?? '—',
   },
   { key: 'pipeline', label: 'Pipeline' },

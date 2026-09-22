@@ -81,15 +81,15 @@ const sortVal = (v: Scored, k: SortKey): number | string =>
 const HEADERS: { label: string; key?: SortKey; cls?: string; info?: string }[] = [
   { label: '#', cls: 'num' },
   { label: 'Vendor' },
-  { label: 'Score', key: 'score', cls: 'num', info: 'Overall recommendation score (0–100) blending completion, on-time delivery, QC pass and rejection rate.' },
-  { label: 'Completion', key: 'completion', cls: 'num', info: 'Share of ordered quantity the vendor actually delivered.' },
-  { label: 'On-time', key: 'onTime', cls: 'num', info: 'Share of POs delivered on or before their expected date.' },
-  { label: 'Delay', key: 'delay', cls: 'num', info: 'Average delay in days across the vendor’s late POs.' },
-  { label: 'QC-fail', key: 'qcFail', cls: 'num', info: 'Share of received quantity that failed quality check.' },
-  { label: 'Rejection', key: 'reject', cls: 'num', info: 'Share of received quantity rejected or returned.' },
-  { label: 'Confidence', cls: 'num', info: 'Rating coverage: the share of this vendor’s completed POs that carry a rating (High ≥ 80%, Medium ≥ 50%). PO volume itself is the “Completed / given” column.' },
-  { label: 'POs', key: 'pos', cls: 'num', info: 'Number of POs the score is computed from.' },
-  { label: 'Last PO', key: 'recent', cls: 'num', info: 'Days since the vendor’s most recent PO.' },
+  { label: 'Score', key: 'score', cls: 'num', info: "WHAT: one 0–100 score saying how good a vendor has been to work with.\n\nHOW: a blend of four things from the vendor's completed POs — how much of what was ordered got delivered, how often on time, how much passed QC, and the rejection rate. Higher is better.\n\nUSE: the ranking for who gets the next PO. Read the four columns beside it to see WHY a vendor scores as it does." },
+  { label: 'Completion', key: 'completion', cls: 'num', info: "WHAT: how much of what was ordered actually arrived.\n\nHOW: received pieces ÷ ordered pieces across completed POs. Example: 9,200 of 10,000 → 92%.\n\nUSE: below 90% the vendor habitually short-ships." },
+  { label: 'On-time', key: 'onTime', cls: 'num', info: "WHAT: how often the vendor delivered by the date on the PO.\n\nHOW: POs completed on or before their expected delivery date ÷ completed POs.\n\nUSE: with the average delay beside it: a vendor late often but by little is different from one late rarely but by a month." },
+  { label: 'Delay', key: 'delay', cls: 'num', info: "WHAT: when this vendor is late, how late.\n\nHOW: days past the expected date, averaged over the late POs only.\n\nUSE: 5 days late is a buffer problem; 30 days late is a lead-time problem." },
+  { label: 'QC-fail', key: 'qcFail', cls: 'num', info: "WHAT: how much of what arrived failed inbound QC.\n\nHOW: QC-failed pieces ÷ QC-checked pieces at goods receipt.\n\nUSE: the quality signal; the same figure the De-Boarding form pre-fills." },
+  { label: 'Rejection', key: 'reject', cls: 'num', info: "WHAT: how much of what arrived was rejected or sent back.\n\nHOW: rejected + returned pieces ÷ received pieces.\n\nUSE: pieces that cost money twice — once to make, once to handle." },
+  { label: 'Confidence', cls: 'num', info: "WHAT: how much of the vendor's history the score is actually based on.\n\nHOW: completed POs that carry a rating ÷ completed POs. High = 80% or more, Medium = 50% or more, else Low.\n\nUSE: a high score on Low coverage is a guess; trust High-coverage scores first. PO volume itself is the 'Completed / given' column." },
+  { label: 'POs', key: 'pos', cls: 'num', info: "WHAT: how many POs sit behind the score.\n\nHOW: completed POs with a rating.\n\nUSE: 3 POs is an anecdote; 30 is a track record." },
+  { label: 'Last PO', key: 'recent', cls: 'num', info: "WHAT: how long since SAADAA last ordered from this vendor.\n\nHOW: today − the latest PO date.\n\nUSE: a good score from two years ago says little about the vendor today." },
 ];
 
 export function VendorRecommendationClient({ rows }: { rows: VendorRecommendationRow[] }) {

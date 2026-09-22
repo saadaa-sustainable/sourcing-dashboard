@@ -496,7 +496,7 @@ export function AnalyticsCards({
               cta="Review cost exceptions"
               span={6}
               href="/po-approval"
-              info="Approved or issued POs this month whose written rate exceeded the approved standard cost, aggregated as margin impact."
+              info={"WHAT: POs raised this month at a rate above the approved Standard Cost, and what that costs in margin.\n\nHOW: for each approved or issued PO this month, (rate on the PO − approved standard cost) × quantity, summed over the POs where that is positive. Example: standard ₹300, PO written at ₹320 for 1,000 pieces → ₹20,000 margin given away.\n\nUSE: each one was either a negotiation lost or a standard cost that is out of date — check which on the Standard Cost page."}
             >
               {cost == null ? (
                 <NoData text="Standard-cost or PO approval data is not available." />
@@ -560,7 +560,11 @@ export function AnalyticsCards({
               span={7}
               rowSpan
               onClick={() => onTab("vendors")}
-              info={`Compares open vendor quantity with signed monthly capacity. Under ${rules.utilization_under_pct ?? 70}% has room; above ${rules.utilization_over_pct ?? 100}% is over-committed. Bands are editable in Rules Master.`}
+              info={`WHAT: which vendors have room and which are over-committed.
+
+HOW: open-PO pieces ÷ monthly capacity per vendor (capacity = karigars × daily output × working days, from Vendor Capacity). Under ${rules.utilization_under_pct ?? 70}% = has room; above ${rules.utilization_over_pct ?? 100}% = over-committed. Bands are editable in Rules Master.
+
+USE: place new POs with the vendors that have room; expect delays from the over-committed ones and decide which of their POs matters most.`}
             >
               {!withCapacity.length ? (
                 <NoData text="No vendor has a signed monthly capacity yet, so allocation headroom cannot be compared." />
@@ -683,7 +687,11 @@ export function AnalyticsCards({
               cta="Review vendor allocation"
               span={5}
               onClick={() => onTab("vendors")}
-              info={`Share of open buying value held by the top 3 vendors, measured within the selected fabric pool (Woven and Knit are managed separately, so they're never blended). The alert line is ${concentrationAlert}% and is editable in Rules Master.`}
+              info={`WHAT: how much of the open buying value sits with just three vendors.
+
+HOW: open value of the three biggest vendors ÷ total open value, within the selected fabric pool — Woven and Knit are managed separately and never blended. Example: ₹2.1 Cr of ₹3.5 Cr with three vendors → 60%.
+
+USE: above the ${concentrationAlert}% line (editable in Rules Master) one vendor's problem becomes SAADAA's problem. Spread the next orders.`}
             >
               <div className="ana-weave-seg" role="group" aria-label="Fabric pool">
                 {(["All", "Woven", "Knit"] as const).map((w) => (
@@ -781,7 +789,11 @@ export function AnalyticsCards({
               cta="Review vendor performance"
               span={5}
               onClick={() => onTab("vendors")}
-              info={`Delay rate over the last ${windowDays} days (≈${Math.round(windowDays / 90)} quarters), combining completed POs (final delivered status) and open POs still in flight — per vendor, deduped by PO number. Vendors with fewer than 2 POs in window are excluded; the window is editable in Rules Master. Click a vendor to open the PO tracker.`}
+              info={`WHAT: which vendors have been late most often recently.
+
+HOW: per vendor, POs delivered or running late ÷ all its POs in the last ${windowDays} days (≈${Math.round(windowDays / 90)} quarters), counting completed POs by their final delivery and open POs by whether they are past their date today. One count per PO number. Vendors with fewer than 2 POs in the window are left out; the window is editable in Rules Master.
+
+USE: the ranking for who gets the next order. Click a vendor to open its POs in the tracker.`}
             >
               {reliability == null ? (
                 <NoData text="PO data is not available, so vendor reliability cannot be computed." />
@@ -834,7 +846,7 @@ export function AnalyticsCards({
               cta="Open Vendor Recommendation"
               span={5}
               href="/vendor-recommendation"
-              info="From completed-PO history (vendors with at least 3 completed POs): the best on-time performers and any vendor whose recent delay rate is 50% or worse."
+              info={"WHAT: the most reliable vendors, and the ones that are late half the time or more.\n\nHOW: from completed POs, for vendors with at least 3 of them: on-time POs ÷ completed POs. 'Risky' = late on 50% or more.\n\nUSE: reliable vendors are where urgent replenishment should go; risky ones need a committed date in writing before the next PO."}
             >
               {!vrec ? (
                 <NoData text="Vendor recommendation data is not available." />
@@ -876,7 +888,7 @@ export function AnalyticsCards({
               cta="Open PO Approval"
               span={4}
               href="/po-approval"
-              info="POs issued to EasyCom this week vs the immediately preceding week — the delta shows whether issuance pace is up or down, not just a flat rolling count."
+              info={"WHAT: how many POs were issued to EasyEcom this week, and whether the pace is up or down.\n\nHOW: POs issued in the last 7 days against the 7 days before that. Example: 14 this week vs 9 last week → +5.\n\nUSE: a falling pace with a long Stock Out Risk list means orders are not going out fast enough."}
             >
               {!issued ? (
                 <NoData text="PO issuance data is not available." />
@@ -919,7 +931,7 @@ export function AnalyticsCards({
               cta="Open Approvals"
               span={4}
               href="/approvals"
-              info="Purchase orders currently submitted and awaiting approval (live count + total quantity)."
+              info={"WHAT: POs waiting for someone to approve them, and the pieces they carry.\n\nHOW: POs in Submitted or Pending-admin status on PO Approval, with their quantities summed.\n\nUSE: every day these wait is a day added to the delivery. The approver sees them in Approvals."}
             >
               {!pending ? (
                 <NoData text="Approval-queue data is not available." />
@@ -964,7 +976,7 @@ export function AnalyticsCards({
               cta="Open buying plan"
               span={5}
               href="/buying-plan"
-              info="Two halves of one question. Buying Plan coverage = issued PO value ÷ planned value for the current month (did we commit what we said we would). Inward Plan coverage = GRN quantity received in the month ÷ quantity planned to arrive — taken from the Inward Plan input when the team has filled it, otherwise from the monthly Inward Plan sheet with rejected lines excluded (did what we committed actually arrive). High buying + low inward = vendor/TNA problem, not a planning problem. Month totals, not line-matched. Updates live, not at month-end."
+              info={"WHAT: two halves of one question — did we order what we planned, and did what we ordered arrive.\n\nHOW: Buying Plan coverage = value of POs issued this month ÷ approved plan value for the month. Inward Plan coverage = pieces received (GRN) this month ÷ pieces planned to arrive — from the Inward Plan when the team has filled it, otherwise from the monthly sheet with rejected lines excluded. Example: planned ₹80 L, issued ₹60 L → 75%.\n\nUSE: high buying + low inward = a vendor/delivery problem, not a planning one. Low buying = the plan is not being executed. Month totals, not matched line by line; updates live through the month."}
             >
               <div className="ana-pair">
                 <div className="ana-pair-cell">
@@ -1031,7 +1043,7 @@ export function AnalyticsCards({
               span={7}
               rowSpan
               href="/buying-plan"
-              info="Current-month planned buying value versus issued PO value by weave, with the prior two months for context."
+              info={"WHAT: planned buying against what was actually ordered, by weave, this month and the two before.\n\nHOW: approved plan value vs issued PO value, split Woven / Knit, per month.\n\nUSE: a persistent gap in one weave means that side of the plan is not being executed — worth asking why before the next plan is approved."}
             >
               {!realization ? (
                 <NoData text="Buying-plan or PO actuals data is not available." />
@@ -1158,7 +1170,7 @@ export function AnalyticsCards({
               cta="Review PO tracker"
               span={5}
               onClick={() => onTab("open-po")}
-              info="Daily share of open POs that are On Track, using the same TNA logic as the tracker. This shows whether execution is improving or degrading, not only today's status."
+              info={"WHAT: is execution getting better or worse — the share of open POs on track, day by day.\n\nHOW: each day, POs with no critical-path stage past its planned date ÷ open POs, using the same TNA rule as the tracker. Recorded once a day when the dashboard is opened.\n\nUSE: today's number alone can hide a slide; the line shows the direction. A falling line with a steady PO count means stages are slipping, not that more was ordered."}
             >
               {trend == null ? (
                 <NoData text="The TNA snapshot table is not available." />
@@ -1273,7 +1285,11 @@ export function AnalyticsCards({
               cta="Open closure queue"
               span={5}
               href="/po-closure"
-              info={`Share of completed POs closed within the ${closure?.slaDays ?? 15}-day SLA, plus open closures already beyond it. The SLA is editable in Rules Master.`}
+              info={`WHAT: are completed POs being closed out on time.
+
+HOW: completed POs closed within ${closure?.slaDays ?? 15} days of completion ÷ completed POs, plus a count of closures still open beyond that. The SLA is editable in Rules Master.
+
+USE: late closures hold up vendor payment and keep received goods looking 'open' on every other card.`}
             >
               {!closure ? (
                 <NoData text="PO closure data is not available." />
@@ -1330,7 +1346,7 @@ export function AnalyticsCards({
               cta="Open Inward Plan"
               span={4}
               href="/inward-plan"
-              info="Planned arrivals due last week (still-open lines) vs quantity actually received (GRN). Approximate — the two are not line-matched."
+              info={"WHAT: last week — what was due to arrive against what actually did.\n\nHOW: pending pieces on lines whose expected delivery date fell last week, vs pieces received (GRN) last week. Totals, not matched line by line.\n\nUSE: a big gap means last week's due dates were missed; check the Open PO Tracker's overdue band for which ones."}
             >
               {!inward ? (
                 <NoData text="Inward-plan / GRN data is not available." />
@@ -1359,7 +1375,7 @@ export function AnalyticsCards({
               {...(isAdmin
                 ? { href: "/replenishment" }
                 : { onClick: () => onTab("urgent-replenish") })}
-              info="Colour variants the replenishment maths says to order now (ROP-30 above zero), the total pieces they call for, and how many of them are already out of stock."
+              info={"WHAT: the colours the replenishment rule says to order now, and how many are already empty.\n\nHOW: from Replenishment: variants whose 30-day reorder quantity is above zero (stock + on order will not cover 30 days at the IPDOQ rate), the pieces called for, and how many have zero stock today.\n\nUSE: the order list for this week. The Replenishment page has the per-variant quantities."}
             >
               {!repl ? (
                 <NoData text="Replenishment data is not available." />
@@ -1388,7 +1404,7 @@ export function AnalyticsCards({
               cta="Open Inward Plan"
               span={7}
               href="/inward-plan"
-              info="Open (Approved) PO quantity still to arrive: due in the next 7 days, already past its expected date, and lines with no EDD set at all."
+              info={"WHAT: what is landing this week, what is already late, and what has no date at all.\n\nHOW: pending pieces on open lines with expected delivery date in the next 7 days; past their date; or with no date set.\n\nUSE: the warehouse's week ahead. The 'no date' lines need a date set at PO Approval before they can be planned."}
             >
               {!pipe ? (
                 <NoData text="Inward-plan data is not available." />
@@ -1439,7 +1455,7 @@ export function AnalyticsCards({
               cta="Review affected PO lines"
               span={6}
               onClick={() => onTab("open-po")}
-              info="Products marked Discontinued in Product Master that still have an open PO (or a current buying-plan line) with pending quantity against them — i.e. buying is still happening on a discontinued product. This should always be zero."
+              info={"WHAT: discontinued products that are still being bought.\n\nHOW: products marked Discontinued in the Product Master that have an open PO line with pending quantity, or a line on the current buying plan.\n\nUSE: should always read zero. Anything here is either a wrong product state or a PO that should be cancelled."}
             >
               {disc == null ? (
                 <NoData text="Product Master data is not available, so lifecycle integrity cannot be checked." />
@@ -1496,7 +1512,7 @@ export function AnalyticsCards({
               cta="Open Product Master"
               span={7}
               href="/product-master"
-              info="Every product code in the master, counted by its lifecycle state. Watch Discontinued and SKU-Create shares — they should shrink, not grow."
+              info={"WHAT: the product catalogue by lifecycle state.\n\nHOW: every product code in the master counted by state — Ongoing, NPD, NPD Not Launched, SKU-Create, To Be Discontinued, Discontinued.\n\nUSE: Discontinued and SKU-Create should shrink over time; a growing SKU-Create pile means new products are stuck before launch."}
             >
               {!stateMix ? (
                 <NoData text="Product master data is not available." />
@@ -1523,7 +1539,11 @@ export function AnalyticsCards({
               cta="Open Sync Health"
               span={5}
               href="/sync-status"
-              info={`Every synced feed and when it last refreshed. A feed is flagged stale after ${sync?.staleHours ?? 30}h without a refresh (threshold editable in Rules Master).`}
+              info={`WHAT: is the data on this dashboard fresh.
+
+HOW: every synced feed with the time of its last refresh. A feed is flagged stale after ${sync?.staleHours ?? 30} hours without one (editable in Rules Master).
+
+USE: if a feed is stale, every card built on it is showing yesterday's or older numbers — check Sync Health before acting on them.`}
             >
               {!sync ? (
                 <NoData text="Sync status data is not available." />
@@ -1611,7 +1631,7 @@ export function ObjectiveStockCards({
         cta="Open urgent replenishment"
         span={5}
         onClick={() => onTab("urgent-replenish")}
-        info="Variants that will run out before new goods can arrive. Only products that can actually sell are counted: Ongoing and NPD, never NPD Not Launched Yet, and test SKUs are left out. A variant is listed for one of two reasons: it has nothing in stock and nothing on order, so it cannot sell at all; or what it has plus what is on order runs out inside the 45-day lead time, so a purchase order has to go out now. Listed per variant, busiest first. Download the full list as CSV."
+        info={"WHAT: the colours that will run out before new goods can arrive — the ones that need a PO now.\n\nHOW: only products that can sell (Ongoing and launched NPD; never NPD Not Launched; test SKUs left out). A colour is listed for one of two reasons: (1) nothing in stock and nothing on order — it cannot sell at all; or (2) stock + on order ÷ daily demand is less than the 45-day lead time. Example: 90 in stock, 0 on order, 3 a day → 30 days of cover, under 45 → listed.\n\nUSE: reason (1) first — those are lost sales today. Busiest sellers first. Download the full list as CSV for the PO round."}
       >
         {risk == null ? (
           <NoData text="Replenishment data is not available, so stock-out risk cannot be checked." />
@@ -1679,7 +1699,7 @@ export function ObjectiveStockCards({
         cta="Open urgent replenishment"
         span={5}
         onClick={() => onTab("urgent-replenish")}
-        info="The A and B sellers only — the ones where an empty shelf costs real sales — whose stock plus what is on order runs out inside 30 days. Same population and rules as Stock Out Risk, on a tighter horizon, so these are the orders to place first. D-class items rarely reach this list because they sell too slowly to run out quickly."
+        info={"WHAT: the fast sellers (class A and B) that run out within 30 days — the orders to place first.\n\nHOW: same population and rule as Stock Out Risk, on a 30-day horizon instead of 45, and only variants whose sales class is A or B (thresholds in Rules Master). D-class items rarely appear — they sell too slowly to run out fast.\n\nUSE: these cost real sales when empty. Place these POs before anything else on the Stock Out Risk list."}
       >
         {watch == null ? (
           <NoData text="Replenishment data is not available." />

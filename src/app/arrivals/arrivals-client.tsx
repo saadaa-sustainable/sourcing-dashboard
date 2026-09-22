@@ -42,7 +42,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       filter: 'select',
       accessor: (r) => r.expected_month ?? '—',
-      info: 'Calendar month the arrival was expected in — pick one to view that month.',
+      info: "WHAT: the month the goods were planned to arrive in.\n\nHOW: from the Inward Plan entry (week or month).\n\nUSE: pick a month to see what was planned for it and what actually landed.",
     },
     {
       key: 'product_variant',
@@ -61,7 +61,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'num',
       accessor: (r) => num(r.expected_qty),
       render: (r) => (r.expected_qty == null ? '—' : fmt.format(num(r.expected_qty))),
-      info: 'Quantity the team expected this week (Inward Plan input).',
+      info: "WHAT: how many pieces the team said would arrive.\n\nHOW: the quantity typed on the Inward Plan for this PO and product, for the chosen week.\n\nUSE: the promise the Received column is measured against.",
     },
     {
       key: 'expected_week',
@@ -69,7 +69,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       accessor: (r) => r.expected_week ?? '',
       render: (r) => r.expected_week ?? '—',
-      info: 'When the team expected it — a specific ISO week, or a whole month if that is all they filled.',
+      info: "WHAT: when the team said the goods would arrive.\n\nHOW: an ISO week when one was entered; a whole month when only the month was filled.\n\nUSE: a month-only entry is a weaker promise — it cannot be checked week by week.",
     },
     {
       key: 'received_qty',
@@ -78,7 +78,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'num',
       accessor: (r) => num(r.received_qty),
       render: (r) => fmt.format(num(r.received_qty)),
-      info: 'Quantity actually received against this PO + product (GRN Detail).',
+      info: "WHAT: how many pieces actually arrived.\n\nHOW: goods-receipt (GRN) quantity for this PO and product.\n\nUSE: the reality the plan is measured against.",
     },
     {
       key: 'received_weeks',
@@ -87,7 +87,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       accessor: (r) => r.received_weeks ?? '',
       render: (r) => r.received_weeks ?? '—',
-      info: 'ISO week(s) the goods actually landed (GRN created date).',
+      info: "WHAT: when the goods actually arrived.\n\nHOW: the ISO week of the goods receipt's created date; several weeks when the PO came in parts.\n\nUSE: compare with the Expected week to see how late (or early) the delivery was.",
     },
     {
       key: 'variance',
@@ -97,7 +97,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       accessor: (r) => num(r.variance),
       render: (r) =>
         r.variance == null ? '—' : `${r.variance > 0 ? '+' : ''}${fmt.format(r.variance)}`,
-      info: 'Received − expected. Negative means short of plan.',
+      info: "WHAT: how far the delivery was from the plan.\n\nHOW: received − expected. Example: expected 500, received 320 → −180.\n\nUSE: negative = short of plan (chase the balance); positive = more than planned (check it was wanted).",
     },
     {
       key: 'status',
@@ -112,7 +112,7 @@ export function ArrivalsClient({ rows }: { rows: ArrivalRow[] }) {
       kind: 'text',
       accessor: (r) => r.remarks ?? '',
       render: (r) => r.remarks ?? '—',
-      info: 'Remarks from the approved historical plan sheet (live Inward Plan rows carry their submit remark in the approval history instead).',
+      info: "WHAT: any note the team left on the plan line.\n\nHOW: from the approved historical plan sheet; live Inward Plan rows keep their remark in the approval history instead.\n\nUSE: context for a gap — a vendor delay already known, a part-shipment agreed.",
     },
   ];
 

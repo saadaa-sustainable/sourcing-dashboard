@@ -482,7 +482,7 @@ export function MaterialPlanClient({
                       {TYPE_LABEL[type]} code
                       <InfoDot
                         label="About material plan input"
-                        text="Enter Job Work and Purchase quantities for the selected material type. Values use the approved Material Standard Cost rates."
+                        text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."}
                       />
                     </th>
                     {type === 'dyed' && <th className="input-col wf-cell-input">Colour</th>}
@@ -652,7 +652,11 @@ function MaterialView({ view }: { view: ViewItem[] }) {
           <div className="table-meta">
             <h3>
               {g.label}
-              <InfoDot text={`Shows approved ${g.label.toLowerCase()} plan quantities and value, split between Job Work and Purchase.`} />
+              <InfoDot text={`WHAT: the approved ${g.label.toLowerCase()} plan — quantities and value.
+
+HOW: approved plan lines for this material type, split Job Work vs Purchase, valued at the approved material standard cost.
+
+USE: read-only; the Input view is where quantities change.`} />
             </h3>
             <span>
               Job {money.format(g.job)} · Purchase {money.format(g.purchase)} · Total{' '}

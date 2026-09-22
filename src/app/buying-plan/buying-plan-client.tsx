@@ -908,7 +908,7 @@ export function BuyingPlanClient({
         <div className="bp-card bp-cardbody" style={{ marginBottom: 14 }}>
           <div style={{ fontWeight: 650, marginBottom: 6 }}>
             Request an amendment to the approved plan
-            <InfoDot text="Reopens an approved plan as rework. The requested changes must be saved, resubmitted, and approved again." />
+            <InfoDot text={"WHAT: change a plan that has already been approved.\n\nHOW: the plan reopens in Rework. Make the change, save, resubmit, and it goes through approval again — the original approval no longer stands.\n\nUSE: for a genuine change of mind after approval (a product pulled, a quantity wrong). A frozen month (after month-end) can only be changed this way."} />
           </div>
           <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
             For the case where something dropped out of view (a product never got its PO). The plan goes back to rework, you make the change, and it must be approved again — this counts against first-time approval.
@@ -968,7 +968,7 @@ export function BuyingPlanClient({
               <div className="bp-cardhead">
                 <h2>
                   Plan detail
-                  <InfoDot text="Every finished-goods plan line for the selected month. Search, sort, filter columns, download, or expand the table without changing plan data." />
+                  <InfoDot text={"WHAT: every product line on this month's finished-goods plan.\n\nHOW: one row per product code with its Job Work / E-FOB / FOB quantities, value at the approved standard cost, and status.\n\nUSE: read-only here — search, sort, filter, download or expand. Quantities are entered on the Input view."} />
                 </h2>
                 <div className="bp-plan-detail-head-actions">
                   <span className="wf-subtle">{view.length} products · every line as on the sheet · filter or sort any column</span>
@@ -1046,7 +1046,7 @@ export function BuyingPlanClient({
                 <div>
                   <h2>
                     Fill the plan
-                    <InfoDot text="Enter finished-goods quantities by PO type. Totals, values, and validation update from the existing plan inputs." />
+                    <InfoDot text={"WHAT: where this month's quantities are typed in.\n\nHOW: per product, pieces by PO type — Job Work, E-FOB, FOB. Value = quantity × the approved standard cost for that type; totals and checks update as you type.\n\nUSE: a product with no approved standard cost shows no value and is flagged in Attention — get the cost approved before submitting."} />
                   </h2>
                   <span className="wf-subtle">Enter quantities by PO type. Zero quantities stay out of the submitted plan.</span>
                 </div>
@@ -1318,7 +1318,7 @@ function InputValidationCard({ missingCost, npdBudgetSet, ready, planned }: { mi
       <div className="bp-cardhead">
         <h2>
           Review before submit
-          <InfoDot text="Highlights missing approved costs and monthly NPD-budget setup that require review before the plan is submitted." />
+          <InfoDot text={"WHAT: the things that will stop this plan being approved cleanly.\n\nHOW: products on the plan with no approved standard cost (no value can be computed), and an NPD budget for the month that is not set up.\n\nUSE: clear these before submitting; an approver sends a plan with missing costs back for rework."} />
         </h2>
         <Badge tone={reviewCount ? 'yellow' : 'green'}>{reviewCount ? `${reviewCount} to review` : 'All clear'}</Badge>
       </div>
@@ -1370,7 +1370,7 @@ function PlanSplitCard({ split, leadDays }: { split: { job: number; fob: number;
       <div className="bp-cardhead">
         <h2>
           Plan split
-          <InfoDot text="Summarises planned quantity by Job Work, E-FOB, and FOB, together with the lead-time rule for each route." />
+          <InfoDot text={"WHAT: how much of the plan goes each route, and how long each route takes.\n\nHOW: planned pieces summed by PO type, with the lead time from Rules Master beside each — Job Work 30, E-FOB 45, FOB 90 days.\n\nUSE: FOB pieces planned this month will not land for three months — plan the cash and the stock-outs accordingly."} />
         </h2>
         <span className="wf-subtle">quantity by PO type</span>
       </div>
@@ -1529,7 +1529,7 @@ function OverviewCard({
       <div className="bp-cardhead">
         <h2>
           Plan overview
-          <InfoDot text="Summarises the selected month's finished-goods plan: issued versus planned quantity, total plan value, 30-day demand projection, and issued value." />
+          <InfoDot text={"WHAT: the month at a glance — planned against issued, in pieces and rupees.\n\nHOW: planned = pieces on the approved plan; issued = pieces on real EasyEcom POs dated this month; values at the approved standard cost / the PO rate. The 30-day demand projection is IPDOQ × 30 over the planned products.\n\nUSE: issued well below planned late in the month means the plan is not being executed; issued above planned means buying outside the plan."} />
         </h2>
         <span className="wf-subtle">Run rate and last-3-month average: sales feed not wired yet</span>
       </div>
@@ -1610,7 +1610,7 @@ function AttentionCard({
       <div className="bp-cardhead">
         <h2>
           Needs attention
-          <InfoDot text="Counts plan lines requiring review: missing approved cost, approval pending, issued above plan, or planned with nothing issued." />
+          <InfoDot text={"WHAT: how many lines need someone's attention, and why.\n\nHOW: four reasons — no approved standard cost; approval still pending; POs issued above the planned quantity; planned but nothing issued yet.\n\nUSE: the review list for the weekly plan meeting."} />
         </h2>
         <Badge tone={total ? 'red' : 'green'}>{total ? `${total} item${total === 1 ? '' : 's'}` : 'All clear'}</Badge>
       </div>
@@ -1667,7 +1667,7 @@ function LeadTimesCard({
       <div className="bp-cardhead">
         <h2>
           PO lead times
-          <InfoDot text="Uses Rules Master lead-time days and the 30-day ROP demand to show the quantity needed to cover each PO route." />
+          <InfoDot text={"WHAT: how many pieces each route needs to cover demand through its lead time.\n\nHOW: 30-day reorder demand (from Replenishment) scaled to each route's lead time from Rules Master. Example: 3 a day → 90 pieces for a 30-day Job Work route, 270 for a 90-day FOB route.\n\nUSE: a sanity check on the typed quantities — planning 100 FOB pieces of a 3-a-day product buys about a month."} />
         </h2>
         <span className="wf-subtle">coverage from 30-day ROP</span>
       </div>
@@ -1755,7 +1755,7 @@ function ValueByTypeCard({
       <div className="bp-cardhead">
         <h2>
           Planned value by PO type
-          <InfoDot text="Splits planned quantity and value across Job Work, FOB, and E-FOB using the approved standard cost for each line." />
+          <InfoDot text={"WHAT: the plan's value by PO type.\n\nHOW: per line, quantity × the approved standard cost for that type (Job Work rate, FOB rate, E-FOB rate), summed by type.\n\nUSE: Job Work is valued at the stitching rate only, so it reads cheaper per piece than FOB — that is the fabric SAADAA supplies, not a saving."} />
         </h2>
         <span className="wf-subtle">qty × approved standard cost</span>
       </div>
@@ -1806,7 +1806,7 @@ function PlanGroups({
       <div className="bp-cardhead">
         <h2>
           Buying plan by {GROUP_LABEL[groupBy]}
-          <InfoDot text="Groups planned products by the selected Group By dimension. Quantities and values follow the active filters above." />
+          <InfoDot text={"WHAT: the plan rolled up by category, weave, vendor or whatever is chosen in Group By.\n\nHOW: planned pieces and value summed within each group, after the filters above.\n\nUSE: to see where the month's money goes — by category for merchandising, by weave for fabric planning."} />
         </h2>
         <div className="bp-actions">
           <button

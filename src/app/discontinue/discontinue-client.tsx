@@ -87,7 +87,7 @@ export function DiscontinueClient({
           <div className="panel-title">
             <h3>
               Raise a discontinue request
-              <InfoDot text="Discontinue a size, a colour, or a whole product. The request goes to the approval queue and only takes effect once approved." />
+              <InfoDot text={"WHAT: stop buying and selling a size, a colour, or a whole product.\n\nHOW: pick the scope, give the reason, submit. The request goes to Approvals and always needs an admin. Once approved the size/colour/product drops out of the active list and stops counting as in-process.\n\nUSE: this is about the PRODUCT STATE. It is separate from the sales class (A/B/C/D) — a slow D-class product is not discontinued unless someone approves it here."} />
             </h3>
           </div>
           <div className="segment wf-segment">

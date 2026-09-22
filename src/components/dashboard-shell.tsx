@@ -1083,7 +1083,7 @@ function DashboardTab({
               note={`${money.format(sumValue(highRisk))} pending · TNA stage slipped · view details`}
               tone="orange"
               icon={AlertTriangle}
-              info="A critical-path TNA stage is past its planned date with no actual date yet, with the pending value behind those POs. Clears the moment the stage is marked done. Kept separate from Overdue: the delivery date may still be days away."
+              info={"WHAT: open POs where the work is running late — a critical-path TNA stage (PP sample, GPT, cutting, inline QC) is past its planned date and nobody has recorded it as done. The value is the pending pieces on those POs × item price.\n\nHOW: planned stage date < today AND no actual date for that stage. Example: cutting was planned for 10 Sep, today is 22 Sep, the cutting date is still blank → High Risk. The moment the actual date is entered, the PO drops out.\n\nUSE: chase the vendor or the merchandiser now, before the delivery date arrives. Deliberately separate from Overdue: a High Risk PO may still be days away from its delivery date — this is the early warning, Overdue is the missed date."}
               onClick={() => onHighRisk(highRisk)}
             />
             <Card
@@ -1115,14 +1115,14 @@ function DashboardTab({
           note={`${fmt.format(open.length)} SKU rows`}
           tone="blue"
           icon={LayoutDashboard}
-          info="Unique PO references that still have pending quantity above 0. Fully received POs drop off."
+          info={"WHAT: how many purchase orders are still open — counted as PO numbers, not lines.\n\nHOW: a PO is open while any of its lines still has pending quantity above 0. A PO with three colours on it counts once. Fully received POs drop off, even if EasyEcom has not closed them yet.\n\nUSE: the size of the book the team is chasing. Read with 'Pending pieces' beside it — many POs with few pieces is a closure problem, few POs with many pieces is a delivery problem."}
         />
         <Card
           label="Open Qty"
           value={fmt.format(open.reduce((s, r) => s + r.pending_qty_actual, 0))}
           note="pieces pending"
           tone="amber"
-          info="Sum of pending pieces across every open SKU row."
+          info={"WHAT: how many pieces are still to arrive across every open PO.\n\nHOW: ordered quantity − received quantity, summed over every open PO line (each colour and size). Example: a line ordered 500, received 320 → 180 pending.\n\nUSE: the physical volume still in vendors' hands. Divide by the vendors' monthly capacity (Vendor Performance tab) to see whether the backlog is more than a month's work."}
         />
         <Card
           label="Open Value"
@@ -1130,14 +1130,14 @@ function DashboardTab({
           note={valueSplit || "pending qty × item price"}
           tone="teal"
           icon={IndianRupee}
-          info="Pending quantity times item price across every line of an open PO, split by PO type. Job work is valued at its job-work rate, not at a garment price, so the three types are shown apart rather than blended. Reversed and cancelled lines come back as negative quantities and are netted off here rather than ignored, which a sum over positive lines only would do."
+          info={"WHAT: the money committed on open POs — pending pieces × item price, shown per PO type.\n\nHOW: for every open line, pending quantity × the price on the PO, summed by type. Job Work lines are priced at the job-work (stitching) rate, not a full garment price, so the three types are shown side by side rather than added into one misleading total. Reversed or cancelled lines carry negative quantities and are netted off, not dropped.\n\nUSE: what is tied up with vendors right now. A rising FOB figure with flat arrivals means goods are being ordered faster than they land. Compare with the Buying Plan's approved value for the month."}
         />
       </div>
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
           kicker="Delivery slippage"
-          info="Weekly delivery volume from completed POs: Expected = quantity due that week (by EDD), Actual = quantity that actually completed that week. The shaded band is the gap between them — the delivery slippage. Last 12 weeks."
+          info={"WHAT: week by week, how much was due to arrive against how much actually did — the delivery slippage.\n\nHOW: from completed POs over the last 12 weeks. Expected = pieces whose expected delivery date fell in that week. Actual = pieces whose PO completed in that week. The shaded band is the gap. Example: 8,000 due in week 36, 5,200 completed → a 2,800 shortfall that week.\n\nUSE: a widening band means vendors are falling further behind plan; a band that closes after a bad week means the backlog was caught up. Completed POs only — open POs are on the Open PO Tracker."}
           actions={
             <span className="legend-pills">
               <span className="legend-pill" style={{ "--pill-color": "#3b6fd4" } as CSSProperties}>
@@ -1182,7 +1182,7 @@ function DashboardTab({
               <h3>
                 Production pipeline
                 <InfoDot
-                  text="Every open PO placed at its current TNA stage — the earliest stage without an actual date. The centre number is the count of live (open) POs."
+                  text={"WHAT: where every open PO is in production right now.\n\nHOW: each PO is placed at its current stage — the earliest TNA stage that has no actual date yet. Example: PP sample and GPT dated, cutting blank → the PO sits at Cutting. The centre number is the count of open POs. 'No TNA' means no timeline was entered at all.\n\nUSE: a pile-up at one stage points at where the process is stuck (often GPT approvals or cutting). A large 'No TNA' slice is an adoption problem — merchandisers not filling the timeline — not a production one."}
                   label="About Production pipeline"
                 />
               </h3>
@@ -1237,7 +1237,7 @@ function DashboardTab({
         <ChartCard
           title="PO ageing"
           kicker="Overdue buckets"
-          info="Open POs grouped by how far past their EDD they are, ordered from safe (Not Due) to worst (30+ days). No EDD means no delivery date is set at all."
+          info={"WHAT: how late the open POs are, grouped into bands.\n\nHOW: today − expected delivery date (EDD), per PO. Not Due = EDD still ahead. Then 1–7, 8–15, 16–30 and 30+ days past. 'No EDD' = no delivery date on the PO at all, so lateness cannot be judged.\n\nUSE: the 30+ band is the list to escalate or close out; a big No EDD band means POs are being raised without dates and should be fixed at PO Approval."}
           download={{
             filename: "po-ageing",
             headers: ["Ageing bucket", "Open PO count"],
@@ -1276,7 +1276,7 @@ function DashboardTab({
               <h3>
                 Open-PO checkpoints
                 <InfoDot
-                  text="Distinct open POs at each operational checkpoint, plus how much of the book is covered: TNA coverage = share of open POs with a timeline entered; Qty delivered = pieces received ÷ pieces ordered across open POs."
+                  text={"WHAT: how many open POs have reached each checkpoint, and how well the book is covered by timelines and deliveries.\n\nHOW: distinct open POs at each checkpoint. TNA coverage = open POs with a timeline entered ÷ all open POs. Qty delivered = pieces received ÷ pieces ordered across open POs. Example: 96 open POs, 72 with a TNA → 75% coverage.\n\nUSE: coverage below 100% means the High Risk flag is blind to those POs — they cannot be late on a stage that was never planned. Get the timelines entered first, then read the rest."}
                   label="About Open-PO checkpoints"
                 />
               </h3>
@@ -1313,7 +1313,7 @@ function DashboardTab({
         <ChartCard
           title="Stage turnaround — avg days late"
           kicker="TNA discipline"
-          info="For each production stage: among POs that completed the stage later than its planned TNA date, the average days late. Green ≤3d, amber ≤7d, red >7d. Pending stages are not counted until an actual date lands."
+          info={"WHAT: which production stage loses the most time.\n\nHOW: for each stage, take the POs that completed it later than planned and average the days late. Example: 12 POs finished cutting late by 2, 5, 9… days → average 6 days. Stages still pending are not counted until an actual date lands. Green ≤ 3 days, amber ≤ 7, red > 7.\n\nUSE: the red stage is where the lead time is really being lost. Fixing it (say GPT approval turnaround) shortens every PO."}
           download={{
             filename: "stage-turnaround",
             headers: ["Stage", "Avg days late", "Late completions", "Total completions"],
@@ -1356,7 +1356,7 @@ function DashboardTab({
         <ChartCard
           title="Delay % by product code"
           kicker="Problem codes"
-          info="Product codes with at least one overdue PO, ranked by the share of their open POs that are past EDD. Codes running fully on time are hidden."
+          info={"WHAT: the products whose deliveries are most behind.\n\nHOW: per product code, overdue open POs ÷ all its open POs. Example: 4 open POs, 3 past their delivery date → 75%. Codes with nothing overdue are hidden.\n\nUSE: a product at 100% with high demand is a stock-out in the making — cross-check it on the Stock Out Risk tab and chase those POs first."}
           download={{
             filename: "product-code-delay-pct",
             headers: ["Product code", "Delay %", "Open POs"],
@@ -1388,7 +1388,7 @@ function DashboardTab({
       <div className="chart-grid">
         <ChartCard
           title="Vendor PO status and delay percentage"
-          info="Per vendor: open PO count, how many are past EDD, and the delay percentage line on the right axis. Click a vendor to open its POs in the tracker."
+          info={"WHAT: which vendors are late, and how much of their book is late.\n\nHOW: per vendor, open POs (bar), how many are past their expected delivery date (darker bar), and delayed ÷ open as the line on the right axis. Example: 10 open, 4 past EDD → 40%.\n\nUSE: a high line on a small bar is one bad PO; a high line on a tall bar is a vendor problem. Click a vendor to open its POs in the tracker."}
           wide
           download={{
             filename: "vendor-po-status-and-delay-percentage",
@@ -1468,7 +1468,7 @@ function DashboardTab({
         <ChartCard
           title="Top product codes by pending quantity"
           kicker="Volume ranking"
-          info="The 10 product codes with the most pieces still to be delivered across open POs."
+          info={"WHAT: the ten products with the most pieces still to arrive.\n\nHOW: pending pieces summed per product code across open POs; top ten.\n\nUSE: these are the products whose stock position depends most on vendors delivering. If one of them is also on the Stock Out Risk tab, it is the first to chase."}
           download={{
             filename: "top-product-codes",
             headers: ["Product code", "Pending qty"],
@@ -1504,7 +1504,7 @@ function DashboardTab({
               <h3>
                 Variants on order
                 <InfoDot
-                  text="Top product · variant pairs by open PO count. The bar shows relative volume; the badge is the share of that variant's POs past EDD (green 0%, amber ≤50%, red >50%)."
+                  text={"WHAT: the product-and-colour combinations with the most open POs, and how many of those POs are late.\n\nHOW: open POs counted per product · variant; the bar is relative volume. The badge is POs past their expected delivery date ÷ open POs for that variant — green 0%, amber up to 50%, red above.\n\nUSE: a red badge on a top row means a best-selling colour is being let down by its vendors."}
                   label="About Variants on order"
                 />
               </h3>
@@ -1649,7 +1649,7 @@ function DashboardTab({
         tall
         title="TNA critical path — planned stage dates"
         kicker="Is the work on time"
-        info="One row per open PO across its planned TNA stages (PP sample → GPT → cutting → inline QC → first delivery → PO close), on a dated axis with today marked. Each piece of the bar is coloured by the stage it leads to: green done, red past its planned date with nothing recorded (what makes a PO High Risk), grey still to come. The chips under the PO number list every stage — red with the days it is past, green ticked when done. Hover a dot for the planned date. Read with the bubbles above: those say when goods are due, this says whether the work behind them is running to time. Most-slipped POs first, top 14; scroll inside the card for the rest."
+        info={"WHAT: is the work behind each open PO running to time. One row per PO, its planned stages laid on a calendar with today marked.\n\nHOW: the stages are PP sample → GPT → cutting → inline QC → first delivery → PO close. Each piece of the bar is coloured by the stage it leads to: green = done, red = planned date passed with nothing recorded (this is what makes a PO High Risk), grey = still to come. The chips under the PO number name every stage; a red chip shows how many days past it is. Hover a dot for the planned date.\n\nUSE: read with the delivery bubbles above — those say WHEN goods are due, this says WHETHER the work will get there. Most-slipped POs are at the top (top 14; scroll inside the card for the rest)."}
         actions={
           <span className="legend-pills">
             <span className="legend-pill" style={{ "--pill-color": "#4f7c4d" } as CSSProperties}>
@@ -1945,25 +1945,25 @@ function TrackerTab({
         <Card
           label="Open PO lines"
           value={fmt.format(all.filter((r) => r.pendingQty > 0).length)}
-          info="Open purchase-order lines with quantity still to arrive (Approved, not fully received). Fully-received lines awaiting closure on EasyCom are listed in the table but not counted here."
+          info={"WHAT: how many open PO lines still have pieces to arrive. A line is one colour on one PO.\n\nHOW: Approved lines with pending quantity above 0. Lines that are fully received but not yet closed on EasyEcom appear in the table (for closure) but are not counted here.\n\nUSE: the working list. The count of POs is on the Objectives tab; this is lines, so one PO with four colours contributes four."}
         />
         <Card
           label="Delayed lines"
           value={fmt.format(all.filter((r) => r.pendingQty > 0 && r.delayDays > 0).length)}
           tone="orange"
-          info="Open lines (quantity still pending) already past their expected delivery date."
+          info={"WHAT: open lines whose expected delivery date has passed with pieces still pending.\n\nHOW: expected delivery date < today AND pending quantity > 0.\n\nUSE: each of these is a promise already broken — either chase the vendor for a new committed date or close the line if it will never come."}
         />
         <Card
           label="Missing TNA"
           value={fmt.format(missingTnaCount)}
           tone="red"
-          info="Open lines with no TNA timeline entered at all — an adoption gap, not a production state."
+          info={"WHAT: open lines with no production timeline (TNA) entered.\n\nHOW: no TNA record found for the PO.\n\nUSE: the High Risk rule cannot see these lines — they can be late on every stage and never flag. This is a data-entry gap for the merchandiser to close, not a production problem."}
         />
         <Card
           label="Open quantity"
           value={fmt.format(all.reduce((s, r) => s + r.pendingQty, 0))}
           tone="teal"
-          info="Total pending pieces across all open PO lines."
+          info={"WHAT: pieces still to arrive across all open lines.\n\nHOW: ordered − received, summed over every open line.\n\nUSE: the volume vendors still owe. Compare with monthly capacity on Vendor Performance."}
         />
       </div>
       <div className="filter-bar tracker-filter-bar">
@@ -2603,7 +2603,7 @@ function VendorTab({ data }: { data: DashboardData }) {
           value={fmt.format(
             data.vendorTypes.filter((v) => norm(v.status) === "active").length,
           )}
-          info="Vendors marked active in the Vendor Type master."
+          info={"WHAT: how many vendors the team can currently place orders with.\n\nHOW: vendors marked Active — EasyEcom's status once synced, otherwise the Vendor Type master's status.\n\nUSE: the denominator for 'Nothing on order' beside it."}
         />
         <Card
           label="Active with 0 open PO"
@@ -2615,25 +2615,25 @@ function VendorTab({ data }: { data: DashboardData }) {
               .join(", ") || "None"
           }
           tone="orange"
-          info="Active vendors with no open purchase order right now — idle capacity worth chasing."
+          info={"WHAT: active vendors with no open PO at all right now.\n\nHOW: active vendors minus vendors that appear on any open PO.\n\nUSE: idle capacity. If the Stock Out Risk list is long and these vendors make the right products (Product Allocation on Vendor Capacity), that is where the next orders can go."}
         />
         <Card
           label="Total monthly capacity"
           value={fmt.format(totalCap)}
           tone="teal"
-          info="Sum of each vendor's modelled monthly production capacity."
+          info={"WHAT: how many pieces all vendors together can make in a month.\n\nHOW: per vendor, karigars allocated to SAADAA × pieces a karigar makes a day × working days a month (both figures in Rules Master), summed. Example: 25 karigars × 20 × 26 = 13,000 a month for one vendor.\n\nUSE: read against 'Pending pieces' beside it — if pending is more than one month's capacity, the backlog is longer than a month whatever the delivery dates say."}
         />
         <Card
           label="Total open PO quantity"
           value={fmt.format(totalOpen)}
           tone="blue"
-          info="Total pending pieces across all open POs."
+          info={"WHAT: pieces still to arrive across all open POs.\n\nHOW: ordered − received, summed over every open line.\n\nUSE: the load on vendors. Divide by monthly capacity for a rough 'months of backlog'."}
         />
       </div>
       <div className="bento-grid">
         <ChartCard
           title="Open quantity vs monthly capacity"
-          info="Per vendor: total open-PO pieces vs modelled monthly capacity. A vendor whose open quantity tops its capacity is over-committed."
+          info={"WHAT: per vendor, the pieces on order against what the vendor can make in a month.\n\nHOW: open-PO pieces (bar) vs monthly capacity (karigars × daily output × working days). Over 100% = more on order than a month's work.\n\nUSE: an over-committed vendor will be late on something; decide which PO, rather than let the vendor decide. Under-used vendors are where new orders can go."}
           download={{
             filename: "vendor-open-qty-vs-capacity",
             headers: vendorCsvHeaders,
@@ -2676,7 +2676,7 @@ function VendorTab({ data }: { data: DashboardData }) {
               <h3>
                 Capacity utilisation
                 <InfoDot
-                  text="Vendors split by load: Over (open qty above capacity), Near (70–100%), Under (below 70%), or no capacity data on file. Centre shows total vendors; the bar is book-wide open qty ÷ capacity."
+                  text={"WHAT: how vendors are loaded, in four bands.\n\nHOW: open pieces ÷ monthly capacity per vendor. Over = above 100%, Near = 70–100%, Under = below 70%, 'No data' = no capacity entered on Vendor Capacity. The centre is the vendor count; the bar is book-wide open pieces ÷ total capacity. Bands are editable in Rules Master.\n\nUSE: many in 'No data' means the capacity sheet is not being kept up — fix that before reading the rest."}
                   label="About Capacity utilisation"
                 />
               </h3>
@@ -2738,7 +2738,7 @@ function VendorTab({ data }: { data: DashboardData }) {
       </div>
       <ChartCard
         title="Vendor × PO type (open quantity)"
-        info="Open pieces per vendor broken down by PO type (EFOB / FOB / JOB …)."
+        info={"WHAT: per vendor, the open pieces split by PO type.\n\nHOW: pending pieces on open POs, stacked by type — Job Work, E-FOB, FOB.\n\nUSE: a vendor carrying mostly Job Work is dependent on SAADAA fabric; a FOB-heavy vendor carries the fabric risk. Useful when deciding where a new PO of each type can go."}
         download={{
           filename: "vendor-by-po-type",
           headers: ["Vendor", ...types],
@@ -2778,7 +2778,7 @@ function VendorTab({ data }: { data: DashboardData }) {
         <div className="panel-title">
           <h3>
             Vendor performance
-            <InfoDot text="Per-vendor rollup of open and delayed POs, quantities, value, capacity and utilisation. Pick a period and add a remark for the PDF; search, filter and export below." />
+            <InfoDot text={"WHAT: one row per vendor — open and delayed POs, pieces, value, capacity and utilisation.\n\nHOW: rolled up from every open PO line; delayed = past expected delivery date; utilisation = open pieces ÷ monthly capacity.\n\nUSE: the vendor review table. Pick a period and add a remark to print it as the PPM PDF; search, filter and export below."} />
           </h3>
         </div>
         <div className="vendor-report-controls">
@@ -2868,7 +2868,11 @@ function VendorTypeCharts({ data }: { data: DashboardData }) {
               <h3>
                 {bucket === "Knit" ? "Knitted" : bucket} vendors
                 <InfoDot
-                  text={`Open vs delayed quantity for every ${bucket === "Knit" ? "knitted" : bucket.toLowerCase()} vendor with open POs.`}
+                  text={`WHAT: for every ${bucket === "Knit" ? "knitted" : bucket.toLowerCase()} vendor, the pieces on order and how many of them are already late.
+
+HOW: open pieces (full bar) vs pieces on lines past their expected delivery date (darker part).
+
+USE: a vendor whose dark part is most of the bar is late on nearly everything — a vendor conversation, not a PO chase.`}
                   label={`About ${bucket} vendors`}
                 />
               </h3>
@@ -3012,31 +3016,31 @@ function MerchantTab({ data }: { data: DashboardData }) {
         <Card
           label="Merchants"
           value={fmt.format(totalMerchants)}
-          info="Distinct merchants across vendors that currently have open POs."
+          info={"WHAT: how many merchandisers currently have vendors with open POs.\n\nHOW: each vendor is managed by one merchandiser (vendor master); count the distinct merchandisers behind the open POs.\n\nUSE: the people whose numbers are on this tab."}
         />
         <Card
           label="Open POs"
           value={fmt.format(totalOpenPo)}
           tone="blue"
-          info="Total open purchase orders across all merchants."
+          info={"WHAT: open POs across all merchandisers.\n\nHOW: distinct PO numbers with pending quantity, attributed to the merchandiser who manages the vendor.\n\nUSE: the workload being shared out below."}
         />
         <Card
           label="Delayed POs"
           value={fmt.format(totalDelayed)}
           tone="orange"
-          info="Open POs already past their expected delivery date."
+          info={"WHAT: open POs whose expected delivery date has passed.\n\nHOW: any line on the PO past its EDD with pending quantity.\n\nUSE: the ones to chase this week, by merchandiser."}
         />
         <Card
           label="Open quantity"
           value={fmt.format(totalOpenQty)}
           tone="teal"
-          info="Total pending pieces across open POs."
+          info={"WHAT: pieces still to arrive across all open POs.\n\nHOW: ordered − received, summed over every open line.\n\nUSE: the volume behind the PO count."}
         />
       </div>
       <div className="bento-grid">
         <ChartCard
           title="Open vs delayed by merchant"
-          info="Per merchant: open PO count vs how many are delayed. A tall orange bar flags a merchant with a delivery problem."
+          info={"WHAT: per merchandiser, open POs against how many of them are late.\n\nHOW: open POs (bar) and POs past their expected delivery date (orange), attributed through the vendor's merchandiser.\n\nUSE: a tall orange bar is a merchandiser whose vendors are behind — worth a look at whether it is one vendor or all of them."}
           download={{
             filename: "merchant-open-vs-delayed",
             headers: vendorCsvHeaders,
@@ -3079,7 +3083,7 @@ function MerchantTab({ data }: { data: DashboardData }) {
               <h3>
                 On-time vs delayed
                 <InfoDot
-                  text="Open POs split into on-time and delayed (past expected delivery). Centre is total open POs; the bar is the on-time share."
+                  text={"WHAT: the open book split into on time and late.\n\nHOW: late = past expected delivery date with pending quantity; on time = everything else. Centre is total open POs; the bar is the on-time share. Example: 96 open, 30 late → 69% on time.\n\nUSE: the single number for the weekly review."}
                   label="About On-time vs delayed"
                 />
               </h3>
@@ -3141,7 +3145,7 @@ function MerchantTab({ data }: { data: DashboardData }) {
       </div>
       <ChartCard
         title="Merchant open quantity"
-        info="Total pending pieces per merchant across open POs."
+        info={"WHAT: per merchandiser, pieces still to arrive.\n\nHOW: ordered − received on open lines, attributed through the vendor's merchandiser.\n\nUSE: volume, not count — a merchandiser with few POs can still carry the most pieces."}
         download={{
           filename: "merchant-open-qty",
           headers: vendorCsvHeaders,
@@ -3174,7 +3178,7 @@ function MerchantTab({ data }: { data: DashboardData }) {
         <div className="panel-title">
           <h3>
             Merchant performance
-            <InfoDot text="Vendor metrics rolled up to the merchant who manages them — open/delayed POs, quantities, value and capacity." />
+            <InfoDot text={"WHAT: the vendor table rolled up to the merchandiser who manages each vendor.\n\nHOW: open and delayed POs, pieces, value and capacity summed across each merchandiser's vendors.\n\nUSE: the per-person view of the same book. Search, filter and export below."} />
           </h3>
         </div>
         <VendorTable
@@ -3316,25 +3320,25 @@ function ProductTab({ data }: { data: DashboardData }) {
         <Card
           label="Product codes"
           value={fmt.format(summary.length)}
-          info="Distinct product codes with open PO quantity under the current filters."
+          info={"WHAT: how many products have something on order, under the filters above.\n\nHOW: distinct product codes with pending quantity on any open PO line.\n\nUSE: the breadth of what is being bought right now."}
         />
         <Card
           label="Variant rows"
           value={fmt.format(products.length)}
           tone="blue"
-          info="Distinct product-code × variant combinations with open quantity."
+          info={"WHAT: how many product-and-colour combinations have something on order.\n\nHOW: distinct product code × variant with pending quantity.\n\nUSE: finer than product codes — a code with six colours on order counts six here."}
         />
         <Card
           label="Open quantity"
           value={fmt.format(summary.reduce((s, r) => s + r.qty, 0))}
           tone="teal"
-          info="Total pending pieces across the filtered products."
+          info={"WHAT: pieces still to arrive for the products shown.\n\nHOW: ordered − received on open lines, under the filters above.\n\nUSE: the volume behind the counts."}
         />
         <Card
           label="Open value"
           value={money.format(summary.reduce((s, r) => s + r.value, 0))}
           tone="orange"
-          info="Total pending value across the filtered products."
+          info={"WHAT: the money still committed on the products shown.\n\nHOW: pending pieces × item price on open lines, under the filters above.\n\nUSE: where the open value sits, by product."}
         />
       </div>
       <section className="panel table-panel product-table">
@@ -3342,7 +3346,7 @@ function ProductTab({ data }: { data: DashboardData }) {
           <h3>
             Product + variant rollup
             <InfoDot
-              text="Open pending quantity and value for every product-code × variant combination, after the filters above."
+              text={"WHAT: every product-and-colour combination with something on order — pieces and value.\n\nHOW: pending quantity and pending × price, per product code × variant, after the filters.\n\nUSE: the detail behind the Product Tracker numbers; sort by value to see where the money is."}
               label="About Product + variant rollup"
             />
           </h3>
@@ -3368,7 +3372,7 @@ function ProductTab({ data }: { data: DashboardData }) {
           <h3>
             Product code summary
             <InfoDot
-              text="One row per product code: how many variants it spans, plus total pending quantity and value."
+              text={"WHAT: one row per product code — how many colours are on order, with pieces and value.\n\nHOW: variants counted, pending pieces and value summed per product code.\n\nUSE: the product-level roll-up; switch to variant view for the colour split."}
               label="About Product code summary"
             />
           </h3>
@@ -3485,7 +3489,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           note={`pieces due this month${lateBucket?.qty ? ` · ${fmt.format(lateBucket.qty)} already late` : ""}`}
           tone="teal"
           big
-          info="Pieces still to arrive with a delivery date falling inside the current month. Production runs 60 to 90 days, so the month is the unit worth planning against — see the schedule below for what follows it."
+          info={"WHAT: how many pieces are due to land this month.\n\nHOW: pending pieces on open lines whose expected delivery date falls inside the current calendar month.\n\nUSE: production runs 60–90 days, so the month is the unit worth planning against. The schedule below shows the months after this one; anything already past its date is separated out there."}
         />
         <Card
           label="Nothing on order"
@@ -3493,14 +3497,14 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
           note="product codes with no pending quantity left"
           tone="orange"
           big
-          info="A count of PRODUCT CODES whose PO lines have all been received, so nothing is left on order to replenish them. It is not a count of POs and not a quantity. It is also not a stock figure — a code can have plenty in the warehouse and still appear here; see DOQ Calculation for actual stock-outs."
+          info={"WHAT: how many PRODUCT CODES have nothing on order — every PO line for them has been fully received.\n\nHOW: product codes where all PO lines are received and no open line remains. It is a count of codes, not POs and not pieces.\n\nMIND: this is NOT a stock figure. A code can have plenty in the warehouse and still be here; it only says no replenishment is in the pipeline. For actual stock-outs use the OOS Dashboard or DOQ Calculation."}
         />
       </div>
       <div className="chart-grid">
         <ChartCard
           title="Arrival schedule — pieces by month"
           kicker="When goods land"
-          info="Open pieces grouped by the month their delivery date falls in. Anything already past its date is separated out, because it needs chasing rather than planning. Lines with no delivery date are shown last: they cannot be scheduled at all until a date is set."
+          info={"WHAT: when the open pieces are due to land, month by month.\n\nHOW: pending pieces on open lines grouped by the month of their expected delivery date. Lines already past their date are separated into their own bar; lines with no date at all are shown last.\n\nUSE: the 'past date' bar needs chasing, the months ahead need planning (warehouse space, cash). 'No date' lines cannot be scheduled until a date is set on the PO."}
           download={{
             filename: "arrival-schedule",
             headers: ["When", "Pieces", "PO lines"],
@@ -3531,7 +3535,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
         </ChartCard>
         <ChartCard
           title="Nothing on order — product codes by fully-received PO lines"
-          info="The 20 product codes with the most PO lines fully received and nothing left on order — candidates to check for replenishment. The bar is a count of PO lines, not a quantity."
+          info={"WHAT: the twenty products with the most fully-received PO lines and nothing left on order.\n\nHOW: per product code, count of PO lines fully received; only codes with no open line remain. The bar is a count of lines, not pieces.\n\nUSE: candidates to check for replenishment — they have been bought before and nothing is coming. Check their stock on the OOS Dashboard before ordering."}
           download={{
             filename: "nothing-on-order",
             headers: ["Product code", "Fully-received PO lines", "Last vendor"],
@@ -3575,7 +3579,7 @@ function UrgentReplenishmentTab({ data }: { data: DashboardData }) {
         <div className="panel-title">
           <h3>
             Arrivals — every open line
-            <InfoDot text="Every open PO line still to arrive: product, vendor, quantity, expected delivery date and current delay. Sort or filter it to work a single month, a single vendor or the already-late lines." />
+            <InfoDot text={"WHAT: every open line still to arrive — product, vendor, pieces, expected date, days late.\n\nHOW: one row per open PO line with pending quantity; delay = today − expected delivery date when past.\n\nUSE: sort or filter to work one month, one vendor, or just the late lines."} />
           </h3>
         </div>
         <FilterTable
@@ -3745,7 +3749,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
             )}
           </span>
           <InfoDot
-            text="Open pending quantity for each product (or product · variant) split across the vendors producing it. Use the toggle above to group by variant or by product code."
+            text={"WHAT: for each product (or product · colour), which vendors are making it and how many pieces each still owes.\n\nHOW: pending pieces on open lines, split by vendor within each product.\n\nUSE: when one vendor is late, this shows whether another vendor already makes the same product and could take the balance. Toggle above to group by colour or by product code."}
             label="About the product matrix"
           />
           <DownloadButton

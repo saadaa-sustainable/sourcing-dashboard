@@ -32,14 +32,14 @@ const SOURCING_COLS: Column<SourcingPoRow>[] = [
         <small>{r.vendorCode}</small>
       </>
     ),
-    info: 'Vendor producing this PO, with its vendor code.',
+    info: "WHAT: the vendor making this PO, with its code.\n\nHOW: from the PO in EasyEcom.\n\nUSE: the code is what every other page uses to identify the vendor.",
   },
   {
     key: 'merchant',
     label: 'Merchandiser',
     kind: 'text',
     filter: 'select',
-    info: 'The merchandiser who manages this vendor.',
+    info: "WHAT: the merchandiser responsible for this vendor.\n\nHOW: from the vendor master's merchant field.\n\nUSE: who to ask about this PO.",
   },
   {
     key: 'totalQty',
@@ -52,7 +52,7 @@ const SOURCING_COLS: Column<SourcingPoRow>[] = [
         <small>{fmt.format(r.pendingQty)} pending</small>
       </>
     ),
-    info: 'Total ordered quantity across all lines of the PO; below it, the quantity still pending.',
+    info: "WHAT: pieces ordered on the PO, and how many are still to arrive.\n\nHOW: ordered summed over every line; pending = ordered − received. Example: 1,200 ordered, 800 received → 400 pending.\n\nUSE: pending near zero with the PO still open means it is waiting to be closed, not delivered.",
   },
   {
     key: 'tnaStage',
@@ -62,7 +62,7 @@ const SOURCING_COLS: Column<SourcingPoRow>[] = [
     filter: 'select',
     render: (r) =>
       r.tnaMissing ? <span className="badge warn">No TNA</span> : r.tnaStage,
-    info: 'Current production stage — the earliest TNA stage without an actual date. "No TNA" means no timeline has been entered for this PO.',
+    info: "WHAT: where the PO is in production.\n\nHOW: the earliest TNA stage (PP sample → GPT → cutting → inline QC → first delivery → PO close) with no actual date. 'No TNA' = no timeline entered for this PO at all.\n\nUSE: a PO stuck at the same stage for weeks is the one to ask about. No TNA means it cannot be flagged High Risk — get the timeline entered.",
   },
   {
     key: 'edd',
@@ -79,7 +79,7 @@ const SOURCING_COLS: Column<SourcingPoRow>[] = [
         )}
       </>
     ),
-    info: 'Earliest expected delivery date across the PO’s lines; flagged when already past due.',
+    info: "WHAT: when the first pieces of this PO are due.\n\nHOW: the earliest expected delivery date across the PO's lines; flagged when that date has passed with pieces still pending.\n\nUSE: flagged rows are already late — chase for a committed date.",
   },
 ];
 
@@ -108,7 +108,7 @@ function SourcingView({ rows }: { rows: SourcingPoRow[] }) {
               <span className="metric-label">Open POs</span>
             </span>
             <InfoDot
-              text="Purchase orders that are approved and not yet completed. Click to see the full list with vendor, merchandiser, quantity, TNA stage and EDD."
+              text={"WHAT: the POs you are responsible for that are still open.\n\nHOW: Approved POs not yet completed, attributed to you through the vendors you manage.\n\nUSE: click for the full list with vendor, quantity, production stage and delivery date."}
               label="About Open POs"
             />
           </span>

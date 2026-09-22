@@ -30,36 +30,36 @@ export function Po360Client({ data }: { data: PoHubData }) {
       {/* Objective KPIs — the PO portfolio at a glance across every facet. */}
       <div className="ca-kpi-row">
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Open POs <InfoDot text="Count of open (Approved) purchase orders, and their total open value (pending qty × item price)." /></span>
+          <span className="ca-kpi-label">Open POs <InfoDot text={"WHAT: how many POs are open, and the money still committed on them.\n\nHOW: Approved POs with pending quantity; value = pending pieces × item price, summed. Example: 180 pending at ₹320 → ₹57,600 on that line.\n\nUSE: the size of the book. Job Work lines are priced at the stitching rate, so the value is lower than a garment price would suggest."} /></span>
           <strong>{inr.format(s.openPos)}</strong>
           <small>{money(s.openValue)} open value</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Capital at risk <InfoDot text="Open PO value tied up in POs that are TNA high-risk or already overdue — the money most exposed to slippage." /></span>
+          <span className="ca-kpi-label">Capital at risk <InfoDot text={"WHAT: how much of the open value is on POs that are late or running late.\n\nHOW: pending value of POs that are Overdue (past expected delivery) or High Risk (a critical-path TNA stage past its planned date with nothing recorded).\n\nUSE: the money most exposed to slippage. Compare with the total open value beside it."} /></span>
           <strong className={s.atRiskValue > 0 ? 'ca-over' : ''}>{money(s.atRiskValue)}</strong>
           <small>{s.atRiskCount} high-risk / overdue POs</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">TNA on-time <InfoDot text="Share of open POs on track (no critical-path TNA stage past its planned date). Green 80%+, red under 60%." /></span>
+          <span className="ca-kpi-label">TNA on-time <InfoDot text={"WHAT: the share of open POs whose production is on time.\n\nHOW: POs with no critical-path TNA stage past its planned date ÷ open POs. Example: 72 of 96 → 75%. Green at 80% and above, red under 60%.\n\nUSE: the single execution number. POs with no TNA entered cannot be judged and are counted as on track — keep TNA coverage high or this flatters."} /></span>
           <strong className={s.tnaOnTimePct >= 80 ? 'ca-under' : s.tnaOnTimePct >= 60 ? '' : 'ca-over'}>
             {s.tnaOnTimePct}%
           </strong>
           <small>{s.onTrack} on track · {s.highRisk} risk · {s.overdue} overdue</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Cost variance · mo <InfoDot text="POs issued this month whose written rate exceeded the approved standard cost, with the total margin impact." /></span>
+          <span className="ca-kpi-label">Cost variance · mo <InfoDot text={"WHAT: POs raised this month above the approved Standard Cost, and the margin given away.\n\nHOW: (rate on the PO − approved standard cost) × quantity, summed where positive. Example: ₹20 over on 1,000 pieces → ₹20,000.\n\nUSE: each one is a negotiation to revisit or a standard cost to update."} /></span>
           <strong className={s.costVarianceCount > 0 ? 'ca-over' : ''}>{s.costVarianceCount}</strong>
           <small>{s.costVarianceImpact ? `${money(s.costVarianceImpact)} impact` : 'none above standard'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Closure within SLA <InfoDot text="Share of completed POs closed within the closure SLA (editable in Rules Master). Green at 80%+." /></span>
+          <span className="ca-kpi-label">Closure within SLA <InfoDot text={"WHAT: are completed POs being closed out on time.\n\nHOW: completed POs closed within the SLA days (Rules Master, default 15) ÷ completed POs. Green at 80% and above.\n\nUSE: late closures delay vendor payment and keep received goods looking open elsewhere."} /></span>
           <strong className={s.closureWithinSlaPct == null ? '' : s.closureWithinSlaPct >= 80 ? 'ca-under' : 'ca-over'}>
             {s.closureWithinSlaPct == null ? '—' : `${s.closureWithinSlaPct}%`}
           </strong>
           <small>{s.closureSlaDays != null ? `${s.closureSlaDays}-day SLA` : 'no closures yet'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Issued this week <InfoDot text="POs issued to EasyCom in the last 7 days, the week-over-week change, and how many are still pending approval." /></span>
+          <span className="ca-kpi-label">Issued this week <InfoDot text={"WHAT: how fast POs are going out, and how many are stuck waiting for approval.\n\nHOW: POs issued to EasyEcom in the last 7 days, the change against the 7 days before, and POs still in the approval queue.\n\nUSE: a falling pace plus a growing queue means approvals, not merchandisers, are the bottleneck."} /></span>
           <strong>{inr.format(s.issuedThisWeek)}</strong>
           <small>
             {s.issuedDeltaPct == null ? 'vs last week' : `${s.issuedDeltaPct > 0 ? '+' : ''}${s.issuedDeltaPct}% WoW`}

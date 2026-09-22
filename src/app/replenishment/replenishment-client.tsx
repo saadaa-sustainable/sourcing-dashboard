@@ -31,11 +31,11 @@ const buildCols = (
       </>
     ),
   },
-  { key: 'product_state', label: 'Product State', kind: 'text', accessor: (r) => r.product_state, info: 'Lifecycle state of the product, rolled up from the product master.' },
-  { key: 'current_stock', label: 'Stock', kind: 'num', info: 'Sellable stock on hand right now.' },
-  { key: 'in_progress', label: 'In process', kind: 'num', info: 'Quantity already on order or in production, not yet received.' },
-  { key: 'doq_45', label: 'DOQ 45', kind: 'num', info: 'Average daily sales rate (units/day) over the last 45-day window, counting only in-stock days.' },
-  { key: 'doq_365', label: 'DOQ 365', kind: 'num', info: 'The same daily rate measured over the last 365 days — the stable long-window signal.' },
+  { key: 'product_state', label: 'Product State', kind: 'text', accessor: (r) => r.product_state, info: "WHAT: the product's lifecycle state.\n\nHOW: from the product master, rolled up to the colour — Ongoing, NPD, NPD Not Launched, To Be Discontinued, Discontinued.\n\nUSE: only Ongoing and launched NPD should be reordered; the rest are here for completeness." },
+  { key: 'current_stock', label: 'Stock', kind: 'num', info: "WHAT: pieces in stock as of the snapshot.\n\nHOW: sellable stock summed across sizes for this colour.\n\nUSE: what the reorder quantities net off." },
+  { key: 'in_progress', label: 'In process', kind: 'num', info: "WHAT: pieces on order that have not arrived.\n\nHOW: pending quantity on approved POs for this colour.\n\nUSE: counts as cover — the reorder quantity nets it off too." },
+  { key: 'doq_45', label: 'DOQ 45', kind: 'num', info: "WHAT: DOQ 45 — pieces a day this colour sells.\n\nHOW: pieces sold in the last 45 days ÷ days in stock. Example: 60 sold over 20 stocked days → 3 a day.\n\nUSE: the recent demand rate; feeds IPDOQ." },
+  { key: 'doq_365', label: 'DOQ 365', kind: 'num', info: "WHAT: DOQ 365 — the same rate over a full year.\n\nHOW: pieces sold in the last 365 days ÷ days in stock.\n\nUSE: the steady signal. IPDOQ falls back to it when the 45-day window had too many empty days to trust." },
   {
     key: 'launch',
     label: 'History',
@@ -46,7 +46,7 @@ const buildCols = (
       if (!l || l.daysSinceLaunch == null) return 'No launch data';
       return l.daysSinceLaunch < 45 ? 'New (<45d)' : 'Established';
     },
-    info: 'Days of real inventory history since the effective launch date (first sale if it is not before first goods-received, else first GRN). Under 45 days the DOQ is built on a short window — read it with caution. "No launch data" means neither a sale nor a GRN is on record yet (not a real zero).',
+    info: "WHAT: how much history this colour has — days since it effectively launched.\n\nHOW: from the first sale, unless that is before the first goods receipt, in which case from the first receipt. 'No launch data' = neither a sale nor a receipt on record.\n\nMIND: under 45 days the DOQ is built on a short window — treat the reorder quantities as a guess. 'No launch data' is not a zero; it is missing history.",
     render: (r) => {
       const l = launchByCode[r.product_code ?? ''];
       if (!l || l.daysSinceLaunch == null) return <span className="wf-subtle">no launch data</span>;
@@ -63,7 +63,7 @@ const buildCols = (
     key: 'oos_days_45',
     label: 'OOS days',
     kind: 'num',
-    info: 'Days out of stock within the last 45. Above the rules-master threshold, DOQ 45 is built on incomplete data and IPDOQ falls back to the higher of DOQ 365 / DOQ 45.',
+    info: "WHAT: how many of the last 45 days this colour was empty.\n\nHOW: days with zero stock in the window.\n\nUSE: above the Rules Master threshold (default 30) the 45-day DOQ is built on too few selling days, so IPDOQ switches to the higher of DOQ 365 and DOQ 45.",
     render: (r) =>
       r.oos_flag ? <span className="wf-over-tag">{fmt.format(r.oos_days_45)}</span> : fmt.format(r.oos_days_45),
   },
@@ -71,7 +71,7 @@ const buildCols = (
     key: 'ipdoq',
     label: 'IPDOQ',
     kind: 'num',
-    info: 'Inventory-Planning DOQ — the demand rate that drives the reorder quantities. DOQ 45 when the product was mostly in stock; max(DOQ 365, DOQ 45) when OOS days exceed the threshold; floored at the rules-master minimum (default 0.25/day). Both knobs are editable in the IPDOQ rules above.',
+    info: "WHAT: IPDOQ — the demand rate every reorder quantity on this page is built on.\n\nHOW: DOQ 45 when the colour was mostly in stock; the higher of DOQ 365 and DOQ 45 when out-of-stock days exceed the threshold; never below the floor (default 0.25 a day). Threshold and floor are the two rules at the top of this page (Rules Master).\n\nUSE: change the rules, not the number — a change applies to every colour on the next load.",
     render: (r) => <strong>{r.ipdoq}</strong>,
   },
   {
@@ -82,11 +82,11 @@ const buildCols = (
     accessor: (r) =>
       // Sales class only — the product state is a separate dimension and has its own column.
       productClassOf(r.ipdoq ?? 0, classRules),
-    info: 'ABC/D classification from IPDOQ (A above 10/day, B ≥ 7, C ≥ 3, else D — rules-master thresholds). NPD-family products are not classed.',
+    info: "WHAT: the sales class — how fast the colour sells.\n\nHOW: from IPDOQ: A above 10 a day, B 7 or more, C 3 or more, else D (Rules Master). NPD-family products show no class — no history yet.\n\nMIND: speed only. D does NOT mean discontinued; discontinuation is a product state decided on the Discontinue page.",
   },
-  { key: 'rop_30', source: 'computed', label: '30d', kind: 'num', info: 'Reorder quantity to cover the next 30 days at the IPDOQ rate, net of stock and in-process.', render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
-  { key: 'rop_60', source: 'computed', label: '60d', kind: 'num', info: 'Reorder quantity to cover the next 60 days at the IPDOQ rate, net of stock and in-process.' },
-  { key: 'rop_90', source: 'computed', label: '90d', kind: 'num', info: 'Reorder quantity to cover the next 90 days at the IPDOQ rate, net of stock and in-process.' },
+  { key: 'rop_30', source: 'computed', label: '30d', kind: 'num', info: "WHAT: ROP 30 — how many pieces to order to stay in stock for the next 30 days.\n\nHOW: 30 × IPDOQ − stock − in-process, never below 0. Example: 3 a day × 30 = 90 needed; 40 in stock, 20 on order → order 30.\n\nUSE: the 30-day horizon suits Job Work (30-day lead time). Zero means covered.", render: (r) => <strong>{fmt.format(r.rop_30)}</strong> },
+  { key: 'rop_60', source: 'computed', label: '60d', kind: 'num', info: "WHAT: ROP 60 — pieces to order to stay in stock for 60 days.\n\nHOW: 60 × IPDOQ − stock − in-process, never below 0.\n\nUSE: the horizon for E-FOB (45-day lead time plus buffer)." },
+  { key: 'rop_90', source: 'computed', label: '90d', kind: 'num', info: "WHAT: ROP 90 — pieces to order to stay in stock for 90 days.\n\nHOW: 90 × IPDOQ − stock − in-process, never below 0.\n\nUSE: the horizon for FOB (90-day lead time). If this is large and nothing is on order, the FOB PO is already late." },
 ];
 
 /** Admin strip: the two IPDOQ judgement numbers, edited in the Rules Master. */
@@ -128,7 +128,7 @@ function IpdoqRules({
     <div className="chip-row">
       <span className="chip-row-label">
         IPDOQ rules
-        <InfoDot text="The two judgement numbers behind IPDOQ, from the editable Rules Master (sd_analytics_rule). The replenishment view reads them live — a change here affects the next computation, no redeploy." />
+        <InfoDot text={"WHAT: the two settings that decide how IPDOQ is worked out.\n\nHOW: OOS-day threshold — above this many empty days in 45, the 45-day DOQ is not trusted and the year's rate is used instead. IPDOQ floor — the lowest rate any colour is given, so slow sellers still get a minimum reorder. Both live in Rules Master.\n\nUSE: change them here and every reorder quantity updates on the next load — no deploy, no formula edits."} />
       </span>
       {rules.map((r) => (
         <span key={r.key} className="wf-chip">

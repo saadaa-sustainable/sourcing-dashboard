@@ -22,10 +22,10 @@ type Col = {
 };
 
 const MANUAL_COLS: Col[] = [
-  { key: 'ingestion_date', label: 'Ingested at', kind: 'datetime', select: true, info: 'When this manual adjustment was pulled in from the source feed.' },
+  { key: 'ingestion_date', label: 'Ingested at', kind: 'datetime', select: true, info: "WHAT: when this adjustment reached the dashboard.\n\nHOW: the time it was synced from BigQuery.\n\nUSE: an adjustment entered here today shows a later time once the push-back and sync complete." },
   { key: 'po_no', label: 'PO No', select: true },
   { key: 'sku_code', label: 'SKU' },
-  { key: 'manual_adjust_qty', label: 'Adjust qty', num: true, info: 'Manual quantity correction applied to this PO/SKU (can be positive or negative).' },
+  { key: 'manual_adjust_qty', label: 'Adjust qty', num: true, info: "WHAT: a hand correction to a PO's quantity.\n\nHOW: pieces added (positive) or removed (negative) for this PO and SKU, over and above what EasyEcom says.\n\nUSE: for known errors in the feed — a wrong size split, a cancelled colour. Every open-PO number on the dashboard includes these." },
   { key: 'po_type', label: 'PO type' },
   { key: 'ingestion_by', label: 'By' },
 ];
@@ -37,13 +37,13 @@ const CUTTING_COLS: Col[] = [
   { key: 'po_number', label: 'PO number', select: true },
   { key: 'item_code', label: 'Item' },
   { key: 'fabric_sku_code', label: 'Fabric SKU' },
-  { key: 'cutting_qty', label: 'Cut qty', num: true, info: 'Pieces cut for this PO line.' },
-  { key: 'fabric_consumed', label: 'Fabric used', num: true, info: 'Actual fabric consumed in cutting.' },
-  { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', num: true, info: 'Approved average fabric consumption per piece (benchmark).' },
+  { key: 'cutting_qty', label: 'Cut qty', num: true, info: "WHAT: how many pieces the vendor has cut.\n\nHOW: from the cutting register entry.\n\nUSE: cut but not received = work in progress at the vendor." },
+  { key: 'fabric_consumed', label: 'Fabric used', num: true, info: "WHAT: metres of fabric actually used.\n\nHOW: from the cutting register entry.\n\nUSE: compare with the benchmark beside it — over-consumption is fabric SAADAA paid for and did not get back." },
+  { key: 'avg_fabric_consumption_approved', label: 'Avg cons.', num: true, info: "WHAT: metres one piece is supposed to take.\n\nHOW: the approved average from the Product Master.\n\nUSE: actual ÷ (pieces × this) above 1 means the vendor used more fabric than allowed." },
   { key: 'width_of_fabric', label: 'Width' },
   { key: 'type_of_po', label: 'PO type' },
   { key: 'remarks_of_cutting', label: 'Remarks' },
-  { key: 'cutting_approval_sheet', label: 'Approval', kind: 'link', info: 'Link to the cutting approval sheet for this line.' },
+  { key: 'cutting_approval_sheet', label: 'Approval', kind: 'link', info: "WHAT: the cutting approval document.\n\nHOW: a link to the sheet for this PO line.\n\nUSE: the evidence behind the cut quantity." },
   { key: 'ingestion_by', label: 'By' },
 ];
 

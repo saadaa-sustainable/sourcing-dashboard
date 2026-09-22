@@ -65,7 +65,7 @@ function LifecycleCard({ lifecycle: lc, planMonth }: { lifecycle: BuyingPlanAnal
       <div className="bp-cardhead">
         <h2>
           Approval compliance
-          <InfoDot text="Shows whether the plan was approved by the Rules Master deadline and the trailing six-plan first-time approval rate." />
+          <InfoDot text={"WHAT: was the plan approved on time, and how often plans get through first time.\n\nHOW: the plan must be approved by the deadline day of its month (Rules Master, default the 7th). Late = a breach, on the submission side if it was not even submitted by then, on the approval side if it was submitted in time but not decided. First-time rate = plans approved without rework, over the last six plans.\n\nUSE: a submission-side breach is the planner's; an approval-side breach is the approver's."} />
         </h2>
         <span className={`bp-badge ${comp[c.status].tone}`}>{comp[c.status].text}</span>
       </div>
@@ -113,7 +113,7 @@ function ReportCard({
       <div className="bp-cardhead">
         <h2>
           Month report (PDF)
-          <InfoDot text="The month-end report reconciles the approved plan with issued POs and can be generated or posted to the Supply Chain channel." />
+          <InfoDot text={"WHAT: the month-end PDF — approved plan against what was actually ordered.\n\nHOW: generated from the approved plan and the POs dated in the month; can be posted straight to the Supply Chain Slack channel.\n\nUSE: the record of the month once it is frozen."} />
         </h2>
         <span className="wf-subtle">auto on the 1st · posted to Supply Chain</span>
       </div>
@@ -283,10 +283,10 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         key: 'status', label: 'Status', filter: 'select', source: 'computed',
         accessor: (r) => STATUS_LABEL[r.status],
         render: (r) => <StatusBadge status={r.status} />,
-        info: 'Red = issued but not budgeted (exception a). Amber = issued above the approved quantity (exception b).',
+        info: "WHAT: the two ways a PO can break the plan.\n\nHOW: red = a PO was issued for a product with no approved plan quantity (not budgeted). Amber = POs issued for more than the approved quantity (over approved).\n\nUSE: both are buying outside the plan; red is the more serious because nobody approved any of it.",
       },
-      { key: 'plannedQty', label: 'Approved qty', kind: 'num', source: 'supabase', info: 'Sum of approved plan lines (Job + FOB + E-FOB) for the month.' },
-      { key: 'issuedQty', label: 'Issued qty', kind: 'num', source: 'easyecom', info: 'Real EasyEcom POs (issued/completed) dated in the month.' },
+      { key: 'plannedQty', label: 'Approved qty', kind: 'num', source: 'supabase', info: "WHAT: what the approved plan said to buy.\n\nHOW: Job Work + FOB + E-FOB pieces on the approved plan for the month.\n\nUSE: the budget the issued column is measured against." },
+      { key: 'issuedQty', label: 'Issued qty', kind: 'num', source: 'easyecom', info: "WHAT: what was actually ordered.\n\nHOW: pieces on real EasyEcom POs (issued or completed) with a PO date in the month — not the dashboard's PO Approval drafts.\n\nUSE: issued above planned = over-buying; well below = the plan was not executed." },
       { key: 'deltaQty', label: 'Δ qty', kind: 'num', source: 'computed', render: (r) => <span style={{ color: r.deltaQty > 0 ? '#9a6b12' : r.deltaQty < 0 ? '#6e695e' : undefined }}>{signed(r.deltaQty)}</span> },
       { key: 'plannedValue', label: 'Approved value', kind: 'num', source: 'supabase', render: (r) => money.format(r.plannedValue) },
       { key: 'issuedValue', label: 'Issued value', kind: 'num', source: 'easyecom', render: (r) => money.format(r.issuedValue) },
@@ -382,7 +382,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         <div className="bp-analysis-content">
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
           POs issued for products that are not in the {monthLabel(planMonth)} buying plan, or are in the plan with no approved quantity (never approved, or approved at zero). Why were these issued?
-          <InfoDot text="Products with issued POs but no approved plan quantity for the selected month, including products absent from the plan or approved at zero." />
+          <InfoDot text={"WHAT: products bought this month that were never in the plan.\n\nHOW: products with issued POs in the month but no approved plan quantity — absent from the plan, or approved at zero.\n\nUSE: each one was an ad-hoc purchase. Fine if deliberate (an urgent stock-out); a problem if routine."} />
         </p>
         <div className="bp-analysis-actions">
           <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadNotBudgetedCsv}>
@@ -425,7 +425,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
         <div className="bp-analysis-content">
         <p className="wf-subtle" style={{ margin: '0 0 8px', fontSize: 12 }}>
           Approved 100, issued 110 — the excess over what the plan approved.
-          <InfoDot text="Products where issued PO quantity exceeds the approved buying-plan quantity for the selected month." />
+          <InfoDot text={"WHAT: products bought in larger quantity than approved.\n\nHOW: issued pieces − approved pieces, where positive. Example: approved 500, issued 800 → 300 over.\n\nUSE: over-buying ties up cash the plan did not allow for."} />
         </p>
         <div className="bp-analysis-actions">
           <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadOverApprovedCsv}>
@@ -477,7 +477,7 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
           </label>
           <span className="wf-subtle" style={{ fontSize: 12 }}>
             {m.approvedProducts} approved · {m.issuedProducts} issued
-            <InfoDot text="Complete product-level reconciliation of approved plan quantity and value versus issued PO quantity and value for the selected month." />
+            <InfoDot text={"WHAT: every product, planned against issued, in pieces and rupees.\n\nHOW: approved plan quantity and value beside issued PO quantity and value; the difference as Excess or Short.\n\nUSE: the full reconciliation behind the two exception lists above."} />
           </span>
         </div>
         <FilterTable

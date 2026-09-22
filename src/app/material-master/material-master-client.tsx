@@ -145,7 +145,7 @@ export function MaterialMasterClient({
           <div className="panel-title">
             <h3>
               Add a {TYPE_LABEL[type].toLowerCase()} code
-              <InfoDot text="Register a new material code for this type. Codes are unique — duplicates are blocked." />
+              <InfoDot text={"WHAT: add a new material (raw, dyed or trim) to the master.\n\nHOW: give it a code and its details; codes must be unique — a duplicate is blocked.\n\nUSE: a material must exist here before it can be costed on Standard Cost or planned on the Material buying plan."} />
             </h3>
           </div>
           <div className="wf-form-grid">
@@ -260,7 +260,7 @@ export function MaterialMasterClient({
         <div className="panel-title">
           <h3>
             Colours
-            <InfoDot text="The master colour list. Each colour combines with a greige fabric to form a dyed-fabric code." />
+            <InfoDot text={"WHAT: the colours SAADAA dyes fabric in.\n\nHOW: each colour combines with a greige fabric to make a dyed-fabric code.\n\nUSE: add a colour here before creating dyed fabric in it."} />
           </h3>
           <span>used to build dyed-fabric codes</span>
         </div>

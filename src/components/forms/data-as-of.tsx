@@ -23,7 +23,7 @@ export function DataAsOf({
       <span className="wf-chip">
         <CalendarClock size={13} />
         Data as of <strong>{dataAsOf ?? '—'}</strong>
-        <InfoDot text="The BigQuery inventory-planning snapshot date these numbers come from (latest date_day)." />
+        <InfoDot text={"WHAT: the date the stock and demand figures on this page are as of.\n\nHOW: the latest nightly inventory-planning snapshot from BigQuery.\n\nUSE: if it is older than yesterday the sync has not run — check Sync Health before acting on the numbers."} />
       </span>
       <span className="wf-chip">
         <RefreshCw size={13} />

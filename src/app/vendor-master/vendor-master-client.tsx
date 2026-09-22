@@ -40,7 +40,7 @@ const COLS: Column<EeVendorMasterRow>[] = [
   {
     key: 'active',
     label: 'Active',
-    info: 'EasyEcom active flag (1 = active, 0 = inactive), as held in Easyecom_Saadaa_vendors.',
+    info: "WHAT: whether EasyEcom treats this vendor as active.\n\nHOW: EasyEcom's own flag (1 = active, 0 = inactive), copied as-is.\n\nUSE: this is what decides whether the vendor appears in Vendor Capacity and the PO pickers. It is separate from the dashboard's De-boarding column.",
     accessor: (r) => (r.active == null || r.active === '' ? '' : r.active === '1' ? 'Active' : 'Inactive'),
     render: (r) => {
       if (r.active == null || r.active === '') return <span className="wf-subtle">—</span>;
@@ -61,18 +61,18 @@ const COLS: Column<EeVendorMasterRow>[] = [
       );
     },
   },
-  { key: 'vendor_c_id', label: 'EasyEcom ID', kind: 'mono', info: "EasyEcom's internal vendor id (vendor_c_id)." },
+  { key: 'vendor_c_id', label: 'EasyEcom ID', kind: 'mono', info: "WHAT: EasyEcom's internal id for the vendor.\n\nHOW: vendor_c_id, copied as-is.\n\nUSE: for matching against EasyEcom exports; the Vendor Code is what people use." },
   {
     key: 'contact_person',
     label: 'Contact Person',
     kind: 'text',
     accessor: (r) => [r.firstname, r.lastname].map((x) => (x ?? '').trim()).filter(Boolean).join(' '),
-    info: 'EasyEcom firstname + lastname.',
+    info: "WHAT: the contact person at the vendor.\n\nHOW: EasyEcom's first name + last name.\n\nUSE: who to call.",
   },
   { key: 'contact_number', label: 'Contact No.', kind: 'text', accessor: (r) => r.contact_number ?? '' },
   { key: 'email', label: 'Email', kind: 'text' },
   { key: 'pan', label: 'PAN', kind: 'mono', accessor: (r) => r.pan ?? '' },
-  { key: 'tax_identification_number', label: 'GSTIN', kind: 'mono', accessor: (r) => r.tax_identification_number ?? '', info: 'Tax identification number (GSTIN).' },
+  { key: 'tax_identification_number', label: 'GSTIN', kind: 'mono', accessor: (r) => r.tax_identification_number ?? '', info: "WHAT: the vendor's GST number.\n\nHOW: from EasyEcom.\n\nUSE: needed on every invoice; blank plus 'unregistered' = no GST registration." },
   { key: 'msme_number', label: 'MSME / Udyam', kind: 'text', accessor: (r) => r.msme_number ?? '' },
   { key: 'paymentterm', label: 'Payment Term', kind: 'text', filter: 'select' },
   { key: 'deliveryterm', label: 'Delivery Term', kind: 'text', filter: 'select' },
@@ -87,7 +87,7 @@ const COLS: Column<EeVendorMasterRow>[] = [
       if (v === '' ) return '';
       return v === '1' || v === 'true' ? 'Yes' : 'No';
     },
-    info: "EasyEcom's unregistered-vendor flag (no GST registration).",
+    info: "WHAT: whether the vendor is registered for GST.\n\nHOW: EasyEcom's unregistered flag.\n\nUSE: unregistered vendors change how tax is handled on the PO.",
   },
   {
     key: 'address',
@@ -99,7 +99,7 @@ const COLS: Column<EeVendorMasterRow>[] = [
       return a ? <span>{a}</span> : <span className="wf-subtle">—</span>;
     },
   },
-  { key: 'dl_number', label: 'DL No.', kind: 'text', accessor: (r) => r.dl_number ?? '', info: 'Drug licence number (where applicable).' },
+  { key: 'dl_number', label: 'DL No.', kind: 'text', accessor: (r) => r.dl_number ?? '', info: "WHAT: a drug licence number.\n\nHOW: an EasyEcom field that applies to pharmacy sellers.\n\nUSE: not relevant to garment vendors; shown because the master is copied in full." },
   { key: 'dl_expiry', label: 'DL Expiry', kind: 'text', accessor: (r) => r.dl_expiry ?? '' },
   { key: 'fssai_number', label: 'FSSAI No.', kind: 'text', accessor: (r) => r.fssai_number ?? '' },
   { key: 'fssai_expiry', label: 'FSSAI Expiry', kind: 'text', accessor: (r) => r.fssai_expiry ?? '' },
@@ -109,7 +109,7 @@ const COLS: Column<EeVendorMasterRow>[] = [
   { key: 'warehouse_checkin_time', label: 'WH Check-in', kind: 'text', accessor: (r) => r.warehouse_checkin_time ?? '' },
   { key: 'vendor_token', label: 'Vendor Token', kind: 'mono', accessor: (r) => r.vendor_token ?? '' },
   { key: 'api_token', label: 'API Token', kind: 'mono', accessor: (r) => r.api_token ?? '' },
-  { key: 'synced_at', label: 'Synced', kind: 'text', accessor: (r) => date(r.synced_at), info: 'When this row was last pulled from GCP.' },
+  { key: 'synced_at', label: 'Synced', kind: 'text', accessor: (r) => date(r.synced_at), info: "WHAT: when this row was last refreshed.\n\nHOW: the time of the last sync from BigQuery.\n\nUSE: if it is old, check Sync Health." },
 ];
 
 export function VendorMasterClient({
@@ -128,7 +128,7 @@ export function VendorMasterClient({
     const col: Column<EeVendorMasterRow> = {
       key: 'deboarded',
       label: 'De-boarding',
-      info: 'Approved on the Vendor De-Boarding page. EasyEcom’s Active flag is separate — switching the vendor off there is a manual step.',
+      info: "WHAT: whether the team has decided to stop working with this vendor.\n\nHOW: a de-boarding request raised and approved on the Vendor De-Boarding page; the date is the approval date, hover for the reason.\n\nMIND: separate from EasyEcom's Active flag. The vendor stays listed everywhere with this mark — open POs still need finishing — and switching it off in EasyEcom is a manual step.",
       accessor: (r) => (flagOf(r) ? `De-boarded ${new Date(flagOf(r)!.approvedAt).toLocaleDateString('en-IN')}` : ''),
       render: (r) => {
         const f = flagOf(r);

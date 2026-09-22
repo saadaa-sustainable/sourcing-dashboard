@@ -64,7 +64,7 @@ export function NpdBudgetCard({
         <div>
           <strong>
             NPD budget isn’t set for this month.
-            <InfoDot text="The monthly cap for approved NPD purchase orders. Committed and pending values come from the selected month's NPD PO activity." />
+            <InfoDot text={"WHAT: how much may be spent on new-product (NPD) POs this month, and how much of it is used.\n\nHOW: the cap is set per month. Committed = value of approved NPD POs this month; pending = NPD POs still awaiting approval. Example: cap ₹10 L, committed ₹6 L, pending ₹3 L → ₹1 L left.\n\nUSE: an NPD PO that would take committed + pending over the cap needs the cap raised or another NPD PO dropped."} />
           </strong>
           <span>
             Set a cap to track new product development spend against plan.

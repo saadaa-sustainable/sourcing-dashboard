@@ -26,24 +26,24 @@ export function Product360Client({ data }: { data: ProductHubData }) {
     <>
       <div className="ca-kpi-row">
         <div className="ca-kpi">
-          <span className="ca-kpi-label">In-stock rate <InfoDot text="Share of tracked SKUs that currently have sellable stock (i.e. not at zero stock), from the latest OOS feed. Green at 80%+." /></span>
+          <span className="ca-kpi-label">In-stock rate <InfoDot text={"WHAT: the share of SKUs that had stock as of the latest snapshot.\n\nHOW: SKUs with stock above zero ÷ tracked SKUs, from the nightly inventory feed. Green at 80% and above.\n\nUSE: the headline availability number. The OOS Dashboard's Summary has the same figure with the 45-day and 365-day windows beside it."} /></span>
           <strong className={inStockRate == null ? '' : inStockRate >= 80 ? 'ca-under' : 'ca-over'}>
             {inStockRate == null ? '—' : `${inStockRate}%`}
           </strong>
           <small>{s.totalSkus != null ? `${inr.format(s.totalSkus)} SKUs · ${inr.format(s.zeroStock ?? 0)} zero-stock` : 'no OOS data'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Stockout gaps <InfoDot text="High-demand variants with zero stock AND no open PO covering them — genuinely uncovered demand, broken down by ABC/D class." /></span>
+          <span className="ca-kpi-label">Stockout gaps <InfoDot text={"WHAT: fast-selling colours with nothing in stock and nothing on order.\n\nHOW: variants with zero stock AND no open PO, split by sales class (A fastest … D slowest; thresholds in Rules Master).\n\nUSE: genuinely uncovered demand — every day is lost sales. A-class first."} /></span>
           <strong className={s.stockoutGaps > 0 ? 'ca-over' : 'ca-under'}>{inr.format(s.stockoutGaps)}</strong>
           <small>no stock &amp; no open PO · A {s.byClass.A} / B {s.byClass.B} / C {s.byClass.C} / D {s.byClass.D}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Replenishment queue <InfoDot text="Colour variants whose 30-day reorder point (ROP-30) is tripped — the pieces to order now, and how many are already out of stock." /></span>
+          <span className="ca-kpi-label">Replenishment queue <InfoDot text={"WHAT: the colours the replenishment rule says to order now.\n\nHOW: variants where stock + on order will not cover 30 days at the IPDOQ rate (ROP-30 above zero), the pieces called for, and how many are already at zero stock.\n\nUSE: this week's order list; per-variant quantities on Replenishment."} /></span>
           <strong>{s.replenishmentVariants != null ? inr.format(s.replenishmentVariants) : '—'}</strong>
           <small>{s.rop30Qty != null ? `${inr.format(s.rop30Qty)} pcs ROP-30` : 'no data'}{s.oosVariants != null ? ` · ${inr.format(s.oosVariants)} OOS` : ''}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Discontinued on open PO <InfoDot text="Products marked Discontinued in the master that still sit on an open PO or the current buying plan — a data-integrity check that should read zero." /></span>
+          <span className="ca-kpi-label">Discontinued on open PO <InfoDot text={"WHAT: discontinued products that are still being bought.\n\nHOW: products marked Discontinued in the Product Master that have an open PO line with pending quantity or a line on the current buying plan.\n\nUSE: should always read zero. Anything here is a wrong product state or a PO to cancel."} /></span>
           <strong className={(s.discontinuedOpenPoCount ?? 0) > 0 ? 'ca-over' : ''}>
             {s.discontinuedOpenPoCount != null ? inr.format(s.discontinuedOpenPoCount) : '—'}
           </strong>
@@ -54,7 +54,7 @@ export function Product360Client({ data }: { data: ProductHubData }) {
         </div>
         {s.dataAsOf && (
           <div className="ca-kpi">
-            <span className="ca-kpi-label">Stock data as of <InfoDot text="The snapshot date of the inventory/OOS feed these stock figures are computed from." /></span>
+            <span className="ca-kpi-label">Stock data as of <InfoDot text={"WHAT: the date the stock figures on this page are as of.\n\nHOW: the latest nightly inventory-planning snapshot.\n\nUSE: if it is older than yesterday, the nightly sync has not run — check Sync Health before acting on the numbers."} /></span>
             <strong style={{ fontSize: 14 }}>{s.dataAsOf}</strong>
             <small>DOQ calculation feed</small>
           </div>

@@ -45,7 +45,7 @@ export function VendorOtifClient({
       accessor: (r) => r.criticalPathPct ?? -1,
       render: (r) =>
         r.criticalPathPct == null ? '—' : `${pct(r.criticalPathPct)}`,
-      info: 'On-track share of this vendor’s OPEN POs (TNA stages not overdue) — the third OTIF variable, from the Open PO Tracker logic. Blank if the vendor has no open POs.',
+      info: "WHAT: of this vendor's OPEN POs, how many are running to time right now.\n\nHOW: open POs with no critical-path TNA stage past its planned date ÷ the vendor's open POs — the same rule the Open PO Tracker uses. Blank when the vendor has nothing open.\n\nUSE: the forward-looking number: On-time and In-full say what the vendor did, this says what is about to happen.",
     },
     {
       key: 'onTimePct',
@@ -54,7 +54,7 @@ export function VendorOtifClient({
       kind: 'num',
       accessor: (r) => r.onTimePct,
       render: (r) => `${pct(r.onTimePct)}`,
-      info: 'Share of POs delivered by the committed date. Uses the vendor commitment log where present, else the historical PO EDD.',
+      info: "WHAT: how often the vendor delivered by the date it committed to.\n\nHOW: POs delivered on or before the committed date ÷ rated POs. The committed date comes from the vendor commitment log when one was recorded, otherwise the PO's expected delivery date. Example: 14 of 20 → 70%.\n\nUSE: the 'on time' half of OTIF.",
     },
     {
       key: 'fillPct',
@@ -63,7 +63,7 @@ export function VendorOtifClient({
       kind: 'num',
       accessor: (r) => r.fillPct,
       render: (r) => `${pct(r.fillPct)}`,
-      info: 'Share of POs delivered in full (received qty ≥ ordered qty), from GRN.',
+      info: "WHAT: how often the vendor delivered the whole quantity.\n\nHOW: POs where received ≥ ordered (from goods receipts) ÷ rated POs.\n\nUSE: the 'in full' half of OTIF. A vendor that ships 95% every time never scores here — that is a short-shipment habit.",
     },
     {
       key: 'otifPct',
@@ -72,7 +72,7 @@ export function VendorOtifClient({
       kind: 'num',
       accessor: (r) => r.otifPct,
       render: (r) => <strong>{pct(r.otifPct)}</strong>,
-      info: 'Joint pass rate — a PO counts only if it was BOTH on-time and in-full.',
+      info: "WHAT: OTIF — On Time In Full — the share of POs that were both on time AND complete.\n\nHOW: a PO passes only if it met both tests; passes ÷ rated POs. Example: 20 POs, 14 on time, 16 in full, 11 both → OTIF 55%.\n\nUSE: the vendor scorecard number. It is always at or below both halves.",
     },
   ];
 

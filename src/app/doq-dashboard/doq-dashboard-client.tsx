@@ -49,14 +49,14 @@ const HEADERS = [
 ];
 
 const HEADER_INFO: Record<string, string> = {
-  DOQ: 'Sum of each SKU’s window demand rate: window qty sold ÷ window in-stock days.',
-  '% DOQ Contribution': 'This category’s DOQ share of the table total.',
-  'DOH - Current Stock': 'Category average of (current stock ÷ SKU DOQ) — days the stock lasts.',
-  'DOH - IN PROCESS': 'Category average of (in-process stock ÷ SKU DOQ).',
-  'SALES LEAKAGE (Rs)': 'Σ (window OOS days × 45-day DOQ × selling price) — the fixed 45-day DOQ keeps out-of-stock items counted.',
-  'OOS%': 'OOS days ÷ total SKU-days in the window.',
-  'IN STOCK RATE': '1 − OOS%.',
-  'Total sku days': 'Category SKU count × distinct days in the window.',
+  DOQ: "WHAT: DOQ — Daily Order Quantity — how many pieces a day this group sells.\n\nHOW: for each SKU, pieces sold in the window ÷ days it was IN STOCK in the window (empty days are not held against it), then summed over the group. Example: 90 sold over 30 stocked days → 3 a day for that SKU.\n\nUSE: the demand rate every reorder quantity is built on. Read the 45-day version on Replenishment (IPDOQ) for ordering.",
+  '% DOQ Contribution': "WHAT: how much of total daily demand this group represents.\n\nHOW: the group's DOQ ÷ the table's total DOQ. Example: 120 of 600 a day → 20%.\n\nUSE: where the sales are — the groups to keep in stock first.",
+  'DOH - Current Stock': "WHAT: DOH — Days On Hand — how many days the stock lasts at the current sales rate.\n\nHOW: per SKU, current stock ÷ its DOQ; averaged over the group. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against lead time (Rules Master: Job Work 30, E-FOB 45, FOB 90 days). Below the lead time, the next order is already late unless it is in process.",
+  'DOH - IN PROCESS': "WHAT: how many extra days the pieces on order will add.\n\nHOW: per SKU, in-process (on order, not received) ÷ its DOQ; averaged over the group.\n\nUSE: DOH stock + DOH in process = total cover. If the sum is still under the lead time, order more now.",
+  'SALES LEAKAGE (Rs)': "WHAT: the sales lost because SKUs were out of stock — in rupees.\n\nHOW: for each SKU, days out of stock in the window × its 45-day DOQ × selling price, summed. The 45-day DOQ is used (not the window's) so a SKU that was empty the whole window still counts. Example: 10 empty days × 3 a day × ₹899 → ₹26,970 lost on one SKU.\n\nUSE: the cost of the stock-out problem, in the language finance uses.",
+  'OOS%': "WHAT: OOS % — the share of selling opportunity lost to empty shelves in this window.\n\nHOW: empty SKU-days ÷ (SKUs × days in the window). Example: 10 SKUs over 7 days = 70 SKU-days; 14 empty → 20%.\n\nUSE: same basis as the Summary page's OOS %. Lower is better.",
+  'IN STOCK RATE': "WHAT: the share of the window the group WAS on the shelf.\n\nHOW: 1 − OOS %. Example: OOS 20% → in-stock rate 80%.\n\nUSE: the positive way to quote the same number.",
+  'Total sku days': "WHAT: the denominator behind OOS % — every SKU × every day in the window.\n\nHOW: SKUs in the group × days in the window. Example: 10 SKUs × 7 days = 70.\n\nUSE: shown so the OOS % can be checked by hand: OOS days ÷ this.",
 };
 
 function csvRows(rows: DoqCategoryRow[]) {
@@ -187,7 +187,7 @@ function ExclusionManager({ exclusions, editable }: { exclusions: OosSkuExclusio
     <details className="panel" style={{ padding: '12px 16px', marginBottom: 14 }} open={editable && exclusions.length === 0}>
       <summary style={{ cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Ban size={15} /> Excluded SKUs ({exclusions.length})
-        <InfoDot text="These SKUs are removed from every table on this page (and the DOQ Calculation view). Add or remove any time — the tables update on save." />
+        <InfoDot text={"WHAT: SKUs deliberately left out of every table on this page and on DOQ Calculation.\n\nHOW: the shared exclusion list — test SKUs, samples, anything that should not count as a stock-out.\n\nUSE: add or remove any time; the tables update on save. Keep it short — every SKU here is invisible to the OOS numbers."} />
       </summary>
 
       <div style={{ marginTop: 12 }}>
@@ -283,12 +283,12 @@ export function DoqDashboardClient({
       <div className="chip-row">
         <span className="wf-chip">
           Data through <strong>{meta?.latest ?? '—'}</strong>
-          <InfoDot text="Latest snapshot date in the daily inventory history the windows are computed from." />
+          <InfoDot text={"WHAT: the last day of data in these windows.\n\nHOW: the latest date in the daily inventory history the windows are computed from.\n\nUSE: 'Yesterday' means this date. If it is older than yesterday, the sync has not run — check Sync Health."} />
         </span>
         {exclusions.length > 0 && (
           <span className="wf-chip">
             {exclusions.length} SKU{exclusions.length > 1 ? 's' : ''} excluded
-            <InfoDot text="Excluded SKUs are left out of every window below. Manage the list in the Excluded SKUs panel — it's shared with the DOQ Calculation view." />
+            <InfoDot text={"WHAT: how many SKUs are being left out of the tables below.\n\nHOW: the shared exclusion list, managed in the Excluded SKUs panel on this page; DOQ Calculation uses the same list.\n\nUSE: if a number looks too good, check nothing real is on this list."} />
           </span>
         )}
       </div>
@@ -313,7 +313,7 @@ export function DoqDashboardClient({
       <WindowTable
         kicker={kicker}
         title={`${WINDOW_TITLES[win]} — by Product Status`}
-        info="The summary breakdown: SKUs grouped by their Product State."
+        info={"WHAT: the window's numbers grouped by Product State — Ongoing, NPD, To Be Discontinued, and so on.\n\nHOW: each SKU counted under its state from the product master; the TOTAL row is all of them.\n\nUSE: Ongoing is the row that matters for stock-outs; Discontinued being out of stock is expected."}
         rows={tables[win]?.[weave] ?? []}
         csvName={`doq-dashboard-${win}-${weave.toLowerCase()}-status`}
         actions={
@@ -331,7 +331,7 @@ export function DoqDashboardClient({
       <WindowTable
         kicker={kicker}
         title={`${WINDOW_TITLES[win]} — by COM Status (detail)`}
-        info="Product State + Product Class: launched SKUs classed A/B/C/D from IPDOQ (rules-master thresholds — A above 10/day, B ≥ 7, C ≥ 3, else D); NPD-family SKUs carry the literal NPD suffix instead of a class."
+        info={"WHAT: the same numbers split finer — by Product State AND sales class.\n\nHOW: launched SKUs are classed by how fast they sell (IPDOQ): A above 10 a day, B 7 or more, C 3 or more, else D — thresholds in Rules Master. NPD-family SKUs show 'NPD' instead of a class because they have no sales history yet.\n\nUSE: 'Ongoing · A' out of stock is the row to act on first; 'To Be Discontinued · D' is the row to leave alone. The class is about sales speed only — D does NOT mean discontinued."}
         rows={comTables[win]?.[weave] ?? []}
         csvName={`doq-dashboard-${win}-${weave.toLowerCase()}-com`}
       />

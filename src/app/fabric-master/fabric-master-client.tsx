@@ -120,7 +120,7 @@ export function FabricMasterClient({
           <div className="panel-title">
             <h3>
               Add a fabric
-              <InfoDot text="Register a new fabric with its construction (composition, counts, weave, GSM). The fabric code must be unique." />
+              <InfoDot text={"WHAT: add a new greige fabric to the master.\n\nHOW: code plus construction — composition, counts, weave, GSM. The code must be unique.\n\nUSE: a fabric must exist here before products can reference it or it can be costed."} />
             </h3>
           </div>
           <div className="wf-form-grid">

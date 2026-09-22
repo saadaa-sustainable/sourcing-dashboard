@@ -28,19 +28,19 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'product_name', label: 'Product Name', kind: 'text' },
   { key: 'color', label: 'Colour', kind: 'text' },
   { key: 'size', label: 'Size', kind: 'text' },
-  { key: 'total_oos_days', label: 'Total OOS Days', kind: 'num', info: 'Days the SKU was out of stock within the 45-day window.' },
-  { key: 'total_available_days', label: 'Total Available Days', kind: 'num', info: 'Days the SKU was in stock: 45 − OOS days.' },
+  { key: 'total_oos_days', label: 'Total OOS Days', kind: 'num', info: "WHAT: how many of the last 45 days this SKU had no stock.\n\nHOW: days with stock at zero in the 45-day window (oos_days_45 from the inventory feed).\n\nUSE: 45 of 45 means it was never in stock in the window — either a stock-out the whole time or a SKU that is not really being sold." },
+  { key: 'total_available_days', label: 'Total Available Days', kind: 'num', info: "WHAT: how many of the last 45 days the SKU could actually sell.\n\nHOW: 45 − days out of stock.\n\nUSE: the denominator for the DOQ: sales are divided by these days, not by 45." },
   { key: 'total_qty_sold', label: 'Total Qty Sold', kind: 'num' },
-  { key: 'doq_45', label: '45 Days DOQ', kind: 'num', info: 'Average daily sales rate (units/day) over the 45-day window, counting only in-stock days.' },
-  { key: 'launch_date', label: 'Launch Date', kind: 'text', info: 'From this dataset when present, otherwise from the Product Master.' },
-  { key: 'product_class', label: 'Product Class', kind: 'text', filter: 'select', source: 'computed', info: 'How fast the SKU sells: A above 10/day, B 7 or more, C 3 or more, else D (thresholds in Rules Master). A is the fastest seller and D the slowest. This is independent of the product state — an NPD or To Be Discontinued product still has a sales class, and D does not mean a product is being discontinued.' },
+  { key: 'doq_45', label: '45 Days DOQ', kind: 'num', info: "WHAT: DOQ 45 — pieces a day this SKU sells.\n\nHOW: pieces sold in the last 45 days ÷ days in stock. Example: 60 sold over 20 stocked days → 3 a day, not 60 ÷ 45.\n\nUSE: the rate ordering is built on; empty days do not drag it down." },
+  { key: 'launch_date', label: 'Launch Date', kind: 'text', info: "WHAT: the product's launch date.\n\nHOW: from the inventory feed when it has one, otherwise from the EasyEcom Product Master.\n\nUSE: a SKU launched inside the window has fewer days of history — read its DOQ with caution." },
+  { key: 'product_class', label: 'Product Class', kind: 'text', filter: 'select', source: 'computed', info: "WHAT: the sales class — how fast this SKU sells.\n\nHOW: from IPDOQ: A above 10 a day, B 7 or more, C 3 or more, else D. Thresholds in Rules Master.\n\nMIND: this is speed only. It is independent of the product state — an NPD or To-Be-Discontinued product still has a class, and D does NOT mean discontinued. A is the first to keep in stock." },
   { key: 'current_stock', label: 'Current Stock', kind: 'num' },
-  { key: 'doh', label: 'DOH', kind: 'num', info: 'Days On Hand — how long current stock lasts at the recent sales rate.' },
+  { key: 'doh', label: 'DOH', kind: 'num', info: "WHAT: DOH — how many days the stock lasts.\n\nHOW: current stock ÷ DOQ 45. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against the lead time (Job 30, E-FOB 45, FOB 90 days in Rules Master). Under the lead time = order now." },
   {
     key: 'sales_value',
     label: 'Selling Price',
     kind: 'num',
-    info: 'Per-unit selling price — the live Shopify SP from the pipeline, falling back to the Product Master MRP when missing.',
+    info: "WHAT: what one piece sells for.\n\nHOW: the live Shopify selling price; MRP from the Product Master when Shopify has none.\n\nUSE: multiplies into Sales Leakage.",
   },
   {
     key: 'sales_leakage',
@@ -52,10 +52,10 @@ const COLS: Column<OosCalculationRow>[] = [
       const v = leakage(r);
       return v == null ? '' : <strong>{money.format(v)}</strong>;
     },
-    info: 'Estimated sales value lost while out of stock: Selling Price × DOQ × OOS days.',
+    info: "WHAT: the sales lost while this SKU was empty, in rupees.\n\nHOW: selling price × DOQ 45 × days out of stock. Example: ₹899 × 3 a day × 10 days → ₹26,970.\n\nUSE: the cost of the stock-out; sort by it to find the expensive gaps.",
   },
-  { key: 'inprocess_stock', label: 'Inprocess Stock', kind: 'num', info: 'Quantity on order or in production, not yet received.' },
-  { key: 'doh_with_inprocess', label: 'DOH (+ Inprocess)', kind: 'num', info: 'Days On Hand counting in-process stock as available.' },
+  { key: 'inprocess_stock', label: 'Inprocess Stock', kind: 'num', info: "WHAT: pieces on order that have not arrived.\n\nHOW: pending quantity on approved POs.\n\nUSE: counts as cover in the next column." },
+  { key: 'doh_with_inprocess', label: 'DOH (+ Inprocess)', kind: 'num', info: "WHAT: days of cover including what is on order.\n\nHOW: (current stock + in-process) ÷ DOQ 45.\n\nUSE: if this is still under the lead time, the pieces on order are not enough — order more." },
   { key: 'weave_type', label: 'Weave Type', kind: 'text' },
 ];
 
@@ -191,7 +191,7 @@ export function OosCalculationClient({
               <button type="button" className="wf-btn wf-btn-primary" disabled={busy || !sku.trim()} onClick={add}>
                 Exclude SKU
               </button>
-              <InfoDot text="Excluded SKUs are hidden from the DOQ Calculation tab (and its totals/exports). Restore one at any time — the data updates on the spot." />
+              <InfoDot text={"WHAT: SKUs deliberately hidden from this page, its totals and exports.\n\nHOW: the shared exclusion list, same as the OOS Dashboard's.\n\nUSE: test SKUs and samples only. Restore any time; the data updates on the spot."} />
             </div>
           )}
           <FilterTable

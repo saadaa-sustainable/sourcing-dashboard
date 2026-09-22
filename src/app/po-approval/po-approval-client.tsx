@@ -251,7 +251,7 @@ export function PoApprovalClient({
           <div className="panel-title">
             <h3>
               Raise a PO for approval
-              <InfoDot text="Draft a PO with its quantities, costs and TNA timeline. Submitting sends it through the approval flow before it can be issued." />
+              <InfoDot text={"WHAT: where a new PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
             </h3>
           </div>
           <div className="wf-form-grid">
@@ -669,13 +669,13 @@ function ReportingScreen({ pos }: { pos: PoApproval[] }) {
         title="POs issued last week"
         rows={issued}
         kind="issued"
-        info="Approved POs that were issued to vendors in the last 7 days."
+        info={"WHAT: POs that went out to vendors this week.\n\nHOW: approved POs marked issued in the last 7 days.\n\nUSE: the pace of ordering; compare with the Stock Out Risk list to see if it is enough."}
       />
       <ReportCard
         title="POs to be issued this week"
         rows={toIssue}
         kind="toIssue"
-        info="Approved POs still awaiting issuance — the queue to clear this week."
+        info={"WHAT: POs approved but not yet issued to the vendor.\n\nHOW: status Approved, no EasyEcom PO number recorded yet.\n\nUSE: the queue to clear — an approved PO that is not issued is not producing anything."}
       />
     </div>
   );
@@ -1367,7 +1367,7 @@ function PoSubmissionTable({
       <div className="panel-title">
         <h3>
           PO submission &amp; closure
-          <InfoDot text="Every issued PO still open: mark rows submitted and close them out once delivery completes." />
+          <InfoDot text={"WHAT: every issued PO that is still open.\n\nHOW: issued POs whose delivery is not yet complete.\n\nUSE: mark rows submitted as they progress and close them out once delivery completes, so they stop counting as open everywhere else."} />
         </h3>
         <span>{submissions.length} open PO(s) · row-wise close</span>
       </div>

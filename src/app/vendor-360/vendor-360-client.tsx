@@ -44,29 +44,29 @@ export function Vendor360Client({ data }: { data: VendorHubData }) {
       {/* Objective KPIs — the Vendor picture at a glance. */}
       <div className="ca-kpi-row">
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Active vendors <InfoDot text="Distinct vendors with at least one open (Approved) PO right now." /></span>
+          <span className="ca-kpi-label">Active vendors <InfoDot text={"WHAT: how many vendors currently have work from SAADAA.\n\nHOW: distinct vendors with at least one open (Approved) PO.\n\nUSE: the vendors whose rows appear below. Active vendors with nothing open are on the Main Dashboard's Vendor Performance tab."} /></span>
           <strong>{data.summary.vendors}</strong>
           <small>with open work</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Top-3 concentration <InfoDot text="Share of total open PO value held by the 3 biggest vendors. Above 40% flags over-reliance on a few vendors." /></span>
+          <span className="ca-kpi-label">Top-3 concentration <InfoDot text={"WHAT: how much of the open value sits with just three vendors.\n\nHOW: open value of the three biggest vendors ÷ total open value. Example: ₹2.1 Cr of ₹3.5 Cr → 60%.\n\nUSE: above 40% (editable in Rules Master) one vendor's problem becomes SAADAA's problem. Spread the next orders."} /></span>
           <strong className={data.summary.top3ConcentrationPct > 40 ? 'ca-over' : ''}>
             {data.summary.top3ConcentrationPct}%
           </strong>
           <small>of open buying value</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Avg OTIF · {quarters}q <InfoDot text="Average on-time-in-full across vendors over the recent window, weighted by each vendor's number of rated (judgeable) POs." /></span>
+          <span className="ca-kpi-label">Avg OTIF · {quarters}q <InfoDot text={"WHAT: how often vendors deliver on time AND in full, overall.\n\nHOW: per vendor, POs that were both on time (by the committed date, else the PO's expected date) and in full (received ≥ ordered) ÷ its rated POs, over the recent window; averaged across vendors weighted by how many POs each had. A vendor with 20 POs counts more than one with 2.\n\nUSE: the one-number vendor scorecard. Per-vendor detail is on Vendor OTIF."} /></span>
           <strong className={otifTone(data.summary.avgOtifPct)}>{pct(data.summary.avgOtifPct)}</strong>
           <small>weighted by rated POs</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Worst delay <InfoDot text="The vendor with the highest delay rate — the share of its open POs already past their expected delivery date." /></span>
+          <span className="ca-kpi-label">Worst delay <InfoDot text={"WHAT: the vendor that is currently late on the largest share of its work.\n\nHOW: per vendor, open POs past their expected delivery date ÷ its open POs; the highest is shown. Example: 6 of 8 late → 75%.\n\nUSE: the first vendor conversation this week."} /></span>
           <strong className="ca-over">{data.summary.worstDelay ? `${Math.round(data.summary.worstDelay.delayPct)}%` : '—'}</strong>
           <small>{data.summary.worstDelay?.vendorName ?? 'none'}</small>
         </div>
         <div className="ca-kpi">
-          <span className="ca-kpi-label">Over capacity <InfoDot text="Count of vendors whose open order quantity exceeds their signed monthly capacity (utilisation over 100%)." /></span>
+          <span className="ca-kpi-label">Over capacity <InfoDot text={"WHAT: how many vendors have more on order than they can make in a month.\n\nHOW: vendors where open-PO pieces ÷ monthly capacity is above 100% (capacity = karigars × daily output × working days, from Vendor Capacity).\n\nUSE: each of these will be late on something — decide which PO matters most rather than letting the vendor decide."} /></span>
           <strong className={data.summary.overUtilised > 0 ? 'ca-over' : ''}>{data.summary.overUtilised}</strong>
           <small>vendors &gt; 100% util</small>
         </div>
