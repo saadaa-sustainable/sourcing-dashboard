@@ -20,6 +20,7 @@ import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
+import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
   DeboardedVendor,
@@ -864,47 +865,12 @@ function PoRow({
   });
   const setT = (k: keyof typeof tna, v: string) => setTna((s) => ({ ...s, [k]: v }));
 
-  // Colour/size line items — editable while the PO is being drafted or reworked
-  // (server enforces the same: queued/approved POs lock their lines).
+  // Spec 7.2 — SKU quantities are entered in PoLinesPanel (paste / matrix / CSV), which
+  // owns its own draft state and saves through savePoLines.
+  // Lines stay locked once the PO is queued or approved (the server enforces the same).
   const linesEditable = (po.status === 'draft' || po.status === 'rework') && canIssue;
   const [linesOpen, setLinesOpen] = useState(false);
-  const [lineRows, setLineRows] = useState(
-    lines.map((l) => ({
-      product_variant: l.product_variant ?? '',
-      size: l.size ?? '',
-      qty: l.qty != null ? String(l.qty) : '',
-      line_status: l.line_status,
-      rework_notes: l.rework_notes,
-    })),
-  );
-  const patchLine = (i: number, k: 'product_variant' | 'size' | 'qty', v: string) =>
-    setLineRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
-  const addLine = () =>
-    setLineRows((rows) => [
-      ...rows,
-      { product_variant: '', size: '', qty: '', line_status: null, rework_notes: null },
-    ]);
-  const removeLine = (i: number) => setLineRows((rows) => rows.filter((_, idx) => idx !== i));
-  function saveLines() {
-    setError(null);
-    const p = new FormData();
-    p.set('po_id', String(po.id));
-    p.set(
-      'lines',
-      JSON.stringify(
-        lineRows.map((r) => ({
-          product_variant: r.product_variant,
-          size: r.size,
-          qty: Number(r.qty) || 0,
-        })),
-      ),
-    );
-    start(async () => {
-      const res = await savePoLines(p);
-      if (res.ok) reloadWithToast();
-      else setError(res.error);
-    });
-  }
+  const lineRows = lines;
 
   function confirmTnaDates() {
     setError(null);
@@ -920,6 +886,7 @@ function PoRow({
 
   // Spec 7.1: the pop-up with the three validations before the row is submitted.
   const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
+
   function submit() {
     setError(null);
     const p = new FormData();
@@ -1262,106 +1229,15 @@ function PoRow({
       {linesOpen && (
         <tr className="wf-issue-panel-row">
           <td colSpan={8}>
-            <div className="wf-issue-panel">
-              <strong className="wf-issue-title">
-                Colour / size lines — {po.po_ref_num ?? `PO #${po.id}`}
-              </strong>
-              <table className="wide-table wf-grid">
-                <thead>
-                  <tr>
-                    <th>Colour / variant <HeaderInfo label="Colour / variant" /></th>
-                    <th>Size <HeaderInfo label="Size" /></th>
-                    <th className="num">Qty <HeaderInfo label="Qty" /></th>
-                    <th>Line status <HeaderInfo label="Line status" /></th>
-                    {linesEditable && <th aria-label="Remove" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineRows.map((ln, i) => (
-                    <tr key={i}>
-                      <td className="input-col">
-                        <input
-                          value={ln.product_variant}
-                          disabled={!linesEditable}
-                          onChange={(e) => patchLine(i, 'product_variant', e.target.value)}
-                        />
-                      </td>
-                      <td className="input-col">
-                        <input
-                          value={ln.size}
-                          disabled={!linesEditable}
-                          onChange={(e) => patchLine(i, 'size', e.target.value)}
-                        />
-                      </td>
-                      <td className="num input-col">
-                        <input
-                          type="number"
-                          min={0}
-                          value={ln.qty}
-                          disabled={!linesEditable}
-                          onChange={(e) => patchLine(i, 'qty', e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        {ln.line_status === 'rework' ? (
-                          <span className="wf-over-tag" title={ln.rework_notes ?? ''}>
-                            rework
-                          </span>
-                        ) : (
-                          <span className="wf-subtle">—</span>
-                        )}
-                      </td>
-                      {linesEditable && (
-                        <td>
-                          <button
-                            type="button"
-                            className="wf-btn wf-btn-ghost wf-btn-sm"
-                            onClick={() => removeLine(i)}
-                          >
-                            <X size={13} />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {!lineRows.length && (
-                    <tr>
-                      <td colSpan={linesEditable ? 5 : 4} className="wf-empty-cell">
-                        No colour/size lines yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              {linesEditable ? (
-                <div className="wf-footer-actions">
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-ghost wf-btn-sm"
-                    onClick={addLine}
-                  >
-                    Add line
-                  </button>
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-primary wf-btn-sm"
-                    onClick={saveLines}
-                    disabled={pending}
-                  >
-                    <Save size={14} /> Save lines
-                  </button>
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-ghost wf-btn-sm"
-                    onClick={() => setLinesOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-              ) : (
-                <p className="wf-subtle">Read-only — this PO is approved.</p>
-              )}
-            </div>
+            <PoLinesPanel
+              poId={po.id}
+              poRef={po.po_ref_num}
+              productCode={po.product_code}
+              lines={lines}
+              editable={linesEditable}
+              onSaved={() => reloadWithToast()}
+              onClose={() => setLinesOpen(false)}
+            />
           </td>
         </tr>
       )}

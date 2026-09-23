@@ -550,6 +550,21 @@ export async function loadApprovalQueue(): Promise<{
           )
         : null;
       const stdCost = po.product_code ? stdCosts[po.product_code] ?? null : null;
+      // Pending pieces per SKU for this PO's product, for the SKU-level line labels.
+      const pendingBySku = new Map<string, number>();
+      if (po.product_code) {
+        const { data: openForProduct } = await supabase
+          .from('sd_po_dashboard')
+          .select('sku, pending_qty')
+          .eq('product_code', po.product_code)
+          .gt('pending_qty', 0)
+          .limit(500); // paging-ok: one product's open lines, a few dozen at most
+        for (const r of (openForProduct ?? []) as { sku: string | null; pending_qty: number | null }[]) {
+          const sku = (r.sku ?? '').trim().toUpperCase();
+          if (!sku) continue;
+          pendingBySku.set(sku, (pendingBySku.get(sku) ?? 0) + (Number(r.pending_qty) || 0));
+        }
+      }
       const inv = po.product_code ? invByProduct[po.product_code] ?? null : null;
       items.push({
         entityType: 'po_approval',
@@ -583,10 +598,22 @@ export async function loadApprovalQueue(): Promise<{
         vendorCapacityUtil: capModel?.capacityUtil ?? null,
         vendorLeadDays: capModel?.leadDays ?? null,
         vendorCapacityUpdatedAt: cap?.weekOf ?? null,
-        lines: ((poLines ?? []) as { id: number; product_variant: string | null; size: string | null; qty: number | null }[]).map((l) => ({
-          id: String(l.id),
-          label: `${l.product_variant ?? '—'}${l.size ? ' / ' + l.size : ''} · ${Number(l.qty || 0).toLocaleString('en-IN')} pcs`,
-        })),
+        // Spec 7.2 — the approver sees the PO at SKU level, with what is already pending for
+        // that SKU beside it (same comparison the person entering the quantities saw).
+        lines: ((poLines ?? []) as { id: number; product_variant: string | null; size: string | null; qty: number | null }[]).map((l) => {
+          const variant = (l.product_variant ?? '').trim().toUpperCase();
+          const size = (l.size ?? '').trim().toUpperCase();
+          const sku = size ? `${variant}_${size}` : variant;
+          const qty = Number(l.qty || 0);
+          const pendingForSku = pendingBySku.get(sku) ?? 0;
+          return {
+            id: String(l.id),
+            label: `${sku || '—'} · ${qty.toLocaleString('en-IN')} pcs${
+              pendingForSku ? ` · ${pendingForSku.toLocaleString('en-IN')} already pending` : ''
+            }`,
+            qty,
+          };
+        }),
         poDetail: {
           productCode: po.product_code,
           poType: po.po_type,

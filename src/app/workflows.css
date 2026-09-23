@@ -1974,3 +1974,20 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 
 /* Inward Plan: the two halves of one subject — what landed, and what to expect. */
 .ip-tabs { margin: 0 0 14px; }
+
+/* ---- PO SKU quantity entry (spec 7.2): paste / matrix / CSV ---- */
+.pl-panel { display: flex; flex-direction: column; gap: 10px; }
+.pl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.pl-tabs { margin: 0; }
+.pl-tabs button { display: inline-flex; align-items: center; gap: 5px; }
+.pl-textarea { width: 100%; font-family: var(--font-mono, monospace); font-size: 12px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.pl-hint { margin: 4px 0 0; font-size: 11.5px; }
+.pl-csv input[type='file'] { font: inherit; font-size: 12.5px; }
+.pl-matrix { max-height: 320px; }
+.pl-matrix-corner { position: sticky; left: 0; background: #fff; z-index: 1; }
+.pl-matrix-row { position: sticky; left: 0; background: #fff; z-index: 1; font-size: 12px; }
+.pl-matrix input { width: 62px; }
+.pl-issues { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+.pl-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: #f5f2ea; }
+.pl-over { padding: 2px 9px; border-radius: 999px; background: #fff0ed; color: #c5280c; font-size: 11.5px; font-weight: 700; }
+.pl-unknown td { background: #fffaf0; }

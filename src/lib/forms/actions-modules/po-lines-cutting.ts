@@ -1,6 +1,8 @@
 'use server';
 
 import { randomBytes } from 'crypto';
+import { loadPoLineContext } from '../queries';
+import type { PoLineContext } from '../queries-modules/po-lines-context';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
@@ -35,6 +37,20 @@ import {
   dateOrNull,
   textOrNull,
 } from './_shared';
+
+/**
+ * Spec 7.2 — what the SKU entry grid needs for a product: its active colours, the sizes it
+ * uses, and the pieces already pending per SKU on open POs (the live match). Read-only.
+ */
+export async function getPoLineContext(productCode: string): Promise<PoLineContext | null> {
+  const user = await currentUser();
+  if (!user) return null;
+  try {
+    return await loadPoLineContext(productCode);
+  } catch {
+    return null;
+  }
+}
 
 export async function savePoLines(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
