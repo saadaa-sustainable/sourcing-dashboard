@@ -701,7 +701,7 @@ export function PoApprovalClient({
           <span>{pos.length} total</span>
         </div>
         <div className="table-scroll">
-          <table className="wide-table">
+          <table className="wide-table wf-po-table">
             <thead>
               <tr>
                 <th>PO ref <HeaderInfo label="PO ref" /></th>
@@ -1032,7 +1032,7 @@ function PoRow({
         <td>
           <span className={`wf-cat-chip wf-cat-${po.category}`}>{catLabel(po.category)}</span>
         </td>
-        <td className="mono">
+        <td className="mono wf-po-product">
           {po.product_code ?? '—'}
           {/* Spec item 6: plan relationship, recorded at submission. Display only. */}
           {po.in_buying_plan === true && (
@@ -1046,7 +1046,7 @@ function PoRow({
             </small>
           )}
         </td>
-        <td>
+        <td className="wf-po-vendor">
           {po.vendor_code && po.vendor_name
             ? `${po.vendor_code.toUpperCase()} - ${po.vendor_name}`
             : po.vendor_name || po.vendor_code || '—'}
@@ -1095,68 +1095,71 @@ function PoRow({
             <small className="wf-subtle">{cycle.days_to_sign}d to sign</small>
           )}
         </td>
-        <td>
+        <td className="wf-po-action">
           {error && <small className="wf-subtle wf-error-text">{error}</small>}
-          {/* A raised PO is editable right up to submission. */}
-          {editableHere && (
-            <button
-              type="button"
-              className={`wf-btn wf-btn-sm ${isEditing ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
-              onClick={() => onEdit?.(po)}
-              title="Open this request in the form above"
-            >
-              <FilePen size={14} /> {isEditing ? 'Editing' : 'Edit'}
-            </button>
-          )}
-          {canSubmit(role, po.status) && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              onClick={submit}
-              disabled={pending}
-            >
-              <Send size={14} /> Submit
-            </button>
-          )}
-          {(po.status === 'submitted' || po.status === 'pending_l2') &&
-            (isApprover ? (
-              po.tna_confirmed ? (
-                // Approve / Reject / Rework happen only in the Approvals queue — not
-                // inline here — so admin decisions route through one place.
-                <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/approvals">
-                  Decide in Approvals &rarr;
-                </a>
+          {/* The buttons wrap onto a second line rather than widening the table. */}
+          <div className="wf-po-actions">
+            {/* A raised PO is editable right up to submission. */}
+            {editableHere && (
+              <button
+                type="button"
+                className={`wf-btn wf-btn-sm ${isEditing ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
+                onClick={() => onEdit?.(po)}
+                title="Open this request in the form above"
+              >
+                <FilePen size={14} /> {isEditing ? 'Editing' : 'Edit'}
+              </button>
+            )}
+            {canSubmit(role, po.status) && (
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                onClick={submit}
+                disabled={pending}
+              >
+                <Send size={14} /> Submit
+              </button>
+            )}
+            {(po.status === 'submitted' || po.status === 'pending_l2') &&
+              (isApprover ? (
+                po.tna_confirmed ? (
+                  // Approve / Reject / Rework happen only in the Approvals queue — not
+                  // inline here — so admin decisions route through one place.
+                  <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/approvals">
+                    Decide in Approvals &rarr;
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-primary wf-btn-sm"
+                    onClick={() => setTnaOpen((v) => !v)}
+                  >
+                    <CalendarCheck size={14} /> Review &amp; confirm TNA
+                  </button>
+                )
               ) : (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary wf-btn-sm"
-                  onClick={() => setTnaOpen((v) => !v)}
-                >
-                  <CalendarCheck size={14} /> Review &amp; confirm TNA
-                </button>
-              )
-            ) : (
-              <span className="wf-subtle">Awaiting approval</span>
-            ))}
-          {po.status === 'approved' && canIssue && (
+                <span className="wf-subtle">Awaiting approval</span>
+              ))}
+            {po.status === 'approved' && canIssue && (
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                onClick={() => setSigning((v) => !v)}
+              >
+                <FileCheck size={14} /> {issued ? 'Signing' : 'Issue / sign'}
+              </button>
+            )}
             <button
               type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              onClick={() => setSigning((v) => !v)}
+              className="wf-btn wf-btn-ghost wf-btn-sm"
+              onClick={() => setLinesOpen((v) => !v)}
             >
-              <FileCheck size={14} /> {issued ? 'Signing' : 'Issue / sign'}
+              <Layers size={14} /> Lines ({lineRows.length})
             </button>
-          )}
-          <button
-            type="button"
-            className="wf-btn wf-btn-ghost wf-btn-sm"
-            onClick={() => setLinesOpen((v) => !v)}
-          >
-            <Layers size={14} /> Lines ({lineRows.length})
-          </button>
-          {po.status === 'approved' && !canIssue && issued && (
-            <span className="wf-subtle">Issued</span>
-          )}
+            {po.status === 'approved' && !canIssue && issued && (
+              <span className="wf-subtle">Issued</span>
+            )}
+          </div>
         </td>
       </tr>
       {tnaOpen && isApprover && (
