@@ -9,6 +9,9 @@ import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance, istToday, tnaBaseFor, tnaScheduleFrom, type TnaDays } from '@/lib/business-logic';
+// The result type lives in lib/cost-sheet: a 'use server' module may only export async
+// functions, so a type exported from here would blow up at runtime (and tsc would not say).
+import { costSheetCsvUrl, parseCostSheet, type CostSheetReadResult } from '@/lib/cost-sheet';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { loadPoSubmissionChecks } from '../queries';
 import type { PoSubmissionChecks } from '../queries-modules/po-checks';
@@ -396,6 +399,61 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   return done(
     next === 'pending_l2' ? 'Submitted for admin approval.' : 'Submitted for approval.',
   );
+}
+
+/**
+ * Read the cost sheet whose link is on the PO and hand back the agreed figures.
+ *
+ * The sheet is where the costs are actually settled, so reading it beats re-typing four
+ * numbers into the form. Two ways in: the Google Sheets link (fetched as CSV, which only
+ * works if the sheet is readable by anyone with the link), or the sheet pasted in. Either
+ * way the figures are only suggested — the form fills them for a person to check.
+ */
+export async function readCostSheet(formData: FormData): Promise<CostSheetReadResult> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+
+  const pasted = String(formData.get('pasted') ?? '').trim();
+  if (pasted) return { ok: true, figures: parseCostSheet(pasted), source: 'paste' };
+
+  const link = String(formData.get('url') ?? '').trim();
+  if (!link) return { ok: false, error: 'Add the cost sheet link first (or paste the sheet).' };
+  const csvUrl = costSheetCsvUrl(link);
+  if (!csvUrl) {
+    return {
+      ok: false,
+      error: 'That is not a Google Sheets link. Open the cost sheet and copy its link, or paste the sheet itself.',
+    };
+  }
+
+  let text: string;
+  try {
+    const res = await fetch(csvUrl, {
+      redirect: 'follow',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `Google returned ${res.status} for that sheet. It is probably not shared — set it to "anyone with the link can view", or paste the sheet instead.`,
+      };
+    }
+    text = await res.text();
+  } catch {
+    return { ok: false, error: 'Could not reach the sheet. Check the link, or paste the sheet instead.' };
+  }
+
+  // A sheet that is not shared returns Google's sign-in page, with a 200, as HTML.
+  if (/^\s*</.test(text) || /<html/i.test(text.slice(0, 400))) {
+    return {
+      ok: false,
+      error:
+        'That sheet is not open to anyone with the link, so it came back as a sign-in page. Share it for viewing, or paste the sheet instead.',
+    };
+  }
+
+  return { ok: true, figures: parseCostSheet(text), source: 'link' };
 }
 
 /**

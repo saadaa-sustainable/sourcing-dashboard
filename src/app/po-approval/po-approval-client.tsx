@@ -3,12 +3,13 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FileDown, FilePen, Layers, Save, Send, Trash2, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FileDown, FilePen, FileSpreadsheet, Layers, Save, Send, Trash2, X } from 'lucide-react';
 import {
   checkPlanMembership,
   confirmTna,
   deletePoApproval,
   issuePoApproval,
+  readCostSheet,
   previewPoSubmission,
   savePoApproval,
   saveTnaLeadtimes,
@@ -17,6 +18,7 @@ import {
 } from '@/lib/forms/actions';
 import { addMonths, canApprove, canDeletePo, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart, STATUS_LABEL } from '@/lib/forms/approval';
 import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
+import type { CostSheetFigures } from '@/lib/cost-sheet';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
@@ -214,6 +216,47 @@ export function PoApprovalClient({
     setForm((f) => ({ ...f, vendor_code: code, vendor_name: vendorNames[code.trim()] ?? f.vendor_name }));
   const setVendorName = (name: string) =>
     setForm((f) => ({ ...f, vendor_name: name, vendor_code: nameToCode[name.trim()] ?? f.vendor_code }));
+
+  // Reading the cost sheet: the figures found, and the paste fallback for a sheet that is
+  // not open to anyone with the link.
+  const [sheetRead, setSheetRead] = useState<CostSheetFigures | null>(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const [sheetPaste, setSheetPaste] = useState('');
+  const [sheetPasteOpen, setSheetPasteOpen] = useState(false);
+
+  /**
+   * Fill the cost fields from the sheet. Only figures the sheet actually carries are
+   * written — a blank row leaves whatever is in the form alone rather than wiping it.
+   */
+  function readSheet(pasted?: string) {
+    setError(null);
+    setMessage(null);
+    setSheetBusy(true);
+    const fd = new FormData();
+    if (pasted) fd.set('pasted', pasted);
+    else fd.set('url', form.cost_sheet_url.trim());
+    start(async () => {
+      const res = await readCostSheet(fd);
+      setSheetBusy(false);
+      if (!res.ok) {
+        setSheetRead(null);
+        setSheetPasteOpen(true); // the usual fix is to paste it
+        setError(toastError(res.error));
+        return;
+      }
+      const f = res.figures;
+      setSheetRead(f);
+      setForm((cur) => ({
+        ...cur,
+        rate: f.rate != null ? String(f.rate) : cur.rate,
+        cm_cost: f.cmCost != null ? String(f.cmCost) : cur.cm_cost,
+        finished_fabric_cost: f.fabricCost != null ? String(f.fabricCost) : cur.finished_fabric_cost,
+        grey_cost: f.greyCost != null ? String(f.greyCost) : cur.grey_cost,
+        margin_pct: f.marginPct != null ? String(f.marginPct) : cur.margin_pct,
+      }));
+      if (pasted) setSheetPasteOpen(false);
+    });
+  }
 
   // Spec 7.3 — the critical path is a set of day counts, filled once. This drops the
   // standard lead times in; each one can then be changed for this PO.
@@ -634,13 +677,89 @@ export function PoApprovalClient({
                 onChange={(e) => set('margin_pct', e.target.value)}
               />
             </Field>
-            <Field label="Cost sheet link">
-              <input
-                value={form.cost_sheet_url}
-                placeholder="https://…"
-                onChange={(e) => set('cost_sheet_url', e.target.value)}
-              />
+            <Field
+              label="Cost sheet link"
+              hint="the sheet the costs were agreed on — read it in rather than re-typing"
+            >
+              <div className="wf-issue-row">
+                <input
+                  value={form.cost_sheet_url}
+                  placeholder="https://…"
+                  onChange={(e) => set('cost_sheet_url', e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => readSheet()}
+                  disabled={sheetBusy || !form.cost_sheet_url.trim()}
+                  title="Read the rate, CMTP, fabric cost and margin off the sheet"
+                >
+                  <FileSpreadsheet size={13} /> {sheetBusy ? 'Reading…' : 'Read the sheet'}
+                </button>
+              </div>
             </Field>
+
+            {/* The figures are only ever suggested: what was taken, and from where, is
+                spelled out so it can be checked against the sheet in one glance. */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              {sheetRead && (
+                <Notice tone={sheetRead.warnings.length ? 'warn' : 'ok'}>
+                  <strong>Read from the cost sheet</strong>
+                  {sheetRead.poRef ? ` (${sheetRead.poRef})` : ''}
+                  {sheetRead.avgColumnLabel ? ` — ${sheetRead.avgColumnLabel} column` : ''}:{' '}
+                  {[
+                    sheetRead.rate != null ? `rate ₹${sheetRead.rate}` : null,
+                    sheetRead.cmCost != null ? `CMTP ₹${sheetRead.cmCost}` : null,
+                    sheetRead.fabricCost != null ? `fabric ₹${sheetRead.fabricCost}` : null,
+                    sheetRead.greyCost != null ? `greige ₹${sheetRead.greyCost}` : null,
+                    sheetRead.marginPct != null ? `margin ${sheetRead.marginPct}%` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'nothing could be read'}
+                  . Check them against the sheet and change anything that is wrong.
+                  {sheetRead.paymentTermsDays != null && (
+                    <>
+                      {' '}
+                      The sheet also says <strong>payment terms {sheetRead.paymentTermsDays} days</strong>, which this
+                      form does not hold.
+                    </>
+                  )}
+                  {sheetRead.warnings.length > 0 && <> {sheetRead.warnings.join(' ')}</>}
+                </Notice>
+              )}
+              {sheetPasteOpen ? (
+                <Field
+                  label="Paste the cost sheet"
+                  hint="select the sheet in Google Sheets (Ctrl+A), copy, and paste here — nothing leaves your browser until you save"
+                >
+                  <div className="wf-issue-row">
+                    <textarea
+                      className="wf-textarea"
+                      rows={3}
+                      value={sheetPaste}
+                      placeholder="Paste the whole sheet…"
+                      onChange={(e) => setSheetPaste(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn-ghost wf-btn-sm"
+                      onClick={() => readSheet(sheetPaste)}
+                      disabled={sheetBusy || !sheetPaste.trim()}
+                    >
+                      Read it
+                    </button>
+                  </div>
+                </Field>
+              ) : (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => setSheetPasteOpen(true)}
+                >
+                  Sheet not shared? Paste it instead
+                </button>
+              )}
+            </div>
           </FormSection>
 
           <FormSection
