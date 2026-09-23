@@ -258,8 +258,14 @@ export function PoApprovalClient({
     p.set('delete_reason', reason);
     start(async () => {
       const res = await deletePoApproval(p);
-      if (res.ok) reloadWithToast(res.message ?? 'Request deleted.');
-      else {
+      if (res.ok) {
+        // reloadWithToast only soft-refreshes (router.refresh), which keeps client state on
+        // purpose — so close the dialog and leave edit mode ourselves. Without this the form
+        // stays open on a request that no longer exists.
+        setDeleting(false);
+        cancelEdit();
+        reloadWithToast(res.message ?? 'Request deleted.');
+      } else {
         setDeleting(false);
         setError(toastError(res.error));
       }
