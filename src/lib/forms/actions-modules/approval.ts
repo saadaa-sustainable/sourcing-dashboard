@@ -7,8 +7,18 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules, loadApprovalMatrix } from '../queries';
+import {
+  approversFor,
+  canApprove,
+  canDecide,
+  canEdit,
+  canSubmit,
+  isEscalated,
+  levelForStatus,
+  statusOnSubmit,
+  LEVEL_LABEL,
+} from '../approval';
 import { applyPoDeletion } from './po-approval';
 import {
   canAcceptProposal,
@@ -49,6 +59,15 @@ const TABLE: Record<ApprovalEntity, string> = {
   vendor_deboarding: 'sd_vendor_deboarding_request',
 };
 
+/** When each kind of item started waiting — escalation (spec 7.5) is measured from this. */
+const WAITING_SINCE: Partial<Record<ApprovalEntity, string>> = {
+  buying_plan: 'submitted_at',
+  discontinue: 'requested_at',
+  po_approval: 'submitted_for_approval_at',
+  po_delete: 'requested_at',
+  vendor_deboarding: 'requested_at',
+};
+
 // Entities that carry line items eligible for line-item rework.
 const LINE_TABLE: Partial<Record<ApprovalEntity, string>> = {
   buying_plan: 'sd_buying_plan_line',
@@ -82,16 +101,28 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (!table || !entityId) return fail('Invalid approval request.');
 
   const supabase = await supa();
-  const { data: row } = await supabase
-    .from(table)
-    .select('id, status')
-    .eq('id', entityId)
-    .maybeSingle();
+  // The column that says when this item started waiting — what escalation is measured from.
+  // Read the whole row rather than a computed column list: a select string built at
+  // runtime defeats the typed-select parser (it returns a ParserError type).
+  const waitCol = WAITING_SINCE[entityType];
+  const { data: rowRaw } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+  const row = rowRaw as unknown as Record<string, unknown> | null;
   if (!row) return fail('Record not found.');
 
   const from = row.status as SdStatus;
-  if (!canApprove(user.role, from)) {
-    return fail('This decision is above your approval level.');
+  // Spec 7.5 — the escalation matrix decides who may act, falling back to the role ladder
+  // wherever a level has nobody named. Past the escalation window the level above can act
+  // too, so one person being away never parks a PO.
+  const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
+  const waitingSince = waitCol ? (row[waitCol] as string | null) : null;
+  const escalated = isEscalated(waitingSince, Number(rules.approval_escalation_days ?? 0));
+  if (!canDecide(user, from, matrix, escalated)) {
+    const named = approversFor(from, matrix);
+    return fail(
+      named.length
+        ? `This one is with ${LEVEL_LABEL[levelForStatus(from) ?? 'l1']} — ${named.join(', ')}. It escalates to the level above if it is not decided in time.`
+        : 'This decision is above your approval level.',
+    );
   }
 
   // Hard gate: a PO's cost cannot be approved until its TNA critical-path dates are

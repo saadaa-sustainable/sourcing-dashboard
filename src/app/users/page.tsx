@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadCustomRoles, loadNavVisibility, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
+import { currentUser, loadApprovalMatrixRows, loadCustomRoles, loadNavVisibility, loadUsers, NotConfiguredError } from '@/lib/forms/queries';
 import { hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { UsersClient } from './users-client';
 
@@ -26,9 +26,9 @@ export default async function UsersPage() {
   if (user.role !== 'admin') redirect('/');
 
   const isAdmin = user.role === 'admin';
-  const [users, roles, navOverrides] = isAdmin
-    ? await Promise.all([loadUsers(), loadCustomRoles(), loadNavVisibility()])
-    : [[], [], {}];
+  const [users, roles, navOverrides, matrixMembers] = isAdmin
+    ? await Promise.all([loadUsers(), loadCustomRoles(), loadNavVisibility(), loadApprovalMatrixRows()])
+    : [[], [], {}, []];
 
   return (
     <FormLayout
@@ -46,6 +46,7 @@ export default async function UsersPage() {
           currentEmail={user.email}
           canCreateLogins={hasSupabaseAdminEnv()}
           navOverrides={navOverrides}
+          matrixMembers={matrixMembers}
         />
       ) : (
         <Notice tone="warn">

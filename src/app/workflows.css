@@ -2020,6 +2020,14 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-btn-delete:hover:not(:disabled) { color: #fff; background: #b3261e; border-color: #8f1d17; }
 .wf-btn-delete:disabled { opacity: .45; }
 
+/* Approval matrix (spec 7.5): one card per level, read left to right as the chain. */
+.wf-matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; align-items: start; }
+.wf-matrix-card .panel-title p { margin: 4px 0 0; font-size: 11.5px; }
+.wf-matrix-body { display: flex; flex-direction: column; gap: 10px; padding: 0 18px 16px; }
+.wf-matrix-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; counter-reset: approver; }
+.wf-matrix-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; background: #fbf7ef; border: 1px solid #ece7d9; border-radius: 8px; font-size: 12.5px; }
+.wf-matrix-list li small { display: block; margin-top: 1px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
+
 /* The whole PO row opens its read-only detail — so it has to look clickable, and the
    caret has to say which rows are open. Controls inside the row keep their own cursor. */
 .wf-po-row { cursor: pointer; }

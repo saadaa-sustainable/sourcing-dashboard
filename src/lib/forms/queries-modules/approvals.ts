@@ -1,12 +1,22 @@
 import 'server-only';
 import { client, PAGE_SIZE } from './_shared';
-import { canApprove, routeApproval, STATUS_LABEL } from '../approval';
+import {
+  approversFor,
+  canApprove,
+  isEscalated,
+  levelForStatus,
+  routeApproval,
+  STATUS_LABEL,
+  type ApprovalLevel,
+  type ApprovalMatrix,
+} from '../approval';
 import { loadApprovedStandardCosts, loadApprovedMaterialCosts } from './standard-cost';
 import { loadInProcessByVendor, loadLatestVendorCapacity } from './vendor';
 import { loadAnalyticsRules } from './analytics';
 import { capacityRulesFrom, vendorCapacityModel } from '@/lib/business-logic';
 import { DEBOARDING_REASON_LABEL, DEBOARDING_SCORES } from '../deboarding';
 import type {
+  ApprovalMatrixMember,
   ApprovalNotification,
   ApprovalQueueItem,
   ApprovalLogRow,
@@ -21,6 +31,40 @@ import type {
   PoDeleteRequest,
   VendorDeboardingRequest,
 } from '../types';
+
+/**
+ * Spec 7.5 — who sits at L1 / L2 / L3, in order (primary first, then the fallbacks).
+ * An empty level means "not configured", and the role ladder decides instead.
+ */
+export async function loadApprovalMatrix(): Promise<ApprovalMatrix> {
+  const supabase = await client();
+  // paging-ok: a handful of named approvers per level, by design
+  const { data } = await supabase
+    .from('sd_approval_matrix')
+    .select('level, email, position, active')
+    .eq('active', true)
+    .order('level')
+    .order('position')
+    .limit(100);
+  const matrix: ApprovalMatrix = { l1: [], l2: [], l3: [] };
+  for (const r of (data ?? []) as { level: ApprovalLevel; email: string }[]) {
+    if (matrix[r.level]) matrix[r.level].push(r.email);
+  }
+  return matrix;
+}
+
+/** The matrix as rows, for the User Panel editor (includes who is switched off). */
+export async function loadApprovalMatrixRows(): Promise<ApprovalMatrixMember[]> {
+  const supabase = await client();
+  // paging-ok: a handful of named approvers per level, by design
+  const { data } = await supabase
+    .from('sd_approval_matrix')
+    .select('id, level, email, position, active')
+    .order('level')
+    .order('position')
+    .limit(100);
+  return (data ?? []) as ApprovalMatrixMember[];
+}
 
 /** Cheap count of items in the shared approval queue, for the notification bell. */
 export async function countPendingApprovals(): Promise<number> {
@@ -728,6 +772,20 @@ export async function loadApprovalQueue(): Promise<{
       href: '/receivable-plan',
     });
   }
+  // Spec 7.5 — stamp each card with whose turn it is and how long it has been theirs, so
+  // the queue says who is holding it up rather than leaving everyone to assume.
+  const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
+  const escalationDays = Number(rules.approval_escalation_days ?? 0);
+  const now = Date.now();
+  for (const item of items) {
+    item.level = levelForStatus(item.status);
+    item.approvers = approversFor(item.status, matrix);
+    item.daysWaiting = item.submittedAt
+      ? Math.max(0, Math.floor((now - Date.parse(item.submittedAt)) / 86_400_000))
+      : null;
+    item.escalated = isEscalated(item.submittedAt, escalationDays);
+  }
+
   items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));
   return { items, log: (log ?? []) as ApprovalLogRow[] };
 }

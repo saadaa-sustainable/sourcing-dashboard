@@ -6,7 +6,7 @@ import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
-import { canApprove, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
+import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
 import { approveBuyingPlanLines, reworkLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -187,6 +187,24 @@ export function ApprovalsClient({
                 <dt>Needs</dt>
                 <dd>{ROLE_LABEL[item.requiredRole]}</dd>
               </div>
+              {/* Spec 7.5 — whose turn it is by name, and whether they have sat on it. */}
+              {item.level && (
+                <div>
+                  <dt>Waiting on</dt>
+                  <dd>
+                    {item.approvers?.length
+                      ? `${LEVEL_LABEL[item.level]} — ${item.approvers.join(', ')}`
+                      : `${LEVEL_LABEL[item.level]} — nobody named yet`}
+                    {item.daysWaiting != null && (
+                      <span className={item.escalated ? 'wf-over-tag' : 'wf-subtle'} style={{ marginLeft: 6 }}>
+                        {item.escalated
+                          ? `escalated · ${item.daysWaiting}d waiting`
+                          : `${item.daysWaiting}d waiting`}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
               {item.submitNote && (
                 <div className="wf-queue-note">
                   <dt>Submitter remark</dt>

@@ -1460,6 +1460,16 @@ export type PoCycleTime = {
   total_cycle_days_signoff: number | null;
 };
 
+/** One person's place in the spec 7.5 escalation matrix. */
+export type ApprovalMatrixMember = {
+  id: number;
+  level: 'l1' | 'l2' | 'l3';
+  email: string;
+  /** 1 = the person it normally goes to; 2 and 3 are the fallbacks. */
+  position: number;
+  active: boolean;
+};
+
 /** One row in the unified /approvals queue. */
 export type ApprovalQueueItem = {
   entityType: ApprovalEntity;
@@ -1473,6 +1483,11 @@ export type ApprovalQueueItem = {
   requiredRole: SdRole;
   submittedBy: string | null;
   submittedAt: string | null;
+  /** Spec 7.5 — the named people whose turn this is, and whether it has waited too long. */
+  approvers?: string[];
+  level?: 'l1' | 'l2' | 'l3' | null;
+  escalated?: boolean;
+  daysWaiting?: number | null;
   /** Optional remark the submitter attached (currently the receivable plan). */
   submitNote?: string | null;
   href: string;

@@ -78,6 +78,85 @@ export function canRework(role: SdRole, status: SdStatus) {
   return canApprove(role, status);
 }
 
+/* ---- Spec 7.5: the escalation matrix ------------------------------ */
+
+export type ApprovalLevel = 'l1' | 'l2' | 'l3';
+
+/** Who sits at each level, in order: [primary, fallback, fallback…]. */
+export type ApprovalMatrix = Record<ApprovalLevel, string[]>;
+
+export const EMPTY_MATRIX: ApprovalMatrix = { l1: [], l2: [], l3: [] };
+
+export const LEVEL_LABEL: Record<ApprovalLevel, string> = {
+  l1: 'L1',
+  l2: 'L2',
+  l3: 'L3 (final)',
+};
+
+/** Which level an item is waiting at. Cost negotiation and the rest have no level. */
+export function levelForStatus(status: SdStatus): ApprovalLevel | null {
+  if (status === 'submitted') return 'l1';
+  if (status === 'pending_l2') return 'l2';
+  return null;
+}
+
+const LADDER: ApprovalLevel[] = ['l1', 'l2', 'l3'];
+const sameEmail = (a: string | null | undefined, b: string | null | undefined) =>
+  Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
+
+/** The named approvers for an item's level — empty when the matrix has not been filled in. */
+export function approversFor(status: SdStatus, matrix: ApprovalMatrix): string[] {
+  const level = levelForStatus(status);
+  return level ? matrix[level] : [];
+}
+
+/**
+ * Has an item waited long enough at its level for the level above to step in?
+ * That is what makes this a matrix rather than a list: the work does not stop because
+ * the person whose turn it is is away.
+ */
+export function isEscalated(
+  waitingSince: string | null | undefined,
+  escalationDays: number,
+  today = new Date(),
+): boolean {
+  if (!waitingSince || !Number.isFinite(escalationDays) || escalationDays <= 0) return false;
+  const since = Date.parse(waitingSince);
+  if (Number.isNaN(since)) return false;
+  return (today.getTime() - since) / 86_400_000 >= escalationDays;
+}
+
+/**
+ * May this person decide this item?
+ *
+ * The matrix is authoritative where it is filled in, and silent where it is not: a level
+ * with nobody named falls back to the role ladder, so this can be adopted one level at a
+ * time. L3 is the final authority and can always decide; an admin can too, because that is
+ * what the role means here. Once an item has escalated, everyone above its level can act.
+ */
+export function canDecide(
+  user: { role: SdRole; email?: string | null },
+  status: SdStatus,
+  matrix: ApprovalMatrix = EMPTY_MATRIX,
+  escalated = false,
+): boolean {
+  const level = levelForStatus(status);
+  if (!level) return canApprove(user.role, status);
+  if (matrix.l3.some((e) => sameEmail(e, user.email))) return true;
+  if (user.role === 'admin') return true;
+
+  const named = matrix[level];
+  if (!named.length) return canApprove(user.role, status); // level not configured yet
+  if (named.some((e) => sameEmail(e, user.email))) return true;
+
+  if (escalated) {
+    // Everyone above the stuck level can step in — that is the point of escalating.
+    const above = LADDER.slice(LADDER.indexOf(level) + 1);
+    if (above.some((l) => matrix[l].some((e) => sameEmail(e, user.email)))) return true;
+  }
+  return false;
+}
+
 /**
  * Who may delete a raised PO request: the person who raised it, or an admin.
  *

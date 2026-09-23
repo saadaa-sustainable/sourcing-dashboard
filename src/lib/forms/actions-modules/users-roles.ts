@@ -236,3 +236,54 @@ export async function setNavVisibility(formData: FormData): Promise<ActionResult
   revalidatePath('/', 'layout');
   return done(`Tab ${visible ? 'shown' : 'hidden'}.`);
 }
+
+/**
+ * Spec 7.5 — put someone at an approval level, or take them off it.
+ *
+ * Two or three people per level is the point: the primary plus fallbacks, so the queue
+ * never waits on one person being at their desk. A level with nobody named falls back to
+ * the role ladder, which is also what makes this safe to fill in gradually.
+ */
+export async function setApprovalMatrixMember(formData: FormData): Promise<ActionResult> {
+  const actor = await currentUser();
+  if (!actor) return fail('Not signed in.');
+  if (actor.role !== 'admin') return fail('Only an admin can change the approval matrix.');
+
+  const level = String(formData.get('level') ?? '').trim().toLowerCase();
+  if (!['l1', 'l2', 'l3'].includes(level)) return fail('Pick L1, L2 or L3.');
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  if (!email) return fail('Pick a person.');
+  const remove = String(formData.get('remove')) === 'true';
+
+  const supabase = await supa();
+  if (remove) {
+    const { error } = await supabase
+      .from('sd_approval_matrix')
+      .delete()
+      .eq('level', level)
+      .eq('email', email);
+    if (error) return fail(`Could not remove: ${error.message}`);
+    revalidatePath('/users');
+    revalidatePath('/approvals');
+    return done(`${email} removed from ${level.toUpperCase()}.`);
+  }
+
+  const position = Number(formData.get('position') ?? 1) || 1;
+  const { error } = await supabase.from('sd_approval_matrix').upsert(
+    {
+      level,
+      email,
+      position,
+      active: true,
+      updated_by: actor.email,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'level,email' },
+  );
+  if (error) return fail(`Could not save: ${error.message}`);
+  revalidatePath('/users');
+  revalidatePath('/approvals');
+  return done(
+    `${email} is now ${position === 1 ? 'the primary approver' : 'a fallback'} at ${level.toUpperCase()}.`,
+  );
+}

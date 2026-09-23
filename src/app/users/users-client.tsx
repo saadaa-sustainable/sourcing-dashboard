@@ -4,12 +4,13 @@ import { useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
-import { ChevronDown, Eye, EyeOff, LayoutList, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, GitBranch, LayoutList, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
 import {
   createUserLogin,
   deleteCustomRole,
   saveCustomRole,
   saveUser,
+  setApprovalMatrixMember,
   setNavVisibility,
   setUserRoles,
 } from '@/lib/forms/actions';
@@ -17,7 +18,7 @@ import { Field, Notice } from '@/components/forms/form-layout';
 import { ROLE_LABEL } from '@/lib/forms/approval';
 import { ALL_VIEWS, VIEW_GROUPS } from '@/lib/views';
 import { NAV_ITEMS } from '@/components/side-nav';
-import type { SdCustomRole, SdRole, SdUser } from '@/lib/forms/types';
+import type { ApprovalMatrixMember, SdCustomRole, SdRole, SdUser } from '@/lib/forms/types';
 
 const ROLES: SdRole[] = ['admin', 'team', 'viewer'];
 
@@ -29,14 +30,17 @@ export function UsersClient({
   currentEmail,
   canCreateLogins,
   navOverrides = {},
+  matrixMembers = [],
 }: {
   users: SdUser[];
   roles: SdCustomRole[];
   currentEmail: string;
   canCreateLogins: boolean;
   navOverrides?: Record<string, boolean>;
+  /** Spec 7.5 — who currently sits at L1 / L2 / L3. */
+  matrixMembers?: ApprovalMatrixMember[];
 }) {
-  const [tab, setTab] = useState<'members' | 'roles' | 'tabs'>('members');
+  const [tab, setTab] = useState<'members' | 'roles' | 'tabs' | 'matrix'>('members');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -101,6 +105,13 @@ export function UsersClient({
           </button>
           <button
             type="button"
+            className={tab === 'matrix' ? 'active' : ''}
+            onClick={() => setTab('matrix')}
+          >
+            <GitBranch size={14} /> Approval matrix
+          </button>
+          <button
+            type="button"
             className={tab === 'tabs' ? 'active' : ''}
             onClick={() => setTab('tabs')}
           >
@@ -109,7 +120,9 @@ export function UsersClient({
         </div>
       </div>
 
-      {tab === 'members' ? (
+      {tab === 'matrix' ? (
+        <ApprovalMatrixTab users={users} members={matrixMembers} pending={pending} submit={submit} />
+      ) : tab === 'members' ? (
         <MembersTab
           users={users}
           roles={roles}
@@ -123,6 +136,141 @@ export function UsersClient({
       ) : (
         <TabsManager navOverrides={navOverrides} pending={pending} submit={submit} />
       )}
+    </>
+  );
+}
+
+/* ================================================================== */
+/* Approval matrix — spec 7.5: L1 → L2 → L3, with fallbacks            */
+/* ================================================================== */
+
+const LEVELS: { key: 'l1' | 'l2' | 'l3'; title: string; blurb: string }[] = [
+  {
+    key: 'l1',
+    title: 'L1 — first approval',
+    blurb: 'Routine items land here: FG POs up to 5,000 pieces, and every plan and request that does not need an admin.',
+  },
+  {
+    key: 'l2',
+    title: 'L2 — second approval',
+    blurb: 'Anything escalated by value or kind: FG above 5,000 pieces, NPD and material POs, standard costs, de-boarding, deletions.',
+  },
+  {
+    key: 'l3',
+    title: 'L3 — final authority',
+    blurb: 'Can decide anything, at any level. This is the last word, not a queue of its own.',
+  },
+];
+
+function ApprovalMatrixTab({
+  users,
+  members,
+  pending,
+  submit,
+}: {
+  users: SdUser[];
+  members: ApprovalMatrixMember[];
+  pending: boolean;
+  submit: (fd: FormData, action?: ActionFn, reload?: boolean) => void;
+}) {
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const byLevel = (level: string) =>
+    members.filter((m) => m.level === level).sort((a, b) => a.position - b.position);
+
+  function add(level: string) {
+    const email = picked[level];
+    if (!email) return;
+    const fd = new FormData();
+    fd.set('level', level);
+    fd.set('email', email);
+    // First person in is the primary; everyone after is a fallback.
+    fd.set('position', String(byLevel(level).length + 1));
+    submit(fd, setApprovalMatrixMember);
+  }
+
+  function remove(level: string, email: string) {
+    const fd = new FormData();
+    fd.set('level', level);
+    fd.set('email', email);
+    fd.set('remove', 'true');
+    submit(fd, setApprovalMatrixMember);
+  }
+
+  return (
+    <>
+      <Notice tone="info">
+        The approval chain, by name: <strong>L1 → L2 → L3</strong>. Put two or three people at L1
+        and L2 — the first is who it normally goes to, the rest are fallbacks — so nothing waits on
+        one person being at their desk. A level with <strong>nobody named falls back to the role
+        ladder</strong>, exactly as the dashboard behaved before, so you can fill this in one level
+        at a time. An item not decided inside the escalation window (Rules Master →{' '}
+        <em>Approval escalation (days)</em>) can also be decided by the level above.
+      </Notice>
+
+      <div className="wf-matrix-grid">
+        {LEVELS.map((lvl) => {
+          const rows = byLevel(lvl.key);
+          return (
+            <div key={lvl.key} className="panel wf-matrix-card">
+              <div className="panel-title">
+                <div>
+                  <h3>{lvl.title}</h3>
+                  <p className="wf-subtle">{lvl.blurb}</p>
+                </div>
+              </div>
+              <div className="wf-matrix-body">
+                {rows.length === 0 && (
+                  <p className="wf-subtle">
+                    Nobody named — this level currently follows the role ladder.
+                  </p>
+                )}
+                <ol className="wf-matrix-list">
+                  {rows.map((m, i) => (
+                    <li key={m.id}>
+                      <span>
+                        {m.email}
+                        <small className="wf-subtle">{i === 0 ? 'primary' : `fallback ${i}`}</small>
+                      </span>
+                      <button
+                        type="button"
+                        className="wf-icon-btn"
+                        title={`Remove ${m.email} from ${lvl.key.toUpperCase()}`}
+                        disabled={pending}
+                        onClick={() => remove(lvl.key, m.email)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+                <div className="wf-issue-row">
+                  <select
+                    value={picked[lvl.key] ?? ''}
+                    onChange={(e) => setPicked((p) => ({ ...p, [lvl.key]: e.target.value }))}
+                  >
+                    <option value="">— add a person —</option>
+                    {users
+                      .filter((u) => u.is_active && !rows.some((r) => r.email === u.email))
+                      .map((u) => (
+                        <option key={u.email} value={u.email}>
+                          {u.email} · {ROLE_LABEL[u.role]}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-primary wf-btn-sm"
+                    disabled={pending || !picked[lvl.key]}
+                    onClick={() => add(lvl.key)}
+                  >
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </>
   );
 }

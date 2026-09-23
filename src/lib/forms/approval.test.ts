@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  approversFor,
+  canDecide,
   canDeletePo,
   canRework,
   canSubmit,
+  isEscalated,
+  levelForStatus,
   statusOnSubmit,
   STATUS_LABEL,
   STATUS_TONE,
@@ -45,6 +49,42 @@ describe('approval workflow v2', () => {
     assert.equal(canDeletePo('admin', 'approved', 'ravi@saadaa.in', me), false);
     assert.equal(canDeletePo('team', 'draft', null, me), false);
     assert.equal(canDeletePo('team', 'draft', ' ASHA@saadaa.in ', me), true); // case/space tolerant
+  });
+  it('routes a decision through the named people at each level (spec 7.5)', () => {
+    const matrix = {
+      l1: ['asha@saadaa.in', 'ravi@saadaa.in'],
+      l2: ['nisha@saadaa.in'],
+      l3: ['mahesh@saadaa.in'],
+    };
+    assert.equal(levelForStatus('submitted'), 'l1');
+    assert.equal(levelForStatus('pending_l2'), 'l2');
+    assert.equal(levelForStatus('draft'), null);
+    assert.deepEqual(approversFor('submitted', matrix), matrix.l1);
+
+    // At L1: either named person decides; a fallback is not a lesser approver.
+    assert.equal(canDecide({ role: 'team', email: 'ravi@saadaa.in' }, 'submitted', matrix), true);
+    // A team member who is not on the matrix cannot, even though the old role rule allowed it.
+    assert.equal(canDecide({ role: 'team', email: 'other@saadaa.in' }, 'submitted', matrix), false);
+    // L1 does not get to decide an L2 item…
+    assert.equal(canDecide({ role: 'team', email: 'asha@saadaa.in' }, 'pending_l2', matrix), false);
+    // …until it has escalated.
+    assert.equal(canDecide({ role: 'team', email: 'nisha@saadaa.in' }, 'submitted', matrix, true), true);
+    // L3 is the final authority, at any level, escalated or not.
+    assert.equal(canDecide({ role: 'team', email: 'mahesh@saadaa.in' }, 'pending_l2', matrix), true);
+    assert.equal(canDecide({ role: 'admin', email: 'someone@saadaa.in' }, 'pending_l2', matrix), true);
+  });
+  it('falls back to the role ladder for a level nobody is named at', () => {
+    const half = { l1: [], l2: ['nisha@saadaa.in'], l3: [] };
+    assert.equal(canDecide({ role: 'team', email: 'anyone@saadaa.in' }, 'submitted', half), true);
+    assert.equal(canDecide({ role: 'team', email: 'anyone@saadaa.in' }, 'pending_l2', half), false);
+    assert.equal(canDecide({ role: 'viewer', email: 'anyone@saadaa.in' }, 'submitted', half), false);
+  });
+  it('escalates only once the waiting window has actually passed', () => {
+    const now = new Date('2026-09-23T10:00:00Z');
+    assert.equal(isEscalated('2026-09-20T10:00:00Z', 2, now), true);
+    assert.equal(isEscalated('2026-09-22T12:00:00Z', 2, now), false);
+    assert.equal(isEscalated(null, 2, now), false);
+    assert.equal(isEscalated('2026-09-01T10:00:00Z', 0, now), false); // escalation switched off
   });
   it('keeps submit routing by qty/category', () => {
     assert.equal(statusOnSubmit('buying_plan', 100), 'submitted');
