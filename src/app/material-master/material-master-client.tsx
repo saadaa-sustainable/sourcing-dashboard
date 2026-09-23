@@ -80,7 +80,7 @@ export function MaterialMasterClient({
       const result = await action();
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        reloadWithToast();
+        reloadWithToast(result.message ?? 'Saved.');
       } else {
         setError(result.error ?? 'Something went wrong.');
       }

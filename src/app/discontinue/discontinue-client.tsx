@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { Ban } from 'lucide-react';
 import { createDiscontinueRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
@@ -67,7 +67,7 @@ export function DiscontinueClient({
         setVariant('');
         setSize('');
         setReason('');
-      } else setError(result.error);
+      } else setError(toastError(result.error));
     });
   }
 
@@ -225,7 +225,7 @@ export function DiscontinueClient({
                           request.product_variant ? ` / ${request.product_variant}` : ''
                         }${request.size ? ` / ${request.size}` : ''}`}
                         onDone={(result) => {
-                          if (result.ok) reloadWithToast();
+                          if (result.ok) reloadWithToast(result.message ?? 'Saved.');
                         }}
                       />
                     ) : (

@@ -38,6 +38,17 @@ export function reloadWithToast(msg = 'Saved.') {
   }
 }
 
+/**
+ * Show a failure as a toast as well as wherever the caller puts it inline, and hand the
+ * message straight back — so an existing `setError(res.error)` becomes
+ * `setError(toastError(res.error))` without changing the shape of the handler. An error
+ * printed in small text beside a button is easy to miss; a toast is not.
+ */
+export function toastError(msg: string): string {
+  emitToast(msg, 'error');
+  return msg;
+}
+
 export function takeFlashToast(): { msg: string; tone: ToastTone } | null {
   try {
     const v = sessionStorage.getItem(KEY);

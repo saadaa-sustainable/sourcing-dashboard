@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import {
   ChevronDown,
   ChevronRight,
@@ -596,7 +596,7 @@ export function BuyingPlanClient({
         // First save of a month creates the plan — refresh so the server-provided
         // plan (id / status) arrives and Submit becomes available.
         if (!plan?.id) reloadWithToast(result.message ?? 'Saved.');
-      } else setError(result.error);
+      } else setError(toastError(result.error));
     });
   }
 
@@ -612,7 +612,7 @@ export function BuyingPlanClient({
     start(async () => {
       const result = await submitBuyingPlan(payload);
       if (result.ok) setMessage(result.message ?? 'Submitted.');
-      else setError(result.error);
+      else setError(toastError(result.error));
     });
   }
 
@@ -679,7 +679,7 @@ export function BuyingPlanClient({
         setAmendOpen(false);
         setAmendNote('');
         reloadWithToast(r.message ?? 'Amendment requested.');
-      } else setError(r.error);
+      } else setError(toastError(r.error));
     });
   }
 
@@ -1196,7 +1196,7 @@ export function BuyingPlanClient({
                 entityId={String(plan.id)}
                 entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
                 onDone={(result) => {
-                  if (result.ok) reloadWithToast();
+                  if (result.ok) reloadWithToast(result.message ?? 'Saved.');
                 }}
               />
             </div>
@@ -1659,7 +1659,7 @@ function LeadTimesCard({
     start(async () => {
       const res = await saveAnalyticsRule(fd);
       setEditing(null);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
     });
   }
 

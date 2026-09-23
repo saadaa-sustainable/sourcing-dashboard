@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from 'react';
 import { InfoDot } from '@/components/info-dot';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
 import { canApprove, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
@@ -255,7 +255,7 @@ export function ApprovalsClient({
                         entityLabel={item.label}
                         lines={item.lines}
                         onDone={(result) => {
-                          if (result.ok) reloadWithToast();
+                          if (result.ok) reloadWithToast(result.message ?? 'Saved.');
                         }}
                       />
                     )}
@@ -265,7 +265,7 @@ export function ApprovalsClient({
                       entityId={item.entityId}
                       entityLabel={item.label}
                       onDone={(result) => {
-                        if (result.ok) reloadWithToast();
+                        if (result.ok) reloadWithToast(result.message ?? 'Saved.');
                       }}
                     />
                   )}
@@ -371,8 +371,8 @@ function BuyingPlanApprovalLines({
     payload.set('line_ids', JSON.stringify(actionable));
     start(async () => {
       const result = await approveBuyingPlanLines(payload);
-      if (result.ok) reloadWithToast();
-      else setError(result.error);
+      if (result.ok) reloadWithToast(result.message ?? 'Saved.');
+      else setError(toastError(result.error));
     });
   }
 
@@ -392,8 +392,8 @@ function BuyingPlanApprovalLines({
     payload.set('line_decisions', JSON.stringify(decisions));
     start(async () => {
       const result = await reworkLines(payload);
-      if (result.ok) reloadWithToast();
-      else setError(result.error);
+      if (result.ok) reloadWithToast(result.message ?? 'Saved.');
+      else setError(toastError(result.error));
     });
   }
 

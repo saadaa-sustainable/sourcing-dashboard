@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
@@ -301,7 +301,7 @@ export function MaterialPlanClient({
         setMessage(result.message ?? 'Saved.');
         // First save of a month creates the plan — refresh so Submit becomes available.
         if (!plan?.id) reloadWithToast(result.message ?? 'Saved.');
-      } else setError(result.error);
+      } else setError(toastError(result.error));
     });
   }
 
@@ -317,7 +317,7 @@ export function MaterialPlanClient({
     start(async () => {
       const result = await submitBuyingPlan(payload);
       if (result.ok) setMessage(result.message ?? 'Submitted.');
-      else setError(result.error);
+      else setError(toastError(result.error));
     });
   }
 
@@ -588,7 +588,7 @@ export function MaterialPlanClient({
                   entityId={String(plan.id)}
                   entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
                   onDone={(result) => {
-                    if (result.ok) reloadWithToast();
+                    if (result.ok) reloadWithToast(result.message ?? 'Saved.');
                   }}
                 />
               )}

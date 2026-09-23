@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { ClipboardPaste, Grid3x3, Save, Upload, X } from 'lucide-react';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
@@ -128,7 +129,7 @@ export function PoLinesPanel({
     start(async () => {
       const res = await savePoLines(p);
       if (res.ok) onSaved();
-      else setError(res.error);
+      else setError(toastError(res.error));
     });
   }
 

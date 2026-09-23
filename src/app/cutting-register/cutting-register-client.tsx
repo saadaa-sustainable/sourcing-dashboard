@@ -108,7 +108,7 @@ function ActiveLinks({ links, editable }: { links: DynamicLink[]; editable: bool
     fd.set('id', String(id));
     start(async () => {
       const res = await revokeDynamicLink(fd);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
     });
   }
 

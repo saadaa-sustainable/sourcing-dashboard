@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { ChevronDown, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { downloadCsv } from '@/lib/download';
@@ -226,7 +226,7 @@ export function StandardCostClient({
         // cost format is filled in.
         const to = `/standard-cost/${encodeURIComponent(code.toUpperCase())}`;
         window.location.href = isMat ? `${to}?track=material` : to;
-      } else setError(result.error);
+      } else setError(toastError(result.error));
     });
   }
 
@@ -242,7 +242,7 @@ export function StandardCostClient({
       const result = await mintTempProduct(fd);
       if (result.ok) {
         window.location.href = '/standard-cost';
-      } else setError(result.error);
+      } else setError(toastError(result.error));
     });
   }
 
@@ -571,7 +571,7 @@ function StandardFieldsPanel({
     start(async () => {
       const res = await saveCostStandards(fd);
       setMsg(res.ok ? 'Saved.' : res.error);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
     });
   }
 
@@ -634,7 +634,7 @@ function EfobFabricCostPanel({
     fd.set('rate', rate);
     start(async () => {
       const res = await saveEfobFabricCost(fd);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
       else setErr(res.error);
     });
   }
@@ -756,7 +756,7 @@ export function CostRow({
     fd.set('hidden', 'true');
     start(async () => {
       const res = await setStandardCostHidden(fd);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
       else {
         setErr(res.error);
         setConfirmRemove(false);
@@ -776,7 +776,7 @@ export function CostRow({
     Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
     start(async () => {
       const res = await action(fd);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
       else setErr(res.error);
     });
   }
@@ -1187,7 +1187,7 @@ export function CostDetail({
       if (!h.ok) return setErr(h.error);
       const d = await saveStandardCostLines(detail);
       if (!d.ok) return setErr(d.error);
-      reloadWithToast();
+      reloadWithToast(d.message ?? 'Saved.');
     });
   }
 
@@ -1601,7 +1601,7 @@ function CmtpBreakdown({
       const res = await saveCmtpComponents(fd);
       if (res.ok) {
         setReason('');
-        reloadWithToast();
+        reloadWithToast(res.message ?? 'Saved.');
       } else setErr(res.error);
     });
   }

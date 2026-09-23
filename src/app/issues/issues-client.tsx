@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Bot, ChevronDown, ChevronRight, Plus, Send, UserRound } from 'lucide-react';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
-import { emitToast, reloadWithToast } from '@/lib/toast';
+import { emitToast, reloadWithToast, toastError } from '@/lib/toast';
 import { getIssueThread, raiseIssue, replyIssue, saveIssueRoute, updateIssue } from '@/lib/issue-actions';
 import {
   ISSUE_CATEGORIES,
@@ -246,7 +246,7 @@ function RaiseForm({
       if (r.ok) {
         emitToast(r.message ?? 'Raised.');
         onDone();
-      } else setError(r.error);
+      } else setError(toastError(r.error));
     });
   }
 
@@ -386,8 +386,8 @@ function IssueDetail({ issue: i, people, canAct }: { issue: IssueRow; people: Pe
     fd.set('assignee', assignee);
     start(async () => {
       const r = await updateIssue(fd);
-      if (r.ok) reloadWithToast();
-      else setError(r.error);
+      if (r.ok) reloadWithToast(r.message ?? 'Saved.');
+      else setError(toastError(r.error));
     });
   }
   function send() {
@@ -401,7 +401,7 @@ function IssueDetail({ issue: i, people, canAct }: { issue: IssueRow; people: Pe
         setReply('');
         const t = await getIssueThread(i.id);
         setMessages(t.messages);
-      } else setError(r.error);
+      } else setError(toastError(r.error));
     });
   }
 

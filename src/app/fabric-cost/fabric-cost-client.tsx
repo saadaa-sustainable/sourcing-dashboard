@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { Calculator, Download, Save, Upload } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { saveFabricCostBase } from '@/lib/forms/actions';
@@ -133,6 +133,7 @@ export function FabricCostClient({
     setError(null);
     setMessage(null);
     start(async () => {
+      let saved = 0;
       for (const d of dirty) {
         const fd = new FormData();
         fd.set('fabric_code', d.fabric_code);
@@ -140,11 +141,12 @@ export function FabricCostClient({
         fd.set('notes', d.notes);
         const res = await saveFabricCostBase(fd);
         if (!res.ok) {
-          setError(`${d.fabric_code}: ${res.error}`);
+          setError(toastError(`${d.fabric_code}: ${res.error}`));
           return;
         }
+        saved += 1;
       }
-      reloadWithToast();
+      reloadWithToast(`Saved ${saved} fabric cost${saved === 1 ? '' : 's'}.`);
     });
   }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { refreshAdjustmentAction } from '@/lib/adjustments-actions';
 import { signCuttingApproval } from '@/lib/forms/actions';
@@ -117,7 +118,7 @@ function Panel({
       if (res.ok) {
         setRows(res.rows);
         setNote(`Reloaded · ${res.rows.length} rows · ${res.remaining} refresh${res.remaining === 1 ? '' : 'es'} left this hour`);
-        if (res.error) setError(res.error); // ok but served from the snapshot — say so
+        if (res.error) setError(toastError(res.error)); // ok but served from the snapshot — say so
       } else {
         setError(res.error ?? 'Refresh failed.');
       }

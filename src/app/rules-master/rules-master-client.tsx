@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { useRouter } from 'next/navigation';
 import { SlidersHorizontal, Check } from 'lucide-react';
 import { saveAnalyticsRule } from '@/lib/forms/actions';
@@ -72,7 +73,7 @@ function RuleRow({ rule, canEdit }: { rule: AnalyticsRuleRow; canEdit: boolean }
         setSaved(true);
         router.refresh();
       } else {
-        setError(r.error);
+        setError(toastError(r.error));
       }
     });
   }

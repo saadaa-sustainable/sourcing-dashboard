@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { Check, RotateCcw, X } from 'lucide-react';
 import { decideApproval, type ActionResult } from '@/lib/forms/actions';
 import type { ApprovalEntity } from '@/lib/forms/types';
@@ -42,7 +43,7 @@ export function ApprovalBar({
 
     start(async () => {
       const result = await decideApproval(payload);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) setError(toastError(result.error));
       else {
         setMode(null);
         setNotes('');

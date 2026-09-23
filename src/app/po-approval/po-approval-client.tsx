@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, FileCheck, FilePen, Layers, Save, Send, X } from 'lucide-react';
 import {
   checkPlanMembership,
@@ -212,12 +212,12 @@ export function PoApprovalClient({
     setMessage(null);
     start(async () => {
       const saved = await savePoApproval(buildPayload());
-      if (!saved.ok) return setError(saved.error);
+      if (!saved.ok) return setError(toastError(saved.error));
       if (submitAfter && saved.id) {
         const sub = new FormData();
         sub.set('id', String(saved.id));
         const pv = await previewPoSubmission(sub);
-        if (!pv.ok) return setError(pv.error);
+        if (!pv.ok) return setError(toastError(pv.error));
         setChecks({ id: saved.id, checks: pv.checks });
         return; // the pop-up takes it from here
       }
@@ -235,12 +235,12 @@ export function PoApprovalClient({
       sub.set('id', String(checks.id));
       sub.set('submit_remark', remark);
       const res = await submitPoApproval(sub);
-      if (!res.ok) return setError(res.error);
+      if (!res.ok) return setError(toastError(res.error));
       setChecks(null);
       setMessage(res.message ?? 'Submitted.');
       setEditing(null);
       setForm({ ...BLANK });
-      reloadWithToast();
+      reloadWithToast(res.message ?? 'Saved.');
     });
   }
 
@@ -907,8 +907,8 @@ function PoRow({
     Object.entries(tna).forEach(([k, v]) => p.set(k, v));
     start(async () => {
       const res = await confirmTna(p);
-      if (res.ok) reloadWithToast();
-      else setError(res.error);
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+      else setError(toastError(res.error));
     });
   }
 
@@ -921,7 +921,7 @@ function PoRow({
     p.set('id', String(po.id));
     start(async () => {
       const pv = await previewPoSubmission(p);
-      if (!pv.ok) return setError(pv.error);
+      if (!pv.ok) return setError(toastError(pv.error));
       setRowChecks(pv.checks);
     });
   }
@@ -934,8 +934,8 @@ function PoRow({
       const res = await submitPoApproval(p);
       if (res.ok) {
         setRowChecks(null);
-        reloadWithToast();
-      } else setError(res.error);
+        reloadWithToast(res.message ?? 'Saved.');
+      } else setError(toastError(res.error));
     });
   }
 
@@ -955,8 +955,8 @@ function PoRow({
     }
     start(async () => {
       const res = await issuePoApproval(p);
-      if (res.ok) reloadWithToast();
-      else setError(res.error);
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+      else setError(toastError(res.error));
     });
   }
 
@@ -1325,7 +1325,7 @@ function PoSubmissionTable({
     fd.set('decision', decision);
     start(async () => {
       const res = await setPoClosure(fd);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
     });
   }
 
@@ -1487,7 +1487,7 @@ function TnaLeadtimesPanel({ leadtimes }: { leadtimes: TnaLeadtimes }) {
     start(async () => {
       const res = await saveTnaLeadtimes(fd);
       setMsg(res.ok ? 'Saved.' : res.error);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
     });
   }
 

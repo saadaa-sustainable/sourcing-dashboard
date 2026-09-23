@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { UserX } from 'lucide-react';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { createVendorDeboardingRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
@@ -136,7 +136,7 @@ export function VendorDeboardingClient({
         setResolvable('');
         setRemarks('');
         reloadWithToast();
-      } else setError(result.error);
+      } else setError(toastError(result.error));
     });
   }
 
@@ -331,7 +331,7 @@ export function VendorDeboardingClient({
                         entityId={String(r.id)}
                         entityLabel={`De-board vendor — ${r.vendor_code}${r.vendor_name ? ` ${r.vendor_name}` : ''}`}
                         onDone={(result) => {
-                          if (result.ok) reloadWithToast();
+                          if (result.ok) reloadWithToast(result.message ?? 'Saved.');
                         }}
                       />
                     ) : (

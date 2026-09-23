@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { ChevronDown, ChevronRight, Play, Save } from 'lucide-react';
 import { initiateClosure, submitFinanceLeg, submitSourcingLeg } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
@@ -166,15 +166,18 @@ function ClosureDetail({
   const [dnVal, setDnVal] = useState(c.debit_note_value?.toString() ?? '');
   const [remarks, setRemarks] = useState(c.finance_remarks ?? '');
 
-  function act(fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, extra: Record<string, string>) {
+  function act(
+    fn: (fd: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>,
+    extra: Record<string, string>,
+  ) {
     setErr(null);
     const fd = new FormData();
     fd.set('id', String(c.id));
     Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
     start(async () => {
       const res = await fn(fd);
-      if (res.ok) reloadWithToast();
-      else setErr(res.error ?? 'Failed.');
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+      else setErr(toastError(res.error ?? 'Failed.'));
     });
   }
 

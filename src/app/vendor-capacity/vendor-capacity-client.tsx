@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { HeaderInfo } from '@/components/header-info';
 import { AlertTriangle, Clock, Download, Lock, Save, Plus, Trash2, ArrowUpRight } from 'lucide-react';
 import {
@@ -589,7 +590,7 @@ function CapacityRow({
     start(async () => {
       const result = await saveVendorCapacityRow(payload);
       if (result.ok) setSaved(new Date().toISOString());
-      else setError(result.error);
+      else setError(toastError(result.error));
     });
   }
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { ChevronDown, Eye, EyeOff, LayoutList, Pencil, Plus, Save, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react';
 import {
@@ -48,9 +48,9 @@ export function UsersClient({
       const result = await action(payload);
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        if (reloadOnOk) reloadWithToast();
+        if (reloadOnOk) reloadWithToast(result.message ?? 'Saved.');
       } else {
-        setError(result.error);
+        setError(toastError(result.error));
       }
     });
   }

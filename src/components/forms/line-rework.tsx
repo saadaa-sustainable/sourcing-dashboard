@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { createPortal } from 'react-dom';
 import { RotateCcw, X } from 'lucide-react';
 import { reworkLines, type ActionResult } from '@/lib/forms/actions';
@@ -45,7 +46,7 @@ export function LineRework({
     payload.set('line_decisions', JSON.stringify(decisions));
     start(async () => {
       const result = await reworkLines(payload);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) setError(toastError(result.error));
       else {
         setOpen(false);
         setNotes({});

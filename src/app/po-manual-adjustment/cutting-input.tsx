@@ -98,7 +98,7 @@ export function CuttingRegisterInput({ editable }: { editable: boolean }) {
     fd.set('remarks', remarks);
     start(async () => {
       const res = await saveCuttingRegister(fd);
-      if (res.ok) reloadWithToast();
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
       else setErr(res.error);
     });
   }

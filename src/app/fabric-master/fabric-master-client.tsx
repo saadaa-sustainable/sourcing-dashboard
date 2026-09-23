@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Plus, Save } from 'lucide-react';
 import { addFabric, updateFabric } from '@/lib/forms/actions';
@@ -83,9 +83,9 @@ export function FabricMasterClient({
       const result = await addFabric(fd);
       if (result.ok) {
         setMessage(result.message ?? 'Added.');
-        reloadWithToast();
+        reloadWithToast(result.message ?? 'Saved.');
       } else {
-        setError(result.error);
+        setError(toastError(result.error));
       }
     });
   }
@@ -97,9 +97,9 @@ export function FabricMasterClient({
       const result = await updateFabric(fd);
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        reloadWithToast();
+        reloadWithToast(result.message ?? 'Saved.');
       } else {
-        setError(result.error);
+        setError(toastError(result.error));
       }
     });
   }

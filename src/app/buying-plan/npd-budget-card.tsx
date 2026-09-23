@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { toastError } from '@/lib/toast';
 import { useRouter } from 'next/navigation';
 import { Sparkles, Pencil, AlertTriangle } from 'lucide-react';
 import { setNpdBudget } from '@/lib/forms/actions';
@@ -52,7 +53,7 @@ export function NpdBudgetCard({
         setEditing(false);
         router.refresh();
       } else {
-        setError(r.error);
+        setError(toastError(r.error));
       }
     });
   }
