@@ -609,7 +609,7 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
     <div className="wf-verify-grid">
       {/* ---- Stock */}
       <section className="wf-verify-card">
-        <header>
+        <div className="wf-verify-head">
           <h4>
             Stock <InfoDot text={"WHAT: does this product need the pieces on this PO.\n\nHOW: from the nightly inventory snapshot: stock on hand, pieces already on order, and the 45-day daily demand. Days of stock = stock ÷ daily demand.\n\nUSE: plenty of days of stock and plenty on order → ask why the PO is needed now."} />
           </h4>
@@ -618,12 +618,12 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
           ) : (
             <Verdict ok={null} text="no snapshot" />
           )}
-        </header>
+        </div>
         {d.inventory ? (
           <dl>
             <div><dt>In stock</dt><dd>{fmtNum(d.inventory.currentStock)} pcs</dd></div>
             <div><dt>Already on order</dt><dd>{fmtNum(d.inventory.inProgress)} pcs</dd></div>
-            <div><dt>Sells a day (45d)</dt><dd>{d.inventory.doq45}</dd></div>
+            <div><dt>Sells a day</dt><dd>{d.inventory.doq45}</dd></div>
             <div><dt>This PO adds</dt><dd>{fmtNum(d.poQty)} pcs</dd></div>
           </dl>
         ) : (
@@ -633,7 +633,7 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
 
       {/* ---- Cost */}
       <section className="wf-verify-card">
-        <header>
+        <div className="wf-verify-head">
           <h4>
             Cost <InfoDot text={"WHAT: is the rate on this PO above the approved Standard Cost.\n\nHOW: written rate − standard for this PO type. CM (cut-make) is shown against standard CM because that is what the vendor controls; grey and finished fabric are commodity and move with the market — informational.\n\nUSE: above standard needs a reason (the submitter's remark is at the top of the card); the Standard Cost link opens the negotiation record."} />
           </h4>
@@ -641,19 +641,19 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
             ok={variance == null ? null : variance <= 0.005}
             text={variance == null ? 'no standard' : variance > 0.005 ? `₹${fmtNum(variance)} above standard` : 'at or below standard'}
           />
-        </header>
+        </div>
         <dl>
           <div><dt>Rate on PO</dt><dd><strong>₹{fmtNum(d.writtenRate)}</strong></dd></div>
           <div><dt>Standard ({typeLabel})</dt><dd>{stdForType != null ? `₹${fmtNum(stdForType)}` : 'not approved'}</dd></div>
           <div>
-            <dt>CM vs standard CM</dt>
+            <dt>CM vs standard</dt>
             <dd className={cmDelta != null && cmDelta > 0 ? 'wf-error-text' : undefined}>
               ₹{fmtNum(d.poCm)} vs {d.stdCm != null ? `₹${fmtNum(d.stdCm)}` : '—'}
               {cmDelta != null && cmDelta > 0 ? ` (+${fmtNum(cmDelta)})` : ''}
             </dd>
           </div>
           <div>
-            <dt>Fabric vs standard <small>commodity</small></dt>
+            <dt>Fabric vs std <small>commodity</small></dt>
             <dd className="wf-subtle">
               ₹{fmtNum(d.poFinishedFabric)} vs {d.stdFinishedFabric != null ? `₹${fmtNum(d.stdFinishedFabric)}` : '—'}
               {fabricDelta != null && fabricDelta !== 0 ? ` (${fabricDelta > 0 ? '+' : ''}${fmtNum(fabricDelta)})` : ''}
@@ -669,14 +669,14 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
 
       {/* ---- TNA */}
       <section className="wf-verify-card">
-        <header>
+        <div className="wf-verify-head">
           <h4>
             TNA <InfoDot text={"WHAT: the production timeline the PO commits to.\n\nHOW: the critical-path dates as entered — PP sample, GPT, cutting, inline QC, first delivery, closing — and the days from submission to first delivery. 'Confirmed' means an approver has locked the dates; cost cannot be approved before that.\n\nUSE: compare the requested days with what this vendor actually takes (Vendor Performance → OTIF scorecard)."} />
           </h4>
           <Verdict ok={d.tna.tnaConfirmed} text={d.tna.tnaConfirmed ? 'dates confirmed' : 'dates not confirmed'} />
-        </header>
+        </div>
         <dl>
-          <div><dt>Days to first delivery</dt><dd><strong>{d.tna.requestedTotalDays ?? '—'}</strong></dd></div>
+          <div><dt>Days to delivery</dt><dd><strong>{d.tna.requestedTotalDays ?? '—'}</strong></dd></div>
           <div><dt>First delivery</dt><dd>{fmtDate(d.tna.firstDelivery)}</dd></div>
           <div><dt>PP sample · GPT</dt><dd>{fmtDate(d.tna.ppSampleDue)} · {fmtDate(d.tna.gptDue)}</dd></div>
           <div><dt>Cutting · Inline QC</dt><dd>{fmtDate(d.tna.cuttingStart)} · {fmtDate(d.tna.inlineQcDue)}</dd></div>
@@ -686,7 +686,7 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
 
       {/* ---- Vendor */}
       <section className="wf-verify-card">
-        <header>
+        <div className="wf-verify-head">
           <h4>
             Vendor <InfoDot text={"WHAT: can the vendor take this PO on top of what they already have.\n\nHOW: PO capacity = what the vendor can make inside this PO type's lead time (the one capacity model, from the Vendor Capacity sheet and Rules Master). Headroom = PO capacity − pieces already in process. 'With this PO' = (in process + this PO) ÷ PO capacity.\n\nUSE: past 100% with this PO, something will be late — decide which."} />
           </h4>
@@ -695,12 +695,12 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
           ) : (
             <Verdict ok={utilWithPo != null && utilWithPo <= 100} text={utilWithPo != null ? `${utilWithPo}% with this PO` : '—'} />
           )}
-        </header>
+        </div>
         <dl>
-          <div><dt>In process now</dt><dd>{inproc == null ? 'no open POs' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle"> · {util}% of PO capacity</small> : null}</dd></div>
+          <div><dt>In process</dt><dd>{inproc == null ? 'no open POs' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle"> · {util}% of PO capacity</small> : null}</dd></div>
           <div><dt>PO capacity ({item.vendorLeadDays ?? '—'}-day lead)</dt><dd>{cap == null ? 'not entered' : `${fmtNum(cap)} pcs`}</dd></div>
           <div><dt>Headroom</dt><dd className={headroom != null && headroom < d.poQty ? 'wf-error-text' : undefined}>{headroom != null ? `${fmtNum(headroom)} pcs` : '—'}{headroom != null && headroom < d.poQty ? ' — less than this PO' : ''}</dd></div>
-          <div><dt>Capacity / month · sheet</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : '—'}{item.vendorCapacityUpdatedAt ? ` · ${fmtDate(item.vendorCapacityUpdatedAt)}` : ''}</dd></div>
+          <div><dt>Capacity / month</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : '—'}{item.vendorCapacityUpdatedAt ? ` · ${fmtDate(item.vendorCapacityUpdatedAt)}` : ''}</dd></div>
         </dl>
       </section>
     </div>
