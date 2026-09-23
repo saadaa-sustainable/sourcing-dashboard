@@ -2011,11 +2011,14 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* Wide enough that Edit and Submit sit side by side instead of stacking one per line. */
 .wf-po-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 178px; }
 .wf-po-actions .wf-btn { white-space: nowrap; }
-/* The one destructive control: the delete icon in the corner of the edit box. Quiet until
-   you reach for it — it is next to nothing else, so it never has to shout. */
-.wf-icon-danger { color: #b3261e; }
-.wf-icon-danger:hover:not(:disabled) { color: #fff; background: #b3261e; border-color: #8f1d17; }
-.wf-icon-danger:disabled { opacity: .45; }
+/* The one destructive control: delete, in the corner of the edit box. Tinted and outlined so
+   it is findable at a glance, filling solid red only on hover — it should read as available,
+   not as the thing to press. */
+.wf-btn-delete {
+  color: #b3261e; background: #fdecea; border: 1px solid #f0b7b0; font-weight: 640;
+}
+.wf-btn-delete:hover:not(:disabled) { color: #fff; background: #b3261e; border-color: #8f1d17; }
+.wf-btn-delete:disabled { opacity: .45; }
 
 /* A long workflow form reads as labelled sections rather than one wall of fields, and each
    section folds away so only the part being filled is on screen. */

@@ -384,7 +384,7 @@ export function PoApprovalClient({
             {editing && canDeletePo(role, editing.status, editing.created_by, userEmail) && (
               <button
                 type="button"
-                className="wf-icon-btn wf-icon-danger"
+                className="wf-btn wf-btn-sm wf-btn-delete"
                 onClick={() => setDeleting(true)}
                 disabled={pending}
                 aria-label={`Delete ${editing.request_id}`}
@@ -394,7 +394,7 @@ export function PoApprovalClient({
                     : `Delete ${editing.request_id} — a reason is required`
                 }
               >
-                <Trash2 size={16} />
+                <Trash2 size={15} /> Delete request
               </button>
             )}
           </div>
