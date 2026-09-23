@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkLines, fromMatrix, mergeLines, parsePastedLines, skuOf, toQty } from './po-lines';
+import { checkLines, distributeQty, fromMatrix, mergeLines, parsePastedLines, skuOf, toQty } from './po-lines';
 
 test('quantities: commas, rupees, spaces and rubbish', () => {
   assert.equal(toQty('2,400'), 2400);
@@ -94,4 +94,35 @@ test('lines are matched against pending quantity per SKU', () => {
   assert.equal(checks[2].pendingQty, 0);
   assert.equal(checks[2].unknownVariant, true);
   assert.equal(checks[0].unknownVariant, false);
+});
+
+test('a plan quantity splits across SKUs without losing or inventing pieces', () => {
+  // Weighted by the mix this product was bought in before: 50 / 30 / 20 of 1000.
+  const mix = [
+    { product_variant: 'SDFLKCB', size: 'M', weight: 500 },
+    { product_variant: 'SDFLKCB', size: 'L', weight: 300 },
+    { product_variant: 'SDFLKLI', size: 'M', weight: 200 },
+  ];
+  const rows = distributeQty(1000, mix);
+  assert.deepEqual(rows.map((r) => r.qty), [500, 300, 200]);
+  assert.equal(rows.reduce((s, r) => s + r.qty, 0), 1000);
+
+  // An awkward total still adds up exactly - the remainder goes to the largest fractions.
+  const odd = distributeQty(1001, mix);
+  assert.equal(odd.reduce((s, r) => s + r.qty, 0), 1001);
+
+  // No history: an even split, and the remainder is handed out one piece at a time.
+  const even = distributeQty(10, [
+    { product_variant: 'A', size: 'S', weight: 0 },
+    { product_variant: 'A', size: 'M', weight: 0 },
+    { product_variant: 'A', size: 'L', weight: 0 },
+  ]);
+  assert.deepEqual(even.map((r) => r.qty), [4, 3, 3]);
+  assert.equal(even.reduce((s, r) => s + r.qty, 0), 10);
+
+  // Nothing to suggest.
+  assert.deepEqual(distributeQty(0, mix), []);
+  assert.deepEqual(distributeQty(500, []), []);
+  // Cells that round to nothing are left out rather than saved as zero rows.
+  assert.equal(distributeQty(2, mix).length, 2);
 });

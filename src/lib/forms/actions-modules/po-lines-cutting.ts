@@ -1,8 +1,8 @@
 'use server';
 
 import { randomBytes } from 'crypto';
-import { loadPoLineContext } from '../queries';
-import type { PoLineContext } from '../queries-modules/po-lines-context';
+import { loadPoLineContext, loadPoPlanSuggestion } from '../queries';
+import type { PoLineContext, PoPlanSuggestion } from '../queries-modules/po-lines-context';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
@@ -47,6 +47,21 @@ export async function getPoLineContext(productCode: string): Promise<PoLineConte
   if (!user) return null;
   try {
     return await loadPoLineContext(productCode);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Spec 7.5 — the quantities the buying plan would have this PO order: what is left of the
+ * product's approved quantity for this PO type, split across SKUs in the mix it has been
+ * bought in before. A suggestion only; the team edits it before saving.
+ */
+export async function getPoPlanSuggestion(poId: number): Promise<PoPlanSuggestion | null> {
+  const user = await currentUser();
+  if (!user) return null;
+  try {
+    return await loadPoPlanSuggestion(poId);
   } catch {
     return null;
   }

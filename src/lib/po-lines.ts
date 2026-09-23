@@ -174,6 +174,49 @@ export function fromMatrix(grid: Record<string, Record<string, string>>): PoLine
 /* Live match against pending quantity                                 */
 /* ------------------------------------------------------------------ */
 
+/* ---- Spec 7.5: quantities suggested from the buying plan ----------- */
+
+/** One SKU and how much of the split it should take. */
+export type MixCell = { product_variant: string; size: string; weight: number };
+
+/**
+ * Spread a plan quantity across SKUs.
+ *
+ * The buying plan approves a quantity for a PRODUCT, not per colour and size, so a
+ * suggestion has to choose a shape. The weights carry that choice — normally the mix this
+ * product was actually bought in before — and where there is no history every cell weighs
+ * the same. Either way the pieces are conserved: the rows always add up to the total, with
+ * the rounding remainder going to the largest fractions (largest-remainder method), so a
+ * suggestion never quietly loses or invents pieces.
+ */
+export function distributeQty(total: number, cells: MixCell[]): PoLineDraft[] {
+  const target = Math.max(0, Math.round(total));
+  if (!target || !cells.length) return [];
+
+  const weightSum = cells.reduce((s, c) => s + Math.max(0, c.weight), 0);
+  // No history to go on: an even split is the honest default.
+  const shares = cells.map((c) => (weightSum > 0 ? (Math.max(0, c.weight) / weightSum) * target : target / cells.length));
+
+  const rows = cells.map((c, i) => ({
+    product_variant: c.product_variant,
+    size: c.size,
+    qty: Math.floor(shares[i]),
+    frac: shares[i] - Math.floor(shares[i]),
+    i,
+  }));
+  let left = target - rows.reduce((s, r) => s + r.qty, 0);
+  // Largest fractional part first; ties go to the earlier cell so the result is stable.
+  const order = [...rows].sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (const r of order) {
+    if (left <= 0) break;
+    r.qty += 1;
+    left -= 1;
+  }
+  return rows
+    .filter((r) => r.qty > 0)
+    .map((r) => ({ product_variant: r.product_variant, size: r.size, qty: r.qty }));
+}
+
 export type SkuPending = { sku: string; product_variant: string; size: string; pendingQty: number };
 
 export type LineCheck = PoLineDraft & {

@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { toastError } from '@/lib/toast';
-import { ClipboardPaste, Grid3x3, Save, Upload, X } from 'lucide-react';
+import { ClipboardPaste, Grid3x3, Save, Upload, Wand2, X } from 'lucide-react';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import { HeaderInfo } from '@/components/header-info';
-import { getPoLineContext, savePoLines } from '@/lib/forms/actions';
+import { getPoLineContext, getPoPlanSuggestion, savePoLines } from '@/lib/forms/actions';
 import {
   checkLines,
   fromMatrix,
@@ -14,7 +14,7 @@ import {
   toMatrix,
   type PoLineDraft,
 } from '@/lib/po-lines';
-import type { PoLineContext } from '@/lib/forms/queries-modules/po-lines-context';
+import type { PoLineContext, PoPlanSuggestion } from '@/lib/forms/queries-modules/po-lines-context';
 import type { PoApprovalLine } from '@/lib/forms/types';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -59,6 +59,9 @@ export function PoLinesPanel({
   );
   const [issues, setIssues] = useState<{ row: number; text: string; reason: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The plan suggestion (spec 7.5) and whether it is being fetched.
+  const [suggestion, setSuggestion] = useState<PoPlanSuggestion | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
   const [pending, start] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -115,6 +118,26 @@ export function PoLinesPanel({
     reader.readAsText(file);
   }
 
+  /**
+   * Spec 7.5 — fill the draft from what the buying plan still approves. It replaces what is
+   * in the grid, so anything already typed is confirmed first; nothing is saved either way.
+   */
+  function suggest() {
+    if (draft.length && !window.confirm('Replace the quantities below with the plan suggestion?')) return;
+    setError(null);
+    setSuggesting(true);
+    void getPoPlanSuggestion(poId)
+      .then((s) => {
+        setSuggestion(s);
+        if (s?.lines.length) {
+          setDraft(s.lines);
+          setIssues([]);
+          setGrid({});
+        }
+      })
+      .finally(() => setSuggesting(false));
+  }
+
   function applyMatrix(next: Record<string, Record<string, string>>) {
     setGrid(next);
     setDraft(fromMatrix(next));
@@ -156,7 +179,42 @@ export function PoLinesPanel({
           <button role="tab" aria-selected={mode === 'csv'} className={mode === 'csv' ? 'active' : ''} onClick={() => setMode('csv')}>
             <Upload size={13} /> CSV file
           </button>
+          {/* Spec 7.5 — start from the buying plan rather than a blank grid. */}
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm pl-suggest-btn"
+            onClick={suggest}
+            disabled={pending || suggesting}
+            title="Fill from what the buying plan still approves for this product"
+          >
+            <Wand2 size={13} /> {suggesting ? 'Reading the plan…' : 'Suggest from plan'}
+          </button>
         </div>
+      )}
+
+      {suggestion && (
+        <Notice tone={suggestion.lines.length ? 'ok' : 'warn'}>
+          {suggestion.lines.length ? (
+            <>
+              <strong>
+                Suggested {suggestion.remainingQty.toLocaleString('en-IN')} pcs from the{' '}
+                {suggestion.planMonth.slice(0, 7)} buying plan
+              </strong>{' '}
+              — it approves {suggestion.approvedQty.toLocaleString('en-IN')} pcs of {suggestion.poTypeLabel} for this
+              product
+              {suggestion.issuedQty
+                ? `, of which ${suggestion.issuedQty.toLocaleString('en-IN')} is already on other requests`
+                : ''}
+              . The plan approves a quantity for the product, not per size, so it is split{' '}
+              {suggestion.basis === 'history'
+                ? 'in the colour and size mix this product has been bought in before'
+                : 'evenly across its colours and the core sizes, since it has no order history'}
+              . <strong>Check it and change anything</strong> before you save.
+            </>
+          ) : (
+            suggestion.note
+          )}
+        </Notice>
       )}
 
       {editable && mode === 'paste' && (
