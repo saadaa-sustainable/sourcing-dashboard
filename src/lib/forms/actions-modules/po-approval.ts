@@ -13,7 +13,7 @@ import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { loadPoSubmissionChecks } from '../queries';
 import type { PoSubmissionChecks } from '../queries-modules/po-checks';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { canApprove, canDeletePo, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -343,6 +343,65 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   revalidatePath('/approvals');
   return done(
     next === 'pending_l2' ? 'Submitted for admin approval.' : 'Submitted for approval.',
+  );
+}
+
+/**
+ * Delete a raised PO request — the raiser's own, or any of them for an admin, and
+ * only while it is still undecided (see `canDeletePo`).
+ *
+ * The row is kept and marked: deleting a request that has been through the approval
+ * queue would erase the fact that people spent time on it. It leaves every live list
+ * (all of which filter `deleted_at is null`) and appears in the admin's deleted-requests
+ * log with who deleted it, when, and the reason — which is mandatory.
+ */
+export async function deletePoApproval(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid request.');
+  const reason = String(formData.get('delete_reason') ?? '').trim();
+  if (reason.length < 4) return fail('Give a reason for deleting this request.');
+
+  const supabase = await supa();
+  const { data: po } = await supabase
+    .from('sd_po_approval')
+    .select('id, status, created_by, request_id, product_code, po_qty, deleted_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!po) return fail('Request not found.');
+  if (po.deleted_at) return fail('This request was already deleted.');
+
+  const status = po.status as SdStatus;
+  if (!canDeletePo(user.role, status, po.created_by as string | null, user.email)) {
+    return fail(
+      status === 'approved'
+        ? 'An approved PO cannot be deleted — it is already a commitment. Ask an admin to close it instead.'
+        : 'Only the person who raised this request (or an admin) can delete it.',
+    );
+  }
+
+  // The status guard is repeated in the write so a stale tab cannot delete a request
+  // that has been approved since the page was loaded.
+  const { data: updated, error } = await supabase
+    .from('sd_po_approval')
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: user.email,
+      delete_reason: reason,
+    })
+    .eq('id', id)
+    .is('deleted_at', null)
+    .neq('status', 'approved')
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('This request was approved or deleted in the meantime.');
+
+  revalidatePath('/po-approval');
+  revalidatePath('/approvals');
+  return done(
+    `Deleted ${po.request_id ?? `request #${id}`}${po.product_code ? ` · ${po.product_code}` : ''}. Admin can still see it, with your reason.`,
   );
 }
 

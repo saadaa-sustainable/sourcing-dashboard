@@ -1899,6 +1899,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .pc-stage small { color: var(--ink-3, #6e695e); }
 .pc-stage.is-empty { opacity: .55; }
 .pc-plan { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
+/* A confirmation, not a report — narrow enough to read as a question. */
+.pc-modal-sm { width: min(520px, 100%); }
 .pc-remark { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .pc-remark em { font-style: normal; color: #b1301f; }
 .pc-foot { display: flex; justify-content: flex-end; gap: 10px; }

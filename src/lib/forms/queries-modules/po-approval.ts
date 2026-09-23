@@ -3,6 +3,7 @@ import { client, PAGE_SIZE } from './_shared';
 import { monthStart, addMonths } from '../approval';
 import { loadInProcessByVendor } from './vendor';
 import type {
+  DeletedPoRequest,
   PoApproval,
   PoApprovalLine,
   PoCycleTime,
@@ -27,6 +28,8 @@ export async function loadPoApprovals() {
     supabase
       .from('sd_po_approval')
       .select('*')
+      // Deleted requests leave every live list; they live on in loadDeletedPoRequests().
+      .is('deleted_at', null)
       .order('id', { ascending: false })
       .limit(500),
     supabase.from('sd_po_cycle_time').select('*').limit(500),
@@ -85,6 +88,26 @@ export async function loadPoApprovals() {
   };
 }
 
+/**
+ * The deleted PO requests, newest first — who deleted what, when, and why.
+ *
+ * Read only for the admin panel on PO Approval. Capped at 200: this is a log to look
+ * at, not a data set to compute from, and deletions are rare by nature.
+ */
+export async function loadDeletedPoRequests(): Promise<DeletedPoRequest[]> {
+  const supabase = await client();
+  // paging-ok: deleted requests only, newest 200 — a log panel, never a total
+  const { data } = await supabase
+    .from('sd_po_approval')
+    .select(
+      'id, request_id, product_code, vendor_code, vendor_name, category, po_qty, status, created_by, timestamp_created, deleted_at, deleted_by, delete_reason',
+    )
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+    .limit(200);
+  return (data ?? []) as DeletedPoRequest[];
+}
+
 /** Standard TNA lead-times (singleton) for the critical-path auto-generate. */
 export async function loadTnaLeadtimes(): Promise<TnaLeadtimes> {
   const supabase = await client();
@@ -123,7 +146,8 @@ export async function loadNpdBudget(month = monthStart()): Promise<NpdBudget> {
     supabase
       .from('sd_po_approval')
       .select('po_qty, rate, status, approved_at, submitted_for_approval_at, timestamp_created')
-      .eq('category', 'npd'),
+      .eq('category', 'npd')
+      .is('deleted_at', null),
   ]);
 
   let spent = 0;

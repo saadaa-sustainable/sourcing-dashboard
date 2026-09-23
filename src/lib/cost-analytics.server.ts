@@ -58,7 +58,8 @@ export async function loadCostAnalytics(): Promise<CostAnalyticsRow[]> {
     supabase
       .from('sd_po_approval')
       .select('po_ref_num, product_code, vendor_code, vendor_name, po_type, po_qty, rate, expected_cost_recomputed, po_issued_at')
-      .not('rate', 'is', null),
+      .not('rate', 'is', null)
+      .is('deleted_at', null),
     supabase
       .from('sd_standard_cost')
       .select('product_code, job_cost, fob_cost, efob_cost, total_po_avg_cost'),

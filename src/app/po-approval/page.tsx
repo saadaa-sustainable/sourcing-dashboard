@@ -3,6 +3,7 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadDeboardedVendors,
+  loadDeletedPoRequests,
   loadPoApprovals,
   loadPoSubmissions,
   loadStandardCmByCode,
@@ -48,6 +49,10 @@ export default async function PoApprovalPage() {
     loadDeboardedVendors(),
   ]);
 
+  // The deleted-requests log is an admin view — the team sees its own deletions as
+  // they happen (the request simply leaves their list), admin sees the whole record.
+  const deletedRequests = user.role === 'admin' ? await loadDeletedPoRequests() : [];
+
   return (
     <FormLayout
       title="PO Approval"
@@ -71,6 +76,8 @@ export default async function PoApprovalPage() {
         leadtimes={leadtimes}
         stdCm={stdCm}
         role={user.role}
+        userEmail={user.email}
+        deletedRequests={deletedRequests}
       />
     </FormLayout>
   );

@@ -3,10 +3,11 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FilePen, Layers, Save, Send, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FilePen, Layers, Save, Send, Trash2, X } from 'lucide-react';
 import {
   checkPlanMembership,
   confirmTna,
+  deletePoApproval,
   issuePoApproval,
   previewPoSubmission,
   savePoApproval,
@@ -14,15 +15,17 @@ import {
   setPoClosure,
   submitPoApproval,
 } from '@/lib/forms/actions';
-import { addMonths, canApprove, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart } from '@/lib/forms/approval';
+import { addMonths, canApprove, canDeletePo, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart, STATUS_LABEL } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
+import { DeleteRequestModal } from './delete-request-modal';
 import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
   DeboardedVendor,
+  DeletedPoRequest,
   PoApproval,
   PoApprovalLine,
   PoCategory,
@@ -138,6 +141,8 @@ export function PoApprovalClient({
   leadtimes,
   stdCm = {},
   role,
+  userEmail = null,
+  deletedRequests = [],
 }: {
   pos: PoApproval[];
   cycle: Record<string, PoCycleTime>;
@@ -152,6 +157,10 @@ export function PoApprovalClient({
   leadtimes?: TnaLeadtimes;
   stdCm?: Record<string, number>;
   role: SdRole;
+  /** Who is looking — a request can be deleted by the person who raised it. */
+  userEmail?: string | null;
+  /** Admin only: the deleted-requests log (empty for everyone else). */
+  deletedRequests?: DeletedPoRequest[];
 }) {
   const editable = canEdit(role, 'draft');
   const [form, setForm] = useState({ ...BLANK });
@@ -727,6 +736,7 @@ export function PoApprovalClient({
                       : undefined
                   }
                   role={role}
+                  userEmail={userEmail}
                   stdCm={stdCm}
                   onEdit={startEdit}
                   editingId={editing?.id ?? null}
@@ -743,6 +753,8 @@ export function PoApprovalClient({
           </table>
         </div>
       </div>
+
+      {role === 'admin' && <DeletedRequestsTable rows={deletedRequests} />}
 
       <PoSubmissionTable submissions={submissions} editable={editable} />
 
@@ -879,6 +891,7 @@ function PoRow({
   liveLoad,
   lines,
   role,
+  userEmail = null,
   stdCm = {},
   onEdit,
   editingId = null,
@@ -888,6 +901,7 @@ function PoRow({
   liveLoad?: number;
   lines: PoApprovalLine[];
   role: SdRole;
+  userEmail?: string | null;
   stdCm?: Record<string, number>;
   /** Load this request back into the form above — draft / rework only. */
   onEdit?: (po: PoApproval) => void;
@@ -974,6 +988,24 @@ function PoRow({
   // Spec 7.1: the pop-up with the three validations before the row is submitted.
   const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
 
+  // A request can be pulled back by whoever raised it (or an admin) until it is approved.
+  const canDelete = canDeletePo(role, po.status, po.created_by, userEmail);
+  const [deleting, setDeleting] = useState(false);
+  function confirmDelete(reason: string) {
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(po.id));
+    p.set('delete_reason', reason);
+    start(async () => {
+      const res = await deletePoApproval(p);
+      if (res.ok) reloadWithToast(res.message ?? 'Request deleted.');
+      else {
+        setDeleting(false);
+        setError(toastError(res.error));
+      }
+    });
+  }
+
   function submit() {
     setError(null);
     const p = new FormData();
@@ -1023,6 +1055,16 @@ function PoRow({
     <>
       {rowChecks && (
         <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
+      )}
+      {deleting && (
+        <DeleteRequestModal
+          requestId={po.request_id}
+          productCode={po.product_code}
+          statusLabel={STATUS_LABEL[po.status]}
+          pending={pending}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleting(false)}
+        />
       )}
       <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
         <td className="mono">
@@ -1158,6 +1200,21 @@ function PoRow({
             </button>
             {po.status === 'approved' && !canIssue && issued && (
               <span className="wf-subtle">Issued</span>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm wf-btn-danger-ghost"
+                onClick={() => setDeleting(true)}
+                disabled={pending}
+                title={
+                  po.status === 'submitted' || po.status === 'pending_l2'
+                    ? 'Pull this request back out of the approval queue — a reason is required'
+                    : 'Delete this request — a reason is required'
+                }
+              >
+                <Trash2 size={14} /> Delete
+              </button>
             )}
           </div>
         </td>
@@ -1357,6 +1414,94 @@ function PoRow({
 }
 
 const nfmt = (v: number) => v.toLocaleString('en-IN');
+
+const stamp = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : '—';
+
+/**
+ * Admin only: what was deleted, by whom, and why.
+ *
+ * A deleted request is never removed from the database — it leaves the working lists and
+ * lands here, so a request that vanished from the queue can always be accounted for.
+ */
+function DeletedRequestsTable({ rows }: { rows: DeletedPoRequest[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="table-panel">
+      <div className="table-meta">
+        <h3>
+          Deleted requests <HeaderInfo label="Deleted requests" />
+        </h3>
+        <div className="wf-issue-row">
+          <span>{rows.length} deleted</span>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setOpen((v) => !v)}>
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {open ? 'Hide' : 'Show'}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="table-scroll">
+          <table className="wide-table wf-po-table">
+            <thead>
+              <tr>
+                <th>Request <HeaderInfo label="Request" /></th>
+                <th>Product <HeaderInfo label="Product" /></th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th className="num">Qty <HeaderInfo label="Qty" /></th>
+                <th>Was <HeaderInfo label="Was" /></th>
+                <th>Raised by <HeaderInfo label="Raised by" /></th>
+                <th>Deleted by <HeaderInfo label="Deleted by" /></th>
+                <th>Reason <HeaderInfo label="Reason" /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="mono">{r.request_id}</td>
+                  <td className="mono">{r.product_code ?? '—'}</td>
+                  <td>
+                    {r.vendor_code && r.vendor_name
+                      ? `${r.vendor_code.toUpperCase()} - ${r.vendor_name}`
+                      : r.vendor_name || r.vendor_code || '—'}
+                  </td>
+                  <td className="num">{nfmt(Number(r.po_qty || 0))}</td>
+                  <td>
+                    <span className="wf-status">{STATUS_LABEL[r.status]}</span>
+                  </td>
+                  <td>
+                    {r.created_by ?? '—'}
+                    <small className="wf-subtle">raised {stamp(r.timestamp_created)}</small>
+                  </td>
+                  <td>
+                    {r.deleted_by ?? '—'}
+                    {/* Whoever deleted it is not always whoever raised it — an admin may. */}
+                    <small className="wf-subtle">{stamp(r.deleted_at)}</small>
+                  </td>
+                  <td>{r.delete_reason ?? '—'}</td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={8} className="wf-empty-cell">
+                    Nothing has been deleted.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * PO submission / closure — the open (issued) POs below the main table, SKU-wise

@@ -233,6 +233,7 @@ export async function loadAnalyticsExtras(
       .from('sd_po_approval')
       .select('po_ref_num, po_qty, category, submitted_for_approval_at')
       .in('status', ['submitted', 'pending_l2'])
+      .is('deleted_at', null)
       .order('submitted_for_approval_at', { ascending: true });
     const rows = (data ?? []) as { po_ref_num: string | null; po_qty: number | null; category: string | null }[];
     extras.pendingApproval = {

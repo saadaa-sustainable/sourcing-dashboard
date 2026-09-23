@@ -72,7 +72,8 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
     supabase
       .from('sd_po_approval')
       .select('id, request_id, po_ref_num, product_code, category, status, created_by, submitted_for_approval_at')
-      .in('status', ['submitted', 'pending_l2']),
+      .in('status', ['submitted', 'pending_l2'])
+      .is('deleted_at', null),
     costTurn('sd_standard_cost'),
     costTurn('sd_material_standard_cost'),
     supabase
@@ -270,7 +271,7 @@ export async function loadApprovalQueue(): Promise<{
       .from('sd_discontinue_request')
       .select('*')
       .in('status', ['submitted', 'pending_l2']),
-    supabase.from('sd_po_approval').select('*').in('status', ['submitted', 'pending_l2']),
+    supabase.from('sd_po_approval').select('*').in('status', ['submitted', 'pending_l2']).is('deleted_at', null),
     supabase
       .from('sd_standard_cost')
       .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, updated_at')

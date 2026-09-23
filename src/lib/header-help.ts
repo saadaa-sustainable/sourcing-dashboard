@@ -433,6 +433,13 @@ const PAGE: Record<string, Record<string, string>> = {
     'status': 'Where the PO stands: Draft, Approval Pending, Approved, Rejected or Rework. Approve and reject happen in Approvals.',
     'qty': 'Pieces on the PO across all colours and sizes.',
     'pending': 'Pieces on the issued PO not yet received.',
+    // The deleted-requests log (admin only).
+    'deleted requests': 'Requests pulled back by whoever raised them (or by an admin) before approval. Nothing is erased — the row is kept here with the reason, so a request that left the queue can always be accounted for. An approved PO cannot be deleted.',
+    'request': 'The Request ID it was raised under (PR-YYMM-0001). That id is now retired — a re-raise gets a new one.',
+    'was': 'The status it was in at the moment it was deleted. Never Approved: an approved PO is a commitment and has to be closed, not deleted.',
+    'raised by': 'Who created the request, and when.',
+    'deleted by': 'Who deleted it, and when. Usually the person who raised it; an admin can delete anyone’s.',
+    'reason': 'The reason given at deletion — mandatory, so this column is never empty.',
   },
   '/po-closure': {
     'status': 'Whether the PO has been closed out on EasyEcom after delivery.',

@@ -1348,6 +1348,29 @@ export type PoApproval = {
   first_actual_delivery_date: string | null;
   po_issued_at: string | null;
   created_at: string;
+  // Deletion by the raiser (or an admin), reason mandatory. The row is never removed —
+  // it drops out of every live list and shows in the admin's deleted-requests log.
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
+};
+
+/** One deleted PO request, as the admin log lists it. */
+export type DeletedPoRequest = {
+  id: number;
+  request_id: string;
+  product_code: string | null;
+  vendor_code: string | null;
+  vendor_name: string | null;
+  category: PoCategory;
+  po_qty: number;
+  /** The status it was in when it was deleted (never 'approved'). */
+  status: SdStatus;
+  created_by: string | null;
+  timestamp_created: string;
+  deleted_at: string;
+  deleted_by: string | null;
+  delete_reason: string | null;
 };
 
 /**

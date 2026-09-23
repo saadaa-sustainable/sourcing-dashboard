@@ -78,6 +78,31 @@ export function canRework(role: SdRole, status: SdStatus) {
   return canApprove(role, status);
 }
 
+/**
+ * Who may delete a raised PO request: the person who raised it, or an admin.
+ *
+ * A request can be pulled back at any point BEFORE it is approved — including while
+ * it sits in the approval queue, which is the common case (raised in error, wrong
+ * vendor, the need went away). Once approved it is a commitment: undoing that is a
+ * cancellation with its own consequences, not a delete.
+ *
+ * Deleting never removes the row; it is marked with who, when and why (the reason is
+ * mandatory), so the record survives for admin to look at.
+ */
+export function canDeletePo(
+  role: SdRole,
+  status: SdStatus,
+  createdBy: string | null | undefined,
+  viewerEmail: string | null | undefined,
+): boolean {
+  if (status === 'approved') return false;
+  if (RANK[role] < RANK.team) return false; // a viewer deletes nothing
+  if (role === 'admin') return true;
+  const mine = (createdBy ?? '').trim().toLowerCase();
+  const me = (viewerEmail ?? '').trim().toLowerCase();
+  return Boolean(mine && me && mine === me);
+}
+
 /* ------------------------------------------------------------------ */
 /* Display                                                             */
 /* ------------------------------------------------------------------ */
