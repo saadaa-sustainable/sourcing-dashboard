@@ -1,5 +1,6 @@
 'use client';
 
+import { FileDown } from 'lucide-react';
 import { addTnaDays, tnaBaseFor } from '@/lib/business-logic';
 import { STATUS_LABEL } from '@/lib/forms/approval';
 import type { PoApproval, PoApprovalLine, PoCycleTime } from '@/lib/forms/types';
@@ -93,6 +94,11 @@ export function PoDetailPanel({
         <strong>{po.request_id}</strong>
         <span className="wf-status">{STATUS_LABEL[po.status]}</span>
         <span className="wf-subtle">Read-only — use Edit to change a request before it is submitted.</span>
+        {po.status === 'approved' && (
+          <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/api/po/${po.id}/pdf`}>
+            <FileDown size={14} /> Download PO PDF
+          </a>
+        )}
       </div>
 
       <div className="wf-po-readonly-grid">

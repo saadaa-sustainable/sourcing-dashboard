@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FilePen, Layers, Save, Send, Trash2, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FileDown, FilePen, Layers, Save, Send, Trash2, X } from 'lucide-react';
 import {
   checkPlanMembership,
   confirmTna,
@@ -1360,6 +1360,17 @@ function PoRow({
             </button>
             {po.status === 'approved' && !canIssue && issued && (
               <span className="wf-subtle">Issued</span>
+            )}
+            {/* Spec 7.6 — the approved PO as a document. Generated on request from the
+                record itself, so it is never a stale copy. */}
+            {po.status === 'approved' && (
+              <a
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                href={`/api/po/${po.id}/pdf`}
+                title={`Download ${po.request_id} as a PDF`}
+              >
+                <FileDown size={14} /> PDF
+              </a>
             )}
           </div>
         </td>
