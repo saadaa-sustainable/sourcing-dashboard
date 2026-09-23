@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, FileCheck, Layers, Save, Send, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, FileCheck, FilePen, Layers, Save, Send, X } from 'lucide-react';
 import {
   checkPlanMembership,
   confirmTna,
@@ -156,12 +156,57 @@ export function PoApprovalClient({
   const buildPayload = () => {
     const p = new FormData();
     Object.entries(form).forEach(([k, v]) => p.set(k, v));
+    // With an id the server updates that request (draft / rework only) instead of raising
+    // another one — same validation either way.
+    if (editing) p.set('id', String(editing.id));
     return p;
   };
+
+  /** Load a raised PO back into the form. Only a draft or a reworked PO gets here. */
+  function startEdit(po: PoApproval) {
+    setError(null);
+    setMessage(null);
+    setEditing(po);
+    setForm({
+      ...BLANK,
+      po_type: (po.po_type ?? '') as PoType | '',
+      category: (po.category ?? 'fg') as PoCategory,
+      product_code: po.product_code ?? '',
+      vendor_code: po.vendor_code ?? '',
+      vendor_name: po.vendor_name ?? '',
+      tna_sheet_url: po.tna_sheet_url ?? '',
+      cost_sheet_url: po.cost_sheet_url ?? '',
+      rate: po.rate != null ? String(po.rate) : '',
+      grey_cost: po.grey_cost != null ? String(po.grey_cost) : '',
+      finished_fabric_cost: po.finished_fabric_cost != null ? String(po.finished_fabric_cost) : '',
+      cm_cost: po.cm_cost != null ? String(po.cm_cost) : '',
+      margin_pct: po.margin_pct != null ? String(po.margin_pct) : '',
+      po_qty: po.po_qty != null ? String(po.po_qty) : '',
+      po_closing_date: po.po_closing_date ?? '',
+      cad_folder_url: po.cad_folder_url ?? '',
+      cs_pp_sample_due: po.cs_pp_sample_due ?? '',
+      cs_gpt_due: po.cs_gpt_due ?? '',
+      cs_cutting_start: po.cs_cutting_start ?? '',
+      cs_inline_qc_due: po.cs_inline_qc_due ?? '',
+      critical_path_first_delivery: po.critical_path_first_delivery ?? '',
+      buying_plan_no: po.buying_plan_no ?? monthStart().slice(0, 7),
+      ad_hoc_reason: po.ad_hoc_reason ?? '',
+    });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setForm({ ...BLANK });
+    setError(null);
+    setMessage(null);
+  }
 
   // Spec 7.1: submit = save the draft, show the three validations as a pop-up, confirm
   // with a remark, then route it for approval.
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
+  // A raised PO stays editable until it is submitted: Edit on its row loads it back here.
+  const [editing, setEditing] = useState<PoApproval | null>(null);
   function run(submitAfter: boolean) {
     setError(null);
     setMessage(null);
@@ -177,6 +222,7 @@ export function PoApprovalClient({
         return; // the pop-up takes it from here
       }
       setMessage(saved.message ?? 'Saved.');
+      setEditing(null);
       setForm({ ...BLANK });
       reloadWithToast();
     });
@@ -192,6 +238,7 @@ export function PoApprovalClient({
       if (!res.ok) return setError(res.error);
       setChecks(null);
       setMessage(res.message ?? 'Submitted.');
+      setEditing(null);
       setForm({ ...BLANK });
       reloadWithToast();
     });
@@ -247,9 +294,15 @@ export function PoApprovalClient({
         <div className="panel wf-form-panel">
           <div className="panel-title">
             <h3>
-              Raise a PO for approval
-              <InfoDot text={"WHAT: where a new PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
+              {editing ? `Edit ${editing.request_id}` : 'Raise a PO for approval'}
+              <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is submitted — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
             </h3>
+            {editing && (
+              <p className="wf-subtle">
+                Editing a saved request{editing.status === 'rework' ? ' sent back for rework' : ''} — saving updates it
+                rather than raising another. Its SKU quantities stay as they are.
+              </p>
+            )}
           </div>
           <div className="wf-form-grid">
             <Field label="Category" hint={activeCat?.hint}>
@@ -292,9 +345,9 @@ export function PoApprovalClient({
             </Field>
             <Field
               label="Request ID"
-              hint="Assigned when you save — the EasyCom PO number is linked to it at issuance"
+              hint={editing ? 'Assigned when this request was saved' : 'Assigned when you save — the EasyCom PO number is linked to it at issuance'}
             >
-              <input value="Assigned on save" disabled readOnly className="wf-fixed-value" />
+              <input value={editing ? editing.request_id : 'Assigned on save'} disabled readOnly className="wf-fixed-value" />
             </Field>
             <Field
               label="Vendor code"
@@ -562,16 +615,22 @@ export function PoApprovalClient({
           </div>
           <div className="wf-footer-actions">
             <p className="wf-footer-note">
-              Save the draft — it gets its Request ID — then add the SKU quantities on its row (PO qty totals itself) and submit from
-              there.
+              {editing
+                ? 'Saving updates this request. It stays editable until it is submitted.'
+                : 'Save the draft — it gets its Request ID — then add the SKU quantities on its row (PO qty totals itself) and submit from there.'}
             </p>
+            {editing && (
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={cancelEdit} disabled={pending}>
+                Cancel
+              </button>
+            )}
             <button
               type="button"
               className="wf-btn wf-btn-primary"
               onClick={() => run(false)}
               disabled={pending || !form.product_code}
             >
-              <Save size={15} /> {pending ? 'Working…' : 'Save draft'}
+              <Save size={15} /> {pending ? 'Working…' : editing ? 'Save changes' : 'Save draft'}
             </button>
           </div>
         </div>
@@ -610,6 +669,8 @@ export function PoApprovalClient({
                   }
                   role={role}
                   stdCm={stdCm}
+                  onEdit={startEdit}
+                  editingId={editing?.id ?? null}
                 />
               ))}
               {!pos.length && (
@@ -760,6 +821,8 @@ function PoRow({
   lines,
   role,
   stdCm = {},
+  onEdit,
+  editingId = null,
 }: {
   po: PoApproval;
   cycle?: PoCycleTime;
@@ -767,6 +830,9 @@ function PoRow({
   lines: PoApprovalLine[];
   role: SdRole;
   stdCm?: Record<string, number>;
+  /** Load this request back into the form above — draft / rework only. */
+  onEdit?: (po: PoApproval) => void;
+  editingId?: number | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -829,6 +895,10 @@ function PoRow({
   const linesEditable = (po.status === 'draft' || po.status === 'rework') && canIssue;
   const [linesOpen, setLinesOpen] = useState(false);
   const lineRows = lines;
+  // The request's own fields are editable on the same terms as its lines: until it is
+  // submitted. The server enforces the same (savePoApproval guards on draft / rework).
+  const editableHere = linesEditable && canEdit(role, po.status);
+  const isEditing = editingId === po.id;
 
   function confirmTnaDates() {
     setError(null);
@@ -968,6 +1038,17 @@ function PoRow({
         </td>
         <td>
           {error && <small className="wf-subtle wf-error-text">{error}</small>}
+          {/* A raised PO is editable right up to submission. */}
+          {editableHere && (
+            <button
+              type="button"
+              className={`wf-btn wf-btn-sm ${isEditing ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
+              onClick={() => onEdit?.(po)}
+              title="Open this request in the form above"
+            >
+              <FilePen size={14} /> {isEditing ? 'Editing' : 'Edit'}
+            </button>
+          )}
           {canSubmit(role, po.status) && (
             <button
               type="button"
