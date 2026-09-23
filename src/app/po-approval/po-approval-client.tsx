@@ -10,7 +10,6 @@ import {
   issuePoApproval,
   previewPoSubmission,
   savePoApproval,
-  savePoLines,
   saveTnaLeadtimes,
   setPoClosure,
   submitPoApproval,
@@ -86,6 +85,28 @@ function addDays(iso: string, n: number | null | undefined): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** One labelled part of the raise-a-PO form. The form is long; sections make it read as the
+ *  steps people actually think in rather than one wall of fields. */
+function FormSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="wf-form-section">
+      <div className="wf-form-section-head">
+        <h4>{title}</h4>
+        {hint && <p className="wf-subtle">{hint}</p>}
+      </div>
+      <div className="wf-form-grid">{children}</div>
+    </section>
+  );
 }
 
 export function PoApprovalClient({
@@ -304,7 +325,10 @@ export function PoApprovalClient({
               </p>
             )}
           </div>
-          <div className="wf-form-grid">
+          <FormSection
+            title="Order"
+            hint="What is being bought, and from whom. Category and PO type decide how it is approved and how long it takes."
+          >
             <Field label="Category" hint={activeCat?.hint}>
               <select
                 value={form.category}
@@ -393,20 +417,12 @@ export function PoApprovalClient({
                   ))}
               </datalist>
             </Field>
-            <Field label="TNA sheet link" hint="Google Drive">
-              <input
-                value={form.tna_sheet_url}
-                placeholder="https://…"
-                onChange={(e) => set('tna_sheet_url', e.target.value)}
-              />
-            </Field>
-            <Field label="Cost sheet link">
-              <input
-                value={form.cost_sheet_url}
-                placeholder="https://…"
-                onChange={(e) => set('cost_sheet_url', e.target.value)}
-              />
-            </Field>
+          </FormSection>
+
+          <FormSection
+            title="Cost"
+            hint="Per piece. The rate is checked against the approved Standard Cost when you submit — CMTP is what the vendor controls, grey and fabric are commodity."
+          >
             <Field label="Rate" hint="filled with the cost sheet — required to submit">
               <input
                 type="number"
@@ -471,25 +487,19 @@ export function PoApprovalClient({
                 onChange={(e) => set('margin_pct', e.target.value)}
               />
             </Field>
-            <Field label="PO quantity" hint="= sum of size lines (add them on the row after saving)">
-              <input type="number" value={form.po_qty} readOnly disabled />
-            </Field>
-            <Field label="PO closing date" hint="As per TNA">
+            <Field label="Cost sheet link">
               <input
-                type="date"
-                value={form.po_closing_date}
-                onChange={(e) => set('po_closing_date', e.target.value)}
+                value={form.cost_sheet_url}
+                placeholder="https://…"
+                onChange={(e) => set('cost_sheet_url', e.target.value)}
               />
             </Field>
-            {form.po_type === 'FOB' && (
-              <Field label="CAD file folder link" hint="FOB POs only">
-                <input
-                  value={form.cad_folder_url}
-                  placeholder="https://…"
-                  onChange={(e) => set('cad_folder_url', e.target.value)}
-                />
-              </Field>
-            )}
+          </FormSection>
+
+          <FormSection
+            title="Timeline (TNA)"
+            hint="Pick a start date and auto-generate the critical path from the standard lead times, then adjust any date. These are what the High Risk flag watches."
+          >
             <Field label="TNA start date" hint="auto-generates the critical path below">
               <div className="wf-issue-row">
                 <input type="date" value={tnaStart} onChange={(e) => setTnaStart(e.target.value)} />
@@ -539,6 +549,35 @@ export function PoApprovalClient({
                 onChange={(e) => set('critical_path_first_delivery', e.target.value)}
               />
             </Field>
+            <Field label="PO closing date" hint="As per TNA">
+              <input
+                type="date"
+                value={form.po_closing_date}
+                onChange={(e) => set('po_closing_date', e.target.value)}
+              />
+            </Field>
+            <Field label="TNA sheet link" hint="Google Drive">
+              <input
+                value={form.tna_sheet_url}
+                placeholder="https://…"
+                onChange={(e) => set('tna_sheet_url', e.target.value)}
+              />
+            </Field>
+            {form.po_type === 'FOB' && (
+              <Field label="CAD file folder link" hint="FOB POs only">
+                <input
+                  value={form.cad_folder_url}
+                  placeholder="https://…"
+                  onChange={(e) => set('cad_folder_url', e.target.value)}
+                />
+              </Field>
+            )}
+          </FormSection>
+
+          <FormSection
+            title="Plan & quantity"
+            hint="Which month's plan this draws on. The quantity is the sum of the SKU lines — add them on the row after saving."
+          >
             <Field label="Buying plan month" hint="The plan this PO draws on — closed months are locked">
               <select value={form.buying_plan_no} onChange={(e) => set('buying_plan_no', e.target.value)}>
                 <option value="">— not linked —</option>
@@ -558,6 +597,9 @@ export function PoApprovalClient({
                   <option value={form.buying_plan_no}>{monthLabel(`${form.buying_plan_no}-01`)} plan — closed</option>
                 )}
               </select>
+            </Field>
+            <Field label="PO quantity" hint="= sum of size lines (add them on the row after saving)">
+              <input type="number" value={form.po_qty} readOnly disabled />
             </Field>
 
             {/* Spec item 6 — plan membership is shown, never enforced. */}
@@ -612,7 +654,7 @@ export function PoApprovalClient({
                 )}
               </div>
             )}
-          </div>
+          </FormSection>
           <div className="wf-footer-actions">
             <p className="wf-footer-note">
               {editing
