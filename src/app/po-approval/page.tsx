@@ -5,6 +5,7 @@ import {
   loadDeboardedVendors,
   loadDeletedPoRequests,
   loadPoApprovals,
+  loadPoDeleteRequests,
   loadPoSubmissions,
   loadStandardCmByCode,
   loadTnaLeadtimes,
@@ -48,6 +49,7 @@ export default async function PoApprovalPage() {
     loadStandardCmByCode(),
     loadDeboardedVendors(),
   ]);
+  const deleteRequests = await loadPoDeleteRequests();
 
   // The deleted-requests log is an admin view — the team sees its own deletions as
   // they happen (the request simply leaves their list), admin sees the whole record.
@@ -78,6 +80,7 @@ export default async function PoApprovalPage() {
         role={user.role}
         userEmail={user.email}
         deletedRequests={deletedRequests}
+        deleteRequests={deleteRequests}
       />
     </FormLayout>
   );

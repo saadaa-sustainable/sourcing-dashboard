@@ -9,6 +9,7 @@ import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { applyPoDeletion } from './po-approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -40,6 +41,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   buying_plan: 'sd_buying_plan',
   discontinue: 'sd_discontinue_request',
   po_approval: 'sd_po_approval',
+  po_delete: 'sd_po_delete_request',
   standard_cost: 'sd_standard_cost',
   material_cost: 'sd_material_standard_cost',
   receivable_plan: 'sd_receivable_input',
@@ -108,6 +110,24 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     if (!po?.tna_confirmed) {
       return fail('Confirm the TNA dates before approving this PO.');
     }
+  }
+
+  // Approving a deletion is what actually deletes the PO. Apply it BEFORE the request is
+  // marked approved: if the PO has been approved in the meantime it cannot be deleted, and
+  // the ask must stay in the queue rather than read as done when nothing happened.
+  if (entityType === 'po_delete' && decision === 'approve') {
+    const { data: req } = await supabase
+      .from('sd_po_delete_request')
+      .select('po_id, reason, requested_by')
+      .eq('id', entityId)
+      .maybeSingle();
+    if (!req) return fail('Deletion request not found.');
+    const applied = await applyPoDeletion(
+      Number(req.po_id),
+      String(req.requested_by ?? user.email),
+      String(req.reason ?? ''),
+    );
+    if (!applied.ok) return applied;
   }
 
   const to: SdStatus =

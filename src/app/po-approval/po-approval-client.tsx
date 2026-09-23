@@ -27,6 +27,7 @@ import type {
   DeboardedVendor,
   DeletedPoRequest,
   PoApproval,
+  PoDeleteRequest,
   PoApprovalLine,
   PoCategory,
   PoCycleTime,
@@ -143,6 +144,7 @@ export function PoApprovalClient({
   role,
   userEmail = null,
   deletedRequests = [],
+  deleteRequests = {},
 }: {
   pos: PoApproval[];
   cycle: Record<string, PoCycleTime>;
@@ -161,6 +163,8 @@ export function PoApprovalClient({
   userEmail?: string | null;
   /** Admin only: the deleted-requests log (empty for everyone else). */
   deletedRequests?: DeletedPoRequest[];
+  /** Latest deletion request per PO id — a pending one is waiting with the admin. */
+  deleteRequests?: Record<string, PoDeleteRequest>;
 }) {
   const editable = canEdit(role, 'draft');
   const [form, setForm] = useState({ ...BLANK });
@@ -277,6 +281,14 @@ export function PoApprovalClient({
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
   // A raised PO stays editable until it is submitted: Edit on its row loads it back here.
   const [editing, setEditing] = useState<PoApproval | null>(null);
+  // The latest deletion ask for the request being edited: pending = sitting with the admin,
+  // rejected = they said no and it can be asked again.
+  const latestDelete = editing ? deleteRequests[String(editing.id)] : undefined;
+  const pendingDelete =
+    latestDelete && (latestDelete.status === 'submitted' || latestDelete.status === 'pending_l2')
+      ? latestDelete
+      : null;
+  const declinedDelete = latestDelete?.status === 'rejected' ? latestDelete : null;
   function run(submitAfter: boolean) {
     setError(null);
     setMessage(null);
@@ -360,6 +372,7 @@ export function PoApprovalClient({
           requestId={editing.request_id}
           productCode={editing.product_code}
           statusLabel={STATUS_LABEL[editing.status]}
+          needsApproval={role !== 'admin'}
           pending={pending}
           onConfirm={confirmDelete}
           onCancel={() => setDeleting(false)}
@@ -386,24 +399,47 @@ export function PoApprovalClient({
               )}
             </div>
             {/* Delete lives here and nowhere else: you open the request to edit it, and the one
-                destructive action sits in the corner of that box — never next to Submit in a row. */}
-            {editing && canDeletePo(role, editing.status, editing.created_by, userEmail) && (
-              <button
-                type="button"
-                className="wf-btn wf-btn-sm wf-btn-delete"
-                onClick={() => setDeleting(true)}
-                disabled={pending}
-                aria-label={`Delete ${editing.request_id}`}
-                title={
-                  editing.status === 'submitted' || editing.status === 'pending_l2'
-                    ? `Delete ${editing.request_id} — pulls it back out of the approval queue; a reason is required`
-                    : `Delete ${editing.request_id} — a reason is required`
-                }
-              >
-                <Trash2 size={15} /> Delete request
-              </button>
+                destructive action sits in the corner of that box — never next to Submit in a row.
+                Deletion goes through the admin, so while an ask is pending the button is replaced
+                by what is waiting on. */}
+            {editing && pendingDelete ? (
+              <span className="wf-tag-pending" title={`Reason given: ${pendingDelete.reason}`}>
+                Deletion waiting with admin
+              </span>
+            ) : (
+              editing &&
+              canDeletePo(role, editing.status, editing.created_by, userEmail) && (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-sm wf-btn-delete"
+                  onClick={() => setDeleting(true)}
+                  disabled={pending}
+                  aria-label={`Delete ${editing.request_id}`}
+                  title={
+                    role === 'admin'
+                      ? `Delete ${editing.request_id} — a reason is required`
+                      : `Ask the admin to delete ${editing.request_id} — a reason is required`
+                  }
+                >
+                  <Trash2 size={15} /> {role === 'admin' ? 'Delete request' : 'Request deletion'}
+                </button>
+              )
             )}
           </div>
+          {pendingDelete && (
+            <Notice tone="warn">
+              <strong>Deletion requested</strong> by {pendingDelete.requested_by} on{' '}
+              {new Date(pendingDelete.requested_at).toLocaleDateString('en-IN')} — “{pendingDelete.reason}”.
+              It is in the admin’s approval queue; the request stays live until they decide.
+            </Notice>
+          )}
+          {declinedDelete && (
+            <Notice tone="info">
+              An earlier request to delete this was <strong>declined</strong>
+              {declinedDelete.rejection_notes ? `: ${declinedDelete.rejection_notes}` : ''}. You can ask again if
+              something has changed.
+            </Notice>
+          )}
           <FormSection
             title="Order"
             defaultOpen
@@ -790,6 +826,7 @@ export function PoApprovalClient({
                       : undefined
                   }
                   role={role}
+                  deleteRequest={deleteRequests[String(po.id)]}
                   stdCm={stdCm}
                   onEdit={startEdit}
                   editingId={editing?.id ?? null}
@@ -944,6 +981,7 @@ function PoRow({
   liveLoad,
   lines,
   role,
+  deleteRequest,
   stdCm = {},
   onEdit,
   editingId = null,
@@ -953,6 +991,8 @@ function PoRow({
   liveLoad?: number;
   lines: PoApprovalLine[];
   role: SdRole;
+  /** The latest deletion ask for this request, if there is one. */
+  deleteRequest?: PoDeleteRequest;
   stdCm?: Record<string, number>;
   /** Load this request back into the form above — draft / rework only. */
   onEdit?: (po: PoApproval) => void;
@@ -1139,6 +1179,14 @@ function PoRow({
           {po.easycom_po_no && (
             <small className="wf-subtle">EasyCom {po.easycom_po_no}</small>
           )}
+          {/* A deletion is a separate approval — say so here, so nobody acts on a request
+              that is about to go away. */}
+          {deleteRequest &&
+            (deleteRequest.status === 'submitted' || deleteRequest.status === 'pending_l2') && (
+              <small className="wf-over-tag" title={`Reason: ${deleteRequest.reason} — raised by ${deleteRequest.requested_by}`}>
+                Deletion requested
+              </small>
+            )}
           {timelineExtDays != null && timelineExtDays > 0 && (
             <small
               className="wf-timeline-flag"

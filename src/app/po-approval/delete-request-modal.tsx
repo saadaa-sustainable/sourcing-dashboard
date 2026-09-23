@@ -23,6 +23,7 @@ export function DeleteRequestModal({
   requestId,
   productCode,
   statusLabel,
+  needsApproval,
   pending,
   onConfirm,
   onCancel,
@@ -30,6 +31,8 @@ export function DeleteRequestModal({
   requestId: string;
   productCode: string | null;
   statusLabel: string;
+  /** True for everyone but an admin: this raises a request rather than deleting outright. */
+  needsApproval: boolean;
   pending: boolean;
   onConfirm: (reason: string) => void;
   onCancel: () => void;
@@ -51,14 +54,15 @@ export function DeleteRequestModal({
       <div className="pc-modal pc-modal-sm">
         <div className="pc-head">
           <div>
-            <span className="panel-kicker">Delete request</span>
+            <span className="panel-kicker">{needsApproval ? 'Request deletion' : 'Delete request'}</span>
             <h3>
               {requestId}
               {productCode ? ` · ${productCode}` : ''} · {statusLabel}
             </h3>
             <p className="wf-subtle">
-              It leaves your list and the approval queue. The record is kept — admin can see what
-              was deleted, by whom, and the reason you give here.
+              {needsApproval
+                ? 'Deleting goes to the admin like any other approval. This request stays live until they decide; your reason is what they decide on.'
+                : 'It leaves the working lists straight away — you are the approver. The record is kept, with your reason, in the deleted log.'}
             </p>
           </div>
           <button type="button" className="wf-icon-btn" onClick={onCancel} aria-label="Close">
@@ -101,7 +105,14 @@ export function DeleteRequestModal({
             disabled={pending || !ready}
             title={ready ? undefined : 'Pick a reason or type one'}
           >
-            <Trash2 size={14} /> {pending ? 'Deleting…' : 'Delete request'}
+            <Trash2 size={14} />{' '}
+            {pending
+              ? needsApproval
+                ? 'Sending…'
+                : 'Deleting…'
+              : needsApproval
+                ? 'Send to admin'
+                : 'Delete request'}
           </button>
         </div>
       </div>

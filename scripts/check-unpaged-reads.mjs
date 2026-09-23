@@ -43,6 +43,9 @@ const SMALL_TABLES = {
   sd_po_actuals_by_product_month: 461,
   sd_po_approval: 4,
   sd_po_approval_line: 9,
+  // One row per ask to delete a PO request, and only the undecided ones are ever read
+  // unpaged. Bounded by the number of PO requests, which is itself a handful.
+  sd_po_delete_request: 1,
   sd_po_details: 482,
   sd_product_fabric: 108,
   sd_product_launch_date: 95,

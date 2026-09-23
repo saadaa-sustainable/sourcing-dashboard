@@ -4,6 +4,7 @@ import { monthStart, addMonths } from '../approval';
 import { loadInProcessByVendor } from './vendor';
 import type {
   DeletedPoRequest,
+  PoDeleteRequest,
   PoApproval,
   PoApprovalLine,
   PoCycleTime,
@@ -86,6 +87,27 @@ export async function loadPoApprovals() {
     vendorNames,
     capacityByVendor,
   };
+}
+
+/**
+ * The latest deletion request per live PO, so the PO Approval screen can say "deletion
+ * waiting with the admin" on a row rather than offering Delete again — and can show the
+ * raiser that an earlier ask was declined.
+ */
+export async function loadPoDeleteRequests(): Promise<Record<string, PoDeleteRequest>> {
+  const supabase = await client();
+  // paging-ok: deletion asks are rare; newest 300 covers every live PO's latest one
+  const { data } = await supabase
+    .from('sd_po_delete_request')
+    .select('*')
+    .order('id', { ascending: false })
+    .limit(300);
+  const latest: Record<string, PoDeleteRequest> = {};
+  for (const r of (data ?? []) as PoDeleteRequest[]) {
+    // Ordered newest first, so the first one seen for a PO is its latest.
+    if (!latest[String(r.po_id)]) latest[String(r.po_id)] = r;
+  }
+  return latest;
 }
 
 /**

@@ -1953,6 +1953,7 @@ export function ObjectiveSynopsisCards({
         ) : (
           <ul className="ana-list">
             <li><span>Purchase orders</span><span className="ana-list-val">{fmt.format(ap.pos)}</span></li>
+            <li><span>PO deletions</span><span className="ana-list-val">{fmt.format(ap.poDeletes)}</span></li>
             <li><span>Buying plans</span><span className="ana-list-val">{fmt.format(ap.buyingPlans)}</span></li>
             <li><span>Inward Plan</span><span className="ana-list-val">{fmt.format(ap.inward)}</span></li>
             <li><span>Discontinue</span><span className="ana-list-val">{fmt.format(ap.discontinue)}</span></li>

@@ -1,6 +1,6 @@
 import 'server-only';
 import { client, PAGE_SIZE } from './_shared';
-import { canApprove, routeApproval } from '../approval';
+import { canApprove, routeApproval, STATUS_LABEL } from '../approval';
 import { loadApprovedStandardCosts, loadApprovedMaterialCosts } from './standard-cost';
 import { loadInProcessByVendor, loadLatestVendorCapacity } from './vendor';
 import { loadAnalyticsRules } from './analytics';
@@ -18,6 +18,7 @@ import type {
   BuyingPlanLine,
   DiscontinueRequest,
   PoApproval,
+  PoDeleteRequest,
   VendorDeboardingRequest,
 } from '../types';
 
@@ -30,16 +31,18 @@ export async function countPendingApprovals(): Promise<number> {
   // are the admin's turn (the bell renders for admins only).
   const costPending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
-  const [a, b, c, d, e, f] = await Promise.all([
+  const [a, b, c, d, e, f, g] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
     costPending('sd_standard_cost'),
     costPending('sd_material_standard_cost'),
     pending('sd_vendor_deboarding_request'),
+    pending('sd_po_delete_request'),
   ]);
   return (
-    (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) + (f.count ?? 0)
+    (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) +
+    (f.count ?? 0) + (g.count ?? 0)
   );
 }
 
@@ -60,7 +63,7 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
           .select('id, product_code, status, neg_stage, updated_at')
           .in('neg_stage', ['proposed', 'rate_submitted'])
       : Promise.resolve({ data: [] as never[] });
-  const [plans, discontinues, pos, fgCosts, matCosts, deboardings] = await Promise.all([
+  const [plans, discontinues, pos, fgCosts, matCosts, deboardings, poDeletes] = await Promise.all([
     supabase
       .from('sd_buying_plan')
       .select('id, plan_month, plan_type, status, submitted_by, submitted_at')
@@ -79,6 +82,10 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
     supabase
       .from('sd_vendor_deboarding_request')
       .select('id, vendor_code, vendor_name, status, requested_by, requested_at')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_po_delete_request')
+      .select('id, request_id, product_code, reason, status, requested_by, requested_at')
       .in('status', ['submitted', 'pending_l2']),
   ]);
 
@@ -150,6 +157,23 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       href: '/approvals',
       submittedBy: po.created_by,
       submittedAt: po.submitted_for_approval_at,
+    });
+  }
+
+  for (const d of (poDeletes.data ?? []) as Array<{
+    id: number; request_id: string; product_code: string | null; reason: string;
+    status: SdStatus; requested_by: string | null; requested_at: string | null;
+  }>) {
+    if (!canApprove(role, d.status)) continue;
+    items.push({
+      key: `pd-${d.id}`,
+      kind: 'po_delete',
+      label: `Delete PO request — ${d.request_id}${d.product_code ? ` · ${d.product_code}` : ''}`,
+      sublabel: `Deletion awaiting your approval — ${d.reason}`,
+      status: d.status,
+      href: '/approvals',
+      submittedBy: d.requested_by,
+      submittedAt: d.requested_at,
     });
   }
 
@@ -265,6 +289,7 @@ export async function loadApprovalQueue(): Promise<{
     { data: matCostReqs },
     { data: log },
     { data: deboardings },
+    { data: poDeletes },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
@@ -289,6 +314,10 @@ export async function loadApprovalQueue(): Promise<{
       .limit(100),
     supabase
       .from('sd_vendor_deboarding_request')
+      .select('*')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_po_delete_request')
       .select('*')
       .in('status', ['submitted', 'pending_l2']),
   ]);
@@ -422,6 +451,27 @@ export async function loadApprovalQueue(): Promise<{
       submittedAt: req.requested_at,
       submitNote: req.remarks,
       href: '/vendor-deboarding',
+    });
+  }
+
+  // Deleting a raised PO request is its own approval: what is being deleted, what state it
+  // was in when the ask went up, who raised the PO, and the reason given for pulling it.
+  // Approving this card is what marks the PO deleted (see applyPoDeletion).
+  for (const req of (poDeletes ?? []) as PoDeleteRequest[]) {
+    items.push({
+      entityType: 'po_delete',
+      entityId: String(req.id),
+      label: `Delete PO request ${req.request_id}${req.product_code ? ` · ${req.product_code}` : ''}`,
+      sublabel: `${STATUS_LABEL[req.po_status]} · ${req.vendor_name || req.vendor_code || 'no vendor'} · ${Number(
+        req.po_qty || 0,
+      ).toLocaleString('en-IN')} pcs — approving this removes it from the working lists`,
+      status: req.status,
+      quantity: Number(req.po_qty || 0),
+      requiredRole: routeApproval('po_delete'),
+      submittedBy: req.requested_by,
+      submittedAt: req.requested_at,
+      submitNote: `Reason for deleting: ${req.reason}`,
+      href: '/po-approval',
     });
   }
 

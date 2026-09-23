@@ -230,7 +230,7 @@ export type AnalyticsExtras = {
     byClass: { cls: 'A' | 'B' | 'C' | 'D'; variants: number; oosNow: number; atRisk: number; avgDoh: number | null }[];
   } | null;
   /** Everything waiting for someone's decision, by kind. */
-  approvalRequisitions: { total: number; buyingPlans: number; pos: number; discontinue: number; deboarding: number; inward: number } | null;
+  approvalRequisitions: { total: number; buyingPlans: number; pos: number; poDeletes: number; discontinue: number; deboarding: number; inward: number } | null;
   /** Inward-to-sales ratio: pieces received vs pieces sold over the same four complete weeks. */
   isr: { from: string; to: string; inwardQty: number; inwardPos: number; soldQty: number; skus: number } | null;
   /** Buying Plan synopsis for the current month (set by the dashboard page from the plan analysis). */
@@ -281,7 +281,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'standard_cost' | 'vendor_deboarding';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'standard_cost' | 'vendor_deboarding';
   label: string;
   sublabel: string;
   status: SdStatus;
@@ -898,6 +898,8 @@ export type ApprovalEntity =
   | 'buying_plan'
   | 'discontinue'
   | 'po_approval'
+  /** A request to DELETE a raised PO request — decided by an admin, like any other. */
+  | 'po_delete'
   | 'standard_cost'
   | 'material_cost'
   | 'receivable_plan'
@@ -1353,6 +1355,29 @@ export type PoApproval = {
   deleted_at?: string | null;
   deleted_by?: string | null;
   delete_reason?: string | null;
+};
+
+/**
+ * A request to delete a raised PO request (sd_po_delete_request). Always admin-decided:
+ * approving it is what stamps `deleted_at` on the PO. The PO fields are a snapshot taken
+ * when the deletion was asked for, so the approval card reads on its own.
+ */
+export type PoDeleteRequest = {
+  id: number;
+  po_id: number;
+  request_id: string;
+  product_code: string | null;
+  vendor_code: string | null;
+  vendor_name: string | null;
+  po_qty: number;
+  po_status: SdStatus;
+  reason: string;
+  status: SdStatus;
+  requested_by: string;
+  requested_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
 };
 
 /** One deleted PO request, as the admin log lists it. */
