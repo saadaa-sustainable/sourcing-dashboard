@@ -1363,6 +1363,12 @@ export type PoApproval = {
   first_actual_delivery_date: string | null;
   po_issued_at: string | null;
   created_at: string;
+  // Present on the table and returned by select('*'); read by the read-only detail panel.
+  benchmark_cost?: boolean | null;
+  edited_before_approval?: boolean | null;
+  rework_notes?: string | null;
+  reworked_by?: string | null;
+  reworked_at?: string | null;
   // Deletion by the raiser (or an admin), reason mandatory. The row is never removed —
   // it drops out of every live list and shows in the admin's deleted-requests log.
   deleted_at?: string | null;

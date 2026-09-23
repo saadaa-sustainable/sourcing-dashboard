@@ -22,6 +22,7 @@ import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
+import { PoDetailPanel } from './po-detail-panel';
 import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
@@ -1070,6 +1071,8 @@ function PoRow({
   const issued = Boolean(po.po_issued_at);
   // Spec 7.4 — days this PO has been approved with no EasyCom PO behind it.
   const awaitingDays = awaitingEasycomDays(po);
+  // Clicking the row opens everything that was submitted, read-only.
+  const [detailOpen, setDetailOpen] = useState(false);
 
   // §7 issuance gate: a PO whose CMTP is above the product's standard can only be
   // issued once the above-standard cost is confirmed with a remark (logged as an
@@ -1185,8 +1188,27 @@ function PoRow({
       {rowChecks && (
         <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
       )}
-      <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
+      <tr
+        className={`wf-po-row${signing || tnaOpen || detailOpen ? ' wf-row-open' : ''}`}
+        // Click the row to read the whole request. Clicks that land on a control are that
+        // control's own — Edit, Submit and the rest must not also open the panel.
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
+          setDetailOpen((v) => !v);
+        }}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setDetailOpen((v) => !v);
+          }
+        }}
+        tabIndex={0}
+        aria-expanded={detailOpen}
+        title="Click to see everything submitted on this request"
+      >
         <td className="mono">
+          {detailOpen ? <ChevronDown size={13} className="wf-row-caret" /> : <ChevronRight size={13} className="wf-row-caret" />}
           {po.request_id}
           {po.po_ref_num && <small className="wf-subtle wf-block">{po.po_ref_num}</small>}
         </td>
@@ -1342,6 +1364,13 @@ function PoRow({
           </div>
         </td>
       </tr>
+      {detailOpen && (
+        <tr className="wf-issue-panel-row">
+          <td colSpan={8}>
+            <PoDetailPanel po={po} lines={lineRows} cycle={cycle} />
+          </td>
+        </tr>
+      )}
       {tnaOpen && isApprover && (
         <tr className="wf-issue-panel-row">
           <td colSpan={8}>

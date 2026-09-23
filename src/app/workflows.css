@@ -2020,6 +2020,22 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-btn-delete:hover:not(:disabled) { color: #fff; background: #b3261e; border-color: #8f1d17; }
 .wf-btn-delete:disabled { opacity: .45; }
 
+/* The whole PO row opens its read-only detail — so it has to look clickable, and the
+   caret has to say which rows are open. Controls inside the row keep their own cursor. */
+.wf-po-row { cursor: pointer; }
+.wf-po-row:focus-visible { outline: 2px solid var(--color-ecru-400, #f0c61e); outline-offset: -2px; }
+.wf-po-row button, .wf-po-row a, .wf-po-row input, .wf-po-row select { cursor: auto; }
+.wf-po-row .wf-btn, .wf-po-row a { cursor: pointer; }
+.wf-row-caret { vertical-align: -2px; margin-right: 5px; color: var(--ink-3, #8a8375); }
+
+/* Read-only view of a submitted request: columns of label/value pairs, nothing editable. */
+.wf-po-readonly-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.wf-po-readonly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px 22px; }
+.wf-po-detail-block .wf-cost-param-head { display: block; margin-bottom: 6px; }
+.wf-po-readonly .wf-doc-meta { grid-template-columns: 1fr; margin: 0; }
+.wf-po-readonly .wf-doc-meta dd { text-align: right; padding-left: 12px; }
+.wf-po-readonly .table-scroll { margin-top: 14px; }
+
 /* A long workflow form reads as labelled sections rather than one wall of fields, and each
    section folds away so only the part being filled is on screen. */
 .wf-form-section { border-top: 1px solid var(--line, #e6e1d4); }
