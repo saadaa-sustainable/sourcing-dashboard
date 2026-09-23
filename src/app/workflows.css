@@ -1998,13 +1998,18 @@ th.wf-cell-input { background: #33302b; color: #fff; }
    vendor name, an ad-hoc reason and three action buttons on one line pushed the table
    into a sideways scroll. The wide cells wrap instead, and the buttons stack. */
 .wf-po-table th,
-.wf-po-table td { padding: 10px 12px; }
-.wf-po-table td { white-space: normal; }
-.wf-po-table td small { white-space: normal; }
-.wf-po-vendor { min-width: 150px; max-width: 220px; }
-.wf-po-product { min-width: 110px; max-width: 200px; }
+.wf-po-table td { padding: 14px 16px; }
+/* Wrapped cells are what removes the sideways scroll; the rest of this block is the
+   breathing room that wrapping alone takes away. Top alignment because a row is now as
+   tall as its fullest cell, and centred text next to a three-line cell reads as clutter. */
+.wf-po-table td { white-space: normal; vertical-align: top; line-height: 1.5; }
+.wf-po-table td small { white-space: normal; margin-top: 6px; line-height: 1.45; }
+.wf-po-table td small + small { margin-top: 4px; }
+.wf-po-vendor { min-width: 160px; max-width: 230px; }
+.wf-po-product { min-width: 120px; max-width: 210px; }
 .wf-po-action { width: 1%; }
-.wf-po-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 132px; }
+/* Wide enough that Edit and Submit sit side by side instead of stacking one per line. */
+.wf-po-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 178px; }
 .wf-po-actions .wf-btn { white-space: nowrap; }
 
 /* A long workflow form reads as labelled sections rather than one wall of fields, and each
@@ -2012,8 +2017,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-form-section { border-top: 1px solid var(--line, #e6e1d4); }
 .wf-form-section:first-of-type { border-top: none; }
 .wf-form-section-head {
-  display: flex; align-items: flex-start; gap: 8px; width: 100%;
-  padding: 12px 4px; border: 0; background: none; text-align: left; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 9px; width: 100%;
+  padding: 15px 4px; border: 0; background: none; text-align: left; cursor: pointer;
   color: inherit; font: inherit;
 }
 .wf-form-section-head:hover .wf-form-section-title { color: var(--ink, #23201a); }
@@ -2022,4 +2027,4 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-form-section-hint { display: block; margin-top: 3px; font-size: 11.5px; max-width: 72ch; }
 /* .wf-form-grid sets display:grid, which would beat the [hidden] default. */
 .wf-form-section .wf-form-grid[hidden] { display: none; }
-.wf-form-section .wf-form-grid { padding-bottom: 14px; }
+.wf-form-section .wf-form-grid { padding: 2px 0 20px; }
