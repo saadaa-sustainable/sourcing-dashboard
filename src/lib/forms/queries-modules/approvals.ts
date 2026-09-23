@@ -71,7 +71,7 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       .in('status', ['submitted', 'pending_l2']),
     supabase
       .from('sd_po_approval')
-      .select('id, po_ref_num, product_code, category, status, created_by, submitted_for_approval_at')
+      .select('id, request_id, po_ref_num, product_code, category, status, created_by, submitted_for_approval_at')
       .in('status', ['submitted', 'pending_l2']),
     costTurn('sd_standard_cost'),
     costTurn('sd_material_standard_cost'),
@@ -136,14 +136,14 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
   }
 
   for (const po of (pos.data ?? []) as Array<{
-    id: number; po_ref_num: string | null; product_code: string | null; category: string | null;
+    id: number; request_id: string | null; po_ref_num: string | null; product_code: string | null; category: string | null;
     status: SdStatus; created_by: string | null; submitted_for_approval_at: string | null;
   }>) {
     if (!canApprove(role, po.status)) continue;
     items.push({
       key: `po-${po.id}`,
       kind: 'po_approval',
-      label: `PO — ${po.po_ref_num || po.product_code || `#${po.id}`}`,
+      label: `PO request — ${po.request_id || po.po_ref_num || po.product_code || `#${po.id}`}`,
       sublabel: `${(po.category ?? 'PO').toUpperCase()} purchase order awaiting your approval`,
       status: po.status,
       href: '/approvals',
@@ -569,7 +569,7 @@ export async function loadApprovalQueue(): Promise<{
       items.push({
         entityType: 'po_approval',
         entityId: String(po.id),
-        label: `PO ${po.po_ref_num ?? `#${po.id}`} — ${po.category.toUpperCase()}`,
+        label: `PO request ${po.request_id ?? `#${po.id}`}${po.po_ref_num ? ` · ${po.po_ref_num}` : ''} — ${po.category.toUpperCase()}`,
         sublabel: `${po.product_code ?? '—'} · ${po.vendor_name || vendor || '—'} · ${qty.toLocaleString('en-IN')} pcs`,
         status: po.status,
         quantity: qty,

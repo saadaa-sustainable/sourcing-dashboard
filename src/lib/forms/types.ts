@@ -1286,6 +1286,9 @@ export type PoApproval = {
   /** The remark typed on the pre-submission pop-up (spec 7.1). */
   submit_remark?: string | null;
   id: number;
+  /** Unique id of the request, assigned here (PR-YYMM-0001). The EasyEcom PO number is
+   *  linked to it at issuance — this dashboard never generates a PO number. */
+  request_id: string;
   timestamp_created: string;
   created_by: string | null;
   // inputs

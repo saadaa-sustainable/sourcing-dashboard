@@ -48,6 +48,8 @@ function readPoFields(formData: FormData) {
   return {
     po_type: (PO_TYPES.includes(rawType as PoType) ? rawType : null) as PoType | null,
     product_code: textOrNull(formData.get('product_code')),
+    // The EasyEcom reference, filled at issuance. Never generated here: a request is
+    // identified by its request_id (PR-YYMM-0001), assigned by the database.
     po_ref_num: textOrNull(formData.get('po_ref_num'))?.toUpperCase() ?? null,
     vendor_code: textOrNull(formData.get('vendor_code')),
     vendor_name: textOrNull(formData.get('vendor_name')),
@@ -147,7 +149,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     const { data: dups } = await dupQ;
     if (dups && dups.length) {
       return fail(
-        `PO reference "${fields.po_ref_num}" is already used on PO #${dups[0].id}. Reference numbers must be unique — use Suggest, or change the trailing sequence.`,
+        `EasyCom reference "${fields.po_ref_num}" is already recorded on request #${dups[0].id}. One EasyCom PO belongs to one request.`,
       );
     }
   }
@@ -160,7 +162,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
       .in('status', ['draft', 'rework'])
       .select('id');
     if (error) {
-      if (error.code === '23505') return fail(`PO reference "${fields.po_ref_num}" is already used. Reference numbers must be unique.`);
+      if (error.code === '23505') return fail(`EasyCom reference "${fields.po_ref_num}" is already recorded on another request.`);
       return fail(`Could not save: ${error.message}`);
     }
     // The guarded update matched nothing — the PO left draft/rework meanwhile.
@@ -178,7 +180,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     .select('id')
     .single();
   if (error) {
-    if (error.code === '23505') return fail(`PO reference "${fields.po_ref_num}" is already used. Reference numbers must be unique.`);
+    if (error.code === '23505') return fail(`EasyCom reference "${fields.po_ref_num}" is already recorded on another request.`);
     return fail(`Could not create PO: ${error.message}`);
   }
   revalidatePath('/po-approval');
@@ -266,7 +268,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, po_ref_num, category, product_code, po_qty, rate, critical_path_first_delivery, buying_plan_no, ad_hoc_reason')
+    .select('id, status, request_id, po_ref_num, category, product_code, po_qty, rate, critical_path_first_delivery, buying_plan_no, ad_hoc_reason')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -331,7 +333,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   await writeLog(
     'po_approval',
     String(id),
-    `PO ${po.po_ref_num ?? `#${id}`} · ${po.category} · ${po.product_code ?? ''}`.trim(),
+    `PO request ${po.request_id ?? `#${id}`} · ${po.category} · ${po.product_code ?? ''}`.trim(),
     po.status as SdStatus,
     next,
     user.email,
@@ -487,6 +489,10 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     trim_card_signed: formData.get('trim_card_signed') === 'true',
   };
   if (easycom) patch.easycom_po_no = easycom;
+  // The EasyEcom reference, if the issuer has it — recorded against the request id so the
+  // two can be matched later. Optional: the PO number is what actually links them.
+  const eeRef = textOrNull(formData.get('po_ref_num'));
+  if (eeRef) patch.po_ref_num = eeRef.toUpperCase();
   if (!alreadyIssued) patch.po_issued_at = new Date().toISOString();
   if (setBenchmark) patch.benchmark_cost = true;
   if (costException) {

@@ -50,7 +50,6 @@ const BLANK = {
   po_type: '' as PoType | '',
   category: 'fg' as PoCategory,
   product_code: '',
-  po_ref_num: '',
   vendor_code: '',
   vendor_name: '',
   tna_sheet_url: '',
@@ -152,33 +151,6 @@ export function PoApprovalClient({
       po_closing_date: addDays(tnaStart, leadtimes.po_closing_days),
     }));
     setMessage('Critical path generated from the lead-times — adjust any date if needed.');
-  }
-
-  // Auto-suggest the PO ref in the observed standard format:
-  //   FY<yy>-<yy+1>/<TYPE>/<PRODUCT>/<VENDOR>-<NN>
-  // The trailing 2-digit sequence is now filled automatically: we scan existing
-  // POs for the same prefix and use the next number, so Suggest yields a COMPLETE,
-  // non-colliding reference (the server also enforces uniqueness). Still fully
-  // editable afterwards.
-  function suggestRef() {
-    const d = new Date();
-    const fyStart = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
-    const yy = String(fyStart).slice(2);
-    const yy2 = String(fyStart + 1).slice(2);
-    const typeTok =
-      form.po_type === 'job_work' ? 'JOB' : form.po_type === 'efob' ? 'EFOB' : 'FOB';
-    const prefix = `FY${yy}-${yy2}/${typeTok}/${form.product_code}/${form.vendor_code.toUpperCase()}-`;
-    // Highest existing sequence for this exact prefix, across all loaded POs.
-    let maxSeq = 0;
-    for (const p of pos) {
-      const ref = p.po_ref_num ?? '';
-      if (ref.startsWith(prefix)) {
-        const n = parseInt(ref.slice(prefix.length), 10);
-        if (Number.isFinite(n) && n > maxSeq) maxSeq = n;
-      }
-    }
-    const seq = String(maxSeq + 1).padStart(2, '0');
-    set('po_ref_num', `${prefix}${seq}`);
   }
 
   const buildPayload = () => {
@@ -319,25 +291,10 @@ export function PoApprovalClient({
               </datalist>
             </Field>
             <Field
-              label="PO reference number"
-              hint="Suggest builds the full standard code incl. the next sequence — edit if needed. Must be unique."
+              label="Request ID"
+              hint="Assigned when you save — the EasyCom PO number is linked to it at issuance"
             >
-              <div className="wf-issue-row">
-                <input
-                  value={form.po_ref_num}
-                  placeholder="e.g. FY26-27/FOB/SDRPT/REG-01"
-                  onChange={(e) => set('po_ref_num', e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={suggestRef}
-                  disabled={!form.po_type || !form.product_code || !form.vendor_code}
-                  title="Auto-generate in the standard format"
-                >
-                  Suggest
-                </button>
-              </div>
+              <input value="Assigned on save" disabled readOnly className="wf-fixed-value" />
             </Field>
             <Field
               label="Vendor code"
@@ -605,7 +562,7 @@ export function PoApprovalClient({
           </div>
           <div className="wf-footer-actions">
             <p className="wf-footer-note">
-              Save the draft, then add the size lines on its row (PO qty totals itself) and submit from
+              Save the draft — it gets its Request ID — then add the SKU quantities on its row (PO qty totals itself) and submit from
               there.
             </p>
             <button
@@ -730,7 +687,7 @@ function ReportCard({
         <ul className="wf-report-list">
           {rows.slice(0, 8).map((p) => (
             <li key={p.id}>
-              <span className="mono">{p.po_ref_num ?? `#${p.id}`}</span>
+              <span className="mono">{p.request_id}</span>
               <span className="wf-subtle">
                 {catLabel(p.category)} · {p.vendor_name || p.vendor_code || '—'} ·{' '}
                 {Number(p.po_qty).toLocaleString('en-IN')} pcs
@@ -816,6 +773,7 @@ function PoRow({
   const [signing, setSigning] = useState(false);
   const [iss, setIss] = useState({
     easycom_po_no: po.easycom_po_no ?? '',
+    po_ref_num: po.po_ref_num ?? '',
     first_actual_delivery_date: po.first_actual_delivery_date ?? '',
     signed_po_document_url: po.signed_po_document_url ?? '',
     signed_cost_sheet_url: po.signed_cost_sheet_url ?? '',
@@ -938,7 +896,10 @@ function PoRow({
         <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
       )}
       <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
-        <td className="mono">{po.po_ref_num ?? `#${po.id}`}</td>
+        <td className="mono">
+          {po.request_id}
+          {po.po_ref_num && <small className="wf-subtle wf-block">{po.po_ref_num}</small>}
+        </td>
         <td>
           <span className={`wf-cat-chip wf-cat-${po.category}`}>{catLabel(po.category)}</span>
         </td>
@@ -1063,7 +1024,7 @@ function PoRow({
           <td colSpan={8}>
             <div className="wf-issue-panel">
               <strong className="wf-issue-title">
-                Review &amp; confirm TNA — {po.po_ref_num ?? `PO #${po.id}`}
+                Review &amp; confirm TNA — {po.request_id}
               </strong>
               <p className="wf-subtle">
                 Check these critical-path dates make sense for the quantity (
@@ -1141,14 +1102,21 @@ function PoRow({
           <td colSpan={8}>
             <div className="wf-issue-panel">
               <strong className="wf-issue-title">
-                Issue &amp; sign — {po.po_ref_num ?? `PO #${po.id}`}
+                Issue &amp; sign — {po.request_id}
               </strong>
               <div className="wf-form-grid">
-                <Field label="EasyCom PO no." hint="Maps to the real PO — required to issue">
+                <Field label="EasyCom PO no." hint={`The real PO number — links it to ${po.request_id}`}>
                   <input
                     value={iss.easycom_po_no}
                     placeholder="EasyCom PO #"
                     onChange={(e) => setI('easycom_po_no', e.target.value)}
+                  />
+                </Field>
+                <Field label="EasyCom PO reference" hint="As EasyCom shows it — optional, for later matching">
+                  <input
+                    value={iss.po_ref_num}
+                    placeholder="e.g. FY26-27/FOB/SDRPT/REG-01"
+                    onChange={(e) => setI('po_ref_num', e.target.value)}
                   />
                 </Field>
                 <Field label="First actual delivery date" hint="EasyCom">
@@ -1231,7 +1199,7 @@ function PoRow({
           <td colSpan={8}>
             <PoLinesPanel
               poId={po.id}
-              poRef={po.po_ref_num}
+              poRef={po.po_ref_num ?? po.request_id}
               productCode={po.product_code}
               lines={lines}
               editable={linesEditable}

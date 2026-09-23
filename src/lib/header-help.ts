@@ -39,6 +39,7 @@ const GLOBAL: Record<string, string> = {
   'merchant': 'The merchandiser at SAADAA who manages this vendor, from the vendor master.',
   'merchandiser': 'The merchandiser at SAADAA who manages this vendor, from the vendor master.',
   'po': 'The purchase order reference. One PO can carry several products and colours.',
+  'request id': 'The unique id of this PO request (PR-YYMM-0001), assigned when the draft is saved. The EasyCom PO number is linked to it at issuance — no PO number is generated on the dashboard.',
   'po ref': 'The purchase order reference (e.g. FY26-27/FOB/SDFLK/KVN-03). One PO can carry several products and colours.',
   'po ref num': 'The purchase order reference (e.g. FY26-27/FOB/SDFLK/KVN-03).',
   'po no': 'The PO number as EasyEcom holds it.',

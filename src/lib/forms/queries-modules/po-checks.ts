@@ -105,7 +105,7 @@ function fyStartIso(now = new Date()): string {
 export async function loadPoSubmissionChecks(poId: number): Promise<PoSubmissionChecks | null> {
   const supabase = await client();
   type PoRow = {
-    id: number; po_ref_num: string | null; po_type: string | null; product_code: string | null;
+    id: number; request_id: string | null; po_ref_num: string | null; po_type: string | null; product_code: string | null;
     vendor_code: string | null; vendor_name: string | null; po_qty: number | null; rate: number | null;
     cm_cost: number | null; finished_fabric_cost: number | null;
     cs_pp_sample_due: string | null; cs_gpt_due: string | null; cs_cutting_start: string | null;
@@ -115,7 +115,7 @@ export async function loadPoSubmissionChecks(poId: number): Promise<PoSubmission
   const { data: poRaw } = await supabase
     .from('sd_po_approval')
     .select(
-      'id, po_ref_num, po_type, product_code, vendor_code, vendor_name, po_qty, rate, cm_cost, finished_fabric_cost, ' +
+      'id, request_id, po_ref_num, po_type, product_code, vendor_code, vendor_name, po_qty, rate, cm_cost, finished_fabric_cost, ' +
         'cs_pp_sample_due, cs_gpt_due, cs_cutting_start, cs_inline_qc_due, critical_path_first_delivery, po_closing_date, buying_plan_no',
     )
     .eq('id', poId)
@@ -271,7 +271,7 @@ export async function loadPoSubmissionChecks(poId: number): Promise<PoSubmission
   const std = productCode ? stdCosts[productCode] : undefined;
   return {
     poId: po.id as number,
-    poRef: (po.po_ref_num as string | null) ?? null,
+    poRef: (po.request_id as string | null) ?? (po.po_ref_num as string | null) ?? null,
     productCode,
     poType,
     poTypeLabel: TYPE_LABEL[poType],

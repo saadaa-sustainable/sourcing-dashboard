@@ -1991,3 +1991,5 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .pl-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: #f5f2ea; }
 .pl-over { padding: 2px 9px; border-radius: 999px; background: #fff0ed; color: #c5280c; font-size: 11.5px; font-weight: 700; }
 .pl-unknown td { background: #fffaf0; }
+/* A second line under a value (a request id with its EasyCom reference beneath). */
+.wf-block { display: block; margin-top: 2px; font-size: 11.5px; }
