@@ -1994,9 +1994,19 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* A second line under a value (a request id with its EasyCom reference beneath). */
 .wf-block { display: block; margin-top: 2px; font-size: 11.5px; }
 
-/* A long workflow form reads as labelled sections rather than one wall of fields. */
-.wf-form-section { border-top: 1px solid var(--line, #e6e1d4); padding-top: 12px; margin-top: 4px; }
-.wf-form-section:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
-.wf-form-section-head { margin-bottom: 10px; }
-.wf-form-section-head h4 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2, #4a463f); }
-.wf-form-section-head p { margin: 3px 0 0; font-size: 11.5px; max-width: 72ch; }
+/* A long workflow form reads as labelled sections rather than one wall of fields, and each
+   section folds away so only the part being filled is on screen. */
+.wf-form-section { border-top: 1px solid var(--line, #e6e1d4); }
+.wf-form-section:first-of-type { border-top: none; }
+.wf-form-section-head {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 12px 4px; border: 0; background: none; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
+}
+.wf-form-section-head:hover .wf-form-section-title { color: var(--ink, #23201a); }
+.wf-form-section-head svg { flex: none; margin-top: 2px; color: var(--ink-3, #8a8375); }
+.wf-form-section-title { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2, #4a463f); }
+.wf-form-section-hint { display: block; margin-top: 3px; font-size: 11.5px; max-width: 72ch; }
+/* .wf-form-grid sets display:grid, which would beat the [hidden] default. */
+.wf-form-section .wf-form-grid[hidden] { display: none; }
+.wf-form-section .wf-form-grid { padding-bottom: 14px; }

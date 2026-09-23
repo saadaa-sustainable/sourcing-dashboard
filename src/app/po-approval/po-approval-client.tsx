@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, FileCheck, FilePen, Layers, Save, Send, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FilePen, Layers, Save, Send, X } from 'lucide-react';
 import {
   checkPlanMembership,
   confirmTna,
@@ -88,23 +88,39 @@ function addDays(iso: string, n: number | null | undefined): string {
 }
 
 /** One labelled part of the raise-a-PO form. The form is long; sections make it read as the
- *  steps people actually think in rather than one wall of fields. */
+ *  steps people actually think in rather than one wall of fields. Each one folds away —
+ *  the first is open so the form still starts with something to fill in.
+ *  The fields stay mounted while folded, so a collapsed section keeps whatever is typed in it. */
 function FormSection({
   title,
   hint,
+  defaultOpen = false,
   children,
 }: {
   title: string;
   hint?: string;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <section className="wf-form-section">
-      <div className="wf-form-section-head">
-        <h4>{title}</h4>
-        {hint && <p className="wf-subtle">{hint}</p>}
+      {/* A button, not a heading — a heading inside a button is invalid HTML. */}
+      <button
+        type="button"
+        className="wf-form-section-head"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span>
+          <span className="wf-form-section-title">{title}</span>
+          {hint && <span className="wf-subtle wf-form-section-hint">{hint}</span>}
+        </span>
+      </button>
+      <div className="wf-form-grid" hidden={!open}>
+        {children}
       </div>
-      <div className="wf-form-grid">{children}</div>
     </section>
   );
 }
@@ -327,6 +343,7 @@ export function PoApprovalClient({
           </div>
           <FormSection
             title="Order"
+            defaultOpen
             hint="What is being bought, and from whom. Category and PO type decide how it is approved and how long it takes."
           >
             <Field label="Category" hint={activeCat?.hint}>
