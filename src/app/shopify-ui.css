@@ -1777,3 +1777,21 @@
 .ui-view-approvals .wf-queue-foot .wf-approval-bar .wf-textarea { flex: 1 1 320px; min-height: 42px; }
 .ui-view-approvals .wf-queue-foot .wf-approval-actions { flex: 0 0 auto; align-items: flex-start; }
 .ui-view-approvals .wf-queue-foot .wf-approval-bar .wf-error-text { flex: 1 1 100%; }
+
+/* Approvals — the four verification panels on a PO card, always visible. */
+.ui-view-approvals .wf-verify-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.ui-view-approvals .wf-verify-card { border: 1px solid var(--line, #e6e1d4); border-radius: 10px; padding: 10px 12px 12px; background: #fff; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ui-view-approvals .wf-verify-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ui-view-approvals .wf-verify-card h4 { margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-2, #4a463f); display: inline-flex; align-items: center; }
+.ui-view-approvals .wf-verify-card dl { margin: 0; display: grid; grid-template-columns: 1fr; gap: 6px; }
+.ui-view-approvals .wf-verify-card dl > div { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; border-bottom: 1px dashed rgba(0,0,0,.07); padding-bottom: 4px; }
+.ui-view-approvals .wf-verify-card dt { font-size: 11.5px; color: var(--ink-3, #6e695e); text-transform: none; letter-spacing: 0; opacity: 1; }
+.ui-view-approvals .wf-verify-card dt small { font-size: 10px; margin-left: 4px; color: #9a9384; }
+.ui-view-approvals .wf-verify-card dd { margin: 0; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.ui-view-approvals .wf-verify-card dd strong { font-size: 14px; }
+.ui-view-approvals .wf-verify-link { align-self: flex-start; font-size: 12px; font-weight: 600; color: #2463a8; text-decoration: none; }
+.ui-view-approvals .wf-verify-link:hover { text-decoration: underline; }
+.ui-view-approvals .wf-verdict { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.ui-view-approvals .wf-verdict.is-ok { background: #e4f5ef; color: #006e52; }
+.ui-view-approvals .wf-verdict.is-flag { background: #fff0ed; color: #c5280c; }
+.ui-view-approvals .wf-verdict.is-none { background: #ece7d9; color: #6e695e; }

@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useState, useTransition } from 'react';
+import { InfoDot } from '@/components/info-dot';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast } from '@/lib/toast';
 import Link from 'next/link';
@@ -572,11 +573,18 @@ const fmtDate = (v: string | null | undefined) =>
  * the one-line entry into tabs (Inventory / Standard Cost / TNA / Vendor) so the
  * whole review happens without leaving the queue.
  */
+/** A small verdict chip: green when the check passes, red when it is worth a look. */
+function Verdict({ ok, text }: { ok: boolean | null; text: string }) {
+  return <span className={`wf-verdict ${ok == null ? 'is-none' : ok ? 'is-ok' : 'is-flag'}`}>{text}</span>;
+}
+
+/**
+ * The four things an approver verifies on a PO — Stock, Cost, TNA, Vendor — as four panels
+ * that are always visible, each with the headline figure first, a verdict, and the numbers
+ * behind it. Nothing hides behind a button: the card is the review.
+ */
 function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
   const d = item.poDetail!;
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'inv' | 'cost' | 'tna' | 'vendor'>('inv');
-
   const std = d.stdCost;
   const stdForType = std
     ? d.poType === 'job_work'
@@ -585,134 +593,116 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
         ? std.efob
         : std.fob
     : null;
-  const variance =
-    d.writtenRate != null && stdForType != null ? d.writtenRate - stdForType : null;
+  const variance = d.writtenRate != null && stdForType != null ? d.writtenRate - stdForType : null;
   const cmDelta = d.poCm != null && d.stdCm != null ? d.poCm - d.stdCm : null;
   const fabricDelta =
-    d.poFinishedFabric != null && d.stdFinishedFabric != null
-      ? d.poFinishedFabric - d.stdFinishedFabric
-      : null;
+    d.poFinishedFabric != null && d.stdFinishedFabric != null ? d.poFinishedFabric - d.stdFinishedFabric : null;
   const inproc = item.vendorInProcessQty ?? null;
-  // Headroom against PO capacity for this PO's type (the one capacity model), not the month.
   const cap = item.vendorPoCapacity ?? null;
   const headroom = cap != null && inproc != null ? cap - inproc : null;
+  const util = item.vendorCapacityUtil ?? null;
+  const utilWithPo = cap && cap > 0 && inproc != null ? Math.round(((inproc + d.poQty) / cap) * 1000) / 10 : null;
+  const days = d.inventory?.daysOfStock ?? null;
+  const typeLabel = d.poType === 'job_work' ? 'Job Work' : d.poType === 'efob' ? 'E-FOB' : d.poType ? 'FOB' : '—';
 
   return (
-    <div className="wf-po-detail">
-      <button
-        type="button"
-        className="wf-btn wf-btn-ghost wf-btn-sm"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        {open ? 'Hide detail' : 'Verify'} — DOQ · Cost · TNA · Vendor
-      </button>
-      {open && (
-        <div className="wf-po-detail-body">
-          <div className="segment wf-segment wf-po-tabs">
-            <button type="button" className={tab === 'inv' ? 'active' : ''} onClick={() => setTab('inv')}>
-              Inventory
-            </button>
-            <button type="button" className={tab === 'cost' ? 'active' : ''} onClick={() => setTab('cost')}>
-              Standard Cost
-            </button>
-            <button type="button" className={tab === 'tna' ? 'active' : ''} onClick={() => setTab('tna')}>
-              TNA
-            </button>
-            <button type="button" className={tab === 'vendor' ? 'active' : ''} onClick={() => setTab('vendor')}>
-              Vendor
-            </button>
+    <div className="wf-verify-grid">
+      {/* ---- Stock */}
+      <section className="wf-verify-card">
+        <header>
+          <h4>
+            Stock <InfoDot text={"WHAT: does this product need the pieces on this PO.\n\nHOW: from the nightly inventory snapshot: stock on hand, pieces already on order, and the 45-day daily demand. Days of stock = stock ÷ daily demand.\n\nUSE: plenty of days of stock and plenty on order → ask why the PO is needed now."} />
+          </h4>
+          {d.inventory ? (
+            <Verdict ok={days == null ? null : days < 45} text={days == null ? 'no demand' : days < 45 ? `${days} days of stock` : `${days} days of stock`} />
+          ) : (
+            <Verdict ok={null} text="no snapshot" />
+          )}
+        </header>
+        {d.inventory ? (
+          <dl>
+            <div><dt>In stock</dt><dd>{fmtNum(d.inventory.currentStock)} pcs</dd></div>
+            <div><dt>Already on order</dt><dd>{fmtNum(d.inventory.inProgress)} pcs</dd></div>
+            <div><dt>Sells a day (45d)</dt><dd>{d.inventory.doq45}</dd></div>
+            <div><dt>This PO adds</dt><dd>{fmtNum(d.poQty)} pcs</dd></div>
+          </dl>
+        ) : (
+          <p className="wf-subtle">No inventory snapshot for {d.productCode ?? 'this product'}.</p>
+        )}
+      </section>
+
+      {/* ---- Cost */}
+      <section className="wf-verify-card">
+        <header>
+          <h4>
+            Cost <InfoDot text={"WHAT: is the rate on this PO above the approved Standard Cost.\n\nHOW: written rate − standard for this PO type. CM (cut-make) is shown against standard CM because that is what the vendor controls; grey and finished fabric are commodity and move with the market — informational.\n\nUSE: above standard needs a reason (the submitter's remark is at the top of the card); the Standard Cost link opens the negotiation record."} />
+          </h4>
+          <Verdict
+            ok={variance == null ? null : variance <= 0.005}
+            text={variance == null ? 'no standard' : variance > 0.005 ? `₹${fmtNum(variance)} above standard` : 'at or below standard'}
+          />
+        </header>
+        <dl>
+          <div><dt>Rate on PO</dt><dd><strong>₹{fmtNum(d.writtenRate)}</strong></dd></div>
+          <div><dt>Standard ({typeLabel})</dt><dd>{stdForType != null ? `₹${fmtNum(stdForType)}` : 'not approved'}</dd></div>
+          <div>
+            <dt>CM vs standard CM</dt>
+            <dd className={cmDelta != null && cmDelta > 0 ? 'wf-error-text' : undefined}>
+              ₹{fmtNum(d.poCm)} vs {d.stdCm != null ? `₹${fmtNum(d.stdCm)}` : '—'}
+              {cmDelta != null && cmDelta > 0 ? ` (+${fmtNum(cmDelta)})` : ''}
+            </dd>
           </div>
+          <div>
+            <dt>Fabric vs standard <small>commodity</small></dt>
+            <dd className="wf-subtle">
+              ₹{fmtNum(d.poFinishedFabric)} vs {d.stdFinishedFabric != null ? `₹${fmtNum(d.stdFinishedFabric)}` : '—'}
+              {fabricDelta != null && fabricDelta !== 0 ? ` (${fabricDelta > 0 ? '+' : ''}${fmtNum(fabricDelta)})` : ''}
+            </dd>
+          </div>
+        </dl>
+        {d.productCode && (
+          <Link className="wf-verify-link" href={`/standard-cost/${encodeURIComponent(d.productCode)}`}>
+            Open Standard Cost →
+          </Link>
+        )}
+      </section>
 
-          {tab === 'inv' && (
-            d.inventory ? (
-              <dl className="wf-doc-meta">
-                <div><dt>DOQ (45d)</dt><dd>{d.inventory.doq45}</dd></div>
-                <div><dt>Current stock</dt><dd>{fmtNum(d.inventory.currentStock)}</dd></div>
-                <div><dt>In-process</dt><dd>{fmtNum(d.inventory.inProgress)}</dd></div>
-                <div><dt>Days of stock</dt><dd>{d.inventory.daysOfStock ?? '—'}</dd></div>
-              </dl>
-            ) : (
-              <p className="wf-subtle">No inventory snapshot for {d.productCode ?? 'this product'}.</p>
-            )
+      {/* ---- TNA */}
+      <section className="wf-verify-card">
+        <header>
+          <h4>
+            TNA <InfoDot text={"WHAT: the production timeline the PO commits to.\n\nHOW: the critical-path dates as entered — PP sample, GPT, cutting, inline QC, first delivery, closing — and the days from submission to first delivery. 'Confirmed' means an approver has locked the dates; cost cannot be approved before that.\n\nUSE: compare the requested days with what this vendor actually takes (Vendor Performance → OTIF scorecard)."} />
+          </h4>
+          <Verdict ok={d.tna.tnaConfirmed} text={d.tna.tnaConfirmed ? 'dates confirmed' : 'dates not confirmed'} />
+        </header>
+        <dl>
+          <div><dt>Days to first delivery</dt><dd><strong>{d.tna.requestedTotalDays ?? '—'}</strong></dd></div>
+          <div><dt>First delivery</dt><dd>{fmtDate(d.tna.firstDelivery)}</dd></div>
+          <div><dt>PP sample · GPT</dt><dd>{fmtDate(d.tna.ppSampleDue)} · {fmtDate(d.tna.gptDue)}</dd></div>
+          <div><dt>Cutting · Inline QC</dt><dd>{fmtDate(d.tna.cuttingStart)} · {fmtDate(d.tna.inlineQcDue)}</dd></div>
+          <div><dt>PO closing</dt><dd>{fmtDate(d.tna.poClosingDate)}</dd></div>
+        </dl>
+      </section>
+
+      {/* ---- Vendor */}
+      <section className="wf-verify-card">
+        <header>
+          <h4>
+            Vendor <InfoDot text={"WHAT: can the vendor take this PO on top of what they already have.\n\nHOW: PO capacity = what the vendor can make inside this PO type's lead time (the one capacity model, from the Vendor Capacity sheet and Rules Master). Headroom = PO capacity − pieces already in process. 'With this PO' = (in process + this PO) ÷ PO capacity.\n\nUSE: past 100% with this PO, something will be late — decide which."} />
+          </h4>
+          {cap == null ? (
+            <Verdict ok={null} text="capacity not entered" />
+          ) : (
+            <Verdict ok={utilWithPo != null && utilWithPo <= 100} text={utilWithPo != null ? `${utilWithPo}% with this PO` : '—'} />
           )}
-
-          {tab === 'cost' && (
-            <>
-              {/* CMTP vs standard — shown for review (the hard-block is deferred). */}
-              <div className="wf-cost-param">
-                <span className="wf-cost-param-head">CMTP</span>
-                <dl className="wf-doc-meta">
-                  <div><dt>PO CMTP</dt><dd>{fmtNum(d.poCm)}</dd></div>
-                  <div><dt>Standard CMTP</dt><dd>{d.stdCm != null ? fmtNum(d.stdCm) : '— (not set)'}</dd></div>
-                  <div>
-                    <dt>Deviation</dt>
-                    <dd className={cmDelta != null && cmDelta > 0 ? 'wf-error-text' : undefined}>
-                      {cmDelta != null ? fmtNum(cmDelta) : '—'}
-                      {cmDelta != null && cmDelta > 0 && ' · above standard'}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-
-              {/* Commodity / fabric — informational only. */}
-              <div className="wf-cost-param">
-                <span className="wf-cost-param-head">Commodity / fabric — informational</span>
-                <dl className="wf-doc-meta">
-                  <div><dt>Grey (PO)</dt><dd>{fmtNum(d.poGrey)}</dd></div>
-                  <div><dt>Finished fabric (PO)</dt><dd>{fmtNum(d.poFinishedFabric)}</dd></div>
-                  <div>
-                    <dt>vs standard fabric</dt>
-                    <dd className={fabricDelta != null && fabricDelta !== 0 ? 'wf-subtle' : undefined}>
-                      {d.stdFinishedFabric != null ? fmtNum(d.stdFinishedFabric) : '—'}
-                      {fabricDelta != null && fabricDelta !== 0 && ` (${fabricDelta > 0 ? '+' : ''}${fmtNum(fabricDelta)})`}
-                    </dd>
-                  </div>
-                  <div><dt>Margin %</dt><dd>{fmtNum(d.marginPct)}</dd></div>
-                </dl>
-                <p className="wf-subtle wf-cost-param-note">
-                  Commodity moves (grey / fabric) are expected market noise — shown for awareness.
-                  CMTP vs standard is shown for review.
-                </p>
-              </div>
-
-              {/* Blended rate vs standard total — reference. */}
-              <dl className="wf-doc-meta">
-                <div><dt>Written rate</dt><dd>{fmtNum(d.writtenRate)}</dd></div>
-                <div><dt>Standard total ({d.poType ?? '—'})</dt><dd>{stdForType != null ? fmtNum(stdForType) : '— (not approved)'}</dd></div>
-                <div><dt>Variance</dt><dd className={variance != null && variance > 0 ? 'wf-subtle' : undefined}>{variance != null ? fmtNum(variance) : '—'}</dd></div>
-              </dl>
-              {d.productCode && (
-                <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={`/standard-cost/${encodeURIComponent(d.productCode)}`}>
-                  Open Standard Cost →
-                </Link>
-              )}
-            </>
-          )}
-
-          {tab === 'tna' && (
-            <dl className="wf-doc-meta">
-              <div><dt>Requested total days</dt><dd>{d.tna.requestedTotalDays ?? '—'}</dd></div>
-              <div><dt>TNA</dt><dd>{d.tna.tnaConfirmed ? 'confirmed' : 'pending'}</dd></div>
-              <div><dt>PP sample due</dt><dd>{fmtDate(d.tna.ppSampleDue)}</dd></div>
-              <div><dt>GPT due</dt><dd>{fmtDate(d.tna.gptDue)}</dd></div>
-              <div><dt>Cutting start</dt><dd>{fmtDate(d.tna.cuttingStart)}</dd></div>
-              <div><dt>Inline QC due</dt><dd>{fmtDate(d.tna.inlineQcDue)}</dd></div>
-              <div><dt>First delivery</dt><dd>{fmtDate(d.tna.firstDelivery)}</dd></div>
-              <div><dt>PO closing</dt><dd>{fmtDate(d.tna.poClosingDate)}</dd></div>
-            </dl>
-          )}
-
-          {tab === 'vendor' && (
-            <dl className="wf-doc-meta">
-              <div><dt>In process (live)</dt><dd>{inproc == null ? 'No open POs' : fmtNum(inproc)}</dd></div>
-              <div><dt>Capacity / month</dt><dd>{cap == null ? 'Not logged' : fmtNum(cap)}</dd></div>
-              <div><dt>Headroom</dt><dd className={headroom != null && headroom < 0 ? 'wf-error-text' : undefined}>{headroom != null ? fmtNum(headroom) : '—'}</dd></div>
-              <div><dt>Updated</dt><dd>{fmtDate(item.vendorCapacityUpdatedAt)}</dd></div>
-            </dl>
-          )}
-        </div>
-      )}
+        </header>
+        <dl>
+          <div><dt>In process now</dt><dd>{inproc == null ? 'no open POs' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle"> · {util}% of PO capacity</small> : null}</dd></div>
+          <div><dt>PO capacity ({item.vendorLeadDays ?? '—'}-day lead)</dt><dd>{cap == null ? 'not entered' : `${fmtNum(cap)} pcs`}</dd></div>
+          <div><dt>Headroom</dt><dd className={headroom != null && headroom < d.poQty ? 'wf-error-text' : undefined}>{headroom != null ? `${fmtNum(headroom)} pcs` : '—'}{headroom != null && headroom < d.poQty ? ' — less than this PO' : ''}</dd></div>
+          <div><dt>Capacity / month · sheet</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : '—'}{item.vendorCapacityUpdatedAt ? ` · ${fmtDate(item.vendorCapacityUpdatedAt)}` : ''}</dd></div>
+        </dl>
+      </section>
     </div>
   );
 }
