@@ -16,6 +16,7 @@ import {
   submitPoApproval,
 } from '@/lib/forms/actions';
 import { addMonths, canApprove, canDeletePo, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart, STATUS_LABEL } from '@/lib/forms/approval';
+import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
@@ -64,13 +65,14 @@ const BLANK = {
   cm_cost: '',
   margin_pct: '',
   po_qty: '',
-  po_closing_date: '',
   cad_folder_url: '',
-  cs_pp_sample_due: '',
-  cs_gpt_due: '',
-  cs_cutting_start: '',
-  cs_inline_qc_due: '',
-  critical_path_first_delivery: '',
+  // Spec 7.3 — the critical path is entered as days from the EasyCom PO issue date.
+  tna_days_pp_sample: '',
+  tna_days_gpt: '',
+  tna_days_cutting: '',
+  tna_days_inline_qc: '',
+  tna_days_first_delivery: '',
+  tna_days_po_closing: '',
   // The plan month this PO draws on — defaults to the current month (closed months are locked).
   buying_plan_no: monthStart().slice(0, 7),
   // Optional: why this PO is outside the buying plan (ad-hoc), e.g. urgent replenishment.
@@ -80,16 +82,41 @@ const BLANK = {
 // Quick reasons for an ad-hoc (outside-the-plan) PO; "Other" lets the team type their own.
 const AD_HOC_REASONS = ['Urgent replenishment', 'Stock ran out', 'New product / NPD', 'Customer or channel order', 'Plan missed this product'];
 
+/**
+ * The critical path, stage by stage, as day counts from the EasyCom PO issue date
+ * (spec 7.3). `standard` names the matching column on the standard lead-times, which is
+ * what the placeholder and the "use the standard" button fill from.
+ */
+const TNA_DAY_FIELDS = [
+  { key: 'tna_days_pp_sample', label: 'PP sample', standard: 'pp_sample_days' },
+  { key: 'tna_days_gpt', label: 'GPT', standard: 'gpt_days' },
+  { key: 'tna_days_cutting', label: 'Cutting start', standard: 'cutting_days' },
+  { key: 'tna_days_inline_qc', label: 'Inline QC', standard: 'inline_qc_days' },
+  { key: 'tna_days_first_delivery', label: 'First delivery', standard: 'first_delivery_days' },
+  { key: 'tna_days_po_closing', label: 'PO closing', standard: 'po_closing_days' },
+] as const satisfies ReadonlyArray<{
+  key: keyof typeof BLANK;
+  label: string;
+  standard: keyof TnaLeadtimes;
+}>;
+
+/** The IST calendar date of a stored timestamp — the three date logs are read as dates. */
+const dateOnly = (ts: string | null | undefined) =>
+  ts ? new Date(new Date(ts).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10) : null;
+
+/** "6 Sep 26" — a derived date, shown beside the days that produced it. */
+const dayLabel = (iso: string | null) =>
+  iso
+    ? new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+        timeZone: 'UTC',
+      })
+    : '—';
+
 const catLabel = (c: PoCategory) =>
   c === 'fg' ? 'FG' : c === 'mat' ? 'MAT' : 'NPD';
-
-// A stage date on the critical path = the TNA start date + its lead-time offset.
-function addDays(iso: string, n: number | null | undefined): string {
-  if (!iso || n == null) return '';
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 /** One labelled part of the raise-a-PO form. The form is long; sections make it read as the
  *  steps people actually think in rather than one wall of fields. Each one folds away —
@@ -187,20 +214,19 @@ export function PoApprovalClient({
   const setVendorName = (name: string) =>
     setForm((f) => ({ ...f, vendor_name: name, vendor_code: nameToCode[name.trim()] ?? f.vendor_code }));
 
-  // TNA critical path auto-generates from a start date + the standard lead-times.
-  const [tnaStart, setTnaStart] = useState('');
-  function autoGenerateTna() {
-    if (!tnaStart || !leadtimes) return;
-    setForm((f) => ({
-      ...f,
-      cs_pp_sample_due: addDays(tnaStart, leadtimes.pp_sample_days),
-      cs_gpt_due: addDays(tnaStart, leadtimes.gpt_days),
-      cs_cutting_start: addDays(tnaStart, leadtimes.cutting_days),
-      cs_inline_qc_due: addDays(tnaStart, leadtimes.inline_qc_days),
-      critical_path_first_delivery: addDays(tnaStart, leadtimes.first_delivery_days),
-      po_closing_date: addDays(tnaStart, leadtimes.po_closing_days),
-    }));
-    setMessage('Critical path generated from the lead-times — adjust any date if needed.');
+  // Spec 7.3 — the critical path is a set of day counts, filled once. This drops the
+  // standard lead times in; each one can then be changed for this PO.
+  function useStandardTna() {
+    if (!leadtimes) return;
+    setForm((f) => {
+      const next = { ...f };
+      for (const fld of TNA_DAY_FIELDS) {
+        const std = leadtimes[fld.standard];
+        next[fld.key] = std == null ? '' : String(std);
+      }
+      return next;
+    });
+    setMessage('Standard lead times filled — change any stage that differs for this PO.');
   }
 
   const buildPayload = () => {
@@ -232,13 +258,14 @@ export function PoApprovalClient({
       cm_cost: po.cm_cost != null ? String(po.cm_cost) : '',
       margin_pct: po.margin_pct != null ? String(po.margin_pct) : '',
       po_qty: po.po_qty != null ? String(po.po_qty) : '',
-      po_closing_date: po.po_closing_date ?? '',
       cad_folder_url: po.cad_folder_url ?? '',
-      cs_pp_sample_due: po.cs_pp_sample_due ?? '',
-      cs_gpt_due: po.cs_gpt_due ?? '',
-      cs_cutting_start: po.cs_cutting_start ?? '',
-      cs_inline_qc_due: po.cs_inline_qc_due ?? '',
-      critical_path_first_delivery: po.critical_path_first_delivery ?? '',
+      // The stage days as stored; the dates on the row are what these produced.
+      tna_days_pp_sample: po.tna_days_pp_sample != null ? String(po.tna_days_pp_sample) : '',
+      tna_days_gpt: po.tna_days_gpt != null ? String(po.tna_days_gpt) : '',
+      tna_days_cutting: po.tna_days_cutting != null ? String(po.tna_days_cutting) : '',
+      tna_days_inline_qc: po.tna_days_inline_qc != null ? String(po.tna_days_inline_qc) : '',
+      tna_days_first_delivery: po.tna_days_first_delivery != null ? String(po.tna_days_first_delivery) : '',
+      tna_days_po_closing: po.tna_days_po_closing != null ? String(po.tna_days_po_closing) : '',
       buying_plan_no: po.buying_plan_no ?? monthStart().slice(0, 7),
       ad_hoc_reason: po.ad_hoc_reason ?? '',
     });
@@ -289,6 +316,9 @@ export function PoApprovalClient({
       ? latestDelete
       : null;
   const declinedDelete = latestDelete?.status === 'rejected' ? latestDelete : null;
+  // What the stage dates are counted from: the EasyCom issue date once the PO exists
+  // there, otherwise today — the honest "if it issued now" projection.
+  const tnaBase = tnaBaseFor({ po_issued_at: editing?.po_issued_at ?? null });
   function run(submitAfter: boolean) {
     setError(null);
     setMessage(null);
@@ -381,7 +411,7 @@ export function PoApprovalClient({
 
       <ReportingScreen pos={pos} />
 
-      <CycleKpis cycle={cycle} />
+      <CycleKpis cycle={cycle} pos={pos} />
 
       {editable && (
         <div className="panel wf-form-panel">
@@ -614,64 +644,59 @@ export function PoApprovalClient({
 
           <FormSection
             title="Timeline (TNA)"
-            hint="Pick a start date and auto-generate the critical path from the standard lead times, then adjust any date. These are what the High Risk flag watches."
+            hint="Days, not dates. Nothing can start before the PO exists in EasyCom, so every stage is counted from the day it is created there — fill these once and the dates follow, however late the PO issues."
           >
-            <Field label="TNA start date" hint="auto-generates the critical path below">
-              <div className="wf-issue-row">
-                <input type="date" value={tnaStart} onChange={(e) => setTnaStart(e.target.value)} />
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={autoGenerateTna}
-                  disabled={!tnaStart || !leadtimes}
-                  title="Fill the 6 critical-path dates from the standard lead-times"
-                >
-                  <CalendarCheck size={13} /> Auto-generate
-                </button>
-              </div>
-            </Field>
-            <Field label="Critical stage — PP sample due">
-              <input
-                type="date"
-                value={form.cs_pp_sample_due}
-                onChange={(e) => set('cs_pp_sample_due', e.target.value)}
-              />
-            </Field>
-            <Field label="Critical stage — GPT due">
-              <input
-                type="date"
-                value={form.cs_gpt_due}
-                onChange={(e) => set('cs_gpt_due', e.target.value)}
-              />
-            </Field>
-            <Field label="Critical stage — Cutting start">
-              <input
-                type="date"
-                value={form.cs_cutting_start}
-                onChange={(e) => set('cs_cutting_start', e.target.value)}
-              />
-            </Field>
-            <Field label="Critical stage — Inline QC due">
-              <input
-                type="date"
-                value={form.cs_inline_qc_due}
-                onChange={(e) => set('cs_inline_qc_due', e.target.value)}
-              />
-            </Field>
-            <Field label="Critical path — first delivery">
-              <input
-                type="date"
-                value={form.critical_path_first_delivery}
-                onChange={(e) => set('critical_path_first_delivery', e.target.value)}
-              />
-            </Field>
-            <Field label="PO closing date" hint="As per TNA">
-              <input
-                type="date"
-                value={form.po_closing_date}
-                onChange={(e) => set('po_closing_date', e.target.value)}
-              />
-            </Field>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <Notice tone={tnaBase.source === 'issued' ? 'ok' : 'info'}>
+                {tnaBase.source === 'issued' ? (
+                  <>
+                    Counting from the <strong>EasyCom PO issue date, {dayLabel(tnaBase.date)}</strong>.
+                  </>
+                ) : (
+                  <>
+                    No EasyCom PO yet, so the dates below are <strong>projected from today</strong> and move with
+                    the calendar. They are fixed the day the PO is created in EasyCom.
+                  </>
+                )}
+              </Notice>
+            </div>
+            {TNA_DAY_FIELDS.map((f) => (
+              <Field
+                key={f.key}
+                label={f.label}
+                hint={
+                  form[f.key]
+                    ? `${dayLabel(addTnaDays(tnaBase.date, Number(form[f.key])))}${
+                        leadtimes?.[f.standard] != null ? ` · standard ${leadtimes[f.standard]}d` : ''
+                      }`
+                    : leadtimes?.[f.standard] != null
+                      ? `standard ${leadtimes[f.standard]}d`
+                      : 'days from the EasyCom PO'
+                }
+              >
+                <div className="wf-issue-row">
+                  <input
+                    type="number"
+                    min={0}
+                    value={form[f.key]}
+                    placeholder={leadtimes?.[f.standard] != null ? String(leadtimes[f.standard]) : 'days'}
+                    onChange={(e) => set(f.key, e.target.value)}
+                  />
+                  <span className="wf-subtle">days</span>
+                </div>
+              </Field>
+            ))}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                onClick={useStandardTna}
+                disabled={!leadtimes}
+                title="Fill all six with the standard lead times"
+              >
+                <CalendarCheck size={13} /> Use the standard lead times
+              </button>
+            </div>
             <Field label="TNA sheet link" hint="Google Drive">
               <input
                 value={form.tna_sheet_url}
@@ -809,7 +834,7 @@ export function PoApprovalClient({
                 <th>Vendor (live load) <HeaderInfo label="Vendor (live load)" /></th>
                 <th>Qty <HeaderInfo label="Qty" /></th>
                 <th>Status <HeaderInfo label="Status" /></th>
-                <th>Cycle (days) <HeaderInfo label="Cycle (days)" /></th>
+                <th>Date log <HeaderInfo label="Date log" /></th>
                 <th>Action <HeaderInfo label="Action" /></th>
               </tr>
             </thead>
@@ -934,10 +959,15 @@ function ReportCard({
 }
 
 /**
- * Approval cycle-time KPI — rolling averages across POs, distinct from the TNA-stage
- * delay numbers. Submission → approval → vendor sign-off (the DiGiO signed date).
+ * The two analytics spec 7.3 asks to keep apart.
+ *
+ * 1 — the CYCLE: request → approval → EasyCom PO. Three dates, three gaps, and the middle
+ *     one is ours alone: an approval with no EasyCom PO behind it has started nothing
+ *     (spec 7.4), so POs stuck in that gap are counted and the longest wait named.
+ * 2 — the CRITICAL PATH: of the POs that did reach EasyCom, how many met their planned
+ *     first delivery. That is a production question and is measured separately.
  */
-function CycleKpis({ cycle }: { cycle: Record<string, PoCycleTime> }) {
+function CycleKpis({ cycle, pos }: { cycle: Record<string, PoCycleTime>; pos: PoApproval[] }) {
   const rows = Object.values(cycle);
   const avg = (pick: (c: PoCycleTime) => number | null) => {
     const vals = rows.map(pick).filter((v): v is number => v != null);
@@ -945,31 +975,53 @@ function CycleKpis({ cycle }: { cycle: Record<string, PoCycleTime> }) {
     return Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10) / 10;
   };
   const toApprove = avg((c) => c.days_to_approve);
-  const toSign = avg((c) => c.days_to_sign);
-  const total = avg((c) => c.total_cycle_days_signoff ?? c.total_cycle_days);
-  const measured = rows.filter((c) => c.days_to_approve != null).length;
+  const toIssue = avg((c) => c.days_to_issue);
+  const total = avg((c) => c.total_cycle_days);
   const fmtDays = (v: number | null) => (v == null ? '—' : `${v}d`);
+
+  // Spec 7.4 — approved here, never created in EasyCom.
+  const waiting = pos
+    .map((p) => ({ po: p, days: awaitingEasycomDays(p) }))
+    .filter((w): w is { po: PoApproval; days: number } => w.days != null)
+    .sort((a, b) => b.days - a.days);
+  const longest = waiting[0] ?? null;
+
+  // Critical path achieved: issued POs whose actual first delivery met the planned date.
+  const delivered = pos.filter((p) => p.po_issued_at && p.first_actual_delivery_date && p.critical_path_first_delivery);
+  const onTime = delivered.filter(
+    (p) => (p.first_actual_delivery_date as string) <= (p.critical_path_first_delivery as string),
+  ).length;
+  const achievedPct = delivered.length ? Math.round((onTime / delivered.length) * 100) : null;
 
   return (
     <div className="wf-kpi-strip">
       <div className="wf-kpi">
-        <span className="wf-kpi-label">Submission → approval</span>
+        <span className="wf-kpi-label">Request → approval</span>
         <strong className="wf-kpi-value">{fmtDays(toApprove)}</strong>
       </div>
       <div className="wf-kpi">
-        <span className="wf-kpi-label">Approval → sign-off</span>
-        <strong className="wf-kpi-value">{fmtDays(toSign)}</strong>
+        <span className="wf-kpi-label">Approval → EasyCom PO</span>
+        <strong className="wf-kpi-value">{fmtDays(toIssue)}</strong>
       </div>
       <div className="wf-kpi">
-        <span className="wf-kpi-label">End-to-end</span>
+        <span className="wf-kpi-label">Request → EasyCom PO</span>
         <strong className="wf-kpi-value">{fmtDays(total)}</strong>
       </div>
+      <div className={`wf-kpi${waiting.length ? ' wf-kpi-warn' : ''}`}>
+        <span className="wf-kpi-label">Approved, not in EasyCom</span>
+        <strong className="wf-kpi-value">{waiting.length}</strong>
+      </div>
       <div className="wf-kpi">
-        <span className="wf-kpi-label">POs measured</span>
-        <strong className="wf-kpi-value">{measured}</strong>
+        <span className="wf-kpi-label">Critical path met</span>
+        <strong className="wf-kpi-value">
+          {achievedPct == null ? '—' : `${achievedPct}%`}
+        </strong>
       </div>
       <p className="wf-kpi-note">
-        Average PO approval cycle — separate from TNA-stage production delays.
+        {longest
+          ? `Longest wait for an EasyCom PO: ${longest.po.request_id} at ${longest.days} day${longest.days === 1 ? '' : 's'} since approval — the critical path cannot start until it is created there.`
+          : 'Two separate things: the approval cycle above, and — once a PO reaches EasyCom — whether its critical path was met.'}
+        {delivered.length ? ` Critical path measured on ${delivered.length} delivered PO${delivered.length === 1 ? '' : 's'}.` : ''}
       </p>
     </div>
   );
@@ -1016,6 +1068,8 @@ function PoRow({
   const [benchmark, setBenchmark] = useState(false);
   const canIssue = canEdit(role, 'draft');
   const issued = Boolean(po.po_issued_at);
+  // Spec 7.4 — days this PO has been approved with no EasyCom PO behind it.
+  const awaitingDays = awaitingEasycomDays(po);
 
   // §7 issuance gate: a PO whose CMTP is above the product's standard can only be
   // issued once the above-standard cost is confirmed with a remark (logged as an
@@ -1179,6 +1233,15 @@ function PoRow({
           {po.easycom_po_no && (
             <small className="wf-subtle">EasyCom {po.easycom_po_no}</small>
           )}
+          {/* Spec 7.4 — approved here, but no PO in EasyCom yet, so nothing has begun. */}
+          {awaitingDays != null && (
+            <small
+              className="wf-over-tag"
+              title={`Approved ${po.approved_at ? new Date(po.approved_at).toLocaleDateString('en-IN') : ''} but never created in EasyCom. The critical path cannot start until it is.`}
+            >
+              No EasyCom PO · {awaitingDays}d
+            </small>
+          )}
           {/* A deletion is a separate approval — say so here, so nobody acts on a request
               that is about to go away. */}
           {deleteRequest &&
@@ -1196,19 +1259,21 @@ function PoRow({
             </small>
           )}
         </td>
+        {/* Spec 7.3 — the three date logs, in the order they happen. The EasyCom PO date is
+            the one the critical path counts from, so it is named even when it is missing. */}
         <td className="wf-subtle">
-          {po.requested_total_days != null ? (
-            <span title="Requested at submission — locked">{po.requested_total_days}d requested</span>
-          ) : cycle?.total_cycle_days != null ? (
-            `${cycle.total_cycle_days} total`
-          ) : cycle?.days_to_approve != null ? (
-            `${cycle.days_to_approve} to approve`
-          ) : (
-            '—'
-          )}
-          {cycle?.days_to_sign != null && (
-            <small className="wf-subtle">{cycle.days_to_sign}d to sign</small>
-          )}
+          <span title="PO approval request raised">Req {dayLabel(dateOnly(po.submitted_for_approval_at))}</span>
+          <small className="wf-subtle" title="Approved internally">
+            Appr {dayLabel(dateOnly(po.approved_at))}
+            {cycle?.days_to_approve != null ? ` · ${cycle.days_to_approve}d` : ''}
+          </small>
+          <small
+            className={po.po_issued_at ? 'wf-subtle' : 'wf-over-tag'}
+            title="PO actually created in EasyCom — day 0 of the critical path"
+          >
+            EasyCom {po.po_issued_at ? dayLabel(dateOnly(po.po_issued_at)) : 'not yet'}
+            {cycle?.days_to_issue != null ? ` · ${cycle.days_to_issue}d` : ''}
+          </small>
         </td>
         <td className="wf-po-action">
           {error && <small className="wf-subtle wf-error-text">{error}</small>}

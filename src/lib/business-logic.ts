@@ -53,6 +53,121 @@ export function istToday(now = new Date()): Date {
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
 }
 
+/* ---- PO critical path: days in, dates out (spec 7.3) --------------- */
+
+/**
+ * The critical path is entered as DAYS, never as dates: "5 days for cutting" is a fact
+ * about the work, while "6 September" is only true if the PO issued on the 4th. The days
+ * are fixed at first submission; every date derives from them.
+ *
+ * Day 0 is the date the PO was created in EasyCom. Nothing physical can start before
+ * that — no fabric moves on the strength of an internal approval — so a PO approved on
+ * the 3rd and issued on the 4th has a critical path based on the 4th, and a PO that
+ * issues ten days late simply moves ten days with it.
+ */
+export type TnaDays = {
+  ppSample: number | null;
+  gpt: number | null;
+  cutting: number | null;
+  inlineQc: number | null;
+  firstDelivery: number | null;
+  poClosing: number | null;
+};
+
+export type TnaDates = {
+  ppSample: string | null;
+  gpt: string | null;
+  cutting: string | null;
+  inlineQc: string | null;
+  firstDelivery: string | null;
+  poClosing: string | null;
+};
+
+/** Where the critical path is counting from, and whether that is real or provisional. */
+export type TnaBase = {
+  /** YYYY-MM-DD, or null when there is nothing to count from yet. */
+  date: string | null;
+  /**
+   * `issued`    — the EasyCom PO issue date: the real thing.
+   * `projected` — nothing issued yet, so the schedule is shown as if it issued today.
+   *               It moves with the calendar until the PO is actually created.
+   */
+  source: 'issued' | 'projected';
+};
+
+const isoOf = (d: Date) => d.toISOString().slice(0, 10);
+
+/** `base` + `n` days, as a plain date. Null days stay null — an unset stage has no date. */
+export function addTnaDays(base: string | null | undefined, days: number | null | undefined): string | null {
+  const start = parseIsoDate(base ?? null);
+  if (!start || days == null || !Number.isFinite(days)) return null;
+  return isoOf(new Date(start.getTime() + Math.round(days) * dayMs));
+}
+
+/**
+ * What the critical path counts from: the EasyCom PO issue date once the PO exists there,
+ * otherwise today — "if it issued now, this is the plan". Deliberately NOT the approval or
+ * submission date: an approval with no EasyCom PO behind it starts nothing.
+ */
+export function tnaBaseFor(
+  po: { po_issued_at?: string | null },
+  today = istToday(),
+): TnaBase {
+  const issued = parseIsoDate(po.po_issued_at ?? null);
+  return issued
+    ? { date: isoOf(issued), source: 'issued' }
+    : { date: isoOf(today), source: 'projected' };
+}
+
+/** Every stage date for a base date and a set of day offsets. */
+export function tnaScheduleFrom(base: string | null | undefined, days: TnaDays): TnaDates {
+  return {
+    ppSample: addTnaDays(base, days.ppSample),
+    gpt: addTnaDays(base, days.gpt),
+    cutting: addTnaDays(base, days.cutting),
+    inlineQc: addTnaDays(base, days.inlineQc),
+    firstDelivery: addTnaDays(base, days.firstDelivery),
+    poClosing: addTnaDays(base, days.poClosing),
+  };
+}
+
+/**
+ * Turn stage DATES back into days against a base — used when an approver adjusts a date
+ * on the confirmation screen. Storing their edit as days is what lets the whole path move
+ * with the PO if it issues later, instead of silently keeping a date they only chose
+ * because of the issue date they assumed at the time.
+ */
+export function tnaDaysFromDates(base: string | null | undefined, dates: TnaDates): TnaDays {
+  const start = parseIsoDate(base ?? null);
+  const diff = (iso: string | null) => {
+    const d = parseIsoDate(iso);
+    return start && d ? daysBetween(d, start) : null;
+  };
+  return {
+    ppSample: diff(dates.ppSample),
+    gpt: diff(dates.gpt),
+    cutting: diff(dates.cutting),
+    inlineQc: diff(dates.inlineQc),
+    firstDelivery: diff(dates.firstDelivery),
+    poClosing: diff(dates.poClosing),
+  };
+}
+
+/**
+ * Spec 7.4 — approved here, but never created in EasyCom. Until it exists there the PO is
+ * an internal decision and nothing downstream has begun, so the wait is worth counting on
+ * its own: it is the one stretch of the cycle with no external cause.
+ */
+export function awaitingEasycomDays(
+  po: { status?: string | null; approved_at?: string | null; po_issued_at?: string | null },
+  today = istToday(),
+): number | null {
+  if (po.status !== 'approved' || po.po_issued_at) return null;
+  const approved = parseIsoDate(po.approved_at ?? null);
+  if (!approved) return null;
+  return Math.max(0, daysBetween(today, approved));
+}
+
 /* ---- PO Closure SLA (spec §5) ------------------------------------- */
 // Merchandiser leg ≤ 7d, finance leg ≤ 7d, total (completion → close) hard-capped
 // at 15d. RAG is real-time so a still-open PO already past 15d reads red.

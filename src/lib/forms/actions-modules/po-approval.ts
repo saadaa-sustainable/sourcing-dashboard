@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
-import { computeClosureCompliance, istToday } from '@/lib/business-logic';
+import { computeClosureCompliance, istToday, tnaBaseFor, tnaScheduleFrom, type TnaDays } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { loadPoSubmissionChecks } from '../queries';
 import type { PoSubmissionChecks } from '../queries-modules/po-checks';
@@ -42,6 +42,51 @@ import {
 
 const PO_TYPES: PoType[] = ['FOB', 'job_work', 'efob'];
 const PO_CATEGORIES: PoCategory[] = ['fg', 'mat', 'npd'];
+
+/** A whole number of days, or null. Negative offsets are nonsense on a critical path. */
+const daysOrNull = (v: FormDataEntryValue | null) => {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+};
+
+/** The six critical-path stages as day offsets (spec 7.3 — days are entered, dates derive). */
+function readTnaDays(formData: FormData): TnaDays {
+  return {
+    ppSample: daysOrNull(formData.get('tna_days_pp_sample')),
+    gpt: daysOrNull(formData.get('tna_days_gpt')),
+    cutting: daysOrNull(formData.get('tna_days_cutting')),
+    inlineQc: daysOrNull(formData.get('tna_days_inline_qc')),
+    firstDelivery: daysOrNull(formData.get('tna_days_first_delivery')),
+    poClosing: daysOrNull(formData.get('tna_days_po_closing')),
+  };
+}
+
+/**
+ * The stage columns for a set of days and a base date. Days are what the team enters and
+ * what is kept; these date columns are the derived view of them, written so the Gantt,
+ * the High-Risk flag and the TNA analytics keep reading plain dates as they always have.
+ */
+function tnaColumns(base: string | null, days: TnaDays) {
+  const d = tnaScheduleFrom(base, days);
+  return {
+    tna_days_pp_sample: days.ppSample,
+    tna_days_gpt: days.gpt,
+    tna_days_cutting: days.cutting,
+    tna_days_inline_qc: days.inlineQc,
+    tna_days_first_delivery: days.firstDelivery,
+    tna_days_po_closing: days.poClosing,
+    tna_base_date: base,
+    cs_pp_sample_due: d.ppSample,
+    cs_gpt_due: d.gpt,
+    cs_cutting_start: d.cutting,
+    cs_inline_qc_due: d.inlineQc,
+    critical_path_first_delivery: d.firstDelivery,
+    po_closing_date: d.poClosing,
+  };
+}
+
 function readPoFields(formData: FormData) {
   const rawType = String(formData.get('po_type') ?? '');
   const rawCat = String(formData.get('category') ?? 'fg').toLowerCase();
@@ -63,13 +108,7 @@ function readPoFields(formData: FormData) {
     margin_pct: numOrNull(formData.get('margin_pct')),
     // po_qty is NOT taken from the form — it is derived from the size lines
     // (savePoLines keeps sd_po_approval.po_qty = sum of line qty).
-    po_closing_date: dateOrNull(formData.get('po_closing_date')),
     cad_folder_url: textOrNull(formData.get('cad_folder_url')),
-    cs_pp_sample_due: dateOrNull(formData.get('cs_pp_sample_due')),
-    cs_gpt_due: dateOrNull(formData.get('cs_gpt_due')),
-    cs_cutting_start: dateOrNull(formData.get('cs_cutting_start')),
-    cs_inline_qc_due: dateOrNull(formData.get('cs_inline_qc_due')),
-    critical_path_first_delivery: dateOrNull(formData.get('critical_path_first_delivery')),
     buying_plan_no: textOrNull(formData.get('buying_plan_no')),
     // Spec item 6: optional reason when the PO is outside the buying plan (ad-hoc).
     ad_hoc_reason: textOrNull(formData.get('ad_hoc_reason')),
@@ -103,7 +142,20 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     );
   }
 
-  const fields = readPoFields(formData);
+  // Spec 7.3: the team enters day counts once; the stage dates are computed from them
+  // against the EasyCom issue date — or, until the PO exists in EasyCom, against today,
+  // which is what "if it issued now" means. Issuance rebases them (see rebasePoTna).
+  const days = readTnaDays(formData);
+  let base = istToday().toISOString().slice(0, 10);
+  if (id) {
+    const { data: cur } = await supabase
+      .from('sd_po_approval')
+      .select('po_issued_at')
+      .eq('id', id)
+      .maybeSingle();
+    base = tnaBaseFor({ po_issued_at: cur?.po_issued_at as string | null }).date ?? base;
+  }
+  const fields = { ...readPoFields(formData), ...tnaColumns(base, days) };
 
   // Month-end freeze (spec item 5): a PO cannot be linked to a plan month that has already
   // closed — it belongs to the current month's plan. (Legacy free-text references are left alone.)
@@ -492,7 +544,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, product_code, po_type, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at, buying_plan_no')
+    .select('id, status, product_code, po_type, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at, buying_plan_no, tna_days_pp_sample, tna_days_gpt, tna_days_cutting, tna_days_inline_qc, tna_days_first_delivery, tna_days_po_closing')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -614,6 +666,24 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     trim_card_signed: formData.get('trim_card_signed') === 'true',
   };
   if (easycom) patch.easycom_po_no = easycom;
+  // Spec 7.3 — the moment the PO exists in EasyCom, the critical path is recomputed from
+  // that date. Nothing is re-typed: the day counts entered at submission are the plan, and
+  // a PO issued ten days late simply carries every stage ten days with it.
+  if (!alreadyIssued) {
+    const issueDate = istToday().toISOString().slice(0, 10);
+    Object.assign(
+      patch,
+      tnaColumns(issueDate, {
+        ppSample: po.tna_days_pp_sample as number | null,
+        gpt: po.tna_days_gpt as number | null,
+        cutting: po.tna_days_cutting as number | null,
+        inlineQc: po.tna_days_inline_qc as number | null,
+        firstDelivery: po.tna_days_first_delivery as number | null,
+        poClosing: po.tna_days_po_closing as number | null,
+      }),
+      { tna_rebased_at: new Date().toISOString() },
+    );
+  }
   // The EasyEcom reference, if the issuer has it — recorded against the request id so the
   // two can be matched later. Optional: the PO number is what actually links them.
   const eeRef = textOrNull(formData.get('po_ref_num'));

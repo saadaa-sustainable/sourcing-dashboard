@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
-import { computeClosureCompliance } from '@/lib/business-logic';
+import { computeClosureCompliance, tnaBaseFor, tnaDaysFromDates } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
@@ -77,7 +77,7 @@ export async function confirmTna(formData: FormData): Promise<ActionResult> {
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, po_ref_num, vendor_code')
+    .select('id, status, po_ref_num, vendor_code, po_issued_at')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
@@ -87,16 +87,38 @@ export async function confirmTna(formData: FormData): Promise<ActionResult> {
     return fail('Only this PO’s approver can confirm its TNA dates.');
   }
 
+  // Spec 7.3 — the approver still adjusts DATES here, because that is how a critical path
+  // reads. Each edit is converted back into days against the PO's own base, so the day
+  // counts stay the stored plan: if EasyCom issuance then slips, the approver's adjustment
+  // slips with it instead of being a date nobody can hit any more.
+  const base = tnaBaseFor({ po_issued_at: po.po_issued_at as string | null }).date;
+  const dates = {
+    ppSample: dateOrNull(formData.get('cs_pp_sample_due')),
+    gpt: dateOrNull(formData.get('cs_gpt_due')),
+    cutting: dateOrNull(formData.get('cs_cutting_start')),
+    inlineQc: dateOrNull(formData.get('cs_inline_qc_due')),
+    firstDelivery: dateOrNull(formData.get('critical_path_first_delivery')),
+    poClosing: dateOrNull(formData.get('po_closing_date')),
+  };
+  const days = tnaDaysFromDates(base, dates);
+
   const now = new Date().toISOString();
   const { data: updated, error } = await supabase
     .from('sd_po_approval')
     .update({
-      po_closing_date: dateOrNull(formData.get('po_closing_date')),
-      cs_pp_sample_due: dateOrNull(formData.get('cs_pp_sample_due')),
-      cs_gpt_due: dateOrNull(formData.get('cs_gpt_due')),
-      cs_cutting_start: dateOrNull(formData.get('cs_cutting_start')),
-      cs_inline_qc_due: dateOrNull(formData.get('cs_inline_qc_due')),
-      critical_path_first_delivery: dateOrNull(formData.get('critical_path_first_delivery')),
+      po_closing_date: dates.poClosing,
+      cs_pp_sample_due: dates.ppSample,
+      cs_gpt_due: dates.gpt,
+      cs_cutting_start: dates.cutting,
+      cs_inline_qc_due: dates.inlineQc,
+      critical_path_first_delivery: dates.firstDelivery,
+      tna_base_date: base,
+      tna_days_pp_sample: days.ppSample,
+      tna_days_gpt: days.gpt,
+      tna_days_cutting: days.cutting,
+      tna_days_inline_qc: days.inlineQc,
+      tna_days_first_delivery: days.firstDelivery,
+      tna_days_po_closing: days.poClosing,
       tna_confirmed: true,
       tna_confirmed_by: user.email,
       tna_confirmed_at: now,
@@ -121,7 +143,7 @@ export async function confirmTna(formData: FormData): Promise<ActionResult> {
   await recordCommitment(
     po.po_ref_num as string | null,
     po.vendor_code as string | null,
-    dateOrNull(formData.get('critical_path_first_delivery')),
+    dates.firstDelivery,
     user.email,
   );
   revalidatePath('/po-approval');
@@ -131,4 +153,4 @@ export async function confirmTna(formData: FormData): Promise<ActionResult> {
 /* ================================================================== */
 /* Product master — status + woven/knitted, read by the Buying Plan    */
 /* ================================================================== */
-
+

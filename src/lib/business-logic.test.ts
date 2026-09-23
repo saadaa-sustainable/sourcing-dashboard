@@ -4,6 +4,11 @@ import { ageingBucket, buildTnaEvents, buildTrackerRows, buildVendorRollups, com
   DEFAULT_CAPACITY_RULES,
   capacityRulesFrom,
   vendorCapacityModel,
+  addTnaDays,
+  awaitingEasycomDays,
+  tnaBaseFor,
+  tnaDaysFromDates,
+  tnaScheduleFrom,
 } from './business-logic';
 import { sheetDate } from './sheet-values';
 import type { PendingPo, TnaRecord } from './types';
@@ -274,5 +279,55 @@ describe('PO closure SLA compliance', () => {
     assert.equal(c.daysToFinance, 4);
     assert.equal(c.totalDays, 8);
     assert.equal(c.rag, 'green');
+  });
+});
+
+describe('PO critical path counts from the EasyCom issue date (spec 7.3)', () => {
+  // The worked example from the spec: requested 1 Sep, approved 3 Sep, EasyCom PO on the
+  // 4th. Cutting is entered as +2 days, inline as +4 — so they land on the 6th and 8th,
+  // counted from the 4th. Neither the request nor the approval date moves anything.
+  const days = { ppSample: 1, gpt: 1, cutting: 2, inlineQc: 4, firstDelivery: 20, poClosing: 25 };
+
+  it('bases every stage on the day the PO was created in EasyCom', () => {
+    const base = tnaBaseFor({ po_issued_at: '2026-09-04T09:00:00Z' });
+    assert.equal(base.date, '2026-09-04');
+    assert.equal(base.source, 'issued');
+    const d = tnaScheduleFrom(base.date, days);
+    assert.equal(d.cutting, '2026-09-06');
+    assert.equal(d.inlineQc, '2026-09-08');
+    assert.equal(d.firstDelivery, '2026-09-24');
+  });
+
+  it('moves the whole path with the PO when EasyCom issuance is ten days late', () => {
+    const late = tnaScheduleFrom(tnaBaseFor({ po_issued_at: '2026-09-14' }).date, days);
+    assert.equal(late.cutting, '2026-09-16'); // ten days later than the 6th — nothing re-typed
+    assert.equal(late.inlineQc, '2026-09-18');
+  });
+
+  it('projects from today while the PO has no EasyCom number yet', () => {
+    const base = tnaBaseFor({ po_issued_at: null }, new Date(Date.UTC(2026, 8, 3)));
+    assert.equal(base.date, '2026-09-03');
+    assert.equal(base.source, 'projected');
+  });
+
+  it('leaves a stage with no day count without a date', () => {
+    assert.equal(addTnaDays('2026-09-04', null), null);
+    assert.equal(addTnaDays(null, 5), null);
+  });
+
+  it('reads an approver’s edited date back as days, so a late PO still shifts it', () => {
+    const back = tnaDaysFromDates('2026-09-04', {
+      ppSample: '2026-09-05', gpt: '2026-09-05', cutting: '2026-09-09',
+      inlineQc: '2026-09-08', firstDelivery: '2026-09-24', poClosing: null,
+    });
+    assert.equal(back.cutting, 5); // pushed from +2 to +5 by hand
+    assert.equal(back.poClosing, null);
+  });
+
+  it('counts the wait for an EasyCom PO only while one is genuinely missing (7.4)', () => {
+    const today = new Date(Date.UTC(2026, 8, 23));
+    assert.equal(awaitingEasycomDays({ status: 'approved', approved_at: '2026-09-08', po_issued_at: null }, today), 15);
+    assert.equal(awaitingEasycomDays({ status: 'approved', approved_at: '2026-09-08', po_issued_at: '2026-09-09' }, today), null);
+    assert.equal(awaitingEasycomDays({ status: 'submitted', approved_at: null, po_issued_at: null }, today), null);
   });
 });

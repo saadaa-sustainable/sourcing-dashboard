@@ -1330,6 +1330,19 @@ export type PoApproval = {
   approved_by: string | null;
   approved_at: string | null;
   rejection_notes: string | null;
+  // Spec 7.3 — the critical path as DAYS from the EasyCom PO issue date. These are the
+  // stored plan; the cs_* dates above are derived from them and rewritten when the PO is
+  // actually created in EasyCom, so a late issuance moves the whole path with it.
+  tna_days_pp_sample?: number | null;
+  tna_days_gpt?: number | null;
+  tna_days_cutting?: number | null;
+  tna_days_inline_qc?: number | null;
+  tna_days_first_delivery?: number | null;
+  tna_days_po_closing?: number | null;
+  /** What the stored stage dates were last computed from. */
+  tna_base_date?: string | null;
+  /** When the path was last rebased onto a real EasyCom issue date. */
+  tna_rebased_at?: string | null;
   // TNA gate — approver-confirmed critical-path dates; cost approval is blocked until true
   tna_confirmed: boolean;
   tna_confirmed_by: string | null;

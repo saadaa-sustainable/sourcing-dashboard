@@ -434,6 +434,7 @@ const PAGE: Record<string, Record<string, string>> = {
     'qty': 'Pieces on the PO across all colours and sizes.',
     'pending': 'Pieces on the issued PO not yet received.',
     // The deleted-requests log (admin only).
+    'date log': 'The three dates a PO passes through: Req — the approval request was raised. Appr — it was approved internally. EasyCom — the PO was actually created in EasyCom. The last one is day 0 of the critical path: nothing can start before the PO exists there, so every TNA date is counted from it. "EasyCom not yet" on an approved PO means the order has not reached the vendor at all.',
     'deleted requests': 'Requests pulled back by whoever raised them (or by an admin) before approval. Nothing is erased — the row is kept here with the reason, so a request that left the queue can always be accounted for. An approved PO cannot be deleted.',
     'request': 'The Request ID it was raised under (PR-YYMM-0001). That id is now retired — a re-raise gets a new one.',
     'was': 'The status it was in at the moment it was deleted. Never Approved: an approved PO is a commitment and has to be closed, not deleted.',
