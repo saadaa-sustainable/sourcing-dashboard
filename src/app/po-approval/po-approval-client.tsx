@@ -248,6 +248,24 @@ export function PoApprovalClient({
     setMessage(null);
   }
 
+  // Deleting the request being edited — the only place a request can be deleted from.
+  const [deleting, setDeleting] = useState(false);
+  function confirmDelete(reason: string) {
+    if (!editing) return;
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(editing.id));
+    p.set('delete_reason', reason);
+    start(async () => {
+      const res = await deletePoApproval(p);
+      if (res.ok) reloadWithToast(res.message ?? 'Request deleted.');
+      else {
+        setDeleting(false);
+        setError(toastError(res.error));
+      }
+    });
+  }
+
   // Spec 7.1: submit = save the draft, show the three validations as a pop-up, confirm
   // with a remark, then route it for approval.
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
@@ -331,6 +349,16 @@ export function PoApprovalClient({
       {checks && (
         <SubmitChecksModal checks={checks.checks} pending={pending} onConfirm={confirmSubmit} onCancel={() => setChecks(null)} />
       )}
+      {deleting && editing && (
+        <DeleteRequestModal
+          requestId={editing.request_id}
+          productCode={editing.product_code}
+          statusLabel={STATUS_LABEL[editing.status]}
+          pending={pending}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleting(false)}
+        />
+      )}
 
       <ReportingScreen pos={pos} />
 
@@ -339,15 +367,35 @@ export function PoApprovalClient({
       {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
-            <h3>
-              {editing ? `Edit ${editing.request_id}` : 'Raise a PO for approval'}
-              <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is submitted — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
-            </h3>
-            {editing && (
-              <p className="wf-subtle">
-                Editing a saved request{editing.status === 'rework' ? ' sent back for rework' : ''} — saving updates it
-                rather than raising another. Its SKU quantities stay as they are.
-              </p>
+            <div>
+              <h3>
+                {editing ? `Edit ${editing.request_id}` : 'Raise a PO for approval'}
+                <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is submitted — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
+              </h3>
+              {editing && (
+                <p className="wf-subtle">
+                  Editing a saved request{editing.status === 'rework' ? ' sent back for rework' : ''} — saving updates it
+                  rather than raising another. Its SKU quantities stay as they are.
+                </p>
+              )}
+            </div>
+            {/* Delete lives here and nowhere else: you open the request to edit it, and the one
+                destructive action sits in the corner of that box — never next to Submit in a row. */}
+            {editing && canDeletePo(role, editing.status, editing.created_by, userEmail) && (
+              <button
+                type="button"
+                className="wf-icon-btn wf-icon-danger"
+                onClick={() => setDeleting(true)}
+                disabled={pending}
+                aria-label={`Delete ${editing.request_id}`}
+                title={
+                  editing.status === 'submitted' || editing.status === 'pending_l2'
+                    ? `Delete ${editing.request_id} — pulls it back out of the approval queue; a reason is required`
+                    : `Delete ${editing.request_id} — a reason is required`
+                }
+              >
+                <Trash2 size={16} />
+              </button>
             )}
           </div>
           <FormSection
@@ -736,7 +784,6 @@ export function PoApprovalClient({
                       : undefined
                   }
                   role={role}
-                  userEmail={userEmail}
                   stdCm={stdCm}
                   onEdit={startEdit}
                   editingId={editing?.id ?? null}
@@ -891,7 +938,6 @@ function PoRow({
   liveLoad,
   lines,
   role,
-  userEmail = null,
   stdCm = {},
   onEdit,
   editingId = null,
@@ -901,7 +947,6 @@ function PoRow({
   liveLoad?: number;
   lines: PoApprovalLine[];
   role: SdRole;
-  userEmail?: string | null;
   stdCm?: Record<string, number>;
   /** Load this request back into the form above — draft / rework only. */
   onEdit?: (po: PoApproval) => void;
@@ -988,23 +1033,7 @@ function PoRow({
   // Spec 7.1: the pop-up with the three validations before the row is submitted.
   const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
 
-  // A request can be pulled back by whoever raised it (or an admin) until it is approved.
-  const canDelete = canDeletePo(role, po.status, po.created_by, userEmail);
-  const [deleting, setDeleting] = useState(false);
-  function confirmDelete(reason: string) {
-    setError(null);
-    const p = new FormData();
-    p.set('id', String(po.id));
-    p.set('delete_reason', reason);
-    start(async () => {
-      const res = await deletePoApproval(p);
-      if (res.ok) reloadWithToast(res.message ?? 'Request deleted.');
-      else {
-        setDeleting(false);
-        setError(toastError(res.error));
-      }
-    });
-  }
+  // Deleting happens in the edit box above (its top-right corner), never from this row.
 
   function submit() {
     setError(null);
@@ -1055,16 +1084,6 @@ function PoRow({
     <>
       {rowChecks && (
         <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
-      )}
-      {deleting && (
-        <DeleteRequestModal
-          requestId={po.request_id}
-          productCode={po.product_code}
-          statusLabel={STATUS_LABEL[po.status]}
-          pending={pending}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleting(false)}
-        />
       )}
       <tr className={signing || tnaOpen ? 'wf-row-open' : ''}>
         <td className="mono">
@@ -1200,21 +1219,6 @@ function PoRow({
             </button>
             {po.status === 'approved' && !canIssue && issued && (
               <span className="wf-subtle">Issued</span>
-            )}
-            {canDelete && (
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost wf-btn-sm wf-btn-danger-ghost"
-                onClick={() => setDeleting(true)}
-                disabled={pending}
-                title={
-                  po.status === 'submitted' || po.status === 'pending_l2'
-                    ? 'Pull this request back out of the approval queue — a reason is required'
-                    : 'Delete this request — a reason is required'
-                }
-              >
-                <Trash2 size={14} /> Delete
-              </button>
             )}
           </div>
         </td>

@@ -2011,9 +2011,11 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* Wide enough that Edit and Submit sit side by side instead of stacking one per line. */
 .wf-po-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 178px; }
 .wf-po-actions .wf-btn { white-space: nowrap; }
-/* Delete sits beside Submit: readable as destructive, never louder than the primary action. */
-.wf-btn-danger-ghost { color: #b3261e; }
-.wf-btn-danger-ghost:hover { color: #fff; background: #b3261e; border-color: #8f1d17; }
+/* The one destructive control: the delete icon in the corner of the edit box. Quiet until
+   you reach for it — it is next to nothing else, so it never has to shout. */
+.wf-icon-danger { color: #b3261e; }
+.wf-icon-danger:hover:not(:disabled) { color: #fff; background: #b3261e; border-color: #8f1d17; }
+.wf-icon-danger:disabled { opacity: .45; }
 
 /* A long workflow form reads as labelled sections rather than one wall of fields, and each
    section folds away so only the part being filled is on screen. */
