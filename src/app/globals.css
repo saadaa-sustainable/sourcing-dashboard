@@ -501,6 +501,22 @@ tbody tr:hover { background: rgba(240,198,30,.08); }
 td small { display: block; margin-top: 4px; color: var(--ink-4); font-size: 11px; }
 .wide-table table { min-width: 1320px; }
 
+/* Spec 1.12 — the seven-item update strip. Small cards, one line of meaning each; they
+   wrap rather than scroll, so on a narrow screen the row becomes two. */
+.update-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; margin: 0 0 17px; }
+.update-card {
+  display: flex; flex-direction: column; gap: 2px; padding: 11px 13px;
+  background: #fff; border: 1px solid var(--line); border-radius: 11px;
+  text-decoration: none; color: inherit; transition: border-color .16s ease, box-shadow .16s ease;
+}
+.update-card:hover { border-color: var(--color-ecru-400, #f0c61e); box-shadow: 0 2px 10px rgba(44,36,32,.07); }
+.update-label { color: var(--ink-4); font-size: 10.5px; font-weight: 640; letter-spacing: .04em; text-transform: uppercase; }
+.update-value { font-size: 19px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.update-note { color: var(--ink-4); font-size: 11px; line-height: 1.35; }
+.update-card.tone-orange .update-value { color: #b06a12; }
+.update-card.tone-red .update-value { color: #b3261e; }
+.update-card.tone-teal .update-value { color: #1f7a63; }
+
 /* Vendor Performance carries fourteen columns, and every header in the app is nowrap by
    default — "Active karigar" alone claims ~145px, so the row ran well past the screen and
    had to be scrolled sideways to reach Utilization. Headers wrap onto two lines here, the

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
 import { HeaderInfo } from '@/components/header-info';
 import { useRouter } from "next/navigation";
 import {
@@ -355,6 +356,96 @@ function VScrollChart({
       <div style={{ width: "100%", height: Math.max(count * per, min) }}>
         <ResponsiveContainer>{children}</ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Spec 1.12 — the seven-item update strip: what moved, in one line each.
+ *
+ * Small on purpose. Each card answers "is this moving, and which way", and links to the
+ * page that has the detail; none of them tries to be the analysis. Where a process does not
+ * exist in the dashboard yet the card says what it IS showing rather than printing a zero,
+ * which would read as "all clear".
+ */
+function UpdateStrip({ extras }: { extras?: AnalyticsExtras | null }) {
+  const s = extras?.updateStrip;
+  if (!s) return null;
+  const arrow = (now: number, prev: number) => (now === prev ? "·" : now > prev ? "▲" : "▼");
+  const cards: { key: string; label: string; value: string; note: string; tone?: string; href: string }[] = [
+    {
+      key: "po-rfq",
+      label: "PO RFQ",
+      value: fmt.format(s.poRfq.open),
+      note: s.poRfq.open
+        ? `${fmt.format(s.poRfq.proposed)} quoted · ${fmt.format(s.poRfq.rateSubmitted)} awaiting sign-off`
+        : "no cost negotiation open",
+      tone: s.poRfq.open ? "orange" : undefined,
+      href: "/standard-cost",
+    },
+    {
+      key: "issued",
+      label: "Issued PO progress",
+      value: `${fmt.format(s.issued.thisWeek)} ${arrow(s.issued.thisWeek, s.issued.priorWeek)}`,
+      note: `${fmt.format(s.issued.priorWeek)} last week · ${fmt.format(s.issued.upcoming)} in approval`,
+      tone: s.issued.thisWeek < s.issued.priorWeek ? "orange" : "teal",
+      href: "/po-approval",
+    },
+    {
+      key: "fabric",
+      label: "Fabric reorder + RFQ",
+      value: fmt.format(s.fabric.rfqOpen),
+      note: s.fabric.noCost
+        ? `material RFQs open · ${fmt.format(s.fabric.noCost)} of ${fmt.format(s.fabric.fabrics)} fabrics have no cost`
+        : "material RFQs open · every fabric costed",
+      tone: s.fabric.noCost ? "orange" : undefined,
+      href: "/fabric-cost",
+    },
+    {
+      key: "os",
+      label: "OS update",
+      value: s.os.ratePct == null ? "—" : `${s.os.ratePct}%`,
+      note: `${fmt.format(s.os.oosSkus)} of ${fmt.format(s.os.skus)} SKUs with no stock`,
+      tone: s.os.ratePct != null && s.os.ratePct > 10 ? "red" : "teal",
+      href: "/doq-dashboard",
+    },
+    {
+      key: "inward",
+      label: "Inward plan",
+      value: s.inward.pct == null ? "—" : `${s.inward.pct}%`,
+      note:
+        s.inward.planned > 0
+          ? `${fmt.format(s.inward.actual)} received of ${fmt.format(s.inward.planned)} planned`
+          : `nothing planned · ${fmt.format(s.inward.actual)} received`,
+      tone: s.inward.planned > 0 ? undefined : "orange",
+      href: "/receivable-plan",
+    },
+    {
+      key: "mom",
+      label: "MOM update",
+      value: `${fmt.format(s.mom.qty)} ${arrow(s.mom.qty, s.mom.priorQty)}`,
+      note: `pcs this month vs ${fmt.format(s.mom.priorQty)} last · ${money.format(s.mom.value)}`,
+      tone: s.mom.qty < s.mom.priorQty ? "orange" : "teal",
+      href: "/buying-plan",
+    },
+    {
+      key: "vendors",
+      label: "Vendor status",
+      value: fmt.format(s.vendors.active),
+      note: `${fmt.format(s.vendors.newRecently)} new${s.vendors.newCodes.length ? ` (${s.vendors.newCodes.slice(0, 3).join(", ")})` : ""} · ${fmt.format(s.vendors.flagged)} flagged`,
+      tone: s.vendors.flagged ? "orange" : undefined,
+      href: "/vendor-master",
+    },
+  ];
+  return (
+    <div className="update-strip" aria-label="This week's updates">
+      {cards.map((c) => (
+        <Link key={c.key} href={c.href} className={`update-card${c.tone ? ` tone-${c.tone}` : ""}`}>
+          <span className="update-label">{c.label}</span>
+          <strong className="update-value">{c.value}</strong>
+          <small className="update-note">{c.note}</small>
+        </Link>
+      ))}
     </div>
   );
 }
@@ -1179,6 +1270,7 @@ function DashboardTab({
               onClick={() => router.push("/issues")}
             />
           </div>
+          <UpdateStrip extras={extras} />
           <ObjectiveStockCards extras={extras} onTab={onTab} />
           <ObjectiveSynopsisCards
             extras={extras}
