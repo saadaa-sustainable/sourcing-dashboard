@@ -25,6 +25,7 @@ import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
 import { PoDetailPanel } from './po-detail-panel';
+import { VendorHistoryButton } from './vendor-history-modal';
 import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
@@ -590,6 +591,14 @@ export function PoApprovalClient({
                   <DeboardedPill flag={deboardedPick} /> This vendor’s de-boarding was approved.
                   Raise a PO to them only if it is a deliberately agreed last order.
                 </Notice>
+              )}
+              {/* Spec 7.8 — what this vendor has actually taken, PO by PO, before you commit. */}
+              {form.vendor_code.trim() && (
+                <VendorHistoryButton
+                  vendorCode={form.vendor_code}
+                  productCode={form.product_code.trim().toUpperCase() || null}
+                  label="See their PO history"
+                />
               )}
             </Field>
             <Field label="Vendor name" hint="auto-fills from the code (or pick to back-fill the code)">

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, X } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
+import { VendorHistoryButton } from './vendor-history-modal';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 
 const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -168,6 +169,14 @@ export function SubmitChecksModal({
               </tr>
             </tbody>
           </table>
+          {/* Spec 7.8 — the POs behind those two numbers, if you want to see them. */}
+          {c.vendorCode && (
+            <VendorHistoryButton
+              vendorCode={c.vendorCode}
+              productCode={c.productCode}
+              label="Open this vendor’s PO history"
+            />
+          )}
           <div className="pc-path">
             {c.tna.stages.map((s) => (
               <span key={s.label} className={`pc-stage${s.date ? '' : ' is-empty'}`}>

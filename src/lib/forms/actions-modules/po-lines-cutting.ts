@@ -1,8 +1,9 @@
 'use server';
 
 import { randomBytes } from 'crypto';
-import { loadPoLineContext, loadPoPlanSuggestion } from '../queries';
+import { loadPoLineContext, loadPoPlanSuggestion, loadVendorPoHistory } from '../queries';
 import type { PoLineContext, PoPlanSuggestion } from '../queries-modules/po-lines-context';
+import type { VendorPoHistory } from '../queries-modules/vendor';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
@@ -47,6 +48,23 @@ export async function getPoLineContext(productCode: string): Promise<PoLineConte
   if (!user) return null;
   try {
     return await loadPoLineContext(productCode);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Spec 7.8 — this vendor's completed POs: how long each one took, by PO number, with the
+ * last PO of the same product and the average across all of them. Read-only.
+ */
+export async function getVendorPoHistory(
+  vendorCode: string,
+  productCode?: string | null,
+): Promise<VendorPoHistory | null> {
+  const user = await currentUser();
+  if (!user) return null;
+  try {
+    return await loadVendorPoHistory(vendorCode, productCode);
   } catch {
     return null;
   }

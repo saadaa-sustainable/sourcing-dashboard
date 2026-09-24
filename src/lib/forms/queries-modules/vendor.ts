@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, pageAll, PAGE_SIZE } from './_shared';
 import { buildVendorRollups, buildTrackerRows, capacityRulesFrom } from '@/lib/business-logic';
 import { loadAnalyticsRules } from './analytics';
 import { loadDashboardData } from '@/lib/data';
@@ -18,6 +18,152 @@ import type {
  * Google-Sheet enrichment. Read-only. (The Airbyte ingestion columns —
  * _airbyte_*, the pk id — are intentionally not selected.)
  */
+/* ------------------------------------------------------------------ */
+/* Spec 7.8 — one vendor's history, PO by PO                           */
+/* ------------------------------------------------------------------ */
+
+export type VendorPoHistoryRow = {
+  /** The EasyEcom reference, which is what people call a PO. */
+  poRef: string;
+  poNumber: string | null;
+  /** The product codes on that PO — usually one. */
+  products: string[];
+  qty: number;
+  value: number;
+  /** Raised (earliest line date) and completed (latest update). */
+  start: string;
+  done: string;
+  /** Days the vendor actually took, start to completion. */
+  days: number;
+  /** What it was expected by, and how late it finished (negative = early). */
+  edd: string | null;
+  lateDays: number | null;
+};
+
+export type VendorPoHistory = {
+  vendorCode: string;
+  vendorName: string | null;
+  /** Completed POs, newest first. */
+  rows: VendorPoHistoryRow[];
+  /** Spec 7.8: the average is across ALL of this vendor's completed POs. */
+  averageDays: number | null;
+  totalPos: number;
+  /** Spec 7.8: "last PO" means this vendor's most recent one for THIS product. */
+  productCode: string | null;
+  lastSameProduct: VendorPoHistoryRow | null;
+  /** Their most recent PO of anything, for when there is no history of this product. */
+  lastAny: VendorPoHistoryRow | null;
+  /** Share of POs that finished on or before their expected delivery date. */
+  onTimePct: number | null;
+};
+
+/**
+ * What this vendor has actually done, PO by PO: how long each one took, by PO number.
+ *
+ * The two headline figures answer different questions and the spec is precise about which
+ * is which — the LAST PO is the one for the same product (the closest thing to "what will
+ * this one take"), while the AVERAGE is across everything they have made for us (what they
+ * take in general). Both come from completed POs only: an open PO has no duration yet.
+ */
+export async function loadVendorPoHistory(
+  vendorCodeRaw: string | null | undefined,
+  productCodeRaw?: string | null,
+): Promise<VendorPoHistory | null> {
+  const vendorCode = (vendorCodeRaw ?? '').trim();
+  if (!vendorCode) return null;
+  const productCode = (productCodeRaw ?? '').trim().toUpperCase();
+  const supabase = await client();
+
+  type Line = {
+    po_ref_num: string | null;
+    po_number: string | null;
+    product_code: string | null;
+    vendor_name: string | null;
+    original_qty: number | null;
+    total_po_value: number | null;
+    po_date: string | null;
+    po_updated_date: string | null;
+    expected_delivery_date: string | null;
+  };
+  // Every completed line for the vendor — a busy vendor runs well past 1,000 lines.
+  const lines = await pageAll<Line>(() =>
+    supabase
+      .from('sd_po_completed')
+      .select(
+        'po_ref_num, po_number, product_code, vendor_name, original_qty, total_po_value, po_date, po_updated_date, expected_delivery_date',
+      )
+      .ilike('vendor_code', vendorCode)
+      .not('po_date', 'is', null)
+      .not('po_updated_date', 'is', null)
+      .order('po_detail_id'),
+  );
+
+  // A PO is its lines: it starts on the earliest line date and is done on the latest update.
+  const byPo = new Map<string, VendorPoHistoryRow & { productSet: Set<string> }>();
+  let vendorName: string | null = null;
+  for (const l of lines) {
+    const ref = (l.po_ref_num ?? '').trim();
+    if (!ref || !l.po_date || !l.po_updated_date) continue;
+    vendorName ??= l.vendor_name;
+    const cur = byPo.get(ref);
+    if (!cur) {
+      byPo.set(ref, {
+        poRef: ref,
+        poNumber: (l.po_number ?? '').trim() || null,
+        products: [],
+        productSet: new Set(l.product_code ? [l.product_code.trim().toUpperCase()] : []),
+        qty: Number(l.original_qty) || 0,
+        value: Number(l.total_po_value) || 0,
+        start: l.po_date,
+        done: l.po_updated_date,
+        days: 0,
+        edd: l.expected_delivery_date,
+        lateDays: null,
+      });
+    } else {
+      if (l.product_code) cur.productSet.add(l.product_code.trim().toUpperCase());
+      cur.qty += Number(l.original_qty) || 0;
+      cur.value += Number(l.total_po_value) || 0;
+      if (l.po_date < cur.start) cur.start = l.po_date;
+      if (l.po_updated_date > cur.done) cur.done = l.po_updated_date;
+      // The PO is late against its LAST promised date.
+      if (l.expected_delivery_date && (!cur.edd || l.expected_delivery_date > cur.edd)) {
+        cur.edd = l.expected_delivery_date;
+      }
+    }
+  }
+
+  const days = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+  const rows: VendorPoHistoryRow[] = [...byPo.values()]
+    .map(({ productSet, ...r }) => ({
+      ...r,
+      products: [...productSet].sort(),
+      days: Math.max(0, days(r.start, r.done)),
+      lateDays: r.edd ? days(r.edd, r.done) : null,
+    }))
+    .sort((a, b) => b.done.localeCompare(a.done));
+
+  const averageDays = rows.length
+    ? Math.round((rows.reduce((s, r) => s + r.days, 0) / rows.length) * 10) / 10
+    : null;
+  const rated = rows.filter((r) => r.lateDays != null);
+  const onTimePct = rated.length
+    ? Math.round((rated.filter((r) => (r.lateDays as number) <= 0).length / rated.length) * 100)
+    : null;
+
+  return {
+    vendorCode: vendorCode.toUpperCase(),
+    vendorName,
+    rows,
+    averageDays,
+    totalPos: rows.length,
+    productCode: productCode || null,
+    lastSameProduct: productCode ? rows.find((r) => r.products.includes(productCode)) ?? null : null,
+    lastAny: rows[0] ?? null,
+    onTimePct,
+  };
+}
+
 export async function loadVendorMaster(): Promise<EeVendorMasterRow[]> {
   const supabase = await client();
   const { data, error } = await supabase

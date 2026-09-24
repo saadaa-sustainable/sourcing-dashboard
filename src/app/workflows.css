@@ -2020,6 +2020,9 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-btn-delete:hover:not(:disabled) { color: #fff; background: #b3261e; border-color: #8f1d17; }
 .wf-btn-delete:disabled { opacity: .45; }
 
+/* A small button sitting inline with a value in a read-only detail row. */
+.wf-inline-btn { margin-left: 8px; padding: 2px 7px; font-size: 11px; vertical-align: baseline; }
+
 /* Approval matrix (spec 7.5): one card per level, read left to right as the chain. */
 .wf-matrix-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; align-items: start; }
 .wf-matrix-card .panel-title p { margin: 4px 0 0; font-size: 11.5px; }

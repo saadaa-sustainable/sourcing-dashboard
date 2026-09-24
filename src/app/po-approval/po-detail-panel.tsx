@@ -1,6 +1,7 @@
 'use client';
 
 import { FileDown } from 'lucide-react';
+import { VendorHistoryButton } from './vendor-history-modal';
 import { addTnaDays, tnaBaseFor } from '@/lib/business-logic';
 import { STATUS_LABEL } from '@/lib/forms/approval';
 import type { PoApproval, PoApprovalLine, PoCycleTime } from '@/lib/forms/types';
@@ -112,7 +113,17 @@ export function PoDetailPanel({
         </Block>
 
         <Block title="Vendor">
-          <Row label="Vendor code">{text(po.vendor_code)}</Row>
+          <Row label="Vendor code">
+            {text(po.vendor_code)}
+            {po.vendor_code && (
+              <VendorHistoryButton
+                vendorCode={po.vendor_code}
+                productCode={po.product_code}
+                label="PO history"
+                className="wf-btn wf-btn-ghost wf-btn-sm wf-inline-btn"
+              />
+            )}
+          </Row>
           <Row label="Vendor name">{text(po.vendor_name)}</Row>
           <Row label="TNA sheet">
             <Link href={po.tna_sheet_url} />
