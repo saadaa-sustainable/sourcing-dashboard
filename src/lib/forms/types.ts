@@ -150,26 +150,28 @@ export type AnalyticsExtras = {
       }
     | null;
   /**
-   * Spec 1.12 — the seven-item update strip: one small card each, "what moved" rather than
-   * a full analysis. Each piece is read from what the dashboard already holds; where a
-   * process does not exist in the system yet, the card says so instead of showing a zero
-   * that looks like good news.
+   * Spec 1.12 — the update strip: one small card each, "what moved" rather than a full
+   * analysis.
+   *
+   * Four of the seven items the spec lists are here. The other three — PO RFQ, Fabric
+   * reorder + RFQ, and MOM update — are NOT built: there is no RFQ anywhere in this system
+   * (no table, no column, no code), and "MOM" is ambiguous. They are left out rather than
+   * pointed at a near-enough proxy, which would put a number on screen that nobody could
+   * trust.
    */
   updateStrip:
     | {
-        /** PO RFQ — the cost negotiations in flight (proposed / rate submitted). */
-        poRfq: { open: number; proposed: number; rateSubmitted: number };
         /** Issued PO progress — last week, this week, and what is queued behind it. */
         issued: { thisWeek: number; priorWeek: number; upcoming: number; upcomingQty: number };
-        /** Fabric — material-cost negotiations in flight, and fabrics with no cost on record. */
-        fabric: { rfqOpen: number; noCost: number; fabrics: number };
-        /** OS update — SKUs with nothing to sell, and how that has moved. */
-        os: { oosSkus: number; skus: number; ratePct: number | null; recovered: number | null };
+        /** OS update — SKUs with nothing to sell. */
+        os: { oosSkus: number; skus: number; ratePct: number | null };
         /** Inward plan — the month's planned receipts against what actually arrived. */
         inward: { planned: number; actual: number; pct: number | null };
-        /** MOM — this month against last on what was ordered. */
-        mom: { qty: number; priorQty: number; value: number; priorValue: number };
-        /** Vendor status — who is active, who is new, who is flagged. */
+        /**
+         * Vendor status — active, new and flagged. "New" is a vendor whose FIRST PO was
+         * placed recently: vendor_master_data.onboarding_date is filled on 2 of 32 rows, so
+         * a count built on it would read zero for ever.
+         */
         vendors: { active: number; newRecently: number; flagged: number; newCodes: string[] };
       }
     | null;

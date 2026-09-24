@@ -361,12 +361,15 @@ function VScrollChart({
 }
 
 /**
- * Spec 1.12 — the seven-item update strip: what moved, in one line each.
+ * Spec 1.12 — the update strip: what moved, in one line each.
  *
- * Small on purpose. Each card answers "is this moving, and which way", and links to the
- * page that has the detail; none of them tries to be the analysis. Where a process does not
- * exist in the dashboard yet the card says what it IS showing rather than printing a zero,
- * which would read as "all clear".
+ * Small on purpose. Each card answers "is this moving, and which way", and links to the page
+ * that has the detail; none of them tries to be the analysis.
+ *
+ * FOUR of the seven items the spec lists. PO RFQ, Fabric reorder + RFQ and MOM update are
+ * deliberately NOT here: there is no RFQ in this system at all — no table, no column, no
+ * code — and MOM reads two ways. Pointing them at the nearest-looking data would put
+ * numbers on screen that mean something other than their label, which is worse than a gap.
  */
 function UpdateStrip({ extras }: { extras?: AnalyticsExtras | null }) {
   const s = extras?.updateStrip;
@@ -374,32 +377,12 @@ function UpdateStrip({ extras }: { extras?: AnalyticsExtras | null }) {
   const arrow = (now: number, prev: number) => (now === prev ? "·" : now > prev ? "▲" : "▼");
   const cards: { key: string; label: string; value: string; note: string; tone?: string; href: string }[] = [
     {
-      key: "po-rfq",
-      label: "PO RFQ",
-      value: fmt.format(s.poRfq.open),
-      note: s.poRfq.open
-        ? `${fmt.format(s.poRfq.proposed)} quoted · ${fmt.format(s.poRfq.rateSubmitted)} awaiting sign-off`
-        : "no cost negotiation open",
-      tone: s.poRfq.open ? "orange" : undefined,
-      href: "/standard-cost",
-    },
-    {
       key: "issued",
       label: "Issued PO progress",
       value: `${fmt.format(s.issued.thisWeek)} ${arrow(s.issued.thisWeek, s.issued.priorWeek)}`,
       note: `${fmt.format(s.issued.priorWeek)} last week · ${fmt.format(s.issued.upcoming)} in approval`,
       tone: s.issued.thisWeek < s.issued.priorWeek ? "orange" : "teal",
       href: "/po-approval",
-    },
-    {
-      key: "fabric",
-      label: "Fabric reorder + RFQ",
-      value: fmt.format(s.fabric.rfqOpen),
-      note: s.fabric.noCost
-        ? `material RFQs open · ${fmt.format(s.fabric.noCost)} of ${fmt.format(s.fabric.fabrics)} fabrics have no cost`
-        : "material RFQs open · every fabric costed",
-      tone: s.fabric.noCost ? "orange" : undefined,
-      href: "/fabric-cost",
     },
     {
       key: "os",
@@ -419,14 +402,6 @@ function UpdateStrip({ extras }: { extras?: AnalyticsExtras | null }) {
           : `nothing planned · ${fmt.format(s.inward.actual)} received`,
       tone: s.inward.planned > 0 ? undefined : "orange",
       href: "/receivable-plan",
-    },
-    {
-      key: "mom",
-      label: "MOM update",
-      value: `${fmt.format(s.mom.qty)} ${arrow(s.mom.qty, s.mom.priorQty)}`,
-      note: `pcs this month vs ${fmt.format(s.mom.priorQty)} last · ${money.format(s.mom.value)}`,
-      tone: s.mom.qty < s.mom.priorQty ? "orange" : "teal",
-      href: "/buying-plan",
     },
     {
       key: "vendors",

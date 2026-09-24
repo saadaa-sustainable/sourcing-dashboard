@@ -1033,68 +1033,30 @@ export async function loadAnalyticsExtras(
     extras.missingTnaClosed = { closed: closed.length, missing: missing.length };
   } catch { /* section stays null */ }
 
-  /* Spec 1.12 — the seven-item update strip. Deliberately cheap: counts and two-week /
-     two-month comparisons, no per-row detail. Built after the issuance block above so it can
-     reuse its figures. */
+  /* Spec 1.12 — the update strip. Four of the seven items the spec lists; PO RFQ, Fabric
+     reorder + RFQ and MOM are deliberately absent — there is no RFQ in this system and MOM
+     is ambiguous, and a proxy would be a number nobody could trust. */
   try {
-    const monthStartIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
-      .toISOString()
-      .slice(0, 10);
-    const prevMonthStartIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 1))
-      .toISOString()
-      .slice(0, 10);
-    const stage = (t: string, s: string) =>
-      supabase
-        .from(t)
-        .select('product_code', { count: 'exact', head: true })
-        .eq('hidden', false)
-        .eq('neg_stage', s);
-
-    const [prop, rate, matProp, matRate, fabrics, vendors, deboard, monthLines] = await Promise.all([
-      stage('sd_standard_cost', 'proposed'),
-      stage('sd_standard_cost', 'rate_submitted'),
-      stage('sd_material_standard_cost', 'proposed'),
-      stage('sd_material_standard_cost', 'rate_submitted'),
-      supabase.from('sd_fabric_cost_base').select('fabric_code, finished_fabric_cost').limit(PAGE_SIZE),
+    const [vendors, deboard] = await Promise.all([
       supabase.from('vendor_master_data').select('vendor_code, is_active').limit(PAGE_SIZE),
       supabase
         .from('sd_vendor_deboarding_request')
         .select('vendor_code, status')
         .in('status', ['submitted', 'pending_l2', 'approved'])
         .limit(PAGE_SIZE),
-      // Two months of PO lines for the month-on-month comparison, and the first-PO date
-      // per vendor that tells us who is new.
-      pageAll<{ vendor_code: string | null; po_date: string | null; original_qty: number | null; item_price: number | null }>(() =>
-        supabase
-          .from('sd_po_filtered')
-          .select('vendor_code, po_date, original_qty, item_price')
-          .gte('po_date', prevMonthStartIso)
-          .order('po_detail_id'),
-      ),
     ]);
-
-    const fabricRows = (fabrics.data ?? []) as { fabric_code: string; finished_fabric_cost: number | null }[];
     const vendorRows = (vendors.data ?? []) as { vendor_code: string | null; is_active: boolean | null }[];
     const flagged = new Set(
       ((deboard.data ?? []) as { vendor_code: string | null }[]).map((d) => norm(d.vendor_code)).filter(Boolean),
     );
 
-    let qty = 0, priorQty = 0, value = 0, priorValue = 0;
-    for (const l of monthLines) {
-      const d = (l.po_date ?? '').slice(0, 10);
-      const q = Number(l.original_qty) || 0;
-      const v = q * (Number(l.item_price) || 0);
-      if (d >= monthStartIso) { qty += q; value += v; }
-      else { priorQty += q; priorValue += v; }
-    }
-
     // "New vendor" = first PO placed recently. The master's onboarding_date is filled on
     // 2 of 32 vendors, so counting on it would report zero new vendors for ever.
     const firstPo = new Map<string, string>();
-    const allVendorLines = await pageAll<{ vendor_code: string | null; po_date: string | null }>(() =>
+    const vendorLines = await pageAll<{ vendor_code: string | null; po_date: string | null }>(() =>
       supabase.from('sd_po_filtered').select('vendor_code, po_date').order('po_detail_id'),
     );
-    for (const l of allVendorLines) {
+    for (const l of vendorLines) {
       const vc = norm(l.vendor_code);
       const d = (l.po_date ?? '').slice(0, 10);
       if (!vc || !d) continue;
@@ -1107,34 +1069,22 @@ export async function loadAnalyticsExtras(
     const inw = extras.inwardMonth;
     const os = extras.oosSummary;
     extras.updateStrip = {
-      poRfq: {
-        open: (prop.count ?? 0) + (rate.count ?? 0),
-        proposed: prop.count ?? 0,
-        rateSubmitted: rate.count ?? 0,
-      },
       issued: {
         thisWeek: extras.issuedLastWeek?.count ?? 0,
         priorWeek: extras.issuedLastWeek?.prior.count ?? 0,
         upcoming: extras.pendingApproval?.count ?? 0,
         upcomingQty: extras.pendingApproval?.qty ?? 0,
       },
-      fabric: {
-        rfqOpen: (matProp.count ?? 0) + (matRate.count ?? 0),
-        noCost: fabricRows.filter((f) => !f.finished_fabric_cost).length,
-        fabrics: fabricRows.length,
-      },
       os: {
         oosSkus: os?.zeroStock ?? 0,
         skus: os?.totalSkus ?? 0,
         ratePct: os && os.totalSkus ? Math.round((os.zeroStock / os.totalSkus) * 1000) / 10 : null,
-        recovered: null,
       },
       inward: {
         planned: inw?.planned ?? 0,
         actual: inw?.actual ?? 0,
         pct: inw && inw.planned > 0 ? Math.round((inw.actual / inw.planned) * 100) : null,
       },
-      mom: { qty, priorQty, value: Math.round(value), priorValue: Math.round(priorValue) },
       vendors: {
         active: vendorRows.filter((v) => v.is_active).length,
         newRecently: newCodes.length,
