@@ -549,6 +549,20 @@ export function eeVendorActive(status: string | null | undefined): boolean | nul
   return null;
 }
 
+/**
+ * Does this string actually name a PO type (Job Work / E-FOB / FOB)?
+ *
+ * normaliseVendorType falls back to job_work for anything it does not recognise, which is a
+ * safe default but silently swallows a wrong field. Vendor_Type_Master.vendor_type holds the
+ * FABRIC WEAVE ("Woven" / "Knitwear") for every vendor, so feeding it to the capacity model
+ * typed all 21 vendors as Job Work — a 30-day lead instead of 45/75 — understating PO capacity
+ * and overstating utilisation everywhere. Use this to pick a field that really is a PO type.
+ */
+export function isPoVendorType(raw: string | null | undefined): boolean {
+  const v = key(raw);
+  return v.includes('job') || v.includes('efob') || v.includes('e-fob') || v.includes('fob');
+}
+
 export function normaliseVendorType(raw: string | null | undefined): string {
   const v = key(raw);
   if (v.includes('job')) return 'job_work';
@@ -725,12 +739,18 @@ export function buildVendorRollups(
     const live = capacityByVendor.get(key(first.vendorCode)) ?? capacityByVendor.get(key(first.vendorName));
     const openQty = rows.reduce((sum, row) => sum + row.pendingQty, 0);
     // The one capacity model. Live sheet figures first, the master's onboarding figures as
-    // the fallback; the PO type comes from the vendor type master.
+    // the fallback. The PO type is the COMMERCIAL type and lives in the vendor master's
+    // primary_type — Vendor_Type_Master.vendor_type is the fabric weave ("Woven"/"Knitwear"),
+    // and reading it here typed every vendor as Job Work. Take the first field that really
+    // is a PO type; undefined falls back to job_work inside the model, as before.
+    const machinesForCapacity =
+      live?.machines ?? resolved.master?.machines_for_saadaa ?? resolved.master?.total_machines;
+    const karigarForCapacity = live?.karigar ?? resolved.master?.total_active_karigar;
     const model = vendorCapacityModel(
       {
-        machines: live?.machines ?? resolved.master?.machines_for_saadaa ?? resolved.master?.total_machines,
-        karigar: live?.karigar ?? resolved.master?.total_active_karigar,
-        vendorType: resolved.type?.vendor_type ?? resolved.master?.primary_type,
+        machines: machinesForCapacity,
+        karigar: karigarForCapacity,
+        vendorType: [resolved.master?.primary_type, resolved.type?.vendor_type].find(isPoVendorType),
         inProcessQty: openQty,
       },
       rules,
@@ -742,9 +762,14 @@ export function buildVendorRollups(
       vendorBucket: first.vendorBucket, openPoCount: openPoRefs.length, delayedPoCount: delayedRefs.length,
       delayPct: openPoRefs.length ? Math.round(delayedRefs.length / openPoRefs.length * 100) : 0,
       openQty, openValue: rows.reduce((sum, row) => sum + row.pendingValue, 0),
-      totalMachines: number(resolved.master?.total_machines),
+      // These three columns must match their own documented meaning (header-help.ts), and the
+      // row has to be derivable: capacity is built on the karigar figure shown beside it.
+      // "Machines" = allocated to SAADAA, as entered on Vendor Capacity (NOT the vendor's
+      // total factory); "Latest karigar" = the most recent Vendor Capacity entry; only
+      // "Active karigar" is the master's onboarding figure.
+      totalMachines: number(machinesForCapacity),
       totalActiveKarigar: number(resolved.master?.total_active_karigar),
-      karigarLatest: number(resolved.master?.karigar_latest),
+      karigarLatest: number(live?.karigar ?? resolved.master?.karigar_latest),
       capacityPerMonth: model.capacityPerMonth, poCapacity: model.poCapacity, capacitySigned,
       capacityEntered: model.entered,
       // Utilisation = open qty ÷ PO capacity, from the one model. Real percentage, not capped.

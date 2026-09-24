@@ -32,6 +32,7 @@ import type {
   ProductCatalogItem,
 } from '@/lib/forms/types';
 import './vendor-capacity.css';
+import { OVER_UTILISED, isOverUtilised, utilisationLabel } from '@/lib/utilisation';
 
 type Vendor = {
   vendor_code: string;
@@ -111,10 +112,12 @@ function CapacityMetric({
  */
 function UtilCell({ value }: { value: number | null }) {
   if (value == null) return <span className="wf-subtle">—</span>;
-  if (value > 100) return <span className="vc-over-text">{value}% · over</span>;
+  if (isOverUtilised(value)) return <span className="vc-over-text">{OVER_UTILISED}</span>;
   return (
     <>
-      <span className={`vc-pill ${value >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>{value}%</span>
+      <span className={`vc-pill ${value >= 85 ? 'vc-pill-amber' : 'vc-pill-green'}`}>
+        {utilisationLabel(value)}
+      </span>
       <CapacityBar value={value} />
     </>
   );

@@ -83,6 +83,7 @@ import type { VendorHubData } from "@/lib/vendor-hub.server";
 import { InfoDot } from "./info-dot";
 import { SideNav, tabs, type TabId } from "./side-nav";
 import { COINED_TERMS } from "@/lib/glossary";
+import { OVER_UTILISED, isOverUtilised, utilisationLabel } from "@/lib/utilisation";
 import { AnalyticsCards, ObjectiveStockCards, ObjectiveSynopsisCards } from "@/components/analytics-cards";
 import { canView } from "@/lib/views";
 import type { AnalyticsExtras, PoClosureView, SdRole } from "@/lib/forms/types";
@@ -491,7 +492,9 @@ const vendorCsvRows = (rows: VendorRollup[]): CsvValue[][] =>
     r.totalActiveKarigar,
     r.karigarLatest,
     r.capacityPerMonth,
-    r.utilizationPct,
+    // Exports are read by the same people as the table, so they follow the same
+    // rule: past 100% state the condition, never the raw figure.
+    r.capacityEntered ? utilisationLabel(r.utilizationPct) : 'Not entered',
   ]);
 
 function Modal({
@@ -2529,15 +2532,17 @@ function VendorTable({
                   <td>
                     {!row.capacityEntered ? (
                       <span className="badge">Not entered</span>
-                    ) : row.utilizationPct > 100 ? (
+                    ) : isOverUtilised(row.utilizationPct) ? (
                       <span
                         className="badge danger"
                         title="More on order than the vendor can make inside its PO lead time"
                       >
-                        {row.utilizationPct}% · over
+                        {OVER_UTILISED}
                       </span>
                     ) : (
-                      <span className="badge info">{row.utilizationPct}%</span>
+                      <span className="badge info">
+                        {utilisationLabel(row.utilizationPct)}
+                      </span>
                     )}
                   </td>
                 </tr>

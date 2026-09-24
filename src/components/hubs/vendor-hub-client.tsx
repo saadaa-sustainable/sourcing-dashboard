@@ -5,6 +5,7 @@ import { HeaderInfo } from '@/components/header-info';
 import { useMemo, useState } from 'react';
 import { InfoDot } from '@/components/info-dot';
 import type { VendorHubData, VendorHubRow } from '@/lib/vendor-hub.server';
+import { isOverUtilised, utilisationLabel } from '@/lib/utilisation';
 
 const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const money = (v: number) => `₹${inr.format(Math.round(v))}`;
@@ -141,7 +142,7 @@ function VendorRow({ r }: { r: VendorHubRow }) {
       <td className="num">{pct(r.onTimePct)}</td>
       <td className="num">{pct(r.fillPct)}</td>
       <td className="num">{r.capacityEntered ? inr.format(r.poCapacity) : '—'}</td>
-      <td className={`num ${r.utilizationPct > 100 ? 'ca-over' : ''}`}>{r.capacityEntered ? `${Math.round(r.utilizationPct)}%` : '—'}</td>
+      <td className={`num ${isOverUtilised(r.utilizationPct) ? 'ca-over' : ''}`}>{r.capacityEntered ? utilisationLabel(r.utilizationPct) : '—'}</td>
     </tr>
   );
 }

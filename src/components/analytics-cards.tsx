@@ -54,6 +54,7 @@ import type { AnalyticsExtras, StockoutRiskVariant } from "@/lib/forms/types";
 import { downloadCsv } from "@/lib/download";
 import { InfoDot } from "./info-dot";
 import type { TabId } from "./side-nav";
+import { utilisationLabel } from '@/lib/utilisation';
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -608,7 +609,7 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                             >
                               <div>
                                 <span>{vendor.vendorName}</span>
-                                <b>{vendor.utilizationPct}%</b>
+                                <b>{utilisationLabel(vendor.utilizationPct)}</b>
                               </div>
                               <div className="ana-vendor-meter">
                                 <i
@@ -647,7 +648,7 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                             >
                               <div>
                                 <span>{vendor.vendorName}</span>
-                                <b>{vendor.utilizationPct}%</b>
+                                <b>{utilisationLabel(vendor.utilizationPct)}</b>
                               </div>
                               <div className="ana-vendor-meter">
                                 <i
