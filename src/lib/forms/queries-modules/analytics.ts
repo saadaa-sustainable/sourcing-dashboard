@@ -159,7 +159,6 @@ export async function loadAnalyticsExtras(
   const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
 
   const extras: AnalyticsExtras = {
-    updateStrip: null,
     salesLeakage: null,
     missingTnaClosed: null,
     stockoutGaps: null,
@@ -1032,67 +1031,6 @@ export async function loadAnalyticsExtras(
     const missing = closed.filter((po) => !filled.has(po));
     extras.missingTnaClosed = { closed: closed.length, missing: missing.length };
   } catch { /* section stays null */ }
-
-  /* Spec 1.12 — the update strip. Four of the seven items the spec lists; PO RFQ, Fabric
-     reorder + RFQ and MOM are deliberately absent — there is no RFQ in this system and MOM
-     is ambiguous, and a proxy would be a number nobody could trust. */
-  try {
-    const [vendors, deboard] = await Promise.all([
-      supabase.from('vendor_master_data').select('vendor_code, is_active').limit(PAGE_SIZE),
-      supabase
-        .from('sd_vendor_deboarding_request')
-        .select('vendor_code, status')
-        .in('status', ['submitted', 'pending_l2', 'approved'])
-        .limit(PAGE_SIZE),
-    ]);
-    const vendorRows = (vendors.data ?? []) as { vendor_code: string | null; is_active: boolean | null }[];
-    const flagged = new Set(
-      ((deboard.data ?? []) as { vendor_code: string | null }[]).map((d) => norm(d.vendor_code)).filter(Boolean),
-    );
-
-    // "New vendor" = first PO placed recently. The master's onboarding_date is filled on
-    // 2 of 32 vendors, so counting on it would report zero new vendors for ever.
-    const firstPo = new Map<string, string>();
-    const vendorLines = await pageAll<{ vendor_code: string | null; po_date: string | null }>(() =>
-      supabase.from('sd_po_filtered').select('vendor_code, po_date').order('po_detail_id'),
-    );
-    for (const l of vendorLines) {
-      const vc = norm(l.vendor_code);
-      const d = (l.po_date ?? '').slice(0, 10);
-      if (!vc || !d) continue;
-      const cur = firstPo.get(vc);
-      if (!cur || d < cur) firstPo.set(vc, d);
-    }
-    const ninetyAgo = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
-    const newCodes = [...firstPo.entries()].filter(([, d]) => d >= ninetyAgo).map(([vc]) => vc).sort();
-
-    const inw = extras.inwardMonth;
-    const os = extras.oosSummary;
-    extras.updateStrip = {
-      issued: {
-        thisWeek: extras.issuedLastWeek?.count ?? 0,
-        priorWeek: extras.issuedLastWeek?.prior.count ?? 0,
-        upcoming: extras.pendingApproval?.count ?? 0,
-        upcomingQty: extras.pendingApproval?.qty ?? 0,
-      },
-      os: {
-        oosSkus: os?.zeroStock ?? 0,
-        skus: os?.totalSkus ?? 0,
-        ratePct: os && os.totalSkus ? Math.round((os.zeroStock / os.totalSkus) * 1000) / 10 : null,
-      },
-      inward: {
-        planned: inw?.planned ?? 0,
-        actual: inw?.actual ?? 0,
-        pct: inw && inw.planned > 0 ? Math.round((inw.actual / inw.planned) * 100) : null,
-      },
-      vendors: {
-        active: vendorRows.filter((v) => v.is_active).length,
-        newRecently: newCodes.length,
-        flagged: flagged.size,
-        newCodes: newCodes.slice(0, 6),
-      },
-    };
-  } catch { /* stays null */ }
 
   /* 04 Workspace — vendor recommendation extremes (≥3 completed POs to count). */
   try {
