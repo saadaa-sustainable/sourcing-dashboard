@@ -83,6 +83,34 @@ describe('reading the team cost sheet', () => {
     assert.ok(noPrice.warnings.some((w) => w.toLowerCase().includes('rate')));
   });
 
+  it('reads a sheet pasted out of Google Sheets, which is tab-separated', () => {
+    // What the clipboard actually holds: tabs, not commas. Run through a comma parser this
+    // is one giant cell per line and every label match fails — which is what happened.
+    const tsv = SHEET.split('\n')
+      .map((line) => {
+        const cells: string[] = [];
+        let cur = '';
+        let q = false;
+        for (const ch of line) {
+          if (ch === '"') q = !q;
+          else if (ch === ',' && !q) { cells.push(cur); cur = ''; }
+          else cur += ch;
+        }
+        cells.push(cur);
+        return cells.join('\t');
+      })
+      .join('\n');
+    const t = parseCostSheet(tsv);
+    assert.equal(t.avgColumnLabel, 'PO AVG');
+    assert.equal(t.rate, 310);
+    assert.equal(t.cmCost, 80);
+    assert.equal(t.fabricCost, 187.2);
+    assert.equal(t.marginPct, 15);
+    assert.equal(t.paymentTermsDays, 45);
+    assert.equal(t.greyCost, null);
+    assert.equal(t.warnings.length, 0);
+  });
+
   it('reads numbers the way a sheet writes them', () => {
     assert.equal(sheetNumber('1,234.50'), 1234.5);
     assert.equal(sheetNumber(' ₹ 120 '), 120);

@@ -611,8 +611,91 @@ export function PoApprovalClient({
 
           <FormSection
             title="Cost"
-            hint="Per piece. The rate is checked against the approved Standard Cost when you submit — CMTP is what the vendor controls, grey and fabric are commodity."
+            hint="Start with the cost sheet — read it in and the figures below fill themselves. Per piece: the rate is checked against the approved Standard Cost when you submit, CMTP is what the vendor controls, grey and fabric are commodity."
           >
+            <Field
+              label="Cost sheet link"
+              hint="the sheet the costs were agreed on — read it in rather than re-typing"
+            >
+              <div className="wf-issue-row">
+                <input
+                  value={form.cost_sheet_url}
+                  placeholder="https://…"
+                  onChange={(e) => set('cost_sheet_url', e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => readSheet()}
+                  disabled={sheetBusy || !form.cost_sheet_url.trim()}
+                  title="Read the rate, CMTP, fabric cost and margin off the sheet"
+                >
+                  <FileSpreadsheet size={13} /> {sheetBusy ? 'Reading…' : 'Read the sheet'}
+                </button>
+              </div>
+            </Field>
+
+            {/* The figures are only ever suggested: what was taken, and from where, is
+                spelled out so it can be checked against the sheet in one glance. */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              {sheetRead && (
+                <Notice tone={sheetRead.warnings.length ? 'warn' : 'ok'}>
+                  <strong>Read from the cost sheet</strong>
+                  {sheetRead.poRef ? ` (${sheetRead.poRef})` : ''}
+                  {sheetRead.avgColumnLabel ? ` — ${sheetRead.avgColumnLabel} column` : ''}:{' '}
+                  {[
+                    sheetRead.rate != null ? `rate ₹${sheetRead.rate}` : null,
+                    sheetRead.cmCost != null ? `CMTP ₹${sheetRead.cmCost}` : null,
+                    sheetRead.fabricCost != null ? `fabric ₹${sheetRead.fabricCost}` : null,
+                    sheetRead.greyCost != null ? `greige ₹${sheetRead.greyCost}` : null,
+                    sheetRead.marginPct != null ? `margin ${sheetRead.marginPct}%` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'nothing could be read'}
+                  . Check them against the sheet and change anything that is wrong.
+                  {sheetRead.paymentTermsDays != null && (
+                    <>
+                      {' '}
+                      The sheet also says <strong>payment terms {sheetRead.paymentTermsDays} days</strong>, which this
+                      form does not hold.
+                    </>
+                  )}
+                  {sheetRead.warnings.length > 0 && <> {sheetRead.warnings.join(' ')}</>}
+                </Notice>
+              )}
+              {sheetPasteOpen ? (
+                <Field
+                  label="Paste the cost sheet"
+                  hint="select the sheet in Google Sheets (Ctrl+A), copy, paste here — it is read for its figures and not stored; nothing is saved to the PO until you press Save"
+                >
+                  <div className="wf-issue-row">
+                    <textarea
+                      className="wf-textarea"
+                      rows={3}
+                      value={sheetPaste}
+                      placeholder="Paste the whole sheet…"
+                      onChange={(e) => setSheetPaste(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn-ghost wf-btn-sm"
+                      onClick={() => readSheet(sheetPaste)}
+                      disabled={sheetBusy || !sheetPaste.trim()}
+                    >
+                      Read it
+                    </button>
+                  </div>
+                </Field>
+              ) : (
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  onClick={() => setSheetPasteOpen(true)}
+                >
+                  Sheet not shared? Paste it instead
+                </button>
+              )}
+            </div>
             <Field label="Rate" hint="filled with the cost sheet — required to submit">
               <input
                 type="number"
@@ -677,89 +760,6 @@ export function PoApprovalClient({
                 onChange={(e) => set('margin_pct', e.target.value)}
               />
             </Field>
-            <Field
-              label="Cost sheet link"
-              hint="the sheet the costs were agreed on — read it in rather than re-typing"
-            >
-              <div className="wf-issue-row">
-                <input
-                  value={form.cost_sheet_url}
-                  placeholder="https://…"
-                  onChange={(e) => set('cost_sheet_url', e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => readSheet()}
-                  disabled={sheetBusy || !form.cost_sheet_url.trim()}
-                  title="Read the rate, CMTP, fabric cost and margin off the sheet"
-                >
-                  <FileSpreadsheet size={13} /> {sheetBusy ? 'Reading…' : 'Read the sheet'}
-                </button>
-              </div>
-            </Field>
-
-            {/* The figures are only ever suggested: what was taken, and from where, is
-                spelled out so it can be checked against the sheet in one glance. */}
-            <div style={{ gridColumn: '1 / -1' }}>
-              {sheetRead && (
-                <Notice tone={sheetRead.warnings.length ? 'warn' : 'ok'}>
-                  <strong>Read from the cost sheet</strong>
-                  {sheetRead.poRef ? ` (${sheetRead.poRef})` : ''}
-                  {sheetRead.avgColumnLabel ? ` — ${sheetRead.avgColumnLabel} column` : ''}:{' '}
-                  {[
-                    sheetRead.rate != null ? `rate ₹${sheetRead.rate}` : null,
-                    sheetRead.cmCost != null ? `CMTP ₹${sheetRead.cmCost}` : null,
-                    sheetRead.fabricCost != null ? `fabric ₹${sheetRead.fabricCost}` : null,
-                    sheetRead.greyCost != null ? `greige ₹${sheetRead.greyCost}` : null,
-                    sheetRead.marginPct != null ? `margin ${sheetRead.marginPct}%` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ') || 'nothing could be read'}
-                  . Check them against the sheet and change anything that is wrong.
-                  {sheetRead.paymentTermsDays != null && (
-                    <>
-                      {' '}
-                      The sheet also says <strong>payment terms {sheetRead.paymentTermsDays} days</strong>, which this
-                      form does not hold.
-                    </>
-                  )}
-                  {sheetRead.warnings.length > 0 && <> {sheetRead.warnings.join(' ')}</>}
-                </Notice>
-              )}
-              {sheetPasteOpen ? (
-                <Field
-                  label="Paste the cost sheet"
-                  hint="select the sheet in Google Sheets (Ctrl+A), copy, and paste here — nothing leaves your browser until you save"
-                >
-                  <div className="wf-issue-row">
-                    <textarea
-                      className="wf-textarea"
-                      rows={3}
-                      value={sheetPaste}
-                      placeholder="Paste the whole sheet…"
-                      onChange={(e) => setSheetPaste(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="wf-btn wf-btn-ghost wf-btn-sm"
-                      onClick={() => readSheet(sheetPaste)}
-                      disabled={sheetBusy || !sheetPaste.trim()}
-                    >
-                      Read it
-                    </button>
-                  </div>
-                </Field>
-              ) : (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => setSheetPasteOpen(true)}
-                >
-                  Sheet not shared? Paste it instead
-                </button>
-              )}
-            </div>
           </FormSection>
 
           <FormSection

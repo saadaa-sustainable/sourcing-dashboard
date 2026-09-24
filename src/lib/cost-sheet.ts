@@ -88,6 +88,26 @@ export function sheetNumber(raw: string | undefined): number | null {
 const SIZE_WORDS = new Set(['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'XXL', 'XXXL', 'FREE']);
 
 /**
+ * Split the sheet into cells, whichever way it arrived.
+ *
+ * A downloaded sheet is CSV; a sheet copied out of Google Sheets is TAB-separated, and
+ * running that through a comma parser yields one enormous cell per line — every label match
+ * then fails and the reader reports a sheet it cannot understand. Pasting is the common
+ * route (most sheets are not link-shared), so both have to work.
+ */
+function toRows(text: string): string[][] {
+  const sample = text.slice(0, 5000);
+  const tabs = (sample.match(/\t/g) ?? []).length;
+  const commas = (sample.match(/,/g) ?? []).length;
+  if (tabs > 0 && tabs >= commas) {
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.split('\t').map((cell) => cell.replace(/^"([\s\S]*)"$/, '$1')));
+  }
+  return parseCsv(text);
+}
+
+/**
  * Pull the agreed figures out of a cost sheet exported as CSV.
  *
  * Give it the sheet's own CSV (the Google Sheets `export?format=csv` of the tab, or a
@@ -95,7 +115,7 @@ const SIZE_WORDS = new Set(['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL
  * null and a warning saying so — the caller shows that rather than filling anything in.
  */
 export function parseCostSheet(csvText: string): CostSheetFigures {
-  const rows = parseCsv(csvText ?? '').map((r) => r.map((c) => (c ?? '').trim()));
+  const rows = toRows(csvText ?? '').map((r) => r.map((c) => (c ?? '').trim()));
   if (!rows.length) return { ...EMPTY, warnings: ['The cost sheet was empty.'] };
 
   const warnings: string[] = [];
