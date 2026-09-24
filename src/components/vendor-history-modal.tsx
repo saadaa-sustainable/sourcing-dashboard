@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { History, X } from 'lucide-react';
+import { Download, History, X } from 'lucide-react';
+import { downloadCsv } from '@/lib/download';
 import { getVendorPoHistory } from '@/lib/forms/actions';
 import type { VendorPoHistory } from '@/lib/forms/queries-modules/vendor';
 
@@ -67,6 +68,27 @@ export function VendorHistoryModal({
     };
   }, [vendorCode, productCode]);
 
+  /** This vendor's history as a file — the same rows, in the same order, as the table. */
+  function download() {
+    if (!data?.rows.length) return;
+    downloadCsv(
+      `vendor-po-history-${(data.vendorCode || vendorCode).toLowerCase()}`,
+      ['PO ref', 'EasyCom PO', 'Products', 'Qty', 'Value', 'Raised', 'Completed', 'Days taken', 'Expected by', 'Days vs EDD'],
+      data.rows.map((r) => [
+        r.poRef,
+        r.poNumber ?? '',
+        r.products.join(' '),
+        r.qty,
+        r.value,
+        r.start,
+        r.done,
+        r.days,
+        r.edd ?? '',
+        r.lateDays ?? '',
+      ]),
+    );
+  }
+
   if (!host) return null;
   // With a product in scope, "last PO" means their last PO OF THAT PRODUCT (spec 7.8).
   // Opened from a vendor page, where no product is in scope, it means their last PO at all —
@@ -75,7 +97,7 @@ export function VendorHistoryModal({
 
   return createPortal(
     <div className="pc-backdrop" role="dialog" aria-modal="true" aria-label={`History for ${vendorCode}`}>
-      <div className="pc-modal">
+      <div className="pc-modal pc-modal-lg">
         <div className="pc-head">
           <div>
             <span className="panel-kicker">Vendor history</span>
@@ -88,59 +110,74 @@ export function VendorHistoryModal({
               updated it — the same basis as the TNA comparison on the submission pop-up.
             </p>
           </div>
-          <button type="button" className="wf-icon-btn" onClick={onClose} aria-label="Close">
-            <X size={16} />
-          </button>
+          <div className="wf-issue-row">
+            {/* This vendor's record on its own — the same rows as the table, so what was
+                read on screen is what lands in the file. */}
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost wf-btn-sm"
+              onClick={download}
+              disabled={!data?.rows.length}
+              title={`Download ${data?.vendorCode ?? vendorCode.toUpperCase()}'s PO history as a CSV`}
+            >
+              <Download size={13} /> Download CSV
+            </button>
+            <button type="button" className="wf-icon-btn" onClick={onClose} aria-label="Close">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* The strip carries its own border and padding — wrapping it in a pc-section
+            boxes it twice and eats the width the numbers need. */}
+        <div className="wf-kpi-strip vh-kpis">
+          <div className="wf-kpi">
+            <span className="wf-kpi-label">
+              Last PO{productCode ? ` · ${productCode}` : ''}
+            </span>
+            <strong className="wf-kpi-value">{last ? `${last.days}d` : '—'}</strong>
+          </div>
+          <div className="wf-kpi">
+            <span className="wf-kpi-label">Average · all POs</span>
+            <strong className="wf-kpi-value">{data?.averageDays != null ? `${data.averageDays}d` : '—'}</strong>
+          </div>
+          <div className="wf-kpi">
+            <span className="wf-kpi-label">POs completed</span>
+            <strong className="wf-kpi-value">{data?.totalPos ?? 0}</strong>
+          </div>
+          <div className="wf-kpi">
+            <span className="wf-kpi-label">Finished by the promised date</span>
+            <strong className="wf-kpi-value">{data?.onTimePct != null ? `${data.onTimePct}%` : '—'}</strong>
+          </div>
+          <p className="wf-kpi-note">
+            {last ? (
+              <>
+                Last {productCode ?? 'PO'}: <strong>{last.poRef}</strong>
+                {!productCode && last.products.length ? ` (${last.products.join(', ')})` : ''}, {day(last.start)} →{' '}
+                {day(last.done)}.
+              </>
+            ) : productCode ? (
+              <>
+                This vendor has never completed a PO of <strong>{productCode}</strong>
+                {data?.lastAny ? (
+                  <>
+                    {' '}
+                    — their most recent PO was {data.lastAny.poRef} at {data.lastAny.days}d.
+                  </>
+                ) : (
+                  '.'
+                )}
+              </>
+            ) : (
+              'No completed PO on record for this vendor.'
+            )}
+          </p>
         </div>
 
         <section className="pc-section">
-          <div className="wf-kpi-strip">
-            <div className="wf-kpi">
-              <span className="wf-kpi-label">
-                Last PO{productCode ? ` · ${productCode}` : ''}
-              </span>
-              <strong className="wf-kpi-value">{last ? `${last.days}d` : '—'}</strong>
-            </div>
-            <div className="wf-kpi">
-              <span className="wf-kpi-label">Average · all POs</span>
-              <strong className="wf-kpi-value">{data?.averageDays != null ? `${data.averageDays}d` : '—'}</strong>
-            </div>
-            <div className="wf-kpi">
-              <span className="wf-kpi-label">POs completed</span>
-              <strong className="wf-kpi-value">{data?.totalPos ?? 0}</strong>
-            </div>
-            <div className="wf-kpi">
-              <span className="wf-kpi-label">Finished by the promised date</span>
-              <strong className="wf-kpi-value">{data?.onTimePct != null ? `${data.onTimePct}%` : '—'}</strong>
-            </div>
-            <p className="wf-kpi-note">
-              {last ? (
-                <>
-                  Last {productCode ?? 'PO'}: <strong>{last.poRef}</strong>
-                  {!productCode && last.products.length ? ` (${last.products.join(', ')})` : ''}, {day(last.start)} →{' '}
-                  {day(last.done)}.
-                </>
-              ) : productCode ? (
-                <>
-                  This vendor has never completed a PO of <strong>{productCode}</strong>
-                  {data?.lastAny ? (
-                    <>
-                      {' '}
-                      — their most recent PO was {data.lastAny.poRef} at {data.lastAny.days}d.
-                    </>
-                  ) : (
-                    '.'
-                  )}
-                </>
-              ) : (
-                'No completed PO on record for this vendor.'
-              )}
-            </p>
-          </div>
-        </section>
-
-        <section className="pc-section">
-          <div className="table-scroll" style={{ maxHeight: 340 }}>
+          {/* No height cap: a box of its own to scroll inside another scrolling box is how
+              a 30-row table ends up showing six. The backdrop scrolls; this just grows. */}
+          <div className="table-scroll">
             <table className="wf-grid">
               <thead>
                 <tr>

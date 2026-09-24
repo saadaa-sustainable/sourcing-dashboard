@@ -1905,6 +1905,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .pc-plan { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
 /* A confirmation, not a report — narrow enough to read as a question. */
 .pc-modal-sm { width: min(520px, 100%); }
+/* A panel that is mostly table: wide enough that the columns are not squeezed, and it
+   grows with its content — the backdrop scrolls, so the table never needs a scrollbar
+   of its own inside a box of its own. */
+.pc-modal-lg { width: min(1180px, 100%); }
+/* The KPI strip brings a page margin with it; the modal already spaces its children. */
+.pc-modal .wf-kpi-strip { margin: 0; }
 .pc-remark { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .pc-remark em { font-style: normal; color: #b1301f; }
 .pc-foot { display: flex; justify-content: flex-end; gap: 10px; }
