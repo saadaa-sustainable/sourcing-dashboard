@@ -149,6 +149,18 @@ export type AnalyticsExtras = {
         };
       }
     | null;
+  /**
+   * Spec 2.4 — inward trend, month by month: what the inward plan expected, what GRN
+   * actually received, and the coverage between them. `coveragePct` is null for a month
+   * with no plan — that is "nothing was planned", not 0% received.
+   *
+   * `plannedValue` is the plan's own quantity × its cost per piece. There is no received
+   * value: the GRN table's total value column repeats one figure on every line of a GRN,
+   * so it cannot be summed.
+   */
+  inwardTrend:
+    | { month: string; planned: number; plannedValue: number; received: number; coveragePct: number | null }[]
+    | null;
   /** POs pending approval right now (submitted / pending_l2). */
   pendingApproval:
     | { count: number; qty: number; top: { poRef: string; qty: number; category: string }[] }

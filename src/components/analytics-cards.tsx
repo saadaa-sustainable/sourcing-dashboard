@@ -367,6 +367,10 @@ export function AnalyticsCards({
   // Stockout list segmented by ABC/D (priority shown, nothing hidden).
   const issued = extras?.issuedLastWeek ?? null;
   const pending = extras?.pendingApproval ?? null;
+  // Spec 2.4 — newest month last; the two most recent drive the month-on-month line.
+  const inwardTrendMonths = extras?.inwardTrend ?? [];
+  const inwardLatest = inwardTrendMonths.length ? inwardTrendMonths[inwardTrendMonths.length - 1] : null;
+  const inwardPrev = inwardTrendMonths.length > 1 ? inwardTrendMonths[inwardTrendMonths.length - 2] : null;
   const inward = extras?.inwardLastWeek ?? null;
   const inwardPct =
     inward && inward.planned > 0 ? Math.round((inward.actual / inward.planned) * 100) : null;
@@ -1076,6 +1080,65 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                 <p className="ana-note">
                   Commitments are running well ahead of arrivals — check vendor follow-up / TNA before adding more plan.
                 </p>
+              )}
+            </AnaCard>
+
+            {/* Spec 2.4 — the same coverage over time: what was planned to arrive, what did,
+                and whether the gap is widening. */}
+            <AnaCard
+              title="Inward trend — month on month"
+              icon={Target}
+              tone={
+                !inwardTrendMonths.length
+                  ? "neutral"
+                  : inwardLatest?.coveragePct != null && inwardLatest.coveragePct < 70
+                    ? "amber"
+                    : "green"
+              }
+              status={
+                inwardLatest?.coveragePct != null ? `${inwardLatest.coveragePct}% COVERED` : "NO PLAN"
+              }
+              cta="Open the Inward Plan"
+              span={4}
+              href="/receivable-plan"
+              info={"WHAT: month by month, the pieces the inward plan expected against the pieces goods-receipt actually booked, and the coverage between them. 100 planned with 50 received is 50% covered.\n\nHOW: planned = the month's inward-plan lines that were not rejected; received = GRN quantity booked in that month. A month with no plan shows no coverage rather than 0%, because nothing was planned — that is a different fact from nothing arriving.\n\nUSE: one month's coverage says whether the month went to plan; the run of months says whether planning is getting better or the plan is simply optimistic. Planned value is the plan's own quantity × its cost per piece."}
+            >
+              {!inwardTrendMonths.length ? (
+                <NoData text="Inward trend data is not available." />
+              ) : (
+                <>
+                  <ul className="ana-list">
+                    {inwardTrendMonths.map((m) => (
+                      <li key={m.month}>
+                        <span className="ana-list-stack">
+                          <span>{m.month}</span>
+                          <small>
+                            {m.planned > 0
+                              ? `${fmt.format(m.planned)} planned · ${money.format(m.plannedValue)}`
+                              : "nothing planned"}
+                          </small>
+                        </span>
+                        <span className="ana-list-val">
+                          {fmt.format(m.received)} received
+                          <small>{m.coveragePct != null ? `${m.coveragePct}% covered` : "no plan to measure against"}</small>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {inwardLatest && inwardPrev && inwardLatest.coveragePct != null && inwardPrev.coveragePct != null && (
+                    <p className="ana-note">
+                      {inwardLatest.month} is {Math.abs(inwardLatest.coveragePct - inwardPrev.coveragePct)} points{" "}
+                      {inwardLatest.coveragePct >= inwardPrev.coveragePct ? "ahead of" : "behind"} {inwardPrev.month} (
+                      {inwardPrev.coveragePct}%).
+                    </p>
+                  )}
+                  {inwardTrendMonths.some((m) => m.planned === 0) && (
+                    <p className="ana-note">
+                      Months with no bar had no inward plan at all — the coverage series only starts
+                      where planning did.
+                    </p>
+                  )}
+                </>
               )}
             </AnaCard>
 

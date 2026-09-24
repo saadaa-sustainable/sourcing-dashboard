@@ -159,6 +159,7 @@ export async function loadAnalyticsExtras(
   const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
 
   const extras: AnalyticsExtras = {
+    inwardTrend: null,
     salesLeakage: null,
     missingTnaClosed: null,
     stockoutGaps: null,
@@ -1031,6 +1032,72 @@ export async function loadAnalyticsExtras(
     const missing = closed.filter((po) => !filled.has(po));
     extras.missingTnaClosed = { closed: closed.length, missing: missing.length };
   } catch { /* section stays null */ }
+
+  /* Spec 2.4 — inward trend: planned vs received per month, the coverage that falls out of
+     it, and how it moves month on month. Same rules as the single-month card above so the
+     two can never disagree: planned = the inward plan's non-rejected lines (or the
+     Receivable Plan when the team fills it), received = GRN quantity in the month.
+     Value is PLANNED value only (plan qty × its own cost per piece). Received value is
+     deliberately absent: sd_po_grn_mapping.total_grn_value repeats one figure on every line
+     of a GRN — 239 lines carrying the same ₹107,173 — so summing it overstates by the line
+     count, exactly as sd_po_filtered.total_po_value does. */
+  try {
+    const MONTHS = 6;
+    const nowIst = istDateKey();
+    const first = new Date(Date.UTC(Number(nowIst.slice(0, 4)), Number(nowIst.slice(5, 7)) - 1 - (MONTHS - 1), 1));
+    const fromIso = first.toISOString().slice(0, 10);
+    const [planRows, grnRows] = await Promise.all([
+      pageAll<{ plan_month: string | null; inward_qty: number | null; cost_per_piece: number | null; approval_status: string | null }>(() =>
+        supabase
+          .from('sd_inward_plan_entry')
+          .select('plan_month, inward_qty, cost_per_piece, approval_status')
+          .gte('plan_month', fromIso)
+          .order('id'),
+      ),
+      pageAll<{ received_quantity: number | null; grn_created_at: string | null }>(() =>
+        supabase
+          .from('sd_ee_grn')
+          .select('received_quantity, grn_created_at')
+          .gte('grn_created_at', fromIso)
+          .order('grn_detail_id'),
+      ),
+    ]);
+
+    const months: string[] = [];
+    for (let i = 0; i < MONTHS; i += 1) {
+      const d = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + i, 1));
+      months.push(d.toISOString().slice(0, 7));
+    }
+    const planned = new Map<string, { qty: number; value: number }>();
+    for (const r of planRows) {
+      if ((r.approval_status ?? '').trim().toLowerCase() === 'rejected') continue;
+      const m = (r.plan_month ?? '').slice(0, 7);
+      if (!m) continue;
+      const cur = planned.get(m) ?? { qty: 0, value: 0 };
+      const q = Number(r.inward_qty) || 0;
+      cur.qty += q;
+      cur.value += q * (Number(r.cost_per_piece) || 0);
+      planned.set(m, cur);
+    }
+    const received = new Map<string, number>();
+    for (const r of grnRows) {
+      const m = (r.grn_created_at ?? '').slice(0, 7);
+      if (!m) continue;
+      received.set(m, (received.get(m) ?? 0) + (Number(r.received_quantity) || 0));
+    }
+    extras.inwardTrend = months.map((m) => {
+      const p = planned.get(m);
+      const got = received.get(m) ?? 0;
+      return {
+        month: m,
+        planned: p?.qty ?? 0,
+        plannedValue: Math.round(p?.value ?? 0),
+        received: got,
+        // No plan means no coverage — not 0%, which would read as "we received nothing".
+        coveragePct: p && p.qty > 0 ? Math.round((got / p.qty) * 100) : null,
+      };
+    });
+  } catch { /* stays null */ }
 
   /* 04 Workspace — vendor recommendation extremes (≥3 completed POs to count). */
   try {
