@@ -898,7 +898,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
               cta="Open PO Approval"
               span={4}
               href="/po-approval"
-              info={"WHAT: how many POs were issued to EasyEcom this week, and whether the pace is up or down.\n\nHOW: POs issued in the last 7 days against the 7 days before that. Example: 14 this week vs 9 last week → +5.\n\nUSE: a falling pace with a long Stock Out Risk list means orders are not going out fast enough."}
+              info={"WHAT: what was ordered this week against the week before — PO count, pieces and value — plus what is still sitting in approval behind it.\n\nHOW: POs by their EasyEcom PO date, the last 7 days against the 7 before. A PO is counted once however many lines it has, and its value is quantity × item price per line (never the PO-total column, which repeats the same figure on every line).\n\nUSE: read the three together. Fewer POs carrying more money is a normal week; fewer of everything, with a long Stock Out Risk list, means orders are not going out fast enough. What is in approval is next week's issuance — if that queue is deep, the pace is about to drop."}
             >
               {!issued ? (
                 <NoData text="PO issuance data is not available." />
@@ -921,6 +921,47 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                       <small>vs {fmt.format(issued.prior.count)} last week · {fmt.format(issued.prior.qty)} pcs</small>
                     </div>
                   </div>
+                  {/* Spec 1.11 — all three measures week over week, not just the PO count:
+                      a week can place fewer POs and still commit far more money. */}
+                  <ul className="ana-list">
+                    <li>
+                      <span>Quantity</span>
+                      <span className="ana-list-val">
+                        {fmt.format(issued.qty)} pcs
+                        <small className={issued.delta.qty >= 0 ? "is-up" : "is-down"}>
+                          {issued.delta.qty >= 0 ? "▲" : "▼"} {fmt.format(Math.abs(issued.delta.qty))} vs {fmt.format(issued.prior.qty)}
+                        </small>
+                      </span>
+                    </li>
+                    <li>
+                      <span>Value</span>
+                      <span className="ana-list-val">
+                        {money.format(issued.value)}
+                        <small className={issued.delta.value >= 0 ? "is-up" : "is-down"}>
+                          {issued.delta.value >= 0 ? "▲" : "▼"} {money.format(Math.abs(issued.delta.value))} vs {money.format(issued.prior.value)}
+                        </small>
+                      </span>
+                    </li>
+                    <li>
+                      <span>PO count</span>
+                      <span className="ana-list-val">
+                        {fmt.format(issued.count)}
+                        <small className={issued.delta.count >= 0 ? "is-up" : "is-down"}>
+                          {issued.delta.count >= 0 ? "▲" : "▼"} {fmt.format(Math.abs(issued.delta.count))} vs {fmt.format(issued.prior.count)}
+                        </small>
+                      </span>
+                    </li>
+                    {/* What is queued behind this week's issuance. */}
+                    {pending && (
+                      <li>
+                        <span>In approval now</span>
+                        <span className="ana-list-val">
+                          {fmt.format(pending.count)} PO{pending.count === 1 ? "" : "s"}
+                          <small>{fmt.format(pending.qty)} pcs waiting</small>
+                        </span>
+                      </li>
+                    )}
+                  </ul>
                   <ul className="ana-list">
                     {issued.top.map((p) => (
                       <li key={p.poRef}>

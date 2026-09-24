@@ -127,15 +127,26 @@ export type AnalyticsExtras = {
         codes: string[];
       }
     | null;
-  /** POs issued THIS week vs the preceding week (from sd_po_approval.po_issued_at).
-   *  count/qty/top are this week; prior + delta drive the week-over-week comparison. */
+  /**
+   * Spec 1.11 — POs issued THIS week vs the preceding week: count, quantity and value.
+   * From the real EasyEcom book (sd_po_filtered by po_date); value is Σ(qty × item price),
+   * never total_po_value, which repeats a group total on every line.
+   */
   issuedLastWeek:
     | {
         count: number;
         qty: number;
+        value: number;
         top: { poRef: string; qty: number; vendor: string }[];
-        prior: { count: number; qty: number };
-        delta: { count: number; qty: number; countPct: number | null; qtyPct: number | null };
+        prior: { count: number; qty: number; value: number };
+        delta: {
+          count: number;
+          qty: number;
+          value: number;
+          countPct: number | null;
+          qtyPct: number | null;
+          valuePct: number | null;
+        };
       }
     | null;
   /** POs pending approval right now (submitted / pending_l2). */

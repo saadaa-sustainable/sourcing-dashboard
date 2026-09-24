@@ -193,38 +193,67 @@ export async function loadAnalyticsExtras(
   const weekAgoDate = weekAgoIso.slice(0, 10);
   const todayDate = new Date().toISOString().slice(0, 10);
 
-  /* POs issued this week vs the immediately preceding week (item 1: week-over-week,
-     not a flat rolling count). Fetch a 14-day window and partition on po_issued_at. */
+  /* Spec 1.11 — POs issued this week vs the preceding week: quantity, value and PO count.
+     Source is the real EasyEcom book (sd_po_filtered, by po_date), NOT
+     sd_po_approval.po_issued_at: that column has never been set on a single request — POs
+     are still raised in EasyEcom rather than issued through the dashboard — so the card
+     read 0 against 0 every week since it was built.
+     Value is Σ(qty × item price) per line. NOT total_po_value: that column carries a GROUP
+     total repeated on every line of the PO, so summing it turned one ₹16.7 lakh PO into
+     ₹6 crore. */
   try {
-    const { data } = await supabase
-      .from('sd_po_approval')
-      .select('po_ref_num, po_qty, vendor_name, po_issued_at')
-      .gte('po_issued_at', twoWeeksAgoIso)
-      .order('po_issued_at', { ascending: false });
-    const rows = (data ?? []) as {
-      po_ref_num: string | null; po_qty: number | null; vendor_name: string | null; po_issued_at: string | null;
-    }[];
-    const thisWeek = rows.filter((r) => (r.po_issued_at ?? '') >= weekAgoIso);
-    const priorWeek = rows.filter((r) => (r.po_issued_at ?? '') < weekAgoIso);
-    const qtyOf = (rs: typeof rows) => rs.reduce((s, r) => s + (Number(r.po_qty) || 0), 0);
+    type Line = {
+      po_ref_num: string | null; vendor_name: string | null; po_date: string | null;
+      original_qty: number | null; item_price: number | null;
+    };
+    const lines = await pageAll<Line>(() =>
+      supabase
+        .from('sd_po_filtered')
+        .select('po_ref_num, vendor_name, po_date, original_qty, item_price')
+        .gte('po_date', twoWeeksAgoIso.slice(0, 10))
+        .order('po_detail_id'),
+    );
+    // A PO is one reference, however many lines it carries.
+    type Po = { qty: number; value: number; vendor: string; date: string };
+    const byPo = new Map<string, Po>();
+    for (const l of lines) {
+      const ref = (l.po_ref_num ?? '').trim();
+      const date = (l.po_date ?? '').slice(0, 10);
+      if (!ref || !date) continue;
+      const cur = byPo.get(ref) ?? { qty: 0, value: 0, vendor: l.vendor_name ?? '—', date };
+      cur.qty += Number(l.original_qty) || 0;
+      cur.value += (Number(l.original_qty) || 0) * (Number(l.item_price) || 0);
+      if (date < cur.date) cur.date = date; // the PO belongs to the day it was raised
+      byPo.set(ref, cur);
+    }
+    const weekAgo = weekAgoIso.slice(0, 10);
+    const pos = [...byPo.entries()].map(([poRef, p]) => ({ poRef, ...p }));
+    const thisWeek = pos.filter((p) => p.date >= weekAgo);
+    const priorWeek = pos.filter((p) => p.date < weekAgo);
+    const sum = (rs: typeof pos, pick: (p: (typeof pos)[number]) => number) =>
+      rs.reduce((s, p) => s + pick(p), 0);
     const pctChange = (now: number, prev: number) =>
       prev > 0 ? Math.round(((now - prev) / prev) * 100) : now > 0 ? null : 0;
-    const thisQty = qtyOf(thisWeek);
-    const priorQty = qtyOf(priorWeek);
+    const thisQty = sum(thisWeek, (p) => p.qty);
+    const priorQty = sum(priorWeek, (p) => p.qty);
+    const thisValue = Math.round(sum(thisWeek, (p) => p.value));
+    const priorValue = Math.round(sum(priorWeek, (p) => p.value));
     extras.issuedLastWeek = {
       count: thisWeek.length,
       qty: thisQty,
-      top: thisWeek.slice(0, 5).map((r) => ({
-        poRef: r.po_ref_num ?? '—',
-        qty: Number(r.po_qty) || 0,
-        vendor: r.vendor_name ?? '—',
-      })),
-      prior: { count: priorWeek.length, qty: priorQty },
+      value: thisValue,
+      top: [...thisWeek]
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 5)
+        .map((p) => ({ poRef: p.poRef, qty: p.qty, vendor: p.vendor })),
+      prior: { count: priorWeek.length, qty: priorQty, value: priorValue },
       delta: {
         count: thisWeek.length - priorWeek.length,
         qty: thisQty - priorQty,
+        value: thisValue - priorValue,
         countPct: pctChange(thisWeek.length, priorWeek.length),
         qtyPct: pctChange(thisQty, priorQty),
+        valuePct: pctChange(thisValue, priorValue),
       },
     };
   } catch { /* stays null */ }
