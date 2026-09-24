@@ -159,6 +159,8 @@ export async function loadAnalyticsExtras(
   const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
 
   const extras: AnalyticsExtras = {
+    salesLeakage: null,
+    missingTnaClosed: null,
     stockoutGaps: null,
     stockoutWatch30: null,
     planRealization: null,
@@ -944,6 +946,61 @@ export async function loadAnalyticsExtras(
       zeroStock: zero.count ?? 0,
       dataAsOf: (day.data?.[0] as { date_day?: string } | undefined)?.date_day ?? null,
     };
+  } catch { /* section stays null */ }
+
+  /* 01 Money — sales lost to stockouts, over the 45-day window (spec 1.10).
+     Leakage = selling price × DOQ × OOS days, per SKU — the same formula the OOS
+     Calculation page prints per row and the DOQ dashboard totals, computed here rather
+     than read from sd_oos_calculation.sales_leakage, which the feed leaves empty. */
+  try {
+    const rows = await pageAll<{
+      sales_value: number | null; doq_45: number | null; total_oos_days: number | null;
+    }>(() =>
+      supabase
+        .from('sd_oos_calculation')
+        .select('sales_value, doq_45, total_oos_days')
+        .order('sku'),
+    );
+    let leakage = 0;
+    let skus = 0;
+    for (const r of rows) {
+      const v = (Number(r.sales_value) || 0) * (Number(r.doq_45) || 0) * (Number(r.total_oos_days) || 0);
+      if (v > 0) {
+        leakage += v;
+        skus += 1;
+      }
+    }
+    extras.salesLeakage = { amount: Math.round(leakage), skus, windowDays: 45 };
+  } catch { /* section stays null */ }
+
+  /* 01 Money — POs that finished without their critical path ever being recorded (spec 1.10).
+     The dashboard's other "Missing TNA" counts OPEN POs; this is the closed ones, where
+     nothing can be filled in any more — the record is simply lost. */
+  try {
+    const [done, tna] = await Promise.all([
+      pageAll<{ po_ref_num: string | null }>(() =>
+        supabase.from('sd_po_completed').select('po_ref_num').order('po_detail_id'),
+      ),
+      pageAll<{ po_no: string | null; pp: string | null; gpt: string | null; cut: string | null; inl: string | null }>(() =>
+        supabase
+          .from('tna_tracker')
+          .select(
+            'po_no, pp:pp_sample_actual_date, gpt:gpt_actual_date, cut:cutting_actual_date_first, inl:in_line_actual_date',
+          )
+          .order('po_no'),
+      ),
+    ]);
+    const key = (s: string | null) => (s ?? '').trim().toUpperCase();
+    // A row with no actual on any core stage is as empty as no row at all.
+    const filled = new Set(
+      tna
+        .filter((t) => t.pp || t.gpt || t.cut || t.inl)
+        .map((t) => key(t.po_no))
+        .filter(Boolean),
+    );
+    const closed = [...new Set(done.map((d) => key(d.po_ref_num)).filter(Boolean))];
+    const missing = closed.filter((po) => !filled.has(po));
+    extras.missingTnaClosed = { closed: closed.length, missing: missing.length };
   } catch { /* section stays null */ }
 
   /* 04 Workspace — vendor recommendation extremes (≥3 completed POs to count). */

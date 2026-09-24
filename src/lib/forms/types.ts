@@ -207,6 +207,21 @@ export type AnalyticsExtras = {
   replenishment: { variants: number; rop30Qty: number; oosVariants: number } | null;
   /** 04 Workspace — OOS Calculation summary (counts; the page has the detail). */
   oosSummary: { totalSkus: number; zeroStock: number; dataAsOf: string | null } | null;
+  /**
+   * Spec 1.10 — sales lost to stockouts over the 45-day window: Σ selling price × DOQ ×
+   * OOS days, the same formula the OOS Calculation page prints per SKU.
+   */
+  salesLeakage: { amount: number; skus: number; windowDays: number } | null;
+  /**
+   * Spec 1.10 — POs that finished with no critical path ever recorded. Distinct from the
+   * dashboard's other "Missing TNA", which counts OPEN POs that can still be filled in.
+   */
+  missingTnaClosed: { closed: number; missing: number } | null;
+  /**
+   * Spec 1.10 — in-stock rate for yesterday, as the DOQ dashboard measures it (Main
+   * Warehouse, on-sale SKUs, exclusions applied). Set by the page, like planSynopsis.
+   */
+  inStock?: { ratePct: number; oosSkus: number; skus: number; asOf: string | null } | null;
   /* ---- Objectives synopsis (the team's dashboard sheet) ---- */
   /** Open POs against all POs ever (open + completed) — the denominator for "open %". */
   poBook: { open: number; completed: number } | null;

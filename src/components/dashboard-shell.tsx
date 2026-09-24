@@ -9,6 +9,9 @@ import {
   ArrowUpRight,
   Boxes,
   CalendarClock,
+  CalendarX,
+  PackageCheck,
+  TrendingDown,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -1129,6 +1132,50 @@ function DashboardTab({
               tone={extras?.openIssues ? "orange" : "teal"}
               icon={ClipboardList}
               info={"WHAT: how many issues are open on the Issue Tracker right now — raised by people to each other, and raised by the dashboard from its own checks.\n\nHOW: issues in Open or In progress. The dashboard raises one per open PO with no TNA timeline, per open PO with no delivery date, per discontinued product still on order, and per stale feed; it closes them itself when the condition is gone.\n\nUSE: click to open the tracker. This number should trend down; days from raise to resolve are tracked there."}
+              onClick={() => router.push("/issues")}
+            />
+          </div>
+          {/* Spec 1.10 — the four the team asked to see on the main dashboard. Coverage %
+              (buying plan + inward) is the pair already on the "Buying to plan" view. */}
+          <div className="metric-grid dashboard-metrics">
+            <Card
+              label="Sales leakage"
+              big
+              value={extras?.salesLeakage ? money.format(extras.salesLeakage.amount) : "—"}
+              note={
+                extras?.salesLeakage
+                  ? `lost to stockouts over ${extras.salesLeakage.windowDays} days · ${fmt.format(extras.salesLeakage.skus)} SKUs`
+                  : "OOS calculation unavailable"
+              }
+              tone="red"
+              icon={TrendingDown}
+              info={"WHAT: the sales estimated lost because a SKU had nothing to sell.\n\nHOW: for every SKU, selling price × DOQ (the daily rate it sells at) × the days it was out of stock in the 45-day window, added up. The same formula the OOS Calculation page prints per SKU, so the two agree.\n\nUSE: this is the cost of the out-of-stock number beside it — the argument for ordering earlier rather than cheaper. It is an estimate: it assumes a SKU would have kept selling at its own rate."}
+              onClick={() => router.push("/oos-calculation")}
+            />
+            <Card
+              label="In-stock rate (yesterday)"
+              value={extras?.inStock ? `${extras.inStock.ratePct}%` : "—"}
+              note={
+                extras?.inStock
+                  ? `${fmt.format(extras.inStock.skus - extras.inStock.oosSkus)} of ${fmt.format(extras.inStock.skus)} SKUs had stock${extras.inStock.asOf ? ` · ${extras.inStock.asOf}` : ""}`
+                  : "inventory snapshot unavailable"
+              }
+              tone={extras?.inStock && extras.inStock.ratePct < 90 ? "orange" : "teal"}
+              icon={PackageCheck}
+              info={"WHAT: the share of sellable SKUs that had stock yesterday.\n\nHOW: 100% minus the out-of-stock rate from the OOS one-pager — Main Warehouse, on-sale products only (Ongoing and launched NPD), minus the shared exclusion list. It is the same figure the DOQ dashboard shows, read from the same function, so the two cannot drift apart.\n\nUSE: read with Sales leakage beside it — this is how often we had nothing to sell, that is what it cost."}
+              onClick={() => router.push("/doq-dashboard")}
+            />
+            <Card
+              label="Missing TNA · closed POs"
+              value={extras?.missingTnaClosed ? fmt.format(extras.missingTnaClosed.missing) : "—"}
+              note={
+                extras?.missingTnaClosed
+                  ? `of ${fmt.format(extras.missingTnaClosed.closed)} completed POs · ${extras.missingTnaClosed.closed ? Math.round((extras.missingTnaClosed.missing / extras.missingTnaClosed.closed) * 100) : 0}% never recorded`
+                  : "completed-PO data unavailable"
+              }
+              tone={extras?.missingTnaClosed?.missing ? "red" : "teal"}
+              icon={CalendarX}
+              info={"WHAT: purchase orders that finished without their critical path ever being recorded — no PP sample, GPT, cutting or inline QC date on any of them.\n\nHOW: completed POs matched against the TNA tracker; a PO with no TNA row, or a row with no actual date on any core stage, counts as missing.\n\nUSE: different from the Missing TNA on open POs, which can still be filled in. These are closed — the timeline is lost for good, so they cannot be used to judge how long anything really took. A high number means the TNA is being filled after the fact, or not at all."}
               onClick={() => router.push("/issues")}
             />
           </div>

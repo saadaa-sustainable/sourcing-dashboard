@@ -15,7 +15,7 @@ import { countOpenIssues, syncAutoIssues } from '@/lib/issues.server';
 import { loadPoHub, type PoHubData } from '@/lib/po-hub.server';
 import { loadProductHub, type ProductHubData } from '@/lib/product-hub.server';
 import { loadVendorHub, type VendorHubData } from '@/lib/vendor-hub.server';
-import { loadBuyingPlanAnalysis } from '@/lib/forms/queries';
+import { loadBuyingPlanAnalysis, loadOosSummary } from '@/lib/forms/queries';
 import type { AnalyticsExtras, PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -103,6 +103,22 @@ export default async function Home() {
           issuedProducts: a.metrics.issuedProducts,
         };
       } catch { analyticsExtras.planSynopsis = null; }
+    }
+    // Spec 1.10 — in-stock rate for yesterday, taken from the DOQ dashboard's own summary
+    // (Main Warehouse, on-sale SKUs, exclusions applied) rather than counted a second way,
+    // so the headline here and the OOS one-pager cannot disagree.
+    if (analyticsExtras) {
+      try {
+        const oos = await loadOosSummary();
+        analyticsExtras.inStock = oos
+          ? {
+              ratePct: Math.round((100 - oos.all.pctYesterday) * 10) / 10,
+              oosSkus: oos.all.oosYesterday,
+              skus: oos.all.skus,
+              asOf: oos.asOf,
+            }
+          : null;
+      } catch { analyticsExtras.inStock = null; }
     }
     // Sub-tab data, built from what is already loaded above; each best-effort.
     const [ph, prh, vh] = await Promise.allSettled([
