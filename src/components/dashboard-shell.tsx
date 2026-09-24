@@ -2492,7 +2492,7 @@ function VendorTable({
       )}
       {rows.length ? (
         <div className="table-scroll">
-          <table>
+          <table className="vp-table">
             <thead>
               <tr>
                 <th>Vendor <HeaderInfo label="Vendor" /></th>

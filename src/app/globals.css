@@ -500,6 +500,18 @@ tbody tr:nth-child(even) { background: transparent; }
 tbody tr:hover { background: rgba(240,198,30,.08); }
 td small { display: block; margin-top: 4px; color: var(--ink-4); font-size: 11px; }
 .wide-table table { min-width: 1320px; }
+
+/* Vendor Performance carries fourteen columns, and every header in the app is nowrap by
+   default — "Active karigar" alone claims ~145px, so the row ran well past the screen and
+   had to be scrolled sideways to reach Utilization. Headers wrap onto two lines here, the
+   two text columns wrap and are capped, and the padding tightens; the numbers, which are
+   short, stay on one line. */
+.vp-table th, .vp-table td { padding: 10px 11px; }
+.vp-table th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+.vp-table td { vertical-align: top; }
+.vp-table td:first-child, .vp-table td:nth-child(2) { white-space: normal; }
+.vp-table td:first-child { min-width: 132px; max-width: 200px; }
+.vp-table td:nth-child(2) { max-width: 130px; }
 .mono { color: var(--ink-2); font-family: var(--font-mono); font-size: .85rem; font-variant-numeric: tabular-nums; }
 .badge { padding: 5px 8px; display: inline-flex; align-items: center; border-radius: 20px; font-size: 8px; font-weight: 690; border: 1px solid transparent; }
 .badge.danger { color: #c84d5d; background: #fff1f3; border-color: #fbd8dd; }
@@ -1905,12 +1917,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .pc-plan { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
 /* A confirmation, not a report — narrow enough to read as a question. */
 .pc-modal-sm { width: min(520px, 100%); }
-/* A panel that is mostly table: wide enough that the columns are not squeezed, and it
-   grows with its content — the backdrop scrolls, so the table never needs a scrollbar
-   of its own inside a box of its own. */
-.pc-modal-lg { width: min(1180px, 100%); }
-/* The KPI strip brings a page margin with it; the modal already spaces its children. */
-.pc-modal .wf-kpi-strip { margin: 0; }
 .pc-remark { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .pc-remark em { font-style: normal; color: #b1301f; }
 .pc-foot { display: flex; justify-content: flex-end; gap: 10px; }

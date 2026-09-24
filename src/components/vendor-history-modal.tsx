@@ -97,7 +97,7 @@ export function VendorHistoryModal({
 
   return createPortal(
     <div className="pc-backdrop" role="dialog" aria-modal="true" aria-label={`History for ${vendorCode}`}>
-      <div className="pc-modal pc-modal-lg">
+      <div className="pc-modal">
         <div className="pc-head">
           <div>
             <span className="panel-kicker">Vendor history</span>
@@ -128,9 +128,8 @@ export function VendorHistoryModal({
           </div>
         </div>
 
-        {/* The strip carries its own border and padding — wrapping it in a pc-section
-            boxes it twice and eats the width the numbers need. */}
-        <div className="wf-kpi-strip vh-kpis">
+        <section className="pc-section">
+        <div className="wf-kpi-strip">
           <div className="wf-kpi">
             <span className="wf-kpi-label">
               Last PO{productCode ? ` · ${productCode}` : ''}
@@ -173,11 +172,10 @@ export function VendorHistoryModal({
             )}
           </p>
         </div>
+        </section>
 
         <section className="pc-section">
-          {/* No height cap: a box of its own to scroll inside another scrolling box is how
-              a 30-row table ends up showing six. The backdrop scrolls; this just grows. */}
-          <div className="table-scroll">
+          <div className="table-scroll" style={{ maxHeight: 340 }}>
             <table className="wf-grid">
               <thead>
                 <tr>
