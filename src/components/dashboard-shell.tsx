@@ -2625,8 +2625,13 @@ function VendorTab({ hub = null, initialView, data, capacityRules = DEFAULT_CAPA
   const zero = data.vendorTypes.filter(
     (v) => norm(v.status) === "active" && !openCodes.has(norm(v.vendor_code)),
   );
-  // Same period as the rollups — otherwise a Q1 view shows all-time type columns.
-  const types = unique(periodPos.map((r) => r.po_type ?? "Unknown"));
+  // Same period as the rollups — otherwise a Q1 view shows all-time type columns. The table
+  // is open quantity, so a type with nothing open anywhere is a column of zeros: skip it.
+  // That is what keeps EasyEcom's own auto stock-transfer POs (type OTHER, always fully
+  // received) from taking a column of their own.
+  const types = unique(
+    periodPos.filter((r) => isOpenPo(r)).map((r) => r.po_type ?? "Unknown"),
+  );
   const typeQty = (vendorCode: string, t: string) =>
     periodPos
       .filter(
