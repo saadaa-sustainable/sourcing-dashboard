@@ -67,6 +67,7 @@ import {
 import { downloadCsv, downloadPdf, type CsvValue } from "@/lib/download";
 import { MATRIX_DEFAULT_MODE } from "@/lib/matrix-defaults";
 import { FilterTable } from "@/components/filter-table";
+import { VendorHistoryButton } from "@/components/vendor-history-modal";
 import type {
   DashboardData,
   PendingPo,
@@ -2507,6 +2508,8 @@ function VendorTable({
                 <th>Capacity/mo <HeaderInfo label="Capacity/mo" /></th>
                 <th>PO capacity <HeaderInfo label="PO capacity" /></th>
                 <th>Utilization <HeaderInfo label="Utilization" /></th>
+                {/* Spec 7.8 — the vendor's own record, PO by PO. */}
+                <th>PO history <HeaderInfo label="PO history" /></th>
               </tr>
             </thead>
             <tbody>
@@ -2544,6 +2547,11 @@ function VendorTable({
                         {utilisationLabel(row.utilizationPct)}
                       </span>
                     )}
+                  </td>
+                  <td>
+                    {/* No product in scope on this page, so the panel opens on the vendor's
+                        whole record: every completed PO and the average across them. */}
+                    <VendorHistoryButton vendorCode={row.vendorCode} label="POs" />
                   </td>
                 </tr>
               ))}

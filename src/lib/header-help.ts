@@ -100,6 +100,7 @@ const GLOBAL: Record<string, string> = {
   'ingested': 'When this row reached the dashboard from its source feed.',
   // ---- people and workflow
   'requested by': 'Who raised the request — the signed-in user at the time.',
+  'po history': "Opens this vendor's record, PO by PO: every completed PO with its number, how many days it took from the PO date to completion, and how it landed against the date it was promised by — plus their average across all of them. Completed POs only; an open one has no duration yet.",
   'raised by': 'Who raised it. "Dashboard check" means the dashboard raised it from one of its own data checks.',
   'assigned to': 'Who is responsible for resolving it now. Unassigned means nobody has picked it up and no route was set.',
   'decision': 'Approve, reject or send back — shown only to someone allowed to decide. The first decision wins.',

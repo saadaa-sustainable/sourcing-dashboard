@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, X } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
-import { VendorHistoryButton } from './vendor-history-modal';
+import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import { utilisationLabel } from '@/lib/utilisation';
 

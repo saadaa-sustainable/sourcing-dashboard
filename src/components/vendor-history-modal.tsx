@@ -68,7 +68,10 @@ export function VendorHistoryModal({
   }, [vendorCode, productCode]);
 
   if (!host) return null;
-  const last = data?.lastSameProduct ?? null;
+  // With a product in scope, "last PO" means their last PO OF THAT PRODUCT (spec 7.8).
+  // Opened from a vendor page, where no product is in scope, it means their last PO at all —
+  // a dash there would just look like missing data.
+  const last = productCode ? (data?.lastSameProduct ?? null) : (data?.lastAny ?? null);
 
   return createPortal(
     <div className="pc-backdrop" role="dialog" aria-modal="true" aria-label={`History for ${vendorCode}`}>
@@ -113,7 +116,9 @@ export function VendorHistoryModal({
             <p className="wf-kpi-note">
               {last ? (
                 <>
-                  Last {productCode}: <strong>{last.poRef}</strong>, {day(last.start)} → {day(last.done)}.
+                  Last {productCode ?? 'PO'}: <strong>{last.poRef}</strong>
+                  {!productCode && last.products.length ? ` (${last.products.join(', ')})` : ''}, {day(last.start)} →{' '}
+                  {day(last.done)}.
                 </>
               ) : productCode ? (
                 <>
@@ -128,7 +133,7 @@ export function VendorHistoryModal({
                   )}
                 </>
               ) : (
-                'Pick a product to see their last PO of it.'
+                'No completed PO on record for this vendor.'
               )}
             </p>
           </div>

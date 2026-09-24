@@ -1,7 +1,7 @@
 'use client';
 
 import { FileDown } from 'lucide-react';
-import { VendorHistoryButton } from './vendor-history-modal';
+import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import { addTnaDays, tnaBaseFor } from '@/lib/business-logic';
 import { STATUS_LABEL } from '@/lib/forms/approval';
 import type { PoApproval, PoApprovalLine, PoCycleTime } from '@/lib/forms/types';

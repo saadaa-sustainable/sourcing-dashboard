@@ -25,7 +25,7 @@ import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
 import { PoDetailPanel } from './po-detail-panel';
-import { VendorHistoryButton } from './vendor-history-modal';
+import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
