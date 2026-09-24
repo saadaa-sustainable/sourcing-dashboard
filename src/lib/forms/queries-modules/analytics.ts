@@ -1006,31 +1006,14 @@ export async function loadAnalyticsExtras(
   /* 01 Money — POs that finished without their critical path ever being recorded (spec 1.10).
      The dashboard's other "Missing TNA" counts OPEN POs; this is the closed ones, where
      nothing can be filled in any more — the record is simply lost. */
+  // One aggregate in SQL (sd_missing_tna_closed). The first version paged all 16,718
+  // sd_po_completed lines through PostgREST on every dashboard load, and with the inward
+  // trend below it pushed the page past Vercel's 300-second limit — the dashboard died after
+  // sign-in. A TNA row counts as filled when any core stage has an actual date.
   try {
-    const [done, tna] = await Promise.all([
-      pageAll<{ po_ref_num: string | null }>(() =>
-        supabase.from('sd_po_completed').select('po_ref_num').order('po_detail_id'),
-      ),
-      pageAll<{ po_no: string | null; pp: string | null; gpt: string | null; cut: string | null; inl: string | null }>(() =>
-        supabase
-          .from('tna_tracker')
-          .select(
-            'po_no, pp:pp_sample_actual_date, gpt:gpt_actual_date, cut:cutting_actual_date_first, inl:in_line_actual_date',
-          )
-          .order('po_no'),
-      ),
-    ]);
-    const key = (s: string | null) => (s ?? '').trim().toUpperCase();
-    // A row with no actual on any core stage is as empty as no row at all.
-    const filled = new Set(
-      tna
-        .filter((t) => t.pp || t.gpt || t.cut || t.inl)
-        .map((t) => key(t.po_no))
-        .filter(Boolean),
-    );
-    const closed = [...new Set(done.map((d) => key(d.po_ref_num)).filter(Boolean))];
-    const missing = closed.filter((po) => !filled.has(po));
-    extras.missingTnaClosed = { closed: closed.length, missing: missing.length };
+    const { data } = await supabase.rpc('sd_missing_tna_closed');
+    const r = (Array.isArray(data) ? data[0] : data) as { closed: number | null; missing: number | null } | null;
+    if (r) extras.missingTnaClosed = { closed: Number(r.closed) || 0, missing: Number(r.missing) || 0 };
   } catch { /* section stays null */ }
 
   /* Spec 2.4 — inward trend: planned vs received per month, the coverage that falls out of
@@ -1041,62 +1024,28 @@ export async function loadAnalyticsExtras(
      deliberately absent: sd_po_grn_mapping.total_grn_value repeats one figure on every line
      of a GRN — 239 lines carrying the same ₹107,173 — so summing it overstates by the line
      count, exactly as sd_po_filtered.total_po_value does. */
+  // Aggregated in SQL (sd_inward_trend): six months of sd_ee_grn is ~114,000 lines, and the
+  // first version paged every one of them through PostgREST on each dashboard load — 114
+  // sequential requests, each re-sorting the whole set. That is what timed the page out.
   try {
-    const MONTHS = 6;
-    const nowIst = istDateKey();
-    const first = new Date(Date.UTC(Number(nowIst.slice(0, 4)), Number(nowIst.slice(5, 7)) - 1 - (MONTHS - 1), 1));
-    const fromIso = first.toISOString().slice(0, 10);
-    const [planRows, grnRows] = await Promise.all([
-      pageAll<{ plan_month: string | null; inward_qty: number | null; cost_per_piece: number | null; approval_status: string | null }>(() =>
-        supabase
-          .from('sd_inward_plan_entry')
-          .select('plan_month, inward_qty, cost_per_piece, approval_status')
-          .gte('plan_month', fromIso)
-          .order('id'),
-      ),
-      pageAll<{ received_quantity: number | null; grn_created_at: string | null }>(() =>
-        supabase
-          .from('sd_ee_grn')
-          .select('received_quantity, grn_created_at')
-          .gte('grn_created_at', fromIso)
-          .order('grn_detail_id'),
-      ),
-    ]);
-
-    const months: string[] = [];
-    for (let i = 0; i < MONTHS; i += 1) {
-      const d = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + i, 1));
-      months.push(d.toISOString().slice(0, 7));
+    const { data } = await supabase.rpc('sd_inward_trend', { p_months: 6 });
+    const rows = (Array.isArray(data) ? data : []) as {
+      month: string; planned: number | null; planned_value: number | null; received: number | null;
+    }[];
+    if (rows.length) {
+      extras.inwardTrend = rows.map((r) => {
+        const planned = Number(r.planned) || 0;
+        const got = Number(r.received) || 0;
+        return {
+          month: r.month,
+          planned,
+          plannedValue: Math.round(Number(r.planned_value) || 0),
+          received: got,
+          // No plan means no coverage — not 0%, which would read as "we received nothing".
+          coveragePct: planned > 0 ? Math.round((got / planned) * 100) : null,
+        };
+      });
     }
-    const planned = new Map<string, { qty: number; value: number }>();
-    for (const r of planRows) {
-      if ((r.approval_status ?? '').trim().toLowerCase() === 'rejected') continue;
-      const m = (r.plan_month ?? '').slice(0, 7);
-      if (!m) continue;
-      const cur = planned.get(m) ?? { qty: 0, value: 0 };
-      const q = Number(r.inward_qty) || 0;
-      cur.qty += q;
-      cur.value += q * (Number(r.cost_per_piece) || 0);
-      planned.set(m, cur);
-    }
-    const received = new Map<string, number>();
-    for (const r of grnRows) {
-      const m = (r.grn_created_at ?? '').slice(0, 7);
-      if (!m) continue;
-      received.set(m, (received.get(m) ?? 0) + (Number(r.received_quantity) || 0));
-    }
-    extras.inwardTrend = months.map((m) => {
-      const p = planned.get(m);
-      const got = received.get(m) ?? 0;
-      return {
-        month: m,
-        planned: p?.qty ?? 0,
-        plannedValue: Math.round(p?.value ?? 0),
-        received: got,
-        // No plan means no coverage — not 0%, which would read as "we received nothing".
-        coveragePct: p && p.qty > 0 ? Math.round((got / p.qty) * 100) : null,
-      };
-    });
   } catch { /* stays null */ }
 
   /* 04 Workspace — vendor recommendation extremes (≥3 completed POs to count). */
