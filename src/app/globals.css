@@ -527,7 +527,11 @@ td small { display: block; margin-top: 4px; color: var(--ink-4); font-size: 11px
 .download-button svg { flex: none; }
 
 .split-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 17px; }
-.matrix-mini { height: 280px; padding-top: 10px; overflow: auto; }
+/* Lives inside ChartCard's .chart-area, which is a FIXED height (250px) and does
+   not clip. A hard pixel height taller than that spilled the last rows out of the
+   card and over the next section — so fill the parent and scroll inside it, the
+   same contract as .chart-hscroll / .chart-vscroll. */
+.matrix-mini { height: 100%; padding-top: 10px; overflow: auto; }
 .blocked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; margin-bottom: 17px; }
 .blocked-card {
   padding: 16px;
