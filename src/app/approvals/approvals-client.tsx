@@ -16,6 +16,7 @@ import { ApprovalContextPanel } from '@/components/forms/approval-context-panel'
 import { productCodeFromLineLabel, type ApprovalContext } from '@/lib/approval-context';
 import { FilterTable, type Column } from '@/components/filter-table';
 import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
+import { utilisationLabel } from '@/lib/utilisation';
 
 // Columns for the approval-history log (read-only decision list) → shared FilterTable.
 const LOG_COLS: Column<ApprovalLogRow>[] = [
@@ -227,7 +228,7 @@ export function ApprovalsClient({
                       {item.vendorPoCapacity ? (
                         <>
                           <strong>{item.vendorPoCapacity.toLocaleString('en-IN')} pcs</strong>
-                          {item.vendorCapacityUtil != null ? ` · ${item.vendorCapacityUtil}% used` : ''}
+                          {item.vendorCapacityUtil != null ? ` · ${utilisationLabel(item.vendorCapacityUtil)} used` : ''}
                           <small className="wf-subtle wf-block">
                             {item.vendorCapacityPerMonth?.toLocaleString('en-IN') ?? '—'} pcs/mo
                             {item.vendorCapacityUpdatedAt
@@ -712,11 +713,11 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
           {cap == null ? (
             <Verdict ok={null} text="capacity not entered" />
           ) : (
-            <Verdict ok={utilWithPo != null && utilWithPo <= 100} text={utilWithPo != null ? `${utilWithPo}% with this PO` : '—'} />
+            <Verdict ok={utilWithPo != null && utilWithPo <= 100} text={utilWithPo != null ? `${utilisationLabel(utilWithPo)} with this PO` : '—'} />
           )}
         </div>
         <dl>
-          <div><dt>In process</dt><dd>{inproc == null ? 'no open POs' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle"> · {util}% of PO capacity</small> : null}</dd></div>
+          <div><dt>In process</dt><dd>{inproc == null ? 'no open POs' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle"> · {utilisationLabel(util)} of PO capacity</small> : null}</dd></div>
           <div><dt>PO capacity ({item.vendorLeadDays ?? '—'}-day lead)</dt><dd>{cap == null ? 'not entered' : `${fmtNum(cap)} pcs`}</dd></div>
           <div><dt>Headroom</dt><dd className={headroom != null && headroom < d.poQty ? 'wf-error-text' : undefined}>{headroom != null ? `${fmtNum(headroom)} pcs` : '—'}{headroom != null && headroom < d.poQty ? ' — less than this PO' : ''}</dd></div>
           <div><dt>Capacity / month</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : '—'}{item.vendorCapacityUpdatedAt ? ` · ${fmtDate(item.vendorCapacityUpdatedAt)}` : ''}</dd></div>

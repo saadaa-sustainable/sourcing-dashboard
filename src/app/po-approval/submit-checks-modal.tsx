@@ -6,6 +6,7 @@ import { AlertTriangle, Check, X } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
 import { VendorHistoryButton } from './vendor-history-modal';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
+import { utilisationLabel } from '@/lib/utilisation';
 
 const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const rs = (v: number | null | undefined) => (v == null ? '—' : `₹${inr.format(Math.round(v * 100) / 100)}`);
@@ -229,7 +230,7 @@ export function SubmitChecksModal({
                       <td className="num">{inr.format(c.quantity.capacity.poCapacity)} pcs</td>
                       <td>
                         <span className={`pc-delta ${capOver ? 'is-up' : 'is-down'}`}>
-                          {c.quantity.capacity.utilWithThisPo}% used with this PO
+                          {utilisationLabel(c.quantity.capacity.utilWithThisPo)} used with this PO
                         </span>
                       </td>
                     </tr>

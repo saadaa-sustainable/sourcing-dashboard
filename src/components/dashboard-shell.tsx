@@ -2796,7 +2796,7 @@ function VendorTab({ hub = null, initialView, data, capacityRules = DEFAULT_CAPA
           <div className="coverage">
             <div className="coverage-row">
               <span>Overall utilisation</span>
-              <b>{overallUtil}%</b>
+              <b>{utilisationLabel(overallUtil)}</b>
             </div>
             <div className="coverage-bar">
               <i style={{ width: `${Math.min(overallUtil, 100)}%` }} />

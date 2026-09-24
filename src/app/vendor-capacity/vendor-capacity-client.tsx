@@ -341,7 +341,7 @@ function EntryTab({
         const karigar = Number(vendor.current?.active_karigar ?? 0);
         const m = modelOf(vendor, rules);
         return m.entered
-          ? [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, m.capacityPerMonth, vendor.machinesAtOnboarding, m.poCapacity, vendor.inProcessQty, m.available, m.machineUtil, m.capacityUtil, lastUpdated]
+          ? [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, m.capacityPerMonth, vendor.machinesAtOnboarding, m.poCapacity, vendor.inProcessQty, m.available, m.machineUtil, utilisationLabel(m.capacityUtil), lastUpdated]
           : [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, 'Not entered', vendor.machinesAtOnboarding, 'Not entered', vendor.inProcessQty, '', '', '', lastUpdated];
       }),
     ]);
@@ -452,8 +452,8 @@ function EntryTab({
         <strong> PO capacity</strong> = what the vendor can make inside its PO type&apos;s lead time
         (Job Work {rules.leadDays.job_work}d · E-FOB {rules.leadDays.efob}d · FOB {rules.leadDays.fob}d), i.e.
         capacity/month × lead days ÷ 30. <strong>Available</strong> = PO capacity − on order;
-        <strong> Capacity util</strong> = on order ÷ PO capacity, shown as the real percentage
-        even past 100%. A vendor with nothing entered reads <strong>Not entered</strong> and is
+        <strong> Capacity util</strong> = on order ÷ PO capacity, reading "100% Over Utilised"
+        once past capacity. A vendor with nothing entered reads <strong>Not entered</strong> and is
         left out of every total. First machines and Type are{' '}
         <span className="wf-fixed-tag">
           <Lock size={10} /> FIXED
@@ -638,7 +638,7 @@ function CapacityRow({
       </td>
       <td className="num">{fmt.format(inProcess)}</td>
       {/* Past capacity the headroom is negative and only says how far past; the state is the
-          thing to read, and the real percentage beside it says how far. */}
+          thing to read — the utilisation cell beside it reads "100% Over Utilised". */}
       <td className="num wf-computed strong">
         {!model.entered ? (
           <span className="wf-subtle">—</span>
@@ -649,10 +649,9 @@ function CapacityRow({
         )}
       </td>
       <td className="num wf-computed">{model.machineUtil == null ? '—' : `${model.machineUtil}%`}</td>
-      {/* The real percentage, not capped: 148% tells the approver how far over, which is the
-          information they need. */}
+      {/* Past 100% the cell states the condition, not the figure — see src/lib/utilisation.ts. */}
       <td className={`num wf-computed${model.over ? ' vc-util-over' : ''}`}>
-        {model.capacityUtil == null ? '—' : `${model.capacityUtil}%`}
+        {utilisationLabel(model.capacityUtil)}
       </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}
@@ -1100,7 +1099,7 @@ function ReportingTab({
   function exportRows() {
     downloadCsv('vendor-capacity-report.csv', [
       ['Vendor code', 'Vendor', 'Type', 'PO capacity', 'In process', 'Utilization %'],
-      ...rows.map((row) => [row.code, row.name, row.type, row.cap, row.inProc, row.util]),
+      ...rows.map((row) => [row.code, row.name, row.type, row.cap, row.inProc, utilisationLabel(row.util)]),
     ]);
   }
 
@@ -1111,7 +1110,7 @@ function ReportingTab({
         <CapacityMetric label="In process" value={fmt.format(totalInProcess)} detail="open production quantity" tone="blue" />
         <CapacityMetric
           label="Overall utilization"
-          value={overallUtil == null ? '—' : `${overallUtil}%`}
+          value={utilisationLabel(overallUtil)}
           detail={
             !totalCapacity
               ? 'No capacity entered'

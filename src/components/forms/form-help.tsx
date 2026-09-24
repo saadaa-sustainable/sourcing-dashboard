@@ -35,7 +35,7 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'In process', source: 'Real PO data (GCP)', formula: 'Σ pending qty on the vendor’s Approved POs', detail: 'Pieces already on order and not yet received, from the EasyCom pipeline.' },
     { field: 'Available', source: 'Automatic', formula: 'PO capacity − On order', detail: 'Free capacity for new POs. Past capacity the cell reads “Over Utilised” and the utilisation column shows how far.' },
     { field: 'Machine utilisation', source: 'Automatic', formula: 'Karigar ÷ Machines × 100', detail: 'Workers per machine — how densely the allocated machines are staffed.' },
-    { field: 'Capacity utilisation', source: 'Automatic', formula: 'On order ÷ PO capacity × 100', detail: 'How full the vendor is against its PO capacity — the real percentage, not capped, so 148% says how far over. The same figure appears on Reporting, Vendor Performance, PO Approval and the dashboard: one function computes it.' },
+    { field: 'Capacity utilisation', source: 'Automatic', formula: 'On order ÷ PO capacity × 100', detail: 'How full the vendor is against its PO capacity. Past 100% every screen reads "100% Over Utilised" instead of a number — beyond capacity the figure adds nothing. The same value appears on Reporting, Vendor Performance, PO Approval and the dashboard: one function computes it, one helper writes it.' },
     { field: 'Submit this week · lock', source: 'You (weekly)', detail: 'Capacity is submitted once a week per vendor. On submission the row locks (Last updated shows “Submitted · locked”) and reopens automatically on Saturday. An admin can correct a locked row. Over 7 days without a submission shows as stale; when most vendors are stale the page says so at the top.' },
   ],
   '/po-approval': [

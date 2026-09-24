@@ -274,7 +274,7 @@
 }
 
 /* Past capacity, "Available" states the condition rather than a negative headroom figure,
-   and Capacity util is the plain percentage, red once it reaches 100%. */
+   and Capacity util reads "100% Over Utilised" (red) once it reaches 100%. */
 .ui-view-vendor-capacity .vc-over-text {
   color: #c0392b;
   font-weight: 650;
