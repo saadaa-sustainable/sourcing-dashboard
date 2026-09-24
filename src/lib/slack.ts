@@ -160,6 +160,60 @@ export async function notifyPlanReportSlack(n: PlanReportNotice): Promise<boolea
   return true;
 }
 
+// ── Daily inventory report ───────────────────────────────────────────────────
+
+/**
+ * The day's inventory, as a summary plus a download link.
+ *
+ * The file is linked rather than attached because an incoming webhook cannot upload one;
+ * the numbers people act on are in the message itself, so the link is only needed by
+ * whoever wants to pivot the whole thing.
+ */
+export async function notifyInventoryReportSlack(n: {
+  day: string;
+  summary: {
+    rows: number;
+    skus: number;
+    warehouses: number;
+    outOfStock: number | null;
+    outOfStockPct: number | null;
+    emptyEverywhere: number;
+    runningLow: number;
+    totalStock: number;
+    totalInProgress: number;
+    dataDay: string | null;
+    stale: boolean;
+  };
+  csvUrl: string | null;
+}): Promise<boolean> {
+  const hook = supplyChainWebhook();
+  if (!hook) return false;
+  const s = n.summary;
+  const n0 = (v: number) => v.toLocaleString('en-IN');
+  const pcs = (v: number) => `${Math.round(v).toLocaleString('en-IN')} pcs`;
+  const date = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const text = [
+    `📦 *Inventory — ${date(n.day)}*`,
+    `• *${pcs(s.totalStock)}* in stock across ${s.warehouses} warehouse${s.warehouses === 1 ? '' : 's'}  ·  ${pcs(s.totalInProgress)} on order`,
+    // The same OOS figure the dashboard shows (Main Warehouse, on-sale SKUs), so the two
+    // can never contradict each other. The wider "nothing anywhere" count sits beside it.
+    s.outOfStock != null
+      ? `• ⚠️ Out of stock: *${n0(s.outOfStock)}* SKUs (*${s.outOfStockPct}%*) — Main Warehouse, on-sale SKUs  ·  ${n0(s.emptyEverywhere)} empty in every warehouse`
+      : `• ⚠️ Empty in every warehouse: *${n0(s.emptyEverywhere)}* of ${n0(s.skus)} SKUs`,
+    `• 📉 Under 15 days of cover: *${n0(s.runningLow)}* SKUs (on the last 45 days' sales)`,
+    // Say plainly when the numbers are yesterday's, rather than letting a stale sync pass
+    // for today's position.
+    s.stale
+      ? `• 🕐 *These are ${s.dataDay ? date(s.dataDay) : 'older'} figures* — today's sync has not landed yet.`
+      : '',
+    n.csvUrl ? `📎 <${n.csvUrl}|Download the full inventory (CSV, ${s.rows.toLocaleString('en-IN')} rows)>` : '📎 The CSV could not be stored — open the dashboard instead.',
+    link('/doq-dashboard', 'Open the OOS & inventory dashboard →'),
+  ].filter(Boolean).join('\n');
+  await postSlack(hook, text);
+  return true;
+}
+
 // ── Month-end auto-submit of next month's plan ───────────────────────────────
 export async function notifyPlanAutoSubmitSlack(n: {
   monthLabel: string;

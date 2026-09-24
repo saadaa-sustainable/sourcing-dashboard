@@ -23,9 +23,16 @@ export type OosSummaryData = OosSummary & {
   codesLeftOut: { state: string; codes: number }[];
 };
 
-export async function loadOosSummary(): Promise<OosSummaryData | null> {
+/** A Supabase client this can read through — the service-role one when there is no user
+ *  session (a cron), otherwise the request client. */
+export type OosDb = Awaited<ReturnType<typeof client>>;
+
+export async function loadOosSummary(db?: OosDb): Promise<OosSummaryData | null> {
   try {
-    const supabase = await client();
+    // A cron has no session, so it passes the service-role client; everything else uses
+    // the request client as before. One implementation either way, so the Slack figure and
+    // the dashboard figure cannot drift apart.
+    const supabase = db ?? (await client());
     const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
     const { data: excluded } = await supabase.from('sd_oos_sku_exclusion').select('sku');
     const excludedSkus = new Set(

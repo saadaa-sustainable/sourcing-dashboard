@@ -46,6 +46,8 @@ function installBqSyncTriggers() { return BqSync_.install(); }
 // Manual: full-column inventory refresh (~6 GB scan) — use after schema changes
 // or to fill descriptive columns without waiting for Sunday.
 function bqSyncFullInventoryRefresh() { return BqSync_.doqOos(true); }
+/** Send today's inventory report to Slack now (the morning sync does this automatically). */
+function bqSendInventoryReport() { return BqSync_.postInventoryReport(); }
 // DOQ Dashboard window aggregates (runs in morningA too; manual run for testing).
 function bqSyncDoqWindows() { return BqSync_.doqWindows(); }
 // Manual: run only the vendor sync now (names + EasyEcom status) — use right
@@ -699,11 +701,44 @@ const BqSync_ = (function () {
     if (real.length) throw new Error(`${real.length} sync target(s) failed: ${real.map((e) => e.message).join(' | ')}`);
   }
 
+  /**
+   * Post the daily inventory report to Slack, straight after the inventory lands.
+   *
+   * Triggered from here rather than on a clock so the figures are the ones that just
+   * arrived — a cron guessing "6:30 should be safe" posts yesterday's numbers on any
+   * morning the sync runs late. Non-fatal by design: a Slack or report hiccup must never
+   * fail the sync that feeds the whole dashboard.
+   *
+   * Needs two script properties: SITE_URL (e.g. https://sourcing-dashboard-coral.vercel.app)
+   * and CRON_SECRET (the same value as the Vercel env var).
+   */
+  function postInventoryReport_() {
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const site = props.getProperty('SITE_URL');
+      const secret = props.getProperty('CRON_SECRET');
+      if (!site || !secret) {
+        console.log('inventory report skipped: set SITE_URL + CRON_SECRET script properties');
+        return;
+      }
+      const res = UrlFetchApp.fetch(`${site}/api/cron/inventory-report`, {
+        method: 'get',
+        headers: { Authorization: `Bearer ${secret}` },
+        muteHttpExceptions: true,
+      });
+      console.log(`inventory report: ${res.getResponseCode()} ${res.getContentText().slice(0, 300)}`);
+    } catch (e) {
+      console.log('inventory report skipped: ' + e);
+    }
+  }
+
   function morningA() {
     const errors = [runTarget('sd_ee_product_master', productMaster)];
     const isSunday = new Date().getDay() === 0; // script TZ = Asia/Kolkata
     errors.push(...doqOos(isSunday));
     errors.push(doqWindows());   // DOQ Dashboard window aggregates
+    // After the inventory is in Supabase, not before — the report reads what we just wrote.
+    postInventoryReport_();
     throwIfErrors(errors);
   }
 
@@ -747,5 +782,5 @@ const BqSync_ = (function () {
     console.log('BqSync triggers installed: morningA + morningB (~6 AM), evening (~6 PM), script timezone.');
   }
 
-  return { morningA, morningB, evening, install, doqOos, doqWindows, vendorsOnce, vendorSchema, eeVendorMaster };
+  return { morningA, morningB, evening, install, doqOos, doqWindows, vendorsOnce, vendorSchema, eeVendorMaster, postInventoryReport: postInventoryReport_ };
 })();
