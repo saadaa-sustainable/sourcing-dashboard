@@ -984,6 +984,9 @@ export type StandardCostRateHistory = {
   note: string | null;
 };
 
+/** How a fabric is consumed and rated on the cost sheet: by the metre or by the kilogram. */
+export type FabricUom = 'mtr' | 'kg';
+
 /** Standard cost sheet row — final job/FOB/EFOB rates per product (sd_standard_cost). */
 export type StandardCost = {
   id: number;
@@ -999,6 +1002,7 @@ export type StandardCost = {
   rfp_link: string | null;
   documented: boolean;
   fabric_code: string | null; // fabric whose rate feeds the CM cost matrix
+  fabric_uom: FabricUom; // how that fabric is consumed and rated: per metre or per kg
   status: SdStatus;
   submitted_by: string | null;
   submitted_at: string | null;
@@ -1059,6 +1063,7 @@ export type StandardCostExtraFabric = {
   size: string;
   consumption: number | null;
   fabric_cost: number | null;
+  uom: FabricUom;
 };
 
 /**

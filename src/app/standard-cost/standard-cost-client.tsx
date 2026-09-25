@@ -53,6 +53,7 @@ import type {
   CmtpComponent,
   CostStandards,
   EfobFabricCost,
+  FabricUom,
   ProductCatalogItem,
   SdRole,
   StandardCost,
@@ -1065,8 +1066,24 @@ export function CostRow({
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'] as const;
 const numv = (s: string) => Number(s) || 0;
 
-/** An unsaved further fabric on the cost sheet: which fabric, and consumption per size. */
-type ExtraFabricDraft = { key: number; fabricCode: string; cons: Record<string, string> };
+/** An unsaved further fabric on the cost sheet: which fabric, its unit, and consumption per size. */
+type ExtraFabricDraft = { key: number; fabricCode: string; uom: FabricUom; cons: Record<string, string> };
+
+/** The unit picker shared by every fabric block: metres (the master's own unit) or kilograms. */
+function UomSelect({ value, disabled, onChange }: { value: FabricUom; disabled: boolean; onChange: (v: FabricUom) => void }) {
+  return (
+    <label className="field wf-field">
+      <span>
+        Consumed in
+        <small>how this fabric is bought and consumed — the rate and consumption below read in this unit</small>
+      </span>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value === 'kg' ? 'kg' : 'mtr')}>
+        <option value="mtr">Metres (INR/mtr)</option>
+        <option value="kg">Kilograms (INR/kg)</option>
+      </select>
+    </label>
+  );
+}
 
 // FINAL PRICE buildup (matches the live cost sheet): MARGIN adds a % on the garment
 // cost. REJ/OH were removed (2026-09-08); the margin % comes from Rules Master.
@@ -1118,6 +1135,7 @@ export function CostDetail({
   // product maps to a single fabric; multi-fabric products stay blank for manual pick.
   const autoFabric = masterFabric && !masterFabric.multi ? masterFabric.fabricCode ?? '' : '';
   const [fabricCode, setFabricCode] = useState(cost.fabric_code ?? autoFabric);
+  const [fabricUom, setFabricUom] = useState<FabricUom>(cost.fabric_uom === 'kg' ? 'kg' : 'mtr');
   const fabricFromMaster = !cost.fabric_code && !!autoFabric && fabricCode === autoFabric;
   const [consBySize, setConsBySize] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
@@ -1140,7 +1158,7 @@ export function CostDetail({
     for (const e of extraFabrics) {
       let d = byCode.get(e.fabric_code);
       if (!d) {
-        d = { key: key++, fabricCode: e.fabric_code, cons: {} };
+        d = { key: key++, fabricCode: e.fabric_code, uom: e.uom === 'kg' ? 'kg' : 'mtr', cons: {} };
         byCode.set(e.fabric_code, d);
       }
       if (e.size && e.consumption != null) d.cons[e.size.toUpperCase()] = String(e.consumption);
@@ -1202,7 +1220,10 @@ export function CostDetail({
     setConsBySize((cur) => ({ ...cur, [size]: value }));
   }
   function addExtra() {
-    setExtras((cur) => [...cur, { key: nextExtraKey.current++, fabricCode: '', cons: {} }]);
+    setExtras((cur) => [...cur, { key: nextExtraKey.current++, fabricCode: '', uom: 'mtr', cons: {} }]);
+  }
+  function setExtraUom(key: number, uom: FabricUom) {
+    setExtras((cur) => cur.map((e) => (e.key === key ? { ...e, uom } : e)));
   }
   function removeExtra(key: number) {
     setExtras((cur) => cur.filter((e) => e.key !== key));
@@ -1228,6 +1249,7 @@ export function CostDetail({
     const header = new FormData();
     header.set('product_code', cost.product_code);
     header.set('fabric_code', fabricCode);
+    header.set('fabric_uom', fabricUom);
     header.set('cad_link', cad);
     header.set('rfp_link', rfp);
     if (poAvgFinal != null) header.set('total_po_avg_cost', String(poAvgFinal));
@@ -1256,6 +1278,7 @@ export function CostDetail({
           .map((e, i) => ({
             fabric_code: e.fabricCode,
             position: i + 1,
+            uom: e.uom,
             sizes: rows.flatMap((r) => {
               const p = r.parts.find((x) => x.key === e.key);
               return p && p.has
@@ -1320,6 +1343,7 @@ export function CostDetail({
                 ))}
               </select>
             </label>
+            <UomSelect value={fabricUom} disabled={!editable} onChange={setFabricUom} />
           </div>
 
           <div className="wf-cost-param">
@@ -1327,7 +1351,7 @@ export function CostDetail({
             <dl className="wf-doc-meta">
               <div><dt>Grey rate</dt><dd className="wf-cell-input">{disp(fab?.grey ?? null)}</dd></div>
               <div><dt>Processing</dt><dd className="wf-cell-input">{disp(fab?.processing ?? null)}</dd></div>
-              <div><dt>Finished fabric (INR/mtr)</dt><dd className="wf-cell-calc">{disp(fab?.finished ?? null)}</dd></div>
+              <div><dt>Finished fabric (INR/{fabricUom})</dt><dd className="wf-cell-calc">{disp(fab?.finished ?? null)}</dd></div>
             </dl>
             <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/fabric-cost">Edit on Fabric Cost →</a>
           </div>
@@ -1340,7 +1364,7 @@ export function CostDetail({
               <div className="wf-size-tile" key={r.size}>
                 <span className="wf-size-name">{r.size}</span>
                 <label className="wf-size-field">
-                  <span>Consumption (mtr)</span>
+                  <span>Consumption ({fabricUom})</span>
                   <input
                     className="wf-cell-input"
                     type="number"
@@ -1361,7 +1385,7 @@ export function CostDetail({
           <p className="wf-subtle wf-legend">
             <span className="wf-legend-input">input</span>
             <span className="wf-legend-calc">computed</span>
-            — fabric cost = finished-fabric rate × consumption. The rate is owned by the Fabric Cost master.
+            — fabric cost = finished-fabric rate × consumption, both in the unit picked (metres or kg). The rate is owned by the Fabric Cost master.
             {fabricRate == null && ' Pick a fabric with a finished rate to compute.'}
           </p>
 
@@ -1395,11 +1419,12 @@ export function CostDetail({
                           ))}
                         </select>
                       </label>
+                      <UomSelect value={e.uom} disabled={!editable} onChange={(v) => setExtraUom(e.key, v)} />
                     </div>
                     <dl className="wf-doc-meta">
                       <div><dt>Grey rate</dt><dd className="wf-cell-input">{disp(efab?.grey ?? null)}</dd></div>
                       <div><dt>Processing</dt><dd className="wf-cell-input">{disp(efab?.processing ?? null)}</dd></div>
-                      <div><dt>Finished fabric (INR/mtr)</dt><dd className="wf-cell-calc">{disp(erate)}</dd></div>
+                      <div><dt>Finished fabric (INR/{e.uom})</dt><dd className="wf-cell-calc">{disp(erate)}</dd></div>
                     </dl>
                     <div className="wf-size-grid" role="group" aria-label={`Consumption and cost by size — fabric ${idx + 2}`}>
                       {SIZES.map((size) => {
@@ -1409,7 +1434,7 @@ export function CostDetail({
                           <div className="wf-size-tile" key={size}>
                             <span className="wf-size-name">{size}</span>
                             <label className="wf-size-field">
-                              <span>Consumption (mtr)</span>
+                              <span>Consumption ({e.uom})</span>
                               <input
                                 className="wf-cell-input"
                                 type="number"

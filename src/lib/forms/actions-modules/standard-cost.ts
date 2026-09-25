@@ -35,6 +35,9 @@ import {
   textOrNull,
 } from './_shared';
 
+/** 'kg' when the team says so, otherwise the metre the Fabric Cost master rates in. */
+const fabricUom = (v: unknown): 'mtr' | 'kg' => (String(v ?? '').trim().toLowerCase() === 'kg' ? 'kg' : 'mtr');
+
 export async function saveStandardCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -69,6 +72,9 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     documented: true,
     updated_at: new Date().toISOString(),
   };
+  // How the fabric is consumed (per metre / per kg). Only the cost sheet sends it, so a
+  // rate-only save never resets a chosen unit.
+  if (formData.has('fabric_uom')) patch.fabric_uom = fabricUom(formData.get('fabric_uom'));
   // Rate columns are owned by the negotiation flow — only touch them when a caller
   // explicitly sends them, so a documentation save never nulls a signed-off rate.
   if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));
@@ -148,7 +154,7 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
   }
 
   // Further fabrics on a multi-fabric garment: each with its own consumption per size.
-  let extraFabrics: { fabric_code?: unknown; position?: unknown; sizes?: { size?: unknown; consumption?: unknown; fabric_cost?: unknown }[] }[] = [];
+  let extraFabrics: { fabric_code?: unknown; position?: unknown; uom?: unknown; sizes?: { size?: unknown; consumption?: unknown; fabric_cost?: unknown }[] }[] = [];
   try {
     extraFabrics = JSON.parse(String(formData.get('extra_fabrics') ?? '[]'));
     if (!Array.isArray(extraFabrics)) extraFabrics = [];
@@ -176,11 +182,12 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
 
   const extraRows: {
     product_code: string; fabric_code: string; position: number; size: string;
-    consumption: number | null; fabric_cost: number | null;
+    consumption: number | null; fabric_cost: number | null; uom: 'mtr' | 'kg';
   }[] = [];
   extraFabrics.forEach((f, i) => {
     const code = String(f.fabric_code ?? '').trim();
     if (!code) return;
+    const uom = fabricUom(f.uom);
     for (const s of Array.isArray(f.sizes) ? f.sizes : []) {
       const size = String(s.size ?? '').trim().toUpperCase();
       const consumption = numOrNull(s.consumption);
@@ -192,6 +199,7 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
         size,
         consumption,
         fabric_cost: numOrNull(s.fabric_cost),
+        uom,
       });
     }
   });
