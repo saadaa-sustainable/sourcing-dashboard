@@ -54,7 +54,7 @@ describe('approval workflow v2', () => {
     const matrix = {
       l1: ['asha@saadaa.in', 'ravi@saadaa.in'],
       l2: ['nisha@saadaa.in'],
-      l3: ['mahesh@saadaa.in'],
+      l3: ['l3-approver@example.com'],
     };
     assert.equal(levelForStatus('submitted'), 'l1');
     assert.equal(levelForStatus('pending_l2'), 'l2');
@@ -70,7 +70,7 @@ describe('approval workflow v2', () => {
     // …until it has escalated.
     assert.equal(canDecide({ role: 'team', email: 'nisha@saadaa.in' }, 'submitted', matrix, true), true);
     // L3 is the final authority, at any level, escalated or not.
-    assert.equal(canDecide({ role: 'team', email: 'mahesh@saadaa.in' }, 'pending_l2', matrix), true);
+    assert.equal(canDecide({ role: 'team', email: 'l3-approver@example.com' }, 'pending_l2', matrix), true);
     assert.equal(canDecide({ role: 'admin', email: 'someone@saadaa.in' }, 'pending_l2', matrix), true);
   });
   it('falls back to the role ladder for a level nobody is named at', () => {

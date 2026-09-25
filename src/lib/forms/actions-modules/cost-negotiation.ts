@@ -163,7 +163,7 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   return done('Proposed for costing.');
 }
 
-/** Mahesh reviews a proposal and states the target cost. */
+/** The approver (admin) reviews a proposal and states the target cost. */
 export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -255,7 +255,7 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
   return done('Actual rate submitted for sign-off.');
 }
 
-/** Mahesh signs off — the actual rate becomes the approved Standard Cost. */
+/** The approver (admin) signs off — the actual rate becomes the approved Standard Cost. */
 export async function signOffCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -290,7 +290,7 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   return done('Signed off. This is now the standard cost.');
 }
 
-/** Mahesh sends the rate back for renegotiation. */
+/** The approver (admin) sends the rate back for renegotiation. */
 export async function renegotiateCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -313,7 +313,7 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
   return done('Sent back to renegotiate.');
 }
 
-/** Mahesh rejects the cost proposal/rate. */
+/** The approver (admin) rejects the cost proposal/rate. */
 export async function rejectCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -415,7 +415,7 @@ export async function saveCostStandards(formData: FormData): Promise<ActionResul
   return done('Standard fields saved.');
 }
 
-/** Sequential sign-off, step 1 (FG): Mahesh confirms the fabric rate first. */
+/** Sequential sign-off, step 1 (FG): the approver confirms the fabric rate first. */
 export async function confirmFabricRate(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');

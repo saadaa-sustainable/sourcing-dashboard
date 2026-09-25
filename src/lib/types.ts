@@ -145,7 +145,7 @@ export type TrackerRow = {
   delayDays: number;
   delayBucket: string;
   stage: string;
-  // High risk = any critical-path TNA stage overdue as of today (Mahesh's rule).
+  // High risk = any critical-path TNA stage overdue as of today (the approver's rule).
   highRisk: boolean;
   // A TNA critical-path stage is planned for today and not yet done (Layer 3 - act now).
   dueToday: boolean;

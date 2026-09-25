@@ -1,7 +1,7 @@
 import type { EasycomStatus, InternalStatus, PendingPo, StageInspections, TnaEvent, TnaRecord, TrackerRow, VendorMaster, VendorRollup, VendorType } from './types';
 
 // The critical-path stages, in order. Each carries its planned (TNA) date, the
-// actual completion date, and the delay-days field. Extended per Mahesh beyond
+// actual completion date, and the delay-days field. Extended per the approver beyond
 // Inline through First Delivery and PO Closer (from the TNA Update sheet).
 export const TNA_STAGES = [
   { name: 'PP Sample', tnaField: 'pp_sample_tna_date', actualField: 'pp_sample_actual_date', delayField: 'pp_sample_delay_days', core: true },
@@ -235,7 +235,7 @@ export function isDelayedPo(row: PendingPo, today = istToday()) {
 }
 
 /**
- * High Risk (Mahesh's rule): a PO is high risk if ANY critical-path stage is
+ * High Risk (the approver's rule): a PO is high risk if ANY critical-path stage is
  * overdue as of today — its planned (TNA) date has passed with no actual date —
  * regardless of how much runway remains to final delivery. A single overdue
  * stage compounds forward, so it flags immediately to force recovery.

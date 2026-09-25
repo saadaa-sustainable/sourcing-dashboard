@@ -326,9 +326,9 @@ export function StandardCostClient({
       <Notice tone="info">
         Cost is <strong>negotiated</strong>, not just approved: team{' '}
         <strong>proposes</strong> (fill the {jobLabel} / {fobLabel} / {efobLabel} rate that
-        applies) → Mahesh <strong>accepts the proposal as-is</strong>, <strong>rejects</strong> it, or
+        applies) → the approver <strong>accepts the proposal as-is</strong>, <strong>rejects</strong> it, or
         sets a <strong>target</strong> → team returns with the <strong>actual vendor rate</strong> →
-        Mahesh <strong>signs off</strong>, and that becomes the Standard Cost the Buying Plan values
+        the approver <strong>signs off</strong>, and that becomes the Standard Cost the Buying Plan values
         from. {signedOff} of {costs.length} {isMat ? 'materials' : 'products'} are signed off.
       </Notice>
 
@@ -523,7 +523,7 @@ export function StandardCostClient({
           </section>
 
           <div className="sc-fg-context">
-            <div><h3>Two cost owners, one finished price</h3><p>Fabric Cost comes from Vikram ji&apos;s master. CMTP is built by Nimisha / Durganshu. Final Cost combines both with the Rules Master margin.</p></div>
+            <div><h3>Two cost owners, one finished price</h3><p>Fabric Cost comes from the Fabric Cost master, owned by the fabric team. CMTP is built by the costing team. Final Cost combines both with the Rules Master margin.</p></div>
             <div><h3>After sign-off</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
           </div>
           {standards && <StandardFieldsPanel standards={standards} editable={editable} />}
@@ -1079,9 +1079,9 @@ function buildFinal(garment: number, marginPct: number) {
 /**
  * The expandable cost record — the two linked standards that concatenate into the
  * final cost, each independently owned:
- *   • Fabric Cost — referenced read-only from the Fabric Cost master (Vikram ji);
+ *   • Fabric Cost — referenced read-only from the Fabric Cost master (the fabric team);
  *     per-size fabric cost = finished-fabric rate × consumption(size).
- *   • CMTP — the CMTP breakdown tab (Nimisha / Durganshu).
+ *   • CMTP — the CMTP breakdown tab (the costing team).
  * Final Cost = Fabric + CMTP → REJ / OH / MARGIN → FINAL PRICE, all computed and
  * never directly editable.
  */
@@ -1289,7 +1289,7 @@ export function CostDetail({
           </button>
         </div>
         <span className="wf-subtle wf-two-entity-note">
-          Final = Fabric + CMTP (computed). Two owners: Fabric — Vikram ji · CMTP — Nimisha / Durganshu.
+          Final = Fabric + CMTP (computed). Two owners: Fabric — the Fabric Cost master · CMTP — the costing team.
         </span>
       </div>
 
@@ -1323,7 +1323,7 @@ export function CostDetail({
           </div>
 
           <div className="wf-cost-param">
-            <span className="wf-cost-param-head">Fabric Cost — owned by the Fabric Cost master (Vikram ji)</span>
+            <span className="wf-cost-param-head">Fabric Cost — owned by the Fabric Cost master</span>
             <dl className="wf-doc-meta">
               <div><dt>Grey rate</dt><dd className="wf-cell-input">{disp(fab?.grey ?? null)}</dd></div>
               <div><dt>Processing</dt><dd className="wf-cell-input">{disp(fab?.processing ?? null)}</dd></div>
@@ -1430,7 +1430,7 @@ export function CostDetail({
                     </div>
                     {e.fabricCode && erate == null && (
                       <p className="wf-subtle wf-cost-param-note">
-                        No finished rate on the Fabric Cost master for this fabric yet — its cost cannot be computed until Vikram ji fills it.
+                        No finished rate on the Fabric Cost master for this fabric yet — its cost cannot be computed until the fabric team fills it there.
                       </p>
                     )}
                   </div>

@@ -36,10 +36,10 @@ test('days open: raise to resolve, or raise to now while open', () => {
 
 test('routing by category; unset route stays unassigned', () => {
   const routes: IssueRoute[] = [
-    { category: 'tna', label: 'TNA', assignee: 'durganshu@saadaa.in', updated_by: null, updated_at: iso(0) },
+    { category: 'tna', label: 'TNA', assignee: 'tna-owner@example.com', updated_by: null, updated_at: iso(0) },
     { category: 'po', label: 'PO', assignee: '  ', updated_by: null, updated_at: iso(0) },
   ];
-  assert.equal(routeFor('tna', routes), 'durganshu@saadaa.in');
+  assert.equal(routeFor('tna', routes), 'tna-owner@example.com');
   assert.equal(routeFor('po', routes), null);
   assert.equal(routeFor('vendor', routes), null);
 });

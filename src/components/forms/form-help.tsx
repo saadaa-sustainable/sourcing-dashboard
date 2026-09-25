@@ -175,7 +175,7 @@ const HELP: Record<string, HelpItem[]> = {
   '/standard-cost': [
     { field: 'Product / material code', source: 'Active products', detail: 'Seeded from the active list. Add a code here if a new product/material is not yet listed.' },
     { field: 'Job / FOB / E-FOB rate (Material: Job Work / Purchase)', source: 'You enter (negotiated)', detail: 'The final per-piece rate for each PO type, filled during negotiation. Job work excludes fabric (you supply it); FOB includes the fabric margin.' },
-    { field: 'Proposed / Target', source: 'Negotiation', detail: 'Proposed = the team’s expected cost; Target = the cost Mahesh sets to negotiate toward. The actual vendor rate is entered against the target.' },
+    { field: 'Proposed / Target', source: 'Negotiation', detail: 'Proposed = the team’s expected cost; Target = the cost the approver sets to negotiate toward. The actual vendor rate is entered against the target.' },
     { field: 'Negotiation stage', source: 'Automatic', formula: 'propose (team) → set target (admin) → submit rate (team) → sign off (admin)', detail: 'Where the cost sits in the negotiation. Sign-off flips the record to the approved Standard Cost; renegotiate / reject send it back.' },
     { field: 'Fabric rate (CM matrix)', source: 'Fabric Cost sheet', formula: 'finished fabric cost of the selected fabric code', detail: 'Auto-pulled (read-only, green) from the Fabric Cost sheet for the fabric code you pick — never typed here.' },
     { field: 'Total per size (CM matrix)', source: 'Automatic', formula: 'Fabric rate + CM', detail: 'The costed rate for one piece of that size: the pulled fabric rate plus the CM (cost of making) you enter for the size.' },

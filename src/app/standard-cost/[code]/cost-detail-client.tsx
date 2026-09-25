@@ -167,7 +167,7 @@ export function StandardCostDetailClient({
             <h2>Change the cost</h2>
             <p className="wf-subtle">
               Fill the rate(s) that apply and propose. The product then follows its usual path:
-              Mahesh accepts the proposal or sets a target, the team returns with the actual
+              the approver accepts the proposal or sets a target, the team returns with the actual
               vendor rate, and sign-off makes it the standard the Buying Plan values from.
             </p>
           </div>

@@ -261,7 +261,7 @@ export function BuyingPlanClient({
       // Garment category / sub-category (from the product catalog) — for Group By.
       category: catalogByCode[row.product_code]?.category || 'Uncategorised',
       subCategory: catalogByCode[row.product_code]?.sub_category || 'Uncategorised',
-      // Red, but never blocking. Mahesh: show it, don't refuse it.
+      // Red, but never blocking. The approver's rule: show it, don't refuse it.
       overPlan: totalQty > 0 && actual.qty > totalQty,
     };
   });

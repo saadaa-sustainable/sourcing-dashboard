@@ -589,7 +589,7 @@ const fmtDate = (v: string | null | undefined) =>
   v ? new Date(v).toLocaleDateString('en-IN') : '—';
 
 /**
- * The inline "4 things Mahesh verifies" panel on a PO approval card — expands
+ * The inline "4 things the approver verifies" panel on a PO approval card — expands
  * the one-line entry into tabs (Inventory / Standard Cost / TNA / Vendor) so the
  * whole review happens without leaving the queue.
  */

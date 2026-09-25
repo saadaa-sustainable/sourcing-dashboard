@@ -1565,7 +1565,7 @@ export type ApprovalQueueItem = {
   /** in process ÷ PO capacity × 100, real percentage, not capped. */
   vendorCapacityUtil?: number | null;
   vendorLeadDays?: number | null;
-  // PO Approval only: the inline "4 things Mahesh verifies" detail.
+  // PO Approval only: the inline "4 things the approver verifies" detail.
   poDetail?: PoApprovalDetail;
 };
 
