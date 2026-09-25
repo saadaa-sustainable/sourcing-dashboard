@@ -1043,6 +1043,12 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-legend-calc { background: #d7efdc; color: #2f6b3a; }
 /* ---- Standard Cost detail: two-entity Fabric / Final views ---- */
 .wf-fabric-view, .wf-final-view { display: flex; flex-direction: column; gap: 12px; }
+/* Further fabrics on a multi-fabric garment: one block each, same tile grid as the first. */
+.wf-extra-fabrics { display: flex; flex-direction: column; gap: 10px; }
+.wf-extra-fabric-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.wf-extra-fabric .wf-size-grid { margin-top: 8px; }
+.wf-size-part { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--ink-3, #6e695e); }
+.wf-size-part b { font-weight: 600; font-variant-numeric: tabular-nums; color: inherit; }
 .wf-two-entity-note { max-width: 420px; text-align: right; line-height: 1.35; }
 
 /* ---- Approval screen: pivoted Woven/Knitted × Pending/Approved summary (§7) ---- */

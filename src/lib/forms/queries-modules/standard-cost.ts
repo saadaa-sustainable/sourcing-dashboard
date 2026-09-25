@@ -4,6 +4,7 @@ import type {
   StandardCost,
   CostStandards,
   StandardCostLine,
+  StandardCostExtraFabric,
   CmtpComponent,
   StandardCostRateHistory,
 } from '../types';
@@ -55,6 +56,20 @@ export async function loadStandardCostLines(): Promise<StandardCostLine[]> {
   // ~9 size rows per product — grows past a single page quickly, so page it.
   return pageAll<StandardCostLine>(() =>
     supabase.from('sd_standard_cost_line').select('*').order('product_code').order('colour').order('size').order('id'),
+  );
+}
+
+/** Extra fabrics (second, third …) on multi-fabric products, all products, per size. */
+export async function loadStandardCostExtraFabrics(): Promise<StandardCostExtraFabric[]> {
+  const supabase = await client();
+  return pageAll<StandardCostExtraFabric>(() =>
+    supabase
+      .from('sd_standard_cost_extra_fabric')
+      .select('*')
+      .order('product_code')
+      .order('position')
+      .order('fabric_code')
+      .order('id'),
   );
 }
 

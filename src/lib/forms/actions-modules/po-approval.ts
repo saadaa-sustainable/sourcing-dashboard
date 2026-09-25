@@ -647,16 +647,54 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const recomputePatch: Record<string, unknown> = {};
   if (!alreadyIssued && po.product_code) {
     try {
-      const [{ data: sc }, { data: lines }] = await Promise.all([
+      const [{ data: sc }, { data: lines }, { data: extraRows }] = await Promise.all([
         supabase.from('sd_standard_cost').select('fabric_code, cm_cost').eq('product_code', po.product_code).maybeSingle(),
-        supabase.from('sd_standard_cost_line').select('consumption, fabric_cost').eq('product_code', po.product_code),
+        supabase.from('sd_standard_cost_line').select('size, consumption, fabric_cost').eq('product_code', po.product_code),
+        // paging-ok: one product — a couple of further fabrics × nine sizes at most
+        supabase.from('sd_standard_cost_extra_fabric').select('fabric_code, size, consumption, fabric_cost').eq('product_code', po.product_code),
       ]);
       const cons = (lines ?? []).map((l) => Number(l.consumption)).filter((n) => n > 0);
       const avgCons = cons.length ? cons.reduce((s, n) => s + n, 0) / cons.length : 0;
+      // A line's fabric_cost is the size's WHOLE fabric cost. The rate baked into the
+      // standard is the FIRST fabric's, so the further fabrics' share comes off first.
+      const extras = (extraRows ?? []) as { fabric_code: string; size: string | null; consumption: number | null; fabric_cost: number | null }[];
+      const extraBySize = new Map<string, number>();
+      for (const e of extras) {
+        const k = String(e.size ?? '').toUpperCase();
+        extraBySize.set(k, (extraBySize.get(k) ?? 0) + (Number(e.fabric_cost) || 0));
+      }
       const baked = (lines ?? [])
-        .map((l) => (Number(l.consumption) > 0 ? Number(l.fabric_cost) / Number(l.consumption) : 0))
+        .map((l) => {
+          const c = Number(l.consumption);
+          if (!(c > 0)) return 0;
+          return (Number(l.fabric_cost) - (extraBySize.get(String(l.size ?? '').toUpperCase()) ?? 0)) / c;
+        })
         .filter((n) => n > 0);
       const rateAtStd = baked.length ? baked.reduce((s, n) => s + n, 0) / baked.length : null;
+      // The further fabrics at TODAY's finished rates (average consumption × rate), falling
+      // back to the cost saved on the sheet when a fabric has no rate on the master.
+      let extraFabricNow = 0;
+      if (extras.length) {
+        const codes = [...new Set(extras.map((e) => e.fabric_code))];
+        const { data: rates } = await supabase
+          .from('sd_fabric_cost_base')
+          .select('fabric_code, finished_fabric_cost')
+          .in('fabric_code', codes);
+        const rateOf = new Map(
+          ((rates ?? []) as { fabric_code: string; finished_fabric_cost: number | null }[]).map((r) => [
+            r.fabric_code,
+            r.finished_fabric_cost == null ? null : Number(r.finished_fabric_cost),
+          ]),
+        );
+        for (const code of codes) {
+          const rows = extras.filter((e) => e.fabric_code === code && Number(e.consumption) > 0);
+          if (!rows.length) continue;
+          const avgC = rows.reduce((s, e) => s + Number(e.consumption), 0) / rows.length;
+          const rNow = rateOf.get(code) ?? null;
+          extraFabricNow +=
+            rNow != null ? rNow * avgC : rows.reduce((s, e) => s + (Number(e.fabric_cost) || 0), 0) / rows.length;
+        }
+      }
       // Resolve the product's fabric: the Standard Cost sheet's fabric first, else the
       // Product Master relation (product → rm_fabric_sku), so it works without manual entry.
       let fabricCode: string | null = sc?.fabric_code ?? null;
@@ -697,7 +735,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
         // Final-price margin from Rules Master (margin_pct, a percent) — REJ/OH removed.
         const marginPct = (await loadAnalyticsRules()).margin_pct / 100;
         const rc = recomputeExpectedCost(
-          { consumption: avgCons, fabricRateNow: rateNow, cmtp: Number(sc.cm_cost), fabricRateAtStd: rateAtStd },
+          { consumption: avgCons, fabricRateNow: rateNow, cmtp: Number(sc.cm_cost), fabricRateAtStd: rateAtStd, extraFabric: extraFabricNow },
           { marginPct },
         );
         recomputePatch.expected_cost_recomputed = rc.expected.final;

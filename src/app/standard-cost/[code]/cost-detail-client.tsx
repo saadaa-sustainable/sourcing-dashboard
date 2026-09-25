@@ -12,6 +12,7 @@ import type {
   ProductCatalogItem,
   SdRole,
   StandardCost,
+  StandardCostExtraFabric,
   StandardCostLine,
   StandardCostRateHistory,
 } from '@/lib/forms/types';
@@ -59,10 +60,12 @@ export function StandardCostDetailClient({
   role,
   marginPct,
   track = 'fg',
+  extraFabrics = [],
 }: {
   cost: StandardCost;
   productName: string | null;
   lines: StandardCostLine[];
+  extraFabrics?: StandardCostExtraFabric[];
   cmtp: CmtpComponent[];
   cmtpSubitems: Record<string, string[]>;
   fabricBase: Record<string, FabricBuildup>;
@@ -237,6 +240,7 @@ export function StandardCostDetailClient({
           masterFabric={masterFabric}
           editable={canChange}
           marginPct={marginPct}
+          extraFabrics={extraFabrics}
         />
         )}
       </section>

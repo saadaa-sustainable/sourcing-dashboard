@@ -34,6 +34,17 @@ test('recomputeExpectedCost: substitutes the current fabric rate, holds CMTP', (
   assert.ok(now.expected.final > atStd.expected.final);
 });
 
+test('recomputeExpectedCost: a second fabric adds to the fabric side, rate delta stays on the first', () => {
+  // First fabric 1m at ₹85 (was ₹70), plus a lining costing ₹30 a piece.
+  const one = recomputeExpectedCost({ consumption: 1, fabricRateNow: 85, cmtp: 100, fabricRateAtStd: 70 });
+  const two = recomputeExpectedCost({ consumption: 1, fabricRateNow: 85, cmtp: 100, fabricRateAtStd: 70, extraFabric: 30 });
+  assert.equal(two.expectedFabric - one.expectedFabric, 30);
+  assert.equal(two.expected.fabric, 115);
+  // The ₹15 move is still the first fabric's move — the lining is not a rate change.
+  assert.equal(two.rateDelta, 15);
+  assert.equal(two.fabricRateNow, 85);
+});
+
 test('validateSubmittedCost: grey move is informational, CM deviation hard-blocks', () => {
   const recompute = recomputeExpectedCost({ consumption: 1, fabricRateNow: 85, cmtp: 100, fabricRateAtStd: 70 });
 

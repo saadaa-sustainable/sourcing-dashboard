@@ -69,6 +69,10 @@ export type RecomputeInput = {
   /** The fabric rate baked into the standard when it was approved (for the
    *  informational "rate moved ₹X" delta). Optional. */
   fabricRateAtStd?: number | null;
+  /** Cost of any FURTHER fabrics the garment is cut from (₹ per piece, at their
+   *  current rates). Added to the fabric side as-is; the live-rate substitution and
+   *  the rate delta are about the first fabric only. Optional, default 0. */
+  extraFabric?: number | null;
 };
 
 export type RecomputeResult = {
@@ -90,7 +94,7 @@ export type RecomputeResult = {
  * monthly sd_efob_fabric_cost) so this stays testable and rate-source-agnostic.
  */
 export function recomputeExpectedCost(input: RecomputeInput, k = FINAL_PRICE): RecomputeResult {
-  const expectedFabric = input.fabricRateNow * input.consumption;
+  const expectedFabric = input.fabricRateNow * input.consumption + (input.extraFabric ?? 0);
   const expected = finalPrice(expectedFabric, input.cmtp, k);
   const base = input.fabricRateAtStd ?? null;
   return {

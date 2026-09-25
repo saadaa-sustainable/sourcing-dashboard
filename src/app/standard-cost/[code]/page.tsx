@@ -10,6 +10,7 @@ import {
   loadMaterialStandardCostRateHistory,
   loadMaterialStandardCosts,
   loadProductCatalog,
+  loadStandardCostExtraFabrics,
   loadStandardCostLines,
   loadStandardCostRateHistory,
   loadStandardCosts,
@@ -56,7 +57,7 @@ export default async function StandardCostDetailPage({
   }
   if (!user) redirect('/login');
 
-  const [costs, lines, fabricBase, cmtp, catalog, rateHistory, cmtpSubitems, materialNames] =
+  const [costs, lines, fabricBase, cmtp, catalog, rateHistory, cmtpSubitems, materialNames, extraFabrics] =
     track === 'material'
       ? [
           await loadMaterialStandardCosts(),
@@ -67,6 +68,7 @@ export default async function StandardCostDetailPage({
           await loadMaterialStandardCostRateHistory(),
           {},
           await loadMaterialCodeInfo(),
+          [],
         ]
       : await Promise.all([
           loadStandardCosts(),
@@ -77,6 +79,7 @@ export default async function StandardCostDetailPage({
           loadStandardCostRateHistory(),
           loadCmtpSubitems(),
           Promise.resolve({} as Record<string, string>),
+          loadStandardCostExtraFabrics(),
         ]);
 
   const cost = costs.find((c) => c.product_code.toUpperCase() === code.toUpperCase()) ?? null;
@@ -145,6 +148,7 @@ export default async function StandardCostDetailPage({
         cost={cost}
         productName={productName}
         lines={lines.filter((l) => l.product_code === cost.product_code)}
+        extraFabrics={extraFabrics.filter((e) => e.product_code === cost.product_code)}
         cmtp={cmtp.filter((c) => c.product_code === cost.product_code)}
         cmtpSubitems={cmtpSubitems as Record<string, string[]>}
         fabricBase={fabricByCode}

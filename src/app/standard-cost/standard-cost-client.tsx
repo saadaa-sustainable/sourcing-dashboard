@@ -56,6 +56,7 @@ import type {
   ProductCatalogItem,
   SdRole,
   StandardCost,
+  StandardCostExtraFabric,
   StandardCostLine,
   StandardCostRateHistory,
 } from '@/lib/forms/types';
@@ -1064,6 +1065,9 @@ export function CostRow({
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'] as const;
 const numv = (s: string) => Number(s) || 0;
 
+/** An unsaved further fabric on the cost sheet: which fabric, and consumption per size. */
+type ExtraFabricDraft = { key: number; fabricCode: string; cons: Record<string, string> };
+
 // FINAL PRICE buildup (matches the live cost sheet): MARGIN adds a % on the garment
 // cost. REJ/OH were removed (2026-09-08); the margin % comes from Rules Master.
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -1093,6 +1097,7 @@ export function CostDetail({
   masterFabric,
   editable,
   marginPct,
+  extraFabrics = [],
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
@@ -1105,6 +1110,8 @@ export function CostDetail({
   masterFabric: { fabricCode: string | null; multi: boolean } | null;
   editable: boolean;
   marginPct: number;
+  /** Second, third … fabrics on a multi-fabric product, one row per size. */
+  extraFabrics?: StandardCostExtraFabric[];
 }) {
   const [view, setView] = useState<'cmtp' | 'fabric' | 'final' | 'history'>('cmtp');
   // Default the fabric from Product Master when the sheet hasn't set one and the
@@ -1124,22 +1131,61 @@ export function CostDetail({
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
+  // A garment cut from two fabrics: the first fabric is the record above; every further
+  // fabric is its own block with its own per-size consumption, and the size's fabric cost
+  // is the sum. Kept as drafts (fabric + consumption per size) until saved.
+  const [extras, setExtras] = useState<ExtraFabricDraft[]>(() => {
+    const byCode = new Map<string, ExtraFabricDraft>();
+    let key = 0;
+    for (const e of extraFabrics) {
+      let d = byCode.get(e.fabric_code);
+      if (!d) {
+        d = { key: key++, fabricCode: e.fabric_code, cons: {} };
+        byCode.set(e.fabric_code, d);
+      }
+      if (e.size && e.consumption != null) d.cons[e.size.toUpperCase()] = String(e.consumption);
+    }
+    return [...byCode.values()];
+  });
+  const nextExtraKey = useRef(1000);
+
   const fab = fabricCode ? fabricBase[fabricCode] : undefined;
   const fabricRate = fab?.finished ?? null;
   const cmtpTotal = cost.cm_cost; // FINAL CMTP owned by the CMTP tab
+  const multiFabric = extras.length > 0;
 
-  // Per-size buildup: fabric = rate × consumption; garment = fabric + CMTP; then
-  // the FINAL PRICE chain.
+  // Per-size buildup: fabric = Σ over fabrics (rate × consumption); garment = fabric + CMTP;
+  // then the FINAL PRICE chain. A size counts as filled when ANY fabric has a consumption
+  // for it; its fabric cost is unknown while any fabric it uses has no finished rate.
   const rows = SIZES.map((size) => {
     const cons = consBySize[size] ?? '';
-    const has = cons !== '';
-    const fabric = has && fabricRate != null ? r2(fabricRate * numv(cons)) : null;
+    const firstHas = cons !== '';
+    const first = firstHas ? (fabricRate != null ? r2(fabricRate * numv(cons)) : null) : 0;
+    const parts = extras.map((e) => {
+      const c = e.cons[size] ?? '';
+      const rate = e.fabricCode ? fabricBase[e.fabricCode]?.finished ?? null : null;
+      return {
+        key: e.key,
+        fabricCode: e.fabricCode,
+        cons: c,
+        has: c !== '',
+        cost: c !== '' ? (rate != null ? r2(rate * numv(c)) : null) : 0,
+      };
+    });
+    const has = firstHas || parts.some((p) => p.has);
+    const fabric =
+      !has || first == null || parts.some((p) => p.cost == null)
+        ? null
+        : r2(first + parts.reduce((s, p) => s + (p.cost ?? 0), 0));
     const garment = fabric != null && cmtpTotal != null ? r2(fabric + cmtpTotal) : null;
     const f = garment != null ? buildFinal(garment, marginPct) : null;
     return {
       size,
       cons,
       has,
+      firstHas,
+      first: firstHas ? first : null,
+      parts,
       fabric,
       garment,
       margin: f ? r2(f.margin) : null,
@@ -1154,6 +1200,25 @@ export function CostDetail({
 
   function setCons(size: string, value: string) {
     setConsBySize((cur) => ({ ...cur, [size]: value }));
+  }
+  function addExtra() {
+    setExtras((cur) => [...cur, { key: nextExtraKey.current++, fabricCode: '', cons: {} }]);
+  }
+  function removeExtra(key: number) {
+    setExtras((cur) => cur.filter((e) => e.key !== key));
+  }
+  function setExtraCode(key: number, value: string) {
+    setExtras((cur) => cur.map((e) => (e.key === key ? { ...e, fabricCode: value } : e)));
+  }
+  function setExtraCons(key: number, size: string, value: string) {
+    setExtras((cur) => cur.map((e) => (e.key === key ? { ...e, cons: { ...e.cons, [size]: value } } : e)));
+  }
+  // A fabric can appear once on a product: the options for one block leave out the first
+  // fabric and every other block's pick (its own current pick stays selectable).
+  function extraOptions(own: string) {
+    const taken = new Set([fabricCode, ...extras.map((e) => e.fabricCode)].filter((c) => c && c !== own));
+    const base = fabricCodes.filter((c) => !taken.has(c));
+    return own && !base.includes(own) ? [own, ...base] : base;
   }
 
   // Both the Fabric and Final tabs persist the same record (fabric link, per-size
@@ -1179,6 +1244,25 @@ export function CostDetail({
           fabric_cost: r.fabric != null ? String(r.fabric) : '',
           total_cost: r.garment != null ? String(r.garment) : '',
         })),
+      ),
+    );
+    // The further fabrics, each with its own consumption per size. A block with no fabric
+    // picked is scratch and is dropped.
+    detail.set(
+      'extra_fabrics',
+      JSON.stringify(
+        extras
+          .filter((e) => e.fabricCode)
+          .map((e, i) => ({
+            fabric_code: e.fabricCode,
+            position: i + 1,
+            sizes: rows.flatMap((r) => {
+              const p = r.parts.find((x) => x.key === e.key);
+              return p && p.has
+                ? [{ size: r.size, consumption: p.cons, fabric_cost: p.cost != null ? String(p.cost) : '' }]
+                : [];
+            }),
+          })),
       ),
     );
 
@@ -1216,13 +1300,15 @@ export function CostDetail({
           <div className="wf-form-grid">
             <label className="field wf-field">
               <span>
-                Fabric
+                {multiFabric ? 'Fabric 1' : 'Fabric'}
                 <small>
                   {fabricFromMaster
                     ? 'defaulted from Product Master — change if needed'
                     : masterFabric?.multi
-                      ? 'multi-fabric product — pick the fabric manually'
-                      : 'the fabric this product uses'}
+                      ? 'multi-fabric product — pick the fabric manually, then add the other fabric below'
+                      : multiFabric
+                        ? 'the main fabric this product is cut from'
+                        : 'the fabric this product uses'}
                 </small>
               </span>
               <select value={fabricCode} disabled={!editable} onChange={(e) => setFabricCode(e.target.value)}>
@@ -1266,8 +1352,8 @@ export function CostDetail({
                   />
                 </label>
                 <div className="wf-size-calc">
-                  <span>Fabric cost*</span>
-                  <strong className="wf-cell-calc">{disp(r.fabric)}</strong>
+                  <span>{multiFabric ? 'Fabric 1 cost*' : 'Fabric cost*'}</span>
+                  <strong className="wf-cell-calc">{disp(multiFabric ? r.first : r.fabric)}</strong>
                 </div>
               </div>
             ))}
@@ -1278,6 +1364,109 @@ export function CostDetail({
             — fabric cost = finished-fabric rate × consumption. The rate is owned by the Fabric Cost master.
             {fabricRate == null && ' Pick a fabric with a finished rate to compute.'}
           </p>
+
+          {/* Further fabrics. A garment cut from two fabrics carries each one's consumption
+              separately; the size's fabric cost in Final Cost is the sum of all of them. */}
+          {(multiFabric || editable) && (
+            <div className="wf-extra-fabrics">
+              {extras.map((e, idx) => {
+                const efab = e.fabricCode ? fabricBase[e.fabricCode] : undefined;
+                const erate = efab?.finished ?? null;
+                return (
+                  <div className="wf-cost-param wf-extra-fabric" key={e.key}>
+                    <div className="wf-extra-fabric-head">
+                      <span className="wf-cost-param-head">Fabric {idx + 2}</span>
+                      {editable && (
+                        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => removeExtra(e.key)}>
+                          <Trash2 size={13} /> Remove
+                        </button>
+                      )}
+                    </div>
+                    <div className="wf-form-grid">
+                      <label className="field wf-field">
+                        <span>
+                          Fabric
+                          <small>the other fabric this product is cut from</small>
+                        </span>
+                        <select value={e.fabricCode} disabled={!editable} onChange={(ev) => setExtraCode(e.key, ev.target.value)}>
+                          <option value="">—</option>
+                          {extraOptions(e.fabricCode).map((f) => (
+                            <option key={f} value={f}>{f}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <dl className="wf-doc-meta">
+                      <div><dt>Grey rate</dt><dd className="wf-cell-input">{disp(efab?.grey ?? null)}</dd></div>
+                      <div><dt>Processing</dt><dd className="wf-cell-input">{disp(efab?.processing ?? null)}</dd></div>
+                      <div><dt>Finished fabric (INR/mtr)</dt><dd className="wf-cell-calc">{disp(erate)}</dd></div>
+                    </dl>
+                    <div className="wf-size-grid" role="group" aria-label={`Consumption and cost by size — fabric ${idx + 2}`}>
+                      {SIZES.map((size) => {
+                        const c = e.cons[size] ?? '';
+                        const cst = c !== '' && erate != null ? r2(erate * numv(c)) : null;
+                        return (
+                          <div className="wf-size-tile" key={size}>
+                            <span className="wf-size-name">{size}</span>
+                            <label className="wf-size-field">
+                              <span>Consumption (mtr)</span>
+                              <input
+                                className="wf-cell-input"
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={c}
+                                disabled={!editable}
+                                onChange={(ev) => setExtraCons(e.key, size, ev.target.value)}
+                              />
+                            </label>
+                            <div className="wf-size-calc">
+                              <span>Fabric {idx + 2} cost*</span>
+                              <strong className="wf-cell-calc">{disp(cst)}</strong>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {e.fabricCode && erate == null && (
+                      <p className="wf-subtle wf-cost-param-note">
+                        No finished rate on the Fabric Cost master for this fabric yet — its cost cannot be computed until Vikram ji fills it.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+              {editable && (
+                <div>
+                  <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={addExtra}>
+                    <Plus size={13} /> Add another fabric
+                  </button>
+                </div>
+              )}
+              {multiFabric && filled.length > 0 && (
+                <div className="wf-cost-param">
+                  <span className="wf-cost-param-head">Fabric cost by size — all fabrics together</span>
+                  <div className="wf-size-grid">
+                    {filled.map((r) => (
+                      <div className="wf-size-tile" key={r.size}>
+                        <span className="wf-size-name">{r.size}</span>
+                        <div className="wf-size-part"><span>Fabric 1</span><b>{disp(r.first)}</b></div>
+                        {r.parts.map((p, i) => (
+                          <div className="wf-size-part" key={p.key}>
+                            <span>Fabric {i + 2}</span><b>{disp(p.has ? p.cost : null)}</b>
+                          </div>
+                        ))}
+                        <div className="wf-size-calc">
+                          <span>Total fabric*</span>
+                          <strong className="wf-cell-calc">{disp(r.fabric)}</strong>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {editable && (
             <div className="wf-cost-detail-foot">
@@ -1294,7 +1483,15 @@ export function CostDetail({
               <thead>
                 <tr>
                   <th>Size <HeaderInfo label="Size" /></th>
-                  <th className="num wf-cell-calc">Fabric <HeaderInfo label="Fabric" /></th>
+                  {multiFabric && (
+                    <>
+                      <th className="num wf-cell-calc">Fabric 1{fabricCode ? ` · ${fabricCode}` : ''}</th>
+                      {extras.map((e, i) => (
+                        <th className="num wf-cell-calc" key={e.key}>Fabric {i + 2}{e.fabricCode ? ` · ${e.fabricCode}` : ''}</th>
+                      ))}
+                    </>
+                  )}
+                  <th className="num wf-cell-calc">{multiFabric ? 'Fabric total' : 'Fabric'} <HeaderInfo label="Fabric" /></th>
                   <th className="num wf-cell-calc">CMTP <HeaderInfo label="CMTP" /></th>
                   <th className="num wf-cell-calc">Garment <HeaderInfo label="Garment" /></th>
                   <th className="num wf-cell-calc">Margin <HeaderInfo label="Margin" /></th>
@@ -1305,6 +1502,14 @@ export function CostDetail({
                 {filled.map((r) => (
                   <tr key={r.size}>
                     <td className="strong">{r.size}</td>
+                    {multiFabric && (
+                      <>
+                        <td className="num wf-cell-calc">{disp(r.first)}</td>
+                        {r.parts.map((p) => (
+                          <td className="num wf-cell-calc" key={p.key}>{disp(p.has ? p.cost : null)}</td>
+                        ))}
+                      </>
+                    )}
                     <td className="num wf-cell-calc">{disp(r.fabric)}</td>
                     <td className="num wf-cell-calc">{disp(cmtpTotal)}</td>
                     <td className="num wf-cell-calc">{disp(r.garment)}</td>
@@ -1313,16 +1518,17 @@ export function CostDetail({
                   </tr>
                 ))}
                 {!filled.length && (
-                  <tr><td colSpan={6} className="wf-empty-cell">Fill fabric consumption (Fabric Cost tab) + CMTP to compute the final price.</td></tr>
+                  <tr><td colSpan={6 + (multiFabric ? extras.length + 1 : 0)} className="wf-empty-cell">Fill fabric consumption (Fabric Cost tab) + CMTP to compute the final price.</td></tr>
                 )}
               </tbody>
               {poAvgFinal != null && (
-                <tfoot><tr><td colSpan={5}>PO AVG final price</td><td className="num strong wf-cell-calc">{poAvgFinal}</td></tr></tfoot>
+                <tfoot><tr><td colSpan={5 + (multiFabric ? extras.length + 1 : 0)}>PO AVG final price</td><td className="num strong wf-cell-calc">{poAvgFinal}</td></tr></tfoot>
               )}
             </table>
           </div>
           <p className="wf-subtle">
             Final price = Garment (Fabric + CMTP) + Margin {r2(marginPct * 100)}% (set in Rules Master).
+            {multiFabric && ' · Fabric total = every fabric the garment is cut from, each at its own rate × consumption.'}
             {cmtpTotal == null && ' · CMTP not filled yet — fill the CMTP tab.'}
           </p>
 

@@ -147,13 +147,54 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
     lines = [];
   }
 
+  // Further fabrics on a multi-fabric garment: each with its own consumption per size.
+  let extraFabrics: { fabric_code?: unknown; position?: unknown; sizes?: { size?: unknown; consumption?: unknown; fabric_cost?: unknown }[] }[] = [];
+  try {
+    extraFabrics = JSON.parse(String(formData.get('extra_fabrics') ?? '[]'));
+    if (!Array.isArray(extraFabrics)) extraFabrics = [];
+  } catch {
+    extraFabrics = [];
+  }
+
   const supabase = await supa();
   const { data: parent } = await supabase
     .from('sd_standard_cost')
-    .select('id, frozen')
+    .select('id, frozen, fabric_code')
     .eq('product_code', product_code)
     .maybeSingle();
   if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
+
+  // A fabric goes on a product once: not the first fabric again, not the same one twice.
+  // The header (first fabric) is saved just before this call, so the row read above is current.
+  const firstFabric = String(parent?.fabric_code ?? '').trim().toUpperCase();
+  const extraCodes = extraFabrics.map((f) => String(f.fabric_code ?? '').trim()).filter(Boolean);
+  const clash = extraCodes.find((c) => c.toUpperCase() === firstFabric);
+  if (clash) return fail(`${clash} is already the product's first fabric.`);
+  const upper = extraCodes.map((c) => c.toUpperCase());
+  const dup = extraCodes.find((c, i) => upper.indexOf(c.toUpperCase()) !== i);
+  if (dup) return fail(`${dup} is listed twice — each fabric goes on once.`);
+
+  const extraRows: {
+    product_code: string; fabric_code: string; position: number; size: string;
+    consumption: number | null; fabric_cost: number | null;
+  }[] = [];
+  extraFabrics.forEach((f, i) => {
+    const code = String(f.fabric_code ?? '').trim();
+    if (!code) return;
+    for (const s of Array.isArray(f.sizes) ? f.sizes : []) {
+      const size = String(s.size ?? '').trim().toUpperCase();
+      const consumption = numOrNull(s.consumption);
+      if (!size || consumption == null) continue;
+      extraRows.push({
+        product_code,
+        fabric_code: code,
+        position: Number(f.position) || i + 1,
+        size,
+        consumption,
+        fabric_cost: numOrNull(s.fabric_cost),
+      });
+    }
+  });
 
   const clean = lines
     .map((l) => ({
@@ -180,6 +221,12 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
   if (clean.length) {
     const { error } = await supabase.from('sd_standard_cost_line').insert(clean);
     if (error) return fail(`Could not save lines: ${error.message}`);
+  }
+  // Same for the further fabrics — the sheet always sends the full current set.
+  await supabase.from('sd_standard_cost_extra_fabric').delete().eq('product_code', product_code);
+  if (extraRows.length) {
+    const { error } = await supabase.from('sd_standard_cost_extra_fabric').insert(extraRows);
+    if (error) return fail(`Could not save the other fabric(s): ${error.message}`);
   }
   // Ensure a parent row exists and is marked documented.
   await supabase

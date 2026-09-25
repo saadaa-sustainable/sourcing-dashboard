@@ -1040,10 +1040,25 @@ export type StandardCostLine = {
   product_code: string;
   colour: string | null;
   size: string | null;
-  consumption: number | null; // per-size fabric consumption (mtr) — drives fabric cost
-  fabric_cost: number | null;
+  consumption: number | null; // per-size consumption (mtr) of the product's FIRST fabric
+  fabric_cost: number | null; // the size's whole fabric cost — first fabric + every extra fabric
   cm_cost: number | null;
   total_cost: number | null;
+};
+
+/**
+ * A further fabric on a product that is cut from more than one (sd_standard_cost_extra_fabric).
+ * The first fabric is sd_standard_cost.fabric_code with its consumption on the cost line;
+ * each extra fabric carries its own per-size consumption here. position 1 = second fabric.
+ */
+export type StandardCostExtraFabric = {
+  id: number;
+  product_code: string;
+  fabric_code: string;
+  position: number;
+  size: string;
+  consumption: number | null;
+  fabric_cost: number | null;
 };
 
 /**
