@@ -112,7 +112,10 @@ export default async function Home() {
         const oos = await loadOosSummary();
         analyticsExtras.inStock = oos
           ? {
-              ratePct: Math.round((100 - oos.all.pctYesterday) * 10) / 10,
+              // pctYesterday is a FRACTION (0.055 = 5.5% of SKUs empty), as the OOS
+              // one-pager formats it with × 100 — so in-stock is 1 − it, not 100 − it.
+              // (100 − 0.055 read as 99.9% on the live dashboard beside "2,342 of 2,479".)
+              ratePct: Math.round((1 - oos.all.pctYesterday) * 1000) / 10,
               oosSkus: oos.all.oosYesterday,
               skus: oos.all.skus,
               asOf: oos.asOf,
