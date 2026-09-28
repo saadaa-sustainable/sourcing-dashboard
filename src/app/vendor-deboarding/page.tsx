@@ -1,6 +1,11 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadVendorDeboarding, NotConfiguredError } from '@/lib/forms/queries';
+import {
+  currentUser,
+  loadVendorDeboarding,
+  loadVendorDeboardingHistory,
+  NotConfiguredError,
+} from '@/lib/forms/queries';
 import { VendorDeboardingClient } from './vendor-deboarding-client';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +27,10 @@ export default async function VendorDeboardingPage() {
 
   if (!user) redirect('/login');
 
-  const { requests, vendors } = await loadVendorDeboarding();
+  const [{ requests, vendors }, history] = await Promise.all([
+    loadVendorDeboarding(),
+    loadVendorDeboardingHistory(),
+  ]);
 
   return (
     <FormLayout
@@ -33,7 +41,7 @@ export default async function VendorDeboardingPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <VendorDeboardingClient requests={requests} vendors={vendors} role={user.role} />
+      <VendorDeboardingClient requests={requests} vendors={vendors} history={history} role={user.role} />
     </FormLayout>
   );
 }

@@ -466,7 +466,11 @@ const PAGE: Record<string, Record<string, string>> = {
   '/vendor-deboarding': {
     'status': 'Submitted → Approved / Rejected / Rework. De-boarding always needs an admin; approval flags the vendor everywhere.',
     'reason': 'The reason for de-listing, from the six on the form; "Other" carries free text.',
+    'reasons': 'Every reason ticked on the Google Form — it allowed more than one per vendor.',
     'vendor': 'The vendor being de-boarded, with its code.',
+    'submitted': 'When the Google Form response was submitted, and by whom.',
+    'status in ee': 'The vendor\'s status in EasyEcom as noted on the sheet at the time.',
+    'note': 'The sheet\'s own unlabelled last column, kept as written (usually the month it took effect).',
   },
   '/standard-cost': {
     'status': 'Where the cost stands in negotiation: proposed → target set → rate submitted → signed off.',

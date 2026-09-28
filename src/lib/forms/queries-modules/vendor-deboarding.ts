@@ -1,34 +1,69 @@
 import 'server-only';
 import { client } from './_shared';
 import { eeVendorActive } from '@/lib/business-logic';
-import type { DeboardedVendor, VendorDeboardingRequest, VendorDeboardingVendor } from '../types';
+import type {
+  DeboardedVendor,
+  VendorDeboardingHistory,
+  VendorDeboardingRequest,
+  VendorDeboardingVendor,
+} from '../types';
 
 const key = (v: string | null | undefined) => (v ?? '').trim().toUpperCase();
 
 /**
- * Vendors whose de-boarding has been APPROVED, keyed by upper-cased code. Every page that
- * lists or picks a vendor reads this so the decision is visible where it matters — a PO
- * form, the capacity sheet, the master, the scorecard — rather than only on the request
- * page. A plain object, so it crosses into client components as-is. Never throws.
+ * Vendors that have been de-boarded, keyed by upper-cased code: an APPROVED dashboard
+ * request, or a record from the Google Form the team used before the dashboard (Nov 2024
+ * onwards). Every page that lists or picks a vendor reads this so the decision is visible
+ * where it matters — a PO form, the capacity sheet, the master, the scorecard — rather
+ * than only on the request page. A dashboard approval wins over a form record for the
+ * same vendor. A plain object, so it crosses into client components as-is. Never throws.
  */
 export async function loadDeboardedVendors(): Promise<Record<string, DeboardedVendor>> {
   const out: Record<string, DeboardedVendor> = {};
   try {
     const supabase = await client();
-    const { data } = await supabase
-      .from('sd_vendor_deboarding_request')
-      .select('vendor_code, approved_at, reason')
-      .eq('status', 'approved')
-      .order('approved_at', { ascending: false })
-      .limit(500);
-    for (const r of (data ?? []) as { vendor_code: string; approved_at: string | null; reason: string }[]) {
+    const [{ data: approved }, { data: history }] = await Promise.all([
+      supabase
+        .from('sd_vendor_deboarding_request')
+        .select('vendor_code, approved_at, reason')
+        .eq('status', 'approved')
+        .order('approved_at', { ascending: false })
+        .limit(500),
+      supabase
+        .from('sd_vendor_deboarding_history')
+        .select('vendor_code, submitted_at, reasons')
+        .order('submitted_at', { ascending: false })
+        .limit(500),
+    ]);
+    for (const r of (approved ?? []) as { vendor_code: string; approved_at: string | null; reason: string }[]) {
       const code = key(r.vendor_code);
-      if (code && !out[code]) out[code] = { approvedAt: r.approved_at ?? '', reason: r.reason };
+      if (code && !out[code]) out[code] = { approvedAt: r.approved_at ?? '', reason: r.reason, source: 'dashboard' };
+    }
+    for (const h of (history ?? []) as { vendor_code: string; submitted_at: string; reasons: string[] | null }[]) {
+      const code = key(h.vendor_code);
+      if (code && !out[code]) {
+        out[code] = { approvedAt: h.submitted_at, reason: (h.reasons ?? []).join(', ').toLowerCase(), source: 'google_form' };
+      }
     }
   } catch {
     /* a flag that cannot load must not take a page down */
   }
   return out;
+}
+
+/** The Google Form de-boardings, newest first. Read-only history for the De-Boarding page. */
+export async function loadVendorDeboardingHistory(): Promise<VendorDeboardingHistory[]> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_vendor_deboarding_history')
+    .select('*')
+    .order('submitted_at', { ascending: false })
+    .limit(500);
+  return ((data ?? []) as VendorDeboardingHistory[]).map((h) => ({
+    ...h,
+    reasons: Array.isArray(h.reasons) ? h.reasons : [],
+    rejection_pct: h.rejection_pct == null ? null : Number(h.rejection_pct),
+  }));
 }
 
 /**

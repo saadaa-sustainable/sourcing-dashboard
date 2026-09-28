@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { UserX } from 'lucide-react';
+import { Download, UserX } from 'lucide-react';
+import { downloadCsv } from '@/lib/download';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { createVendorDeboardingRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
@@ -16,6 +17,7 @@ import {
 } from '@/lib/forms/deboarding';
 import type {
   SdRole,
+  VendorDeboardingHistory,
   VendorDeboardingReason,
   VendorDeboardingRequest,
   VendorDeboardingVendor,
@@ -31,6 +33,10 @@ const EMPTY_SCORES: Scores = {
 };
 
 const fmtPct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 10) / 10}%`);
+const fmtDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '—';
+/** The form's reasons were typed in capitals; read them as words. */
+const reasonWords = (r: string) => r.toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 
 /** 1–5 picker: five buttons, the chosen one highlighted. */
 function ScorePicker({ value, onChange }: { value: number | null; onChange: (n: number) => void }) {
@@ -55,10 +61,13 @@ function ScorePicker({ value, onChange }: { value: number | null; onChange: (n: 
 export function VendorDeboardingClient({
   requests,
   vendors,
+  history = [],
   role,
 }: {
   requests: VendorDeboardingRequest[];
   vendors: VendorDeboardingVendor[];
+  /** De-boardings from the Google Form the team used before this page (read-only). */
+  history?: VendorDeboardingHistory[];
   role: SdRole;
 }) {
   const editable = canEdit(role, 'draft');
@@ -83,6 +92,34 @@ export function VendorDeboardingClient({
     () => new Set(requests.filter((r) => r.status !== 'rejected').map((r) => r.vendor_code.toUpperCase())),
     [requests],
   );
+  // Vendors already de-boarded on the old form — shown on the picker so nobody raises a
+  // second request for a vendor the team stopped working with a year ago.
+  const formDeboardedOn = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const h of history) {
+      const code = h.vendor_code.toUpperCase();
+      if (!m.has(code)) m.set(code, h.submitted_at);
+    }
+    return m;
+  }, [history]);
+
+  function downloadHistory() {
+    downloadCsv(
+      'vendor-deboarding-google-form',
+      [
+        'Submitted', 'Submitted by', 'Vendor code', 'Vendor name', 'POs done', 'Reasons',
+        'Behaviour (1-5)', 'Work style (1-5)', 'Quality (1-5)', 'Process (1-5)',
+        'POs 15 days late', 'POs 1 month late', 'POs over 1 month late', 'Rejection %',
+        'Resolvable', 'Remarks', 'Status in EE', 'Note',
+      ],
+      history.map((h) => [
+        h.submitted_at, h.submitted_by, h.vendor_code, h.vendor_name, h.pos_done, h.reasons.join('; '),
+        h.behaviour_score, h.work_style_score, h.quality_score, h.process_score,
+        h.pos_late_15d, h.pos_late_1m, h.pos_late_over_1m, h.rejection_pct,
+        h.resolvable == null ? '' : h.resolvable ? 'Yes' : 'No', h.remarks, h.ee_status, h.note,
+      ]),
+    );
+  }
 
   function pickVendor(code: string) {
     setVendorCode(code);
@@ -168,6 +205,9 @@ export function VendorDeboardingClient({
                     {v.vendor_code} — {v.vendor_name}
                     {!v.isActive ? ' (inactive in EasyEcom)' : ''}
                     {liveRequestFor.has(v.vendor_code) ? ' (request already open)' : ''}
+                    {formDeboardedOn.has(v.vendor_code.toUpperCase())
+                      ? ` (de-boarded on the Google Form, ${fmtDate(formDeboardedOn.get(v.vendor_code.toUpperCase()) ?? null)})`
+                      : ''}
                   </option>
                 ))}
               </select>
@@ -344,6 +384,82 @@ export function VendorDeboardingClient({
                 <tr>
                   <td colSpan={11} className="wf-empty-cell">
                     No de-boarding requests yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* The Google Form era. Read-only: these were decided before the dashboard existed,
+          so there is nothing to approve — they are the record of who was de-listed and why. */}
+      <div className="table-panel">
+        <div className="table-meta">
+          <h3>De-boarded before this page — the Google Form</h3>
+          <span>
+            {history.length} responses
+            {history.length ? ` · ${fmtDate(history[history.length - 1].submitted_at)} to ${fmtDate(history[0].submitted_at)}` : ''}
+          </span>
+          {history.length > 0 && (
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadHistory}>
+              <Download size={13} /> Download CSV
+            </button>
+          )}
+        </div>
+        <p className="wf-subtle" style={{ margin: '0 0 8px' }}>
+          Responses to the Vendor De-Boarding Google Form, as they were written. The form
+          allowed more than one reason per vendor and had no approval step, so these rows are
+          the decisions as recorded, not requests. A vendor on this list is flagged
+          &ldquo;De-boarded&rdquo; wherever vendors are picked, the same as an approved request here.
+        </p>
+        <div className="table-scroll">
+          <table className="wide-table">
+            <thead>
+              <tr>
+                <th>Submitted <HeaderInfo label="Submitted" /></th>
+                <th>Vendor <HeaderInfo label="Vendor" /></th>
+                <th>Reasons <HeaderInfo label="Reasons" /></th>
+                <th>Ratings (1–5) <HeaderInfo label="Ratings (1–5)" /></th>
+                <th className="num">POs done <HeaderInfo label="POs done" /></th>
+                <th className="num">Late 15d / 1m / &gt;1m <HeaderInfo label="Late 15–29d / 30–60d / &gt;60d" /></th>
+                <th className="num">Rejection % <HeaderInfo label="Rejection %" /></th>
+                <th>Resolvable <HeaderInfo label="Resolvable" /></th>
+                <th>Remarks <HeaderInfo label="Remarks" /></th>
+                <th>Status in EE <HeaderInfo label="Status in EE" /></th>
+                <th>Note <HeaderInfo label="Note" /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr key={h.id}>
+                  <td>
+                    {fmtDate(h.submitted_at)}
+                    {h.submitted_by && <small className="wf-subtle"> {h.submitted_by}</small>}
+                  </td>
+                  <td>
+                    <span className="mono">{h.vendor_code}</span>
+                    {h.vendor_name && <small className="wf-subtle"> {h.vendor_name}</small>}
+                  </td>
+                  <td>{h.reasons.length ? h.reasons.map(reasonWords).join(', ') : '—'}</td>
+                  <td className="wf-subtle">
+                    {DEBOARDING_SCORES.map((s) => `${s.short} ${h[s.key] ?? '—'}`).join(' · ')}
+                  </td>
+                  <td className="num">{h.pos_done ?? '—'}</td>
+                  <td className="num">
+                    {h.pos_late_15d ?? '—'} / {h.pos_late_1m ?? '—'} / {h.pos_late_over_1m ?? '—'}
+                  </td>
+                  <td className="num">{fmtPct(h.rejection_pct)}</td>
+                  <td>{h.resolvable == null ? '—' : h.resolvable ? 'Yes' : 'No'}</td>
+                  <td>{h.remarks || '—'}</td>
+                  <td>{h.ee_status || '—'}</td>
+                  <td className="wf-subtle">{h.note || '—'}</td>
+                </tr>
+              ))}
+              {!history.length && (
+                <tr>
+                  <td colSpan={11} className="wf-empty-cell">
+                    Nothing imported from the Google Form.
                   </td>
                 </tr>
               )}

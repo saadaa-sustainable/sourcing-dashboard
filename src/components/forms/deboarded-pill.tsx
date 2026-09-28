@@ -10,8 +10,11 @@ export function DeboardedPill({ flag }: { flag: DeboardedVendor | null | undefin
   if (!flag) return null;
   const on = new Date(flag.approvedAt).toLocaleDateString('en-IN');
   const why = DEBOARDING_REASON_LABEL[flag.reason as VendorDeboardingReason] ?? flag.reason;
+  // A form record is the decision as the team wrote it down at the time; there was no
+  // approval step to cite, so the tooltip says where it came from instead.
+  const how = flag.source === 'google_form' ? 'De-boarded on the Google Form' : 'De-boarding approved';
   return (
-    <span className="wf-status tone-red" title={`De-boarding approved ${on} — ${why}`}>
+    <span className="wf-status tone-red" title={`${how} ${on} — ${why}`}>
       De-boarded {on}
     </span>
   );

@@ -901,8 +901,38 @@ export type VendorDeboardingRequest = {
   edited_before_approval: boolean;
 };
 
-/** An approved de-boarding, keyed by upper-cased vendor code wherever vendors are listed. */
-export type DeboardedVendor = { approvedAt: string; reason: string };
+/**
+ * A de-boarding raised on the old Google Form (Nov 2024 – Sep 2026), read-only
+ * (sd_vendor_deboarding_history). The form took several reasons at once, so `reasons`
+ * is a list, and there was no approval step — a row here is the decision as recorded.
+ */
+export type VendorDeboardingHistory = {
+  id: number;
+  submitted_at: string;
+  submitted_by: string | null;
+  vendor_code: string;
+  vendor_name: string | null;
+  pos_done: number | null;
+  reasons: string[];
+  behaviour_score: number | null;
+  work_style_score: number | null;
+  quality_score: number | null;
+  process_score: number | null;
+  pos_late_15d: number | null;
+  pos_late_1m: number | null;
+  pos_late_over_1m: number | null;
+  rejection_pct: number | null;
+  resolvable: boolean | null;
+  remarks: string | null;
+  ee_status: string | null;
+  note: string | null;
+};
+
+/**
+ * A de-boarded vendor, keyed by upper-cased vendor code wherever vendors are listed:
+ * an approved dashboard request, or a Google Form record from before the dashboard.
+ */
+export type DeboardedVendor = { approvedAt: string; reason: string; source: 'dashboard' | 'google_form' };
 
 /** A vendor as the de-boarding form offers it, with the evidence already worked out. */
 export type VendorDeboardingVendor = {
