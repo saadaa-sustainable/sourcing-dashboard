@@ -27,6 +27,7 @@ import type {
   BuyingPlan,
   BuyingPlanLine,
   DiscontinueRequest,
+  PoAmendment,
   PoApproval,
   PoDeleteRequest,
   VendorDeboardingRequest,
@@ -75,7 +76,7 @@ export async function countPendingApprovals(): Promise<number> {
   // are the admin's turn (the bell renders for admins only).
   const costPending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
-  const [a, b, c, d, e, f, g] = await Promise.all([
+  const [a, b, c, d, e, f, g, h] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
@@ -83,10 +84,11 @@ export async function countPendingApprovals(): Promise<number> {
     costPending('sd_material_standard_cost'),
     pending('sd_vendor_deboarding_request'),
     pending('sd_po_delete_request'),
+    pending('sd_po_amendment'),
   ]);
   return (
     (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) +
-    (f.count ?? 0) + (g.count ?? 0)
+    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0)
   );
 }
 
@@ -107,7 +109,7 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
           .select('id, product_code, status, neg_stage, updated_at')
           .in('neg_stage', ['proposed', 'rate_submitted'])
       : Promise.resolve({ data: [] as never[] });
-  const [plans, discontinues, pos, fgCosts, matCosts, deboardings, poDeletes] = await Promise.all([
+  const [plans, discontinues, pos, fgCosts, matCosts, deboardings, poDeletes, poAmendments] = await Promise.all([
     supabase
       .from('sd_buying_plan')
       .select('id, plan_month, plan_type, status, submitted_by, submitted_at')
@@ -130,6 +132,10 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
     supabase
       .from('sd_po_delete_request')
       .select('id, request_id, product_code, reason, status, requested_by, requested_at')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_po_amendment')
+      .select('id, po_ref_num, amendment_type, status, requested_by, requested_at')
       .in('status', ['submitted', 'pending_l2']),
   ]);
 
@@ -218,6 +224,23 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       href: '/approvals',
       submittedBy: d.requested_by,
       submittedAt: d.requested_at,
+    });
+  }
+
+  for (const a of (poAmendments.data ?? []) as Array<{
+    id: number; po_ref_num: string; amendment_type: string; status: SdStatus;
+    requested_by: string | null; requested_at: string | null;
+  }>) {
+    if (!canApprove(role, a.status)) continue;
+    items.push({
+      key: `pa-${a.id}`,
+      kind: 'po_amendment',
+      label: `PO amendment — ${a.po_ref_num}`,
+      sublabel: `${a.amendment_type === 'cost' ? 'Cost' : a.amendment_type === 'quantity' ? 'Quantity' : 'Delivery date'} change on an issued PO awaiting your approval`,
+      status: a.status,
+      href: '/approvals',
+      submittedBy: a.requested_by,
+      submittedAt: a.requested_at,
     });
   }
 
@@ -334,6 +357,7 @@ export async function loadApprovalQueue(): Promise<{
     { data: log },
     { data: deboardings },
     { data: poDeletes },
+    { data: poAmendments },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
@@ -362,6 +386,10 @@ export async function loadApprovalQueue(): Promise<{
       .in('status', ['submitted', 'pending_l2']),
     supabase
       .from('sd_po_delete_request')
+      .select('*')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_po_amendment')
       .select('*')
       .in('status', ['submitted', 'pending_l2']),
   ]);
@@ -516,6 +544,32 @@ export async function loadApprovalQueue(): Promise<{
       submittedAt: req.requested_at,
       submitNote: `Reason for deleting: ${req.reason}`,
       href: '/po-approval',
+    });
+  }
+
+  // Spec 7.9 — an amendment to an issued PO: what the PO says now, what it should say,
+  // the day it was agreed with the vendor, and the reason as the note. The route was
+  // fixed at submission from the PO's quantity and category; the status encodes it.
+  for (const a of (poAmendments ?? []) as PoAmendment[]) {
+    const inr = (v: number | null) => (v == null ? '—' : `₹${Number(v).toLocaleString('en-IN')}`);
+    const change =
+      a.amendment_type === 'cost'
+        ? `rate ${inr(a.current_rate)} → ${inr(a.new_rate)} per piece`
+        : a.amendment_type === 'quantity'
+          ? `quantity ${Number(a.current_qty ?? 0).toLocaleString('en-IN')} → ${Number(a.new_qty ?? 0).toLocaleString('en-IN')} pcs`
+          : `delivery ${a.current_delivery_date ?? '—'} → ${a.new_delivery_date ?? '—'}`;
+    items.push({
+      entityType: 'po_amendment',
+      entityId: String(a.id),
+      label: `PO amendment — ${a.po_ref_num}${a.po_number ? ` (EE ${a.po_number})` : ''}`,
+      sublabel: `${change} · ${a.vendor_name || a.vendor_code || 'vendor —'} · ${a.product_codes || ''} · agreed with the vendor on ${a.agreed_with_vendor_on}`,
+      status: a.status,
+      quantity: Number(a.amendment_type === 'quantity' ? a.new_qty ?? a.current_qty : a.current_qty) || 0,
+      requiredRole: a.status === 'pending_l2' ? 'admin' : 'team',
+      submittedBy: a.requested_by,
+      submittedAt: a.requested_at,
+      submitNote: `Reason: ${a.reason}${a.evidence_url ? ` · evidence: ${a.evidence_url}` : ''}`,
+      href: '/po-amendment',
     });
   }
 

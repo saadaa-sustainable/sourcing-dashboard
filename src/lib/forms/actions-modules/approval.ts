@@ -57,6 +57,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   receivable_plan: 'sd_receivable_input',
   inward_plan: 'sd_inward_plan_entry',
   vendor_deboarding: 'sd_vendor_deboarding_request',
+  po_amendment: 'sd_po_amendment',
 };
 
 /** When each kind of item started waiting — escalation (spec 7.5) is measured from this. */
@@ -66,6 +67,7 @@ const WAITING_SINCE: Partial<Record<ApprovalEntity, string>> = {
   po_approval: 'submitted_for_approval_at',
   po_delete: 'requested_at',
   vendor_deboarding: 'requested_at',
+  po_amendment: 'requested_at',
 };
 
 // Entities that carry line items eligible for line-item rework.
@@ -199,6 +201,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
   revalidatePath('/vendor-deboarding');
+  revalidatePath('/po-amendment');
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
   return done(

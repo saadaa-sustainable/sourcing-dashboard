@@ -94,6 +94,7 @@ const PLANNING_LINKS: NavLink[] = [
 // PO WORKFLOW — raise/approve → document → close out → pay.
 const PO_WORKFLOW_LINKS: NavLink[] = [
   { href: '/po-approval', label: 'PO Approval', Icon: FileCheck },
+  { href: '/po-amendment', label: 'PO Amendment', Icon: FilePen },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },

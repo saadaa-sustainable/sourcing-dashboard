@@ -28,7 +28,12 @@ export function routeApproval(
   category?: string | null,
 ): SdRole {
   if (ALWAYS_ADMIN.includes(entity)) return 'admin';
-  if (entity === 'po_approval' && PO_ALWAYS_ADMIN.includes(String(category).toLowerCase())) {
+  // An amendment to an issued PO follows the PO's own route (spec 7.9: "the same
+  // approval flow") — the PO's quantity and category decide, exactly as at issue.
+  if (
+    (entity === 'po_approval' || entity === 'po_amendment') &&
+    PO_ALWAYS_ADMIN.includes(String(category).toLowerCase())
+  ) {
     return 'admin';
   }
   return quantity > ADMIN_THRESHOLD_QTY ? 'admin' : 'team';

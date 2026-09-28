@@ -319,7 +319,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'standard_cost' | 'vendor_deboarding';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding';
   label: string;
   sublabel: string;
   status: SdStatus;
@@ -972,7 +972,60 @@ export type ApprovalEntity =
   | 'material_cost'
   | 'receivable_plan'
   | 'inward_plan'
-  | 'vendor_deboarding';
+  | 'vendor_deboarding'
+  /** Spec 7.9 — a cost / quantity / time change to a PO already issued in EasyEcom. */
+  | 'po_amendment';
+
+/** What an amendment changes on an issued PO. */
+export type PoAmendmentType = 'cost' | 'quantity' | 'time';
+
+/** One amendment request against an issued PO (sd_po_amendment). */
+export type PoAmendment = {
+  id: number;
+  po_ref_num: string;
+  po_number: string | null;
+  vendor_code: string | null;
+  vendor_name: string | null;
+  product_codes: string | null;
+  po_approval_id: number | null;
+  amendment_type: PoAmendmentType;
+  current_rate: number | null;
+  new_rate: number | null;
+  current_qty: number | null;
+  new_qty: number | null;
+  current_delivery_date: string | null;
+  new_delivery_date: string | null;
+  agreed_with_vendor_on: string;
+  reason: string;
+  evidence_url: string | null;
+  status: SdStatus;
+  requested_by: string | null;
+  requested_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
+  rework_notes: string | null;
+  reworked_by: string | null;
+  reworked_at: string | null;
+  edited_before_approval: boolean;
+  created_at: string;
+};
+
+/** An issued (open) EasyEcom PO as the amendment form offers it — one row per PO. */
+export type IssuedPo = {
+  po_ref_num: string;
+  po_number: string | null;
+  vendor_code: string | null;
+  vendor_name: string | null;
+  po_status: string | null;
+  product_codes: string | null;
+  lines: number;
+  ordered_qty: number;
+  pending_qty: number;
+  rate: number | null;
+  po_date: string | null;
+  expected_delivery_date: string | null;
+};
 
 /** Review vocabulary of the Inward Plan II sheet (matches the team's Google Sheet). */
 export const INWARD_PLAN_STATUSES = ['Pending', 'Approved', 'RE-WORK', 'Rejected'];

@@ -145,6 +145,15 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Filters & CSV', source: 'Workflow', detail: 'Search or filter by category, colour, ageing bucket or recommended action; the action chips show the SKU count per action. “CSV” exports exactly the filtered rows.' },
     { field: 'Products Discontinued but Inventory Available (chart)', source: 'Automatic', formula: 'available units, grouped by category, stacked by ageing bucket', detail: 'A horizontal stacked bar of leftover units per product category, split into New / Aging / Old / Dead Stock and sorted so the biggest ageing liabilities sit at the top.' },
   ],
+  '/po-amendment': [
+    { field: 'What this is', source: 'Workflow', detail: 'A change to a PO that is already issued in EasyEcom — its cost, its quantity or its delivery date. Separate from PO Approval, which raises new POs. One open amendment of each kind per PO; once it is decided another can follow.' },
+    { field: 'Issued PO', source: 'EasyEcom PO feed', detail: 'Every open PO in EasyEcom, one row per PO. Type part of the reference, the EasyEcom number, the vendor or the product to narrow the list. The PO’s current figures (ordered, pending, received, rate, expected delivery) are read from the feed when you pick it — they are not typed.' },
+    { field: 'Rate on the PO', source: 'EasyEcom PO feed', formula: 'Σ (line quantity × line price) ÷ Σ line quantity', detail: 'The quantity-weighted rate across the PO’s lines, so a PO with several sizes at slightly different prices reads as one figure.' },
+    { field: 'New quantity', source: 'You enter', detail: 'Whole pieces. It cannot go below what has already been received on the PO.' },
+    { field: 'Agreed with the vendor on', source: 'You enter', detail: 'Finance accepts an amendment only when it is recorded on the day it was agreed with the vendor, so this must be today — an earlier date is refused. Record the change the day it happens.' },
+    { field: 'Reason', source: 'You enter', detail: 'Required. What changed and why, written for Finance. An evidence link (vendor mail, revised cost sheet) is optional but helps the approver.' },
+    { field: 'Approval', source: 'Workflow', detail: 'The same route as the PO itself: routine quantities go to the team level, large or NPD / MAT POs to the admin, with the escalation matrix from User Panel. Approval is the record Finance acts on — the PO is changed in EasyEcom separately; this page reflects, it does not own.' },
+  ],
   '/vendor-deboarding': [
     { field: 'Vendor', source: 'Vendor master', detail: 'Every vendor on the master. A vendor with a request already open cannot be picked again until that request is decided; a vendor EasyEcom lists as inactive is marked.' },
     { field: 'Reason for de-listing', source: 'You choose', detail: 'The same six reasons as the Google Form. "Other" asks you to say what.' },

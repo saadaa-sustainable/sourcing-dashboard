@@ -463,6 +463,16 @@ const PAGE: Record<string, Record<string, string>> = {
     'utilization': 'Pieces on order ÷ PO capacity × 100; past 100% it reads "100% Over Utilised".',
     'last updated': 'When this vendor was last submitted. "Submitted · locked" = done this week; it reopens Saturday. Over 7 days without a submission = stale.',
   },
+  '/po-amendment': {
+    'po': 'The issued PO being amended — its EasyEcom reference, vendor, products and EasyEcom PO number.',
+    'type': 'What the amendment changes: the rate per piece (cost), the pieces ordered (quantity) or the delivery date (time).',
+    'change': 'The figure on the PO when the amendment was raised, and what it becomes if approved.',
+    'agreed on': 'The day the change was agreed with the vendor. Finance accepts an amendment only when it was recorded that same day.',
+    'reason': 'Why the PO is changing, in the words Finance will read. Required.',
+    'status': 'Submitted → Approved / Rejected / Rework, on the same route as the PO itself. Approval is the record Finance acts on; the PO is changed in EasyEcom separately.',
+    'raised by': 'Who raised the amendment, and when.',
+    'decision': 'Approve, reject or send back — or who decided it, once done.',
+  },
   '/vendor-deboarding': {
     'status': 'Submitted → Approved / Rejected / Rework. De-boarding always needs an admin; approval flags the vendor everywhere.',
     'reason': 'The reason for de-listing, from the six on the form; "Other" carries free text.',

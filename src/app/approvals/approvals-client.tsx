@@ -42,6 +42,7 @@ const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'buying_plan', label: 'Buying Plans' },
   { key: 'po_approval', label: 'PO Approvals' },
   { key: 'po_delete', label: 'PO Deletions' },
+  { key: 'po_amendment', label: 'PO Amendments' },
   { key: 'standard_cost', label: 'Standard Cost' },
   { key: 'discontinue', label: 'Discontinue' },
   { key: 'vendor_deboarding', label: 'Vendor De-Boarding' },
