@@ -38,9 +38,6 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   product_class_c_min: 3,
   // Data & sync card: a feed counts as stale after this many hours without refresh.
   sync_stale_hours: 30,
-  // Daily inventory report → Slack: 1 posts after the morning sync, 0 holds the message
-  // (the CSV is still built). Switched off 2026-09-28 at the team's request.
-  inventory_report_slack: 0,
   // Standard Cost final-price margin (%). REJ/OH were removed (2026-09-08) — the
   // final price is Garment + this margin. Editable here in Rules Master.
   margin_pct: 15,
