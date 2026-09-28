@@ -194,9 +194,26 @@ export async function generateInventoryReport(
   const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(storagePath, SIGNED_URL_SECONDS);
   const url = signed?.signedUrl ?? null;
 
+  // The Slack post has an off switch in Rules Master (inventory_report_slack, 1 = on,
+  // 0 = off). The file is still built and stored either way; only the message is held.
+  // Read with the admin client — a cron has no user session to satisfy RLS.
+  let slackOn = true;
+  try {
+    const { data: rule } = await admin
+      .from('sd_analytics_rule')
+      .select('value')
+      .eq('rule_key', 'inventory_report_slack')
+      .maybeSingle();
+    if (rule && Number(rule.value) === 0) slackOn = false;
+  } catch {
+    /* no rule row → stays on, as before */
+  }
+
   let posted = false;
   let slackError: string | null = null;
-  if (opts.post) {
+  if (opts.post && !slackOn) {
+    slackError = 'Slack post is switched off in Rules Master (inventory_report_slack = 0).';
+  } else if (opts.post) {
     if (!hasSupplyChainSlack()) {
       slackError = 'No Slack webhook configured (SLACK_SUPPLY_CHAIN_WEBHOOK_URL / SLACK_OPS_WEBHOOK_URL).';
     } else {

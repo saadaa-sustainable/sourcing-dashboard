@@ -27,7 +27,7 @@ import { join } from 'node:path';
 const SMALL_TABLES = {
   sd_active_variants: 410,
   sd_adjustment_refresh_log: 0,
-  sd_analytics_rule: 12,
+  sd_analytics_rule: 24,
   sd_approval_log: 267,
   sd_buying_plan_line: 132,
   sd_cash_flow_by_month: 433,

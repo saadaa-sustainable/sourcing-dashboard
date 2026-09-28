@@ -44,8 +44,8 @@ const GROUPS: { title: string; blurb: string; keys: string[] }[] = [
   },
   {
     title: 'Data & sync',
-    blurb: 'Hours without a refresh before a daily feed counts as stale — on the Sync Health page and the dashboard Data & sync card.',
-    keys: ['sync_stale_hours'],
+    blurb: 'Hours without a refresh before a daily feed counts as stale — on the Sync Health page and the dashboard Data & sync card. The inventory-report switch decides whether the morning report is posted to the Supply Chain Slack channel (1 = post, 0 = hold); the file is built and stored either way.',
+    keys: ['sync_stale_hours', 'inventory_report_slack'],
   },
 ];
 
