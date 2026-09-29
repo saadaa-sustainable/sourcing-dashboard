@@ -99,7 +99,7 @@ export function PoLinesPanel({
   );
 
   function readText(raw: string) {
-    const r = parsePastedLines(raw);
+    const r = parsePastedLines(raw, ctx?.colours ?? {});
     setDraft(r.rows);
     setIssues(r.issues);
     setError(
@@ -239,8 +239,10 @@ export function PoLinesPanel({
           />
           <p className="wf-subtle pl-hint">
             Either shape works: <strong>colour · size · quantity</strong> columns (a header row in any order
-            is fine), or <strong>sizes across the top</strong> with one colour per row. Tabs, commas and
-            spaces all separate; blank cells mean none of that size.
+            is fine), or <strong>sizes across the top</strong> with one colour per row — including the team&rsquo;s
+            PO sheet as it is (VENDOR CODE · PRODUCT CODE · DYED FABRIC SKU · COLOR, then the sizes; the
+            consumption row above, the Total / Fabric Req. columns and the totals row are ignored). Tabs,
+            commas and spaces all separate; blank cells mean none of that size.
           </p>
         </div>
       )}

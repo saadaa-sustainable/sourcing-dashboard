@@ -16,6 +16,8 @@ export type PoLineContext = {
   sizes: string[];
   /** Pieces still to arrive per SKU across every open PO for this product. */
   pending: SkuPending[];
+  /** Colour NAME → variant code (BLACK → SDAVLKBL), so a pasted sheet that names colours reads in. */
+  colours: Record<string, string>;
 };
 
 const SIZE_LADDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
@@ -26,8 +28,11 @@ export async function loadPoLineContext(productCodeRaw: string | null): Promise<
   if (!productCode) return null;
   const supabase = await client();
 
-  const [variantRows, openLines] = await Promise.all([
+  const [variantRows, colourRows, openLines] = await Promise.all([
     supabase.from('sd_active_variants').select('product_code, product_variant').eq('product_code', productCode),
+    // Colour names for the product's variants (one row per SKU; the name repeats per size).
+    // paging-ok: one product's SKUs — a few dozen rows
+    supabase.from('sd_ee_product_master').select('product_variant, colour').like('sku', `${productCode}%`),
     // Every open line for the product: pending pieces per SKU. Paged — a busy product can
     // carry more than a thousand lines across its open POs.
     pageAll<{ sku: string | null; product_variant: string | null; size: string | null; pending_qty: number | null }>(() =>
@@ -66,7 +71,14 @@ export async function loadPoLineContext(productCodeRaw: string | null): Promise<
   const extra = [...sizesSeen].filter((s) => !SIZE_LADDER.includes(s)).sort();
   const sizes = [...SIZE_LADDER, ...extra];
 
-  return { productCode, variants, sizes, pending: [...bySku.values()] };
+  const colours: Record<string, string> = {};
+  for (const r of (colourRows.data ?? []) as { product_variant: string | null; colour: string | null }[]) {
+    const v = up(r.product_variant);
+    const c = up(r.colour);
+    if (v && c && v.startsWith(productCode) && !colours[c]) colours[c] = v;
+  }
+
+  return { productCode, variants, sizes, pending: [...bySku.values()], colours };
 }
 
 /* ------------------------------------------------------------------ */

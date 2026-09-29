@@ -126,3 +126,44 @@ test('a plan quantity splits across SKUs without losing or inventing pieces', ()
   // Cells that round to nothing are left out rather than saved as zero rows.
   assert.equal(distributeQty(2, mix).length, 2);
 });
+
+test("the team's PO sheet pastes straight in: title rows above, vendor / product / dyed SKU / colour on the left, (n) size headings, totals on the right and below", () => {
+  const sheet = [
+    'V-NECK PINTUCK LONG KURTA\t\t\t\t1.44\t1.53\t1.56\t1.65\t1.73\t1.79\t1.84\t\t',
+    'VENDOR CODE\tPRODUCT CODE\tDYED FABRIC SKU\tCOLOR\t(2) S\t(3) M\t(4) L\t(5) XL\t(6) 2XL\t(7) 3XL\t(8) 4XL\tTotal\tFabric Req.',
+    'AF-EFOB\tSDAVLK\t20CF/63/BL\tBLACK\t60\t60\t140\t120\t120\t60\t60\t620\t1020',
+    'AF-EFOB\tSDAVLK\t20CF/63/OG\tOLIVE GREEN\t40\t80\t80\t60\t60\t40\t40\t400\t653',
+    '\t\t\t\t370\t520\t660\t750\t740\t460\t390\t3890\t6417',
+  ].join('\n');
+  const r = parsePastedLines(sheet);
+  assert.equal(r.shape, 'matrix');
+  assert.equal(r.issues.length, 0, JSON.stringify(r.issues));
+  assert.equal(r.rows.length, 14);
+  assert.deepEqual(r.rows.slice(0, 3), [
+    { product_variant: 'SDAVLKBL', size: 'S', qty: 60 },
+    { product_variant: 'SDAVLKBL', size: 'M', qty: 60 },
+    { product_variant: 'SDAVLKBL', size: 'L', qty: 140 },
+  ]);
+  assert.equal(r.rows.filter((x) => x.product_variant === 'SDAVLKOG').reduce((s, x) => s + x.qty, 0), 400);
+  // Total and Fabric Req. are the sheet's own sums, never read as sizes.
+  assert.equal(r.rows.reduce((s, x) => s + x.qty, 0), 1020);
+});
+
+test('a colour name with no dyed SKU is resolved through the product master, or flagged', () => {
+  const sheet = ['PRODUCT CODE\tCOLOR\tS\tM', 'SDAVLK\tSKY BLUE\t10\t20', 'SDAVLK\tTEAL\t5\t5'].join('\n');
+  const r = parsePastedLines(sheet, { 'Sky Blue': 'SDAVLKSB' });
+  assert.deepEqual(r.rows, [
+    { product_variant: 'SDAVLKSB', size: 'S', qty: 10 },
+    { product_variant: 'SDAVLKSB', size: 'M', qty: 20 },
+  ]);
+  assert.equal(r.issues.length, 1);
+  assert.match(r.issues[0].reason, /TEAL/);
+});
+
+test('the plain matrix paste still works unchanged', () => {
+  const r = parsePastedLines('Colour\tS\tM\nSDFLKCB\t10\t20');
+  assert.deepEqual(r.rows, [
+    { product_variant: 'SDFLKCB', size: 'S', qty: 10 },
+    { product_variant: 'SDFLKCB', size: 'M', qty: 20 },
+  ]);
+});

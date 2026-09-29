@@ -60,41 +60,119 @@ const headerIndex = (cells: string[], words: string[]) =>
   cells.findIndex((c) => words.some((w) => upper(c).includes(w.toUpperCase())));
 
 /**
- * Is this a matrix? Its first row must carry at least two known sizes after the first cell
- * — that is what a size-across-the-top grid looks like and a list never does.
+ * A size heading as the team writes it: "S", "(3) M", "2XL ", "Size XL" → the size itself.
+ * The bracketed number is the sheet's column index and means nothing here.
  */
-function looksLikeMatrix(cells: string[][]): boolean {
-  if (cells.length < 2) return false;
-  const head = cells[0].slice(1).map(upper).filter(Boolean);
-  const known = head.filter((h) => SIZE_SET.has(h)).length;
-  return known >= 2 && known >= Math.ceil(head.length / 2);
+export function sizeOfHeading(raw: string): string | null {
+  const s = upper(raw).replace(/^\(\s*\d+\s*\)\s*/, '').replace(/^SIZE\s+/, '').replace(/\s+/g, '');
+  return SIZE_SET.has(s) ? s : null;
 }
 
-/** Parse pasted / uploaded text into PO lines. Never throws. */
-export function parsePastedLines(text: string): ParseResult {
+/**
+ * Where the header row is and what each column holds, for a size-across-the-top grid.
+ * The header may sit a few rows down — the team's PO sheet has the product name and a
+ * per-size consumption row above it — and may carry identifier columns on the left
+ * (vendor code, product code, dyed fabric SKU, colour) and totals on the right.
+ */
+type MatrixLayout = {
+  header: number;
+  sizes: { col: number; size: string }[];
+  variantCol: number; // a column that already holds the colour / variant code
+  productCol: number; // PRODUCT CODE
+  dyedCol: number; // DYED FABRIC SKU — its last segment is the colour code
+  colourCol: number; // COLOR / COLOUR — a colour name
+};
+
+const has = (c: string, ...words: string[]) => words.some((w) => upper(c).includes(w));
+
+function findMatrix(cells: string[][]): MatrixLayout | null {
+  for (let h = 0; h < Math.min(cells.length - 1, 8); h++) {
+    const head = cells[h];
+    const sizes = head.map((c, col) => ({ col, size: sizeOfHeading(c) })).filter((x): x is { col: number; size: string } => !!x.size);
+    if (sizes.length < 2) continue;
+    // The non-size headings must be few: identifier columns, a total or two. A list with a
+    // "Size" column and lots of other columns is not a matrix.
+    const nonSize = head.filter((c, i) => norm(c) && !sizes.some((s) => s.col === i));
+    const firstSize = sizes[0].col;
+    if (nonSize.length > firstSize + 3) continue;
+    const idx = (...words: string[]) => head.findIndex((c, i) => i < firstSize && has(c, ...words));
+    const productCol = idx('PRODUCT');
+    const dyedCol = idx('DYED', 'FABRIC SKU');
+    let colourCol = idx('COLOUR', 'COLOR');
+    let variantCol = head.findIndex((c, i) => i < firstSize && has(c, 'VARIANT', 'SKU', 'STYLE') && i !== dyedCol);
+    // No named identifier column at all (the plain "Colour  S  M  L" paste): the cell left
+    // of the first size holds the code.
+    if (variantCol < 0 && productCol < 0 && colourCol < 0 && dyedCol < 0) variantCol = firstSize > 0 ? firstSize - 1 : -1;
+    // "Colour  S  M  L" with codes down the side: the colour column holds the code itself.
+    if (variantCol < 0 && productCol < 0 && dyedCol < 0 && colourCol >= 0) { variantCol = colourCol; colourCol = -1; }
+    if (variantCol < 0 && productCol < 0 && colourCol < 0) continue;
+    return { header: h, sizes, variantCol, productCol, dyedCol, colourCol };
+  }
+  return null;
+}
+
+/** Colour name → variant code, e.g. { 'OLIVE GREEN': 'SDAVLKOG' } — from the product master. */
+export type ColourMap = Record<string, string>;
+
+/**
+ * Work out the variant code for a grid row. Prefers a code that is already there; then
+ * product code + the colour code at the end of the dyed-fabric SKU (20CF/63/OG → OG);
+ * then the colour name looked up in the product master.
+ */
+function variantOfRow(line: string[], m: MatrixLayout, colours: ColourMap): { variant: string; why?: string } {
+  const cell = (i: number) => (i >= 0 ? norm(line[i] ?? '') : '');
+  const code = upper(cell(m.variantCol));
+  if (code && !/\s/.test(code)) return { variant: code };
+  const product = upper(cell(m.productCol));
+  const dyed = upper(cell(m.dyedCol));
+  const colour = upper(cell(m.colourCol));
+  if (product && dyed.includes('/')) return { variant: product + dyed.slice(dyed.lastIndexOf('/') + 1) };
+  if (colour && colours[colour]) return { variant: colours[colour] };
+  if (product && colour) {
+    const hit = Object.keys(colours).find((k) => k === colour);
+    if (hit) return { variant: colours[hit] };
+    return { variant: '', why: `colour "${colour}" is not on ${product}'s colour list — add the DYED FABRIC SKU column or use the variant code` };
+  }
+  if (product) return { variant: '', why: 'a product code but no colour' };
+  return { variant: '', why: 'no colour / variant' };
+}
+
+/**
+ * Parse pasted / uploaded text into PO lines. Never throws.
+ * `colours` (optional) maps colour NAMES to variant codes for the product being ordered,
+ * so the team's sheet — which names the colour rather than coding it — reads straight in.
+ */
+export function parsePastedLines(text: string, colours: ColourMap = {}): ParseResult {
   const cells = splitRows(text ?? '');
   if (!cells.length) return { shape: 'empty', rows: [], issues: [] };
 
-  if (looksLikeMatrix(cells)) {
-    const sizes = cells[0].slice(1).map(upper);
+  const m = findMatrix(cells);
+  if (m) {
     const rows: PoLineDraft[] = [];
     const issues: ParseIssue[] = [];
-    cells.slice(1).forEach((line, i) => {
-      const variant = upper(line[0] ?? '');
+    const colourKeys = Object.fromEntries(Object.entries(colours).map(([k, v]) => [upper(k), upper(v)]));
+    cells.slice(m.header + 1).forEach((line, i) => {
+      const rowNo = m.header + i + 2;
+      if (!line.some((c) => norm(c))) return;
+      const { variant, why } = variantOfRow(line, m, colourKeys);
       if (!variant) {
-        if (line.some((c) => c)) issues.push({ row: i + 2, text: line.join(' | '), reason: 'no colour in the first cell' });
+        // A totals row (numbers but no identifier) is the sheet's own arithmetic — skip it quietly.
+        const onlyNumbers = line.every((c, j) => !norm(c) || m.sizes.some((s) => s.col === j) || toQty(c) != null);
+        if (!onlyNumbers || why === 'a product code but no colour' || (why && why.startsWith('colour '))) {
+          issues.push({ row: rowNo, text: line.filter(Boolean).join(' | '), reason: why ?? 'no colour / variant' });
+        }
         return;
       }
-      sizes.forEach((size, j) => {
-        const raw = line[j + 1] ?? '';
-        if (!norm(raw)) return; // an empty cell is simply "none of that size"
+      for (const { col, size } of m.sizes) {
+        const raw = line[col] ?? '';
+        if (!norm(raw)) continue; // an empty cell is simply "none of that size"
         const qty = toQty(raw);
         if (qty == null) {
-          issues.push({ row: i + 2, text: `${variant} / ${size}: ${raw}`, reason: 'quantity is not a number' });
-          return;
+          issues.push({ row: rowNo, text: `${variant} / ${size}: ${raw}`, reason: 'quantity is not a number' });
+          continue;
         }
         if (qty > 0) rows.push({ product_variant: variant, size, qty });
-      });
+      }
     });
     return { shape: 'matrix', rows: mergeLines(rows), issues };
   }
