@@ -144,6 +144,13 @@ export function StandardCostClient({
   // Rows waiting on the signed-in user's side of the negotiation.
   // An approver opens the sheet on what is waiting for them; everyone else on everything.
   const [mineOnly, setMineOnly] = useState(() => role === 'admin' && costs.some((c) => isAdminTurn(c.neg_stage)));
+  // Proposals ticked on the "Needs approval" view for a group decision.
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const togglePick = (id: number) =>
+    setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const pickable = (c: StandardCost) =>
+    role === 'admin' && mineOnly && c.neg_stage === 'proposed' && !c.frozen &&
+    (c.job_cost != null || c.fob_cost != null || c.efob_cost != null);
   const myTurn = useMemo(
     () => (role === 'admin' ? isAdminTurn : isTeamTurn),
     [role],
@@ -389,7 +396,12 @@ export function StandardCostClient({
             return (
               <article className="sc-card" key={cost.product_code}>
                 <div className="sc-card-head">
-                  <span className="mono sc-card-code">{cost.product_code}</span>
+                  <span className="mono sc-card-code">
+                    {pickable(cost) && (
+                      <input type="checkbox" className="sc-card-pick" checked={picked.has(cost.id)} onChange={() => togglePick(cost.id)} aria-label={`Select ${cost.product_code} for a group decision`} />
+                    )}
+                    {cost.product_code}
+                  </span>
                   <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
                     {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
                   </span>
@@ -473,7 +485,7 @@ export function StandardCostClient({
               </div>
             </div>
             {role === 'admin' && mineOnly && (
-              <ListBulkAccept items={shown} track={isMat ? 'material' : 'fg'} />
+              <ListBulkDecide items={shown} track={isMat ? 'material' : 'fg'} picked={picked} setPicked={setPicked} pickable={pickable} />
             )}
             {/* One card per product: code, name, then the three rates side by side, the
                 Cost Details link, and when the current cost was last accepted. Rate entry
@@ -488,7 +500,12 @@ export function StandardCostClient({
                 return (
                   <article className="sc-card" key={cost.product_code}>
                     <div className="sc-card-head">
-                      <span className="mono sc-card-code">{cost.product_code}</span>
+                      <span className="mono sc-card-code">
+                        {pickable(cost) && (
+                          <input type="checkbox" className="sc-card-pick" checked={picked.has(cost.id)} onChange={() => togglePick(cost.id)} aria-label={`Select ${cost.product_code} for a group decision`} />
+                        )}
+                        {cost.product_code}
+                      </span>
                       <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
                         {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
                       </span>
@@ -2006,24 +2023,40 @@ function CmtpBreakdown({
 }
 
 /**
- * "Needs approval" view, admin: accept every open proposal in view as-is in one go.
- * Proposals that name no rate are left out (they need a target, not an acceptance) and
- * rows awaiting sign-off are decided on their own page, where fabric and CMTP are confirmed
- * in order. Two clicks — the second confirms the count.
+ * "Needs approval" view, admin: decide proposals in groups. Tick the cards to act on (or
+ * select all in view), then accept them as-is or reject them with one reason. Each still
+ * runs the single-row action, so guards and history hold and a failure is named by id.
+ * Rows awaiting sign-off are decided on their own page, where fabric and CMTP are
+ * confirmed in order.
  */
-function ListBulkAccept({ items, track }: { items: StandardCost[]; track: 'fg' | 'material' }) {
-  const [confirming, setConfirming] = useState(false);
+function ListBulkDecide({
+  items,
+  track,
+  picked,
+  setPicked,
+  pickable,
+}: {
+  items: StandardCost[];
+  track: 'fg' | 'material';
+  picked: Set<number>;
+  setPicked: (s: Set<number>) => void;
+  pickable: (c: StandardCost) => boolean;
+}) {
+  const [mode, setMode] = useState<'' | 'reject'>('');
+  const [note, setNote] = useState('');
   const [pending, start] = useTransition();
-  const acceptable = items.filter(
-    (c) => c.neg_stage === 'proposed' && !c.frozen && (c.job_cost != null || c.fob_cost != null || c.efob_cost != null),
-  );
+  const candidates = items.filter(pickable);
+  const chosen = candidates.filter((c) => picked.has(c.id));
   const signOffs = items.filter((c) => c.neg_stage === 'rate_submitted').length;
-  if (!acceptable.length && !signOffs) return null;
+  const noRate = items.filter((c) => c.neg_stage === 'proposed' && !pickable(c)).length;
+  if (!candidates.length && !signOffs && !noRate) return null;
+  const allPicked = candidates.length > 0 && chosen.length === candidates.length;
 
-  function acceptAll() {
+  function decide(decision: 'accept' | 'reject') {
     const fd = new FormData();
-    fd.set('decision', 'accept');
-    fd.set('ids', acceptable.map((c) => `${track === 'material' ? 'm' : 'f'}${c.id}`).join(','));
+    fd.set('decision', decision);
+    fd.set('ids', chosen.map((c) => `${track === 'material' ? 'm' : 'f'}${c.id}`).join(','));
+    fd.set('note', note);
     start(async () => {
       const res = await decideCostsBulk(fd);
       if (!res.ok) toastError(res.error);
@@ -2036,32 +2069,49 @@ function ListBulkAccept({ items, track }: { items: StandardCost[]; track: 'fg' |
       <div className="wf-queue-head">
         <div>
           <h3>
-            {acceptable.length} proposal(s) waiting for your decision
+            {candidates.length} proposal(s) waiting for your decision
             {signOffs ? ` · ${signOffs} actual rate(s) waiting for sign-off` : ''}
           </h3>
           <p className="wf-subtle">
-            Each card below shows the proposed rate; open Cost Details to accept, set a target or reject one at a time.
-            {acceptable.length > 1 ? ' Or accept every proposal in view as-is here — the proposed rates become the standard cost.' : ''}
+            Tick the cards you want to decide together, then accept them as-is (the proposed rate becomes the
+            standard cost) or reject them with one reason. Open Cost Details to set a target or decide one on its own.
+            {noRate ? ` ${noRate} proposal(s) name no rate and need a target, not an acceptance.` : ''}
             {signOffs ? ' Sign-offs are done on the product page (fabric rate first, then CMTP).' : ''}
           </p>
         </div>
+        {candidates.length > 0 && (
+          <label className="wf-subtle" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={allPicked}
+              onChange={() => setPicked(allPicked ? new Set() : new Set(candidates.map((c) => c.id)))}
+              aria-label="Select every proposal in view"
+            />
+            Select all in view
+          </label>
+        )}
       </div>
-      {acceptable.length > 1 && (
-        <div className="wf-approval-actions">
-          {confirming ? (
-            <>
-              <button type="button" className="wf-btn wf-btn-primary" disabled={pending} onClick={acceptAll}>
-                {pending ? 'Working…' : `Yes — accept all ${acceptable.length}`}
-              </button>
-              <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setConfirming(false)}>Cancel</button>
-            </>
-          ) : (
-            <button type="button" className="wf-btn wf-btn-primary" onClick={() => setConfirming(true)}>
-              Accept all {acceptable.length} proposals as-is…
+      {candidates.length > 0 && (mode === 'reject' ? (
+        <div className="wf-approval-bar">
+          <textarea className="wf-textarea" rows={2} placeholder="Reason for rejection — recorded on every selected proposal" value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="wf-approval-actions">
+            <button type="button" className="wf-btn wf-btn-danger" disabled={pending || !note.trim() || !chosen.length} onClick={() => decide('reject')}>
+              {pending ? 'Working…' : `Reject ${chosen.length} selected`}
             </button>
-          )}
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
+          </div>
         </div>
-      )}
+      ) : (
+        <div className="wf-approval-actions">
+          <button type="button" className="wf-btn wf-btn-primary" disabled={pending || !chosen.length} onClick={() => decide('accept')}>
+            {pending ? 'Working…' : `Accept ${chosen.length} selected proposal(s)`}
+          </button>
+          <button type="button" className="wf-btn wf-btn-ghost" disabled={!chosen.length} onClick={() => setMode('reject')}>
+            Reject selected…
+          </button>
+          <span className="wf-subtle">{chosen.length} of {candidates.length} selected</span>
+        </div>
+      ))}
     </div>
   );
 }
