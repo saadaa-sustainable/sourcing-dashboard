@@ -1655,7 +1655,16 @@ export type ApprovalQueueItem = {
   vendorLeadDays?: number | null;
   // PO Approval only: the inline "4 things the approver verifies" detail.
   poDetail?: PoApprovalDetail;
+  // Standard / material cost only: what the inline decision bar needs (accept, target, sign off, reject).
+  costRecord?: CostDecisionRecord;
+  costTrack?: 'fg' | 'material';
 };
+
+/** The slice of a cost row the decision bar reads — enough to accept, set a target, sign off or reject. */
+export type CostDecisionRecord = Pick<
+  StandardCost,
+  'id' | 'product_code' | 'neg_stage' | 'job_cost' | 'fob_cost' | 'efob_cost' | 'proposed_cost' | 'target_cost' | 'fabric_confirmed_at' | 'cm_confirmed_at'
+>;
 
 /**
  * My Dashboard — a record the current user submitted that is still moving

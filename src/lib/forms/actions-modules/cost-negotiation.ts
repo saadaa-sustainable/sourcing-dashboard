@@ -337,6 +337,47 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
 }
 
 /**
+ * Decide many cost proposals at once — accept as-is, or reject with one reason. Each
+ * row goes through the same single-row action (same guards, same history entry), so a
+ * row that cannot be decided is reported, never skipped silently.
+ */
+export async function decideCostsBulk(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role !== 'admin') return fail('Only an admin can decide cost proposals.');
+  const decision = String(formData.get('decision') ?? '');
+  if (decision !== 'accept' && decision !== 'reject') return fail('Invalid decision.');
+  const note = String(formData.get('note') ?? '').trim();
+  if (decision === 'reject' && !note) return fail('Give a reason to reject.');
+  // Entries are "f<id>" (finished goods) or "m<id>" (material), the queue's own ids.
+  const keys = String(formData.get('ids') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => /^[fm]\d+$/.test(s));
+  if (!keys.length) return fail('Nothing selected.');
+
+  let ok = 0;
+  const failures: string[] = [];
+  for (const key of keys) {
+    const fd = new FormData();
+    fd.set('track', key.startsWith('m') ? 'material' : 'fg');
+    fd.set('id', key.slice(1));
+    if (note) fd.set('note', note);
+    const res = decision === 'accept' ? await acceptProposedCost(fd) : await rejectCost(fd);
+    if (res.ok) ok++;
+    else failures.push(`${key.slice(1)}: ${res.error}`);
+  }
+  revalidatePath('/approvals');
+  revalidatePath('/standard-cost');
+  const verb = decision === 'accept' ? 'Accepted' : 'Rejected';
+  if (!ok) return fail(`${verb} none — ${failures.slice(0, 3).join('; ')}`);
+  return done(
+    `${verb} ${ok} of ${keys.length} proposal(s).` +
+      (failures.length ? ` Could not decide ${failures.length}: ${failures.slice(0, 3).join('; ')}${failures.length > 3 ? '…' : ''}` : ''),
+  );
+}
+
+/**
  * Set the EFOB fabric-cost benchmark for a month (spec §6) — a fixed rate the
  * company sets monthly for carrying commodity risk on EFOB POs.
  */

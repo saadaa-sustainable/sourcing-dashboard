@@ -2077,3 +2077,4 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* Standard Cost product page: the approver's decision bar sits under the rate cards. */
 .sc-decision { margin: 0 0 18px; }
 .sc-decision .wf-queue-head h3 { margin: 0 0 4px; }
+.sc-decision-compact { padding: 4px 0 8px; }

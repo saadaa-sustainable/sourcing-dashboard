@@ -10,6 +10,8 @@ import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/a
 import { approveBuyingPlanLines, reworkLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
+import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
+import { decideCostsBulk } from '@/lib/forms/actions';
 import { LineRework } from '@/components/forms/line-rework';
 import { PlanPivot } from '@/components/forms/plan-pivot';
 import { ApprovalContextPanel } from '@/components/forms/approval-context-panel';
@@ -66,6 +68,10 @@ export function ApprovalsClient({
 }) {
   const [filter, setFilter] = useState<'all' | 'mine'>('mine');
   const [typeFilter, setTypeFilter] = useState<ApprovalEntity | 'all'>('all');
+  // Cost proposals ticked for a bulk accept / reject (queue entity ids: f<id> / m<id>).
+  const [pickedCosts, setPickedCosts] = useState<Set<string>>(new Set());
+  const toggleCost = (id: string) =>
+    setPickedCosts((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const mine = items.filter((item) => canApprove(role, item.status));
   const byLevel = filter === 'mine' ? mine : items;
@@ -156,6 +162,14 @@ export function ApprovalsClient({
         </div>
       </div>
 
+      {role === 'admin' && shown.filter((i) => i.entityType === 'standard_cost' && i.costRecord?.neg_stage === 'proposed').length > 1 && (
+        <CostBulkBar
+          items={shown.filter((i) => i.entityType === 'standard_cost' && i.costRecord?.neg_stage === 'proposed')}
+          picked={pickedCosts}
+          setPicked={setPickedCosts}
+        />
+      )}
+
       <div className="wf-queue">
         {shown.map((item) => (
           <article
@@ -171,7 +185,15 @@ export function ApprovalsClient({
                 <h3>{item.label}</h3>
                 <p className="wf-subtle">{item.sublabel}</p>
               </div>
-              <StatusBadge status={item.status} />
+              <span className="wf-inline-actions">
+                {item.entityType === 'standard_cost' && item.costRecord?.neg_stage === 'proposed' && role === 'admin' && (
+                  <label className="wf-subtle" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <input type="checkbox" checked={pickedCosts.has(item.entityId)} onChange={() => toggleCost(item.entityId)} aria-label={`Select ${item.label} for bulk decision`} />
+                    select
+                  </label>
+                )}
+                <StatusBadge status={item.status} />
+              </span>
             </div>
             <dl className="wf-queue-meta">
               <div>
@@ -253,12 +275,15 @@ export function ApprovalsClient({
               canApprove(role, item.status) &&
               !!item.lines?.length && <BuyingPlanApprovalLines item={item} context={context} />}
             {item.entityType === 'inward_plan' && !!item.lines?.length && <InwardPlanLines item={item} />}
+            {item.entityType === 'standard_cost' && item.costRecord && item.costTrack && (
+              // The same decision bar as the product page — decide here, open the
+              // product only when the cost sheet itself needs a look.
+              <CostDecisionBar cost={item.costRecord} role={role} track={item.costTrack} compact />
+            )}
             <div className="wf-queue-foot">
               {item.entityType === 'standard_cost' ? (
-                // Cost is negotiated on its own screen — accept / reject / set
-                // target / sign off all live there. Link out rather than duplicate.
-                <Link href={item.href} className="wf-btn wf-btn-primary">
-                  Review on Standard Cost →
+                <Link href={item.href} className="wf-btn wf-btn-ghost">
+                  Open the cost sheet →
                 </Link>
               ) : (
                 <>
@@ -780,6 +805,84 @@ function InwardPlanLines({ item }: { item: ApprovalQueueItem }) {
           </tr>
         </tfoot>
       </table>
+    </div>
+  );
+}
+
+/**
+ * Bulk accept / reject for cost proposals: tick the cards (or select all in view) and
+ * decide them together. Each one still goes through the single-row action, so a row
+ * that cannot be accepted is reported by product code rather than skipped.
+ */
+function CostBulkBar({
+  items,
+  picked,
+  setPicked,
+}: {
+  items: ApprovalQueueItem[];
+  picked: Set<string>;
+  setPicked: (s: Set<string>) => void;
+}) {
+  const [mode, setMode] = useState<'' | 'reject'>('');
+  const [note, setNote] = useState('');
+  const [pending, start] = useTransition();
+  const ids = items.map((i) => i.entityId);
+  const chosen = ids.filter((id) => picked.has(id));
+  const allPicked = chosen.length === ids.length;
+
+  function decide(decision: 'accept' | 'reject') {
+    const fd = new FormData();
+    fd.set('decision', decision);
+    fd.set('ids', chosen.join(','));
+    fd.set('note', note);
+    start(async () => {
+      const res = await decideCostsBulk(fd);
+      if (!res.ok) toastError(res.error);
+      else reloadWithToast(res.message ?? 'Done.');
+    });
+  }
+
+  return (
+    <div className="wf-queue-card wf-queue-card-wide sc-decision" style={{ marginBottom: 16 }}>
+      <div className="wf-queue-head">
+        <div>
+          <h3>{items.length} cost proposals waiting — decide them together</h3>
+          <p className="wf-subtle">
+            Tick the ones to accept as-is (the proposed rate becomes the standard cost) or reject with one reason.
+            Proposals that need a target, or name no rate, are best decided on their own card.
+          </p>
+        </div>
+        <label className="wf-subtle" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={allPicked}
+            onChange={() => setPicked(allPicked ? new Set() : new Set(ids))}
+            aria-label="Select every proposal in view"
+          />
+          Select all in view
+        </label>
+      </div>
+      {mode === 'reject' ? (
+        <div className="wf-approval-bar">
+          <textarea className="wf-textarea" rows={2} placeholder="Reason for rejection — recorded on every selected proposal" value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="wf-approval-actions">
+            <button type="button" className="wf-btn wf-btn-danger" disabled={pending || !note.trim() || !chosen.length} onClick={() => decide('reject')}>
+              {pending ? 'Working…' : `Reject ${chosen.length} selected`}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="wf-approval-actions">
+          <button type="button" className="wf-btn wf-btn-primary" disabled={pending || !chosen.length} onClick={() => decide('accept')}>
+            <CheckCheck size={15} /> {pending ? 'Working…' : `Accept ${chosen.length} selected proposal(s)`}
+          </button>
+          <button type="button" className="wf-btn wf-btn-ghost" disabled={!chosen.length} onClick={() => setMode('reject')}>
+            Reject selected…
+          </button>
+          <span className="wf-subtle">{chosen.length} of {items.length} selected</span>
+        </div>
+      )}
     </div>
   );
 }

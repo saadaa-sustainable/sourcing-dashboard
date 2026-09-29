@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { ArrowLeft, Lock, Pencil, X } from 'lucide-react';
 import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
-import { CostRow, CostDetail, CostDecisionBar, RateHistoryPanel } from '../standard-cost-client';
+import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
+import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
 import type {
   CmtpComponent,
   ProductCatalogItem,

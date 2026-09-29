@@ -397,12 +397,12 @@ export async function loadApprovalQueue(): Promise<{
     supabase.from('sd_po_approval').select('*').in('status', ['submitted', 'pending_l2']).is('deleted_at', null),
     supabase
       .from('sd_standard_cost')
-      .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, updated_at')
+      .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, target_cost, fabric_confirmed_at, cm_confirmed_at, updated_at')
       .eq('hidden', false)
       .in('neg_stage', ['proposed', 'rate_submitted']),
     supabase
       .from('sd_material_standard_cost')
-      .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, updated_at')
+      .select('id, product_code, neg_stage, job_cost, fob_cost, efob_cost, proposed_cost, target_cost, fabric_confirmed_at, cm_confirmed_at, updated_at')
       .eq('hidden', false)
       .in('neg_stage', ['proposed', 'rate_submitted']),
     supabase
@@ -609,7 +609,8 @@ export async function loadApprovalQueue(): Promise<{
   type CostReq = {
     id: number; product_code: string; neg_stage: string;
     job_cost: number | null; fob_cost: number | null; efob_cost: number | null;
-    proposed_cost: number | null; updated_at: string | null;
+    proposed_cost: number | null; target_cost: number | null;
+    fabric_confirmed_at: string | null; cm_confirmed_at: string | null; updated_at: string | null;
   };
   // Both tracks: FG rates read Job / FOB / E-FOB; material rates read FOB Fabric /
   // Billing / Standard Fabric (same columns, different meaning).
@@ -636,6 +637,14 @@ export async function loadApprovalQueue(): Promise<{
         submittedAt: c.updated_at,
         // The product page carries the decision bar; ?open= on the list is the old way in.
         href: `/standard-cost/${encodeURIComponent(c.product_code)}${material ? '?track=material' : ''}`,
+        // The same decision bar renders on the card, so nobody opens 40 pages one by one.
+        costRecord: {
+          id: c.id, product_code: c.product_code, neg_stage: c.neg_stage,
+          job_cost: c.job_cost, fob_cost: c.fob_cost, efob_cost: c.efob_cost,
+          proposed_cost: c.proposed_cost, target_cost: c.target_cost,
+          fabric_confirmed_at: c.fabric_confirmed_at, cm_confirmed_at: c.cm_confirmed_at,
+        },
+        costTrack: material ? 'material' : 'fg',
       });
     }
   };
