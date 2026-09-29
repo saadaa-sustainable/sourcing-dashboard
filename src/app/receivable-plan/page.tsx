@@ -3,6 +3,8 @@ import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadArrivalPlan,
+  loadInwardPlanSheet,
+  inwardPlanMonthOptions,
   loadReceivablePlan,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -20,7 +22,12 @@ function weekRange() {
 
 export const dynamic = 'force-dynamic';
 
-export default async function ReceivablePlanPage() {
+export default async function ReceivablePlanPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; month?: string }>;
+}) {
+  const params = await searchParams;
   let user;
   try {
     user = await currentUser();
@@ -38,8 +45,10 @@ export default async function ReceivablePlanPage() {
   if (!user) redirect('/login');
 
   // Both tabs load together: the page is one screen with two views, not two pages.
-  const [rows, arrivals] = await Promise.all([loadReceivablePlan(), loadArrivalPlan()]);
+  const [rows, arrivals, sheet] = await Promise.all([loadReceivablePlan(), loadArrivalPlan(), loadInwardPlanSheet()]);
   const week = weekRange();
+  const initialTab = params.tab === 'monthly' || params.tab === 'input' ? params.tab : 'arrivals';
+  const initialMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '') ? (params.month as string) : null;
 
   return (
     <FormLayout
@@ -56,6 +65,11 @@ export default async function ReceivablePlanPage() {
         editable={canEdit(user.role, 'draft')}
         weekStart={week.weekStart}
         weekEnd={week.weekEnd}
+        sheet={sheet}
+        sheetMonths={inwardPlanMonthOptions(sheet)}
+        role={user.role}
+        initialTab={initialTab}
+        initialMonth={initialMonth}
       />
     </FormLayout>
   );

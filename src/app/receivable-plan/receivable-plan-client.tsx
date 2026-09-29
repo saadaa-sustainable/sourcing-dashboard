@@ -7,9 +7,11 @@ import { useColumnSort } from '@/lib/use-column-sort';
 import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
 import { STATUS_LABEL } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
-import type { ReceivablePlanRow } from '@/lib/forms/types';
+import type { ReceivablePlanRow, SdRole } from '@/lib/forms/types';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
+import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
 import { ArrivalsClient } from '@/app/arrivals/arrivals-client';
+import { InwardPlanSheet } from './inward-plan-sheet';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const SIZE_KEYS = [
@@ -85,6 +87,11 @@ export function ReceivablePlanClient({
   editable,
   weekStart,
   weekEnd,
+  sheet = [],
+  sheetMonths = [],
+  role = 'viewer',
+  initialTab = 'arrivals',
+  initialMonth = null,
 }: {
   rows: ReceivablePlanRow[];
   /** Rows for the Arrivals tab — same data the standalone Arrivals page reads. */
@@ -92,6 +99,12 @@ export function ReceivablePlanClient({
   editable: boolean;
   weekStart: string;
   weekEnd: string;
+  /** The team's monthly inward sheet (Monthly plan tab). */
+  sheet?: InwardPlanSheetRow[];
+  sheetMonths?: string[];
+  role?: SdRole;
+  initialTab?: 'arrivals' | 'input' | 'monthly';
+  initialMonth?: string | null;
 }) {
   const [search, setSearch] = useState('');
   const [vendor, setVendor] = useState('');
@@ -104,7 +117,7 @@ export function ReceivablePlanClient({
      Input Inward Plan is the write: where the team says how much to expect and when. They
      were separate pages, which meant answering "did it arrive" and "when is it coming"
      required knowing they lived apart. */
-  const [tab, setTab] = useState<'arrivals' | 'input'>('arrivals');
+  const [tab, setTab] = useState<'arrivals' | 'input' | 'monthly'>(initialTab);
   const [message, setMessage] = useState<string | null>(null);
   const [submitRemark, setSubmitRemark] = useState('');
   const [submitting, startSubmit] = useTransition();
@@ -180,10 +193,21 @@ export function ReceivablePlanClient({
         >
           Input Inward Plan
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'monthly'}
+          className={tab === 'monthly' ? 'active' : ''}
+          onClick={() => setTab('monthly')}
+        >
+          Monthly plan
+        </button>
       </div>
 
       {tab === 'arrivals' ? (
         <ArrivalsClient rows={arrivals} />
+      ) : tab === 'monthly' ? (
+        <InwardPlanSheet rows={sheet} role={role} monthOptions={sheetMonths} initialMonth={initialMonth} />
       ) : (
       <>
       <Notice tone="info">

@@ -866,7 +866,7 @@ export async function loadApprovalQueue(): Promise<{
       requiredRole: 'admin',
       submittedBy: first?.created_by ?? null,
       submittedAt: first?.created_at ?? null,
-      href: '/receivable-plan',
+      href: `/receivable-plan?tab=monthly&month=${month}`,
       lines: rows.map((r) => ({
         id: String(r.id),
         label: `${r.product_code} · ${r.po_no ?? '—'} · ${r.vendor_name ?? '—'}`,

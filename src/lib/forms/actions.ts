@@ -15,6 +15,7 @@ export * from './actions-modules/vendor-deboarding';
 export * from './actions-modules/po-amendment';
 export * from './actions-modules/approval';
 export * from './actions-modules/receivable';
+export * from './actions-modules/inward-plan-sheet';
 export * from './actions-modules/po-lines-cutting';
 export * from './actions-modules/po-closure';
 export * from './actions-modules/tna';

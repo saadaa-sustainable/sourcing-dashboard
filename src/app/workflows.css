@@ -2069,3 +2069,7 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* .wf-form-grid sets display:grid, which would beat the [hidden] default. */
 .wf-form-section .wf-form-grid[hidden] { display: none; }
 .wf-form-section .wf-form-grid { padding: 2px 0 20px; }
+
+/* Inward Plan → Monthly plan: per-line actions and muted (rejected) rows. */
+.wf-inline-actions { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.wf-row-muted td { opacity: 0.55; }
