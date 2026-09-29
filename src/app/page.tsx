@@ -15,7 +15,7 @@ import { countOpenIssues, syncAutoIssues } from '@/lib/issues.server';
 import { loadPoHub, type PoHubData } from '@/lib/po-hub.server';
 import { loadProductHub, type ProductHubData } from '@/lib/product-hub.server';
 import { loadVendorHub, type VendorHubData } from '@/lib/vendor-hub.server';
-import { loadBuyingPlanAnalysis, loadOosSummary } from '@/lib/forms/queries';
+import { loadBuyingPlanAnalysis, loadOosSummary, recordOosSnapshot } from '@/lib/forms/queries';
 import type { AnalyticsExtras, PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
@@ -110,6 +110,11 @@ export default async function Home() {
     if (analyticsExtras) {
       try {
         const oos = await loadOosSummary();
+        // The OOS trend is one point per data day, saved the first time the position is
+        // computed that day. The home page is opened far more often than the DOQ dashboard,
+        // so recording here too is what keeps the trend from having gaps (22-25 Sep 2026
+        // were lost because nobody opened the DOQ page). Idempotent per data day.
+        if (oos) await recordOosSnapshot(oos.asOf, [oos.all, ...oos.categories]);
         analyticsExtras.inStock = oos
           ? {
               // pctYesterday is a FRACTION (0.055 = 5.5% of SKUs empty), as the OOS

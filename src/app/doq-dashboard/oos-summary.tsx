@@ -61,17 +61,53 @@ export function OosSummaryView({
   summary: OosSummaryData | null;
   snapshots: OosSnapshotPoint[];
 }) {
-  const trend = useMemo(
-    () =>
-      snapshots.map((p) => ({
-        date: p.snapshot_date,
-        label: new Date(`${p.snapshot_date}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
-        yesterday: p.skus ? (p.oos_yesterday / p.skus) * 100 : 0,
-        window45: p.skus ? (p.oos_days_45 / (p.skus * 45)) * 100 : 0,
-        oosSkus: p.oos_yesterday,
-        recovered: p.recovered_45,
-      })),
-    [snapshots],
+  // One point per calendar day from the first recorded day to the last. A day nobody
+  // opened the dashboard has no point (the feed keeps only its latest day, so it cannot
+  // be recomputed later) and is drawn as a break in the line, not a straight line across.
+  const trend = useMemo(() => {
+    type Pt = { date: string; label: string; yesterday: number | null; window45: number | null; oosSkus: number | null; recovered: number | null };
+    const byDay = new Map<string, OosSnapshotPoint>();
+    for (const p of snapshots) byDay.set(p.snapshot_date, p);
+    const days = [...byDay.keys()].sort();
+    const out: Pt[] = [];
+    if (!days.length) return out;
+    const label = (d: string) =>
+      new Date(`${d}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    for (let t = Date.parse(`${days[0]}T00:00:00Z`), end = Date.parse(`${days[days.length - 1]}T00:00:00Z`); t <= end; t += 86_400_000) {
+      const d = new Date(t).toISOString().slice(0, 10);
+      const p = byDay.get(d);
+      out.push(
+        p
+          ? {
+              date: d,
+              label: label(d),
+              yesterday: p.skus ? (p.oos_yesterday / p.skus) * 100 : 0,
+              window45: p.skus ? (p.oos_days_45 / (p.skus * 45)) * 100 : 0,
+              oosSkus: p.oos_yesterday,
+              recovered: p.recovered_45,
+            }
+          : { date: d, label: label(d), yesterday: null, window45: null, oosSkus: null, recovered: null },
+      );
+    }
+    return out;
+  }, [snapshots]);
+  const recorded = trend.filter((p) => p.yesterday != null);
+  const missingDays = trend.length - recorded.length;
+  const first = recorded[0];
+  const last = recorded[recorded.length - 1];
+  // The axes hug the data: a move of one point in thirty is invisible on a 0-100 scale,
+  // and it is exactly that move the team is watching for.
+  const pad = (lo: number, hi: number): [number, number] => {
+    const span = Math.max(hi - lo, 1);
+    return [Math.max(0, Math.floor((lo - span * 0.25) * 10) / 10), Math.ceil((hi + span * 0.25) * 10) / 10];
+  };
+  const yDomain = pad(
+    Math.min(...recorded.map((p) => p.yesterday ?? 0)),
+    Math.max(...recorded.map((p) => p.yesterday ?? 0)),
+  );
+  const wDomain = pad(
+    Math.min(...recorded.map((p) => p.window45 ?? 0)),
+    Math.max(...recorded.map((p) => p.window45 ?? 0)),
   );
 
   // Which category row is opened to show its SKUs, and which page of the table is shown.
@@ -185,25 +221,38 @@ export function OosSummaryView({
             <span className="panel-kicker">Trend</span>
             <h3>
               OOS % by day
-              <InfoDot text={"WHAT: OOS % day by day, so the direction is visible — not just today's number.\n\nHOW: the nightly stock feed keeps only the latest day, so this page saves its own point each day, the first time anyone opens it. The red line is each day's position (empty SKUs ÷ SKUs); the blue line is the rolling 45-day record.\n\nREAD: red falling under blue = the team is improving on its recent record. History starts from 21 Sep 2026, the first day recorded, so the chart is short at first and fills in daily."} label="About the trend" />
+              <InfoDot text={"WHAT: OOS % day by day, so the direction is visible — not just today's number.\n\nHOW: the nightly stock feed keeps only the latest day, so the dashboard saves its own point each day, the first time anyone opens the home page or this page. The red line is each day's position (empty SKUs ÷ SKUs, left axis); the blue line is the rolling 45-day record (right axis). Each axis is zoomed to its own line so a move of a fraction of a point is visible; a break in a line is a day no point was saved.\n\nREAD: watch the direction of each line, not the distance between them — they are on different scales. History starts from 21 Sep 2026, the first day recorded."} label="About the trend" />
             </h3>
           </div>
-          <span className="wf-subtle">{trend.length} day{trend.length === 1 ? '' : 's'} recorded</span>
+          <span className="wf-subtle">
+            {recorded.length} day{recorded.length === 1 ? '' : 's'} recorded
+            {missingDays ? ` · ${missingDays} day${missingDays === 1 ? '' : 's'} not recorded` : ''}
+          </span>
         </div>
-        {trend.length >= 2 ? (
-          <div className="oos-trend">
-            <ResponsiveContainer>
-              <LineChart data={trend} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={24} />
-                <YAxis tick={{ fontSize: 10 }} unit="%" width={44} />
-                <Tooltip formatter={(v, name) => [`${Number(v ?? 0).toFixed(1)}%`, String(name ?? '')]} />
-                <Legend />
-                <Line type="monotone" dataKey="yesterday" name="OOS % that day" stroke="#c0392b" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="window45" name="OOS % last 45 days" stroke="#4d6fa9" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        {recorded.length >= 2 && first && last ? (
+          <>
+            <div className="oos-trend">
+              <ResponsiveContainer>
+                <LineChart data={trend} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={24} />
+                  <YAxis yAxisId="day" domain={yDomain} tick={{ fontSize: 10, fill: '#c0392b' }} unit="%" width={48} tickFormatter={(v) => Number(v).toFixed(1)} />
+                  <YAxis yAxisId="w45" orientation="right" domain={wDomain} tick={{ fontSize: 10, fill: '#4d6fa9' }} unit="%" width={48} tickFormatter={(v) => Number(v).toFixed(1)} />
+                  <Tooltip formatter={(v, name) => [v == null ? 'not recorded' : `${Number(v).toFixed(1)}%`, String(name ?? '')]} />
+                  <Legend />
+                  <Line yAxisId="day" type="linear" dataKey="yesterday" name="OOS % that day (left axis)" stroke="#c0392b" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                  <Line yAxisId="w45" type="linear" dataKey="window45" name="OOS % last 45 days (right axis)" stroke="#4d6fa9" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="wf-subtle oos-sum-read">
+              {first.label} → {last.label}: that day {Number(first.yesterday).toFixed(1)}% → {Number(last.yesterday).toFixed(1)}%
+              {' · '}last 45 days {Number(first.window45).toFixed(1)}% → {Number(last.window45).toFixed(1)}%.
+              Each axis is zoomed to its own line, so a small move shows; the two lines are on different scales and
+              should not be compared by height.
+              {missingDays ? ' A gap is a day nobody opened the dashboard, so no point was saved — the feed keeps only its latest day, so it cannot be filled in later.' : ''}
+            </p>
+          </>
         ) : (
           <p className="wf-subtle oos-sum-read">
             The trend needs at least two recorded days. Today’s position ({day(summary.asOf)}) has been recorded; the line
