@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { isSellingState, normaliseCategory, summariseOos } from './oos-summary';
+import { isEmptySku, isSellingState, normaliseCategory, summariseOos } from './oos-summary';
 
 const sku = (o: Partial<Parameters<typeof summariseOos>[0][number]> & { sku: string }) => ({
   category: 'SDFLK',
@@ -89,4 +89,18 @@ test('the SKUs behind a category: empty first, then recovered by days empty, the
   const { skusByScope } = summariseOos(rows);
   assert.deepEqual(skusByScope.SDFLK.map((r) => r.sku), ['empty', 'rec-long', 'rec-short', 'ok']);
   assert.deepEqual(skusByScope.SDFLK.map((r) => r.state), ['empty', 'recovered', 'recovered', 'ok']);
+});
+
+test('empty follows the sellable flag when the feed carries it, physical stock otherwise', () => {
+  // 3 units on the shelf but nothing sellable (bin-locked / QC pending) — the sheet calls this OOS.
+  assert.equal(isEmptySku({ stock: 3, sellable: false }), true);
+  assert.equal(isEmptySku({ stock: 0, sellable: true }), false);
+  assert.equal(isEmptySku({ stock: 0, sellable: null }), true);
+  assert.equal(isEmptySku({ stock: 2 }), false);
+  const s = summariseOos([
+    sku({ sku: 'a', stock: 3, sellable: false, oosDays45: 5 }),
+    sku({ sku: 'b', stock: 0, sellable: true, oosDays45: 5 }),
+  ]);
+  assert.equal(s.all.oosYesterday, 1);
+  assert.equal(s.all.recovered45, 1);
 });

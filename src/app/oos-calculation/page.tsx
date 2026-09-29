@@ -1,3 +1,4 @@
+import { skuKey } from '@/lib/sku-key';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
@@ -51,7 +52,7 @@ export default async function OosCalculationPage() {
   // the last-resort Selling Price for SKUs with no Shopify SP in the pipeline.
   // Product Class computed live from IPDOQ (NPD-family SKUs are not classed).
   const rows = rawRows.map((r) => {
-    const m = pm[r.sku];
+    const m = pm[skuKey(r.sku)];
     const ci = classInputs[r.sku];
     // `||`: the class-input map seeds SKUs at 0, so a 0 must fall back to the OOS row.
     const ipdoq = computeSkuIpdoq(

@@ -48,12 +48,12 @@ export async function loadOosSummary(db?: OosDb): Promise<OosSummaryData | null>
     type Row = {
       sku: string | null; category: string | null; product_name: string | null; product_variant: string | null; size: string | null;
       product_state: string | null; date_day: string | null;
-      current_stock: number | null; daily_quantity: number | null; oos_days_45: number | null; oos_days_365: number | null;
+      current_stock: number | null; has_inventory_today: number | null; daily_quantity: number | null; oos_days_45: number | null; oos_days_365: number | null;
     };
     const rows = await pageAll<Row>(() =>
       supabase
         .from('sd_inventory_planning')
-        .select('sku, category, product_name, product_variant, size, product_state, date_day, current_stock, daily_quantity, oos_days_45, oos_days_365')
+        .select('sku, category, product_name, product_variant, size, product_state, date_day, current_stock, has_inventory_today, daily_quantity, oos_days_45, oos_days_365')
         .eq('warehouse', OOS_SUMMARY_WAREHOUSE)
         .order('sku'),
     );
@@ -85,6 +85,8 @@ export async function loadOosSummary(db?: OosDb): Promise<OosSummaryData | null>
         variant: r.product_variant,
         size: r.size,
         stock: Number(r.current_stock) || 0,
+        // The feed's sellable flag — the sheet's OOS rule. Null when the feed lacks it.
+        sellable: r.has_inventory_today == null ? null : Number(r.has_inventory_today) > 0,
         dailyDemand: Number(r.daily_quantity) || 0,
         oosDays45: Number(r.oos_days_45) || 0,
         oosDays365: Number(r.oos_days_365) || 0,

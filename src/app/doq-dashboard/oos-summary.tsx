@@ -30,10 +30,10 @@ const CATEGORY_COLUMNS: { label: string; num?: boolean; info: string }[] = [
   { label: 'SKUs', num: true, info: "WHAT: how many SKUs (colour + size) this category has on sale.\n\nWHICH: Ongoing and launched-NPD states at Main Warehouse, test SKUs excluded — the same set as the headline." },
   { label: 'OOS % 365d', num: true, info: "WHAT: the category's long-run out-of-stock share.\n\nHOW: empty SKU-days in the last 365 days ÷ (SKUs × 365). Example: 32 SKUs × 365 = 11,680 SKU-days; 2,490 empty → 21.3%.\n\nUSE: the benchmark for the two columns to its right." },
   { label: 'OOS % 45d', num: true, info: "WHAT: the category's recent out-of-stock share — the sourcing record.\n\nHOW: empty SKU-days in the last 45 days ÷ (SKUs × 45).\n\nMIND: does not fall when a SKU is refilled; it falls as empty days roll out of the window. Read 'OOS % yesterday' for the position now." },
-  { label: 'OOS % yesterday', num: true, info: "WHAT: the category's position now.\n\nHOW: SKUs with zero stock on the snapshot day ÷ SKUs in the category. Example: 3 of 32 → 9.4%.\n\nRED: when this category is worse than the overall yesterday figure at the top of the page — the categories to act on first." },
+  { label: 'OOS % yesterday', num: true, info: "WHAT: the category's position now.\n\nHOW: SKUs with no sellable stock on the snapshot day ÷ SKUs in the category. Example: 3 of 32 → 9.4%.\n\nRED: when this category is worse than the overall yesterday figure at the top of the page — the categories to act on first." },
   { label: 'Change vs 45d', info: "WHAT: how far yesterday sits from the category's own 45-day record.\n\nHOW: (OOS % yesterday − OOS % 45d) ÷ OOS % 45d. Example: 45-day 58.1%, yesterday 9.4% → 84% down. '—' when nothing was out of stock in the 45 days, so there is no record to compare with.\n\nREAD: green ▼ = recovering (yesterday better than the recent record). Red ▲ = worsening. Both columns it compares are on the same basis (share of SKU-days empty)." },
   { label: 'Empty SKUs 45d', num: true, info: "WHAT: how many of the category's SKUs went out of stock at some point in the last 45 days.\n\nHOW: SKUs with at least one empty day in the window — whether or not they are back in stock now.\n\nUSE: the size of the problem the team had to work through. Split into Recovered and Empty yesterday in the next columns." },
-  { label: 'Empty yesterday', num: true, info: "WHAT: the category's SKUs that are empty right now.\n\nHOW: SKUs with zero stock at Main Warehouse on the snapshot day.\n\nUSE: the to-do list for this category. Which SKUs, and whether a PO is on the way, is on DOQ Calculation and the Stock Out Risk tab." },
+  { label: 'Empty yesterday', num: true, info: "WHAT: the category's SKUs that are empty right now.\n\nHOW: SKUs with no sellable stock at Main Warehouse (the feed's has-inventory flag — the same rule as the team's DOQ sheet, sellable qty at or below zero; a few bin-locked or QC-pending units still count as empty) on the snapshot day.\n\nUSE: the to-do list for this category. Which SKUs, and whether a PO is on the way, is on DOQ Calculation and the Stock Out Risk tab." },
   { label: 'Recovered', num: true, info: "WHAT: SKUs that went empty in the last 45 days and have since been refilled.\n\nHOW: empty on at least one day in the window AND stock > 0 on the snapshot day. Recovered + Empty yesterday = Empty SKUs 45d.\n\nUSE: the team's work in this category, visible the morning after each refill lands." },
   { label: 'Days on hand', num: true, info: "WHAT: how many days this category's stock lasts at its current sales rate.\n\nHOW: total stock ÷ total daily demand, over the category's SKUs that sell. Example: 650 pieces, 50 a day → 13 days.\n\n'—': none of the category's SKUs has recorded demand (nothing sold in the 45-day window), so cover cannot be worked out. Read it against the lead time in the Rules Master." },
 ];
@@ -165,10 +165,10 @@ export function OosSummaryView({
           <div className="oos-kpi is-now">
             <span>
               Yesterday
-              <InfoDot text={"WHAT: the position now — how much of the range had no stock as of the snapshot day.\n\nHOW: SKUs with zero stock at Main Warehouse ÷ SKUs. The count underneath is those SKUs.\n\nUSE: this is the trend number. When the team brings 50 empty SKUs down to 30, the 45-day figure will not move for weeks, but this one shows it the next morning. Compare it with the 45-day figure via the pill on the right."} label="About yesterday" />
+              <InfoDot text={"WHAT: the position now — how much of the range had no sellable stock as of the snapshot day.\n\nHOW: SKUs with no sellable stock at Main Warehouse (the feed's has-inventory flag — the same rule as the team's DOQ sheet, sellable qty at or below zero; a few bin-locked or QC-pending units still count as empty) ÷ SKUs. The count underneath is those SKUs.\n\nUSE: this is the trend number. When the team brings 50 empty SKUs down to 30, the 45-day figure will not move for weeks, but this one shows it the next morning. Compare it with the 45-day figure via the pill on the right."} label="About yesterday" />
             </span>
             <strong>{pct(a.pctYesterday)}</strong>
-            <small>{fmt.format(a.oosYesterday)} SKUs with no stock · the position now</small>
+            <small>{fmt.format(a.oosYesterday)} SKUs with no sellable stock · the position now</small>
           </div>
         </div>
         <p className="wf-subtle oos-sum-read">
@@ -200,7 +200,7 @@ export function OosSummaryView({
         <div className="oos-kpi panel">
           <span>
             Still out of stock
-            <InfoDot text={"WHAT: the SKUs that are empty right now — the to-do list.\n\nHOW: SKUs with zero stock at Main Warehouse on the snapshot day, shown against every SKU that went empty in the last 45 days. Recovered + still out = that 45-day count.\n\nUSE: the detail — which SKUs, and whether a PO is already on the way — is on DOQ Calculation and the Main Dashboard's Stock Out Risk tab."} label="About still out of stock" />
+            <InfoDot text={"WHAT: the SKUs that are empty right now — the to-do list.\n\nHOW: SKUs with no sellable stock at Main Warehouse (the feed's has-inventory flag — the same rule as the team's DOQ sheet, sellable qty at or below zero; a few bin-locked or QC-pending units still count as empty) on the snapshot day, shown against every SKU that went empty in the last 45 days. Recovered + still out = that 45-day count.\n\nUSE: the detail — which SKUs, and whether a PO is already on the way — is on DOQ Calculation and the Main Dashboard's Stock Out Risk tab."} label="About still out of stock" />
           </span>
           <strong>{fmt.format(a.oosYesterday)}</strong>
           <small>of the {fmt.format(a.oos45)} SKUs that went empty in the last 45 days</small>
@@ -419,7 +419,7 @@ function CategoryRow({
             <div className="oos-sku-head">
               <span>
                 <strong>{fmt.format(skus.length)} SKUs</strong> in {c.scope}
-                {c.label ? ` · ${c.label}` : ''} — {fmt.format(empty)} with no stock yesterday, listed first
+                {c.label ? ` · ${c.label}` : ''} — {fmt.format(empty)} with no sellable stock yesterday, listed first
               </span>
               <button
                 type="button"

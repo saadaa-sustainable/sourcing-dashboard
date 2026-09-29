@@ -186,22 +186,29 @@ export async function loadDoqWindowMeta(): Promise<DoqWindowMeta | null> {
 
 /** sku → launch date + MRP from the EasyEcom product master, for OOS fallbacks. */
 export async function loadPmLaunchPrice(): Promise<
-  Record<string, { launch: string | null; mrp: number | null }>
+  Record<string, { launch: string | null; mrp: number | null; state: string | null }>
 > {
   const supabase = await client();
-  const map: Record<string, { launch: string | null; mrp: number | null }> = {};
+  // Keyed by skuKey: the master spells SDCPBL_S, the feed SDCPBLS — look up with skuKey too.
+  const map: Record<string, { launch: string | null; mrp: number | null; state: string | null }> = {};
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('sd_ee_product_master')
-      .select('sku, product_launch_date, mrp')
+      .select('sku, product_launch_date, mrp, product_state')
+      .order('sku')
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`sd_ee_product_master: ${error.message}`);
-    for (const r of (data ?? []) as { sku: string; product_launch_date: string | null; mrp: string | null }[]) {
+    for (const r of (data ?? []) as { sku: string; product_launch_date: string | null; mrp: string | null; product_state: string | null }[]) {
       if (!r.sku) continue;
+      const k = skuKey(r.sku);
       const mrp = Number(r.mrp);
-      map[r.sku] = {
+      // A junk spelling ("SMFLKBL_ 3XL") shares the key with the real SKU; the real row
+      // (plain CODE_SIZE) wins, a placeholder never overwrites it.
+      if (map[k] && !/^[A-Za-z0-9_]+$/.test(r.sku)) continue;
+      map[k] = {
         launch: r.product_launch_date || null,
         mrp: Number.isFinite(mrp) && mrp > 0 ? mrp : null,
+        state: r.product_state?.trim() || null,
       };
     }
     if (!data || data.length < PAGE_SIZE) break;

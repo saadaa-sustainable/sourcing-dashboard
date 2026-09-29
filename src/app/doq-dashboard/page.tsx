@@ -27,6 +27,7 @@ import {
   type DoqCategoryRow,
   type DoqWeave,
   type DoqWindowKey,
+  normaliseProductState,
 } from '@/lib/doq-dashboard';
 import { DoqDashboardClient } from './doq-dashboard-client';
 
@@ -81,8 +82,17 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
     }
   }
   // Same selling-price rule as OOS Calculation: Shopify SP, else product-master MRP —
-  // so Sales Leakage reconciles between the two pages.
-  const oosMeta = oosRaw.map((m) => ({ ...m, sales_value: m.sales_value ?? pm[m.sku]?.mrp ?? null }));
+  // so Sales Leakage reconciles between the two pages. Product STATE comes from the EasyEcom
+  // product master first (the list the team maintains and the DOQ sheet reads: it knows "NPD"
+  // where the feed says "NPD - Not Launched Yet" or nothing), the feed's own state as fallback.
+  const oosMeta = oosRaw.map((m) => {
+    const p = pm[skuKey(m.sku)];
+    return {
+      ...m,
+      sales_value: m.sales_value ?? p?.mrp ?? null,
+      product_status: normaliseProductState(p?.state) ?? normaliseProductState(m.product_status),
+    };
+  });
 
   // Keyed the feed's way (no underscore) — see skuKey.
   const excluded = new Set(exclusions.map((e) => skuKey(e.sku)));

@@ -29,7 +29,28 @@ const STATUS_ORDER = [
   'NPD',
   'Ongoing',
   'To Be Discontinued',
+  'Discontinued',
+  'SKU Create But Not Launch',
 ];
+
+/**
+ * One spelling per product state. The EasyEcom master carries "DISCONTINUED" and
+ * "Discontinued", "NPD - Not Lauched Yet" (sic) and "NPD - Not Launched Yet", two casings of
+ * "SKU Create But Not Launch"; the feed adds its own. Unknown text passes through trimmed.
+ */
+export function normaliseProductState(raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  const u = v.toUpperCase().replace(/\s+/g, ' ');
+  if (u === 'ONGOING') return 'Ongoing';
+  if (u === 'NPD') return 'NPD';
+  if (u.startsWith('NPD') && u.includes('NOT LAU')) return 'NPD - Not Launched Yet';
+  if (u.startsWith('SKU CREATE')) return 'SKU Create But Not Launch';
+  if (u === 'TO BE DISCONTINUED') return 'To Be Discontinued';
+  if (u === 'DISCONTINUED') return 'Discontinued';
+  if (u === 'RE-LAUNCH' || u === 'RELAUNCH') return 'Re-Launch';
+  return v;
+}
 
 /* ---------------- Product Class (ABC/D) + COM STATUS ---------------- */
 

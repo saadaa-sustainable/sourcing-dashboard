@@ -21,10 +21,23 @@ export type OosSkuInput = {
   variant?: string | null;
   size?: string | null;
   stock: number;
+  /**
+   * The feed's has-inventory flag: true when SELLABLE stock is above zero. This is the rule
+   * the team's DOQ sheet uses for "out of stock" (EasyEcom sellable qty <= 0), and the one
+   * the feed's own 45/365-day empty-day counts are built from. Physical stock can be a few
+   * units while the flag says empty (bin-locked, QC-pending). Null = flag not on the feed:
+   * fall back to physical stock.
+   */
+  sellable?: boolean | null;
   dailyDemand: number;
   oosDays45: number;
   oosDays365: number;
 };
+
+/** Empty on the snapshot day: the sellable flag when the feed carries it, else physical stock. */
+export function isEmptySku(r: { stock: number; sellable?: boolean | null }): boolean {
+  return r.sellable == null ? r.stock <= 0 : !r.sellable;
+}
 
 /** One SKU as listed under its category: where it stands today. */
 export type OosSkuRow = {
@@ -45,7 +58,7 @@ export type OosScope = {
   /** Product name for a category scope (the code is the scope itself); '' for 'all'. */
   label: string;
   skus: number;
-  /** SKUs with no stock as of the snapshot day. */
+  /** SKUs with no sellable stock as of the snapshot day (see OosSkuInput.sellable). */
   oosYesterday: number;
   /** SKUs empty on at least one day of the window. */
   oos45: number;
@@ -89,7 +102,7 @@ export function normaliseCategory(raw: string | null | undefined): string {
 }
 
 const stateOf = (r: OosSkuInput): OosSkuRow['state'] =>
-  r.stock <= 0 ? 'empty' : r.oosDays45 > 0 ? 'recovered' : 'ok';
+  isEmptySku(r) ? 'empty' : r.oosDays45 > 0 ? 'recovered' : 'ok';
 
 const STATE_RANK: Record<OosSkuRow['state'], number> = { empty: 0, recovered: 1, ok: 2 };
 
@@ -106,7 +119,7 @@ function scopeOf(scope: string, rows: OosSkuInput[]): OosScope {
   let oosYesterday = 0, oos45 = 0, oos365 = 0, oosDays45 = 0, oosDays365 = 0, recovered45 = 0;
   let stockSelling = 0, demand = 0;
   for (const r of rows) {
-    const empty = r.stock <= 0;
+    const empty = isEmptySku(r);
     const d45 = Math.max(0, r.oosDays45);
     const d365 = Math.max(0, r.oosDays365);
     if (empty) oosYesterday += 1;

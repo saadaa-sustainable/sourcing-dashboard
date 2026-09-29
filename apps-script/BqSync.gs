@@ -436,13 +436,17 @@ const BqSync_ = (function () {
 
       // 2. one conditional-aggregation query -> per-SKU window figures
       const cond = (k) => `date_day BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
+      // Out of stock on a day = no SELLABLE stock at Main Warehouse (has_inventory_today = 0),
+      // the rule the team's DOQ sheet applies to the EasyEcom inventory report (sellable qty
+      // <= 0). Physical stock summed over warehouses is the fallback for days without the flag.
       const per = (k) =>
         `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
-        `COUNTIF(${cond(k)} AND stk > 0) ${k}_avail, ` +
-        `COUNTIF(${cond(k)} AND stk <= 0) ${k}_oos`;
+        `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk > 0, hit > 0)) ${k}_avail, ` +
+        `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk <= 0, hit = 0)) ${k}_oos`;
       const sql =
         `WITH day AS ( ` +
-        `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk ` +
+        `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk, ` +
+        `    MAX(IF(warehouse = 'Main Warehouse', has_inventory_today, NULL)) hit ` +
         `  FROM ${DATASET}saadaa_inventory_planning\` ` +
         `  WHERE sku IS NOT NULL AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
         `    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$') ` +
