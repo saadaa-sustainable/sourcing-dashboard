@@ -5,9 +5,9 @@ import { InfoDot } from '@/components/info-dot';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import Link from 'next/link';
-import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
+import { CalendarCheck, CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
 import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
-import { approveBuyingPlanLines, reworkLines } from '@/lib/forms/actions';
+import { approveBuyingPlanLines, confirmTna, reworkLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
@@ -269,7 +269,7 @@ export function ApprovalsClient({
               )}
             </dl>
             {item.entityType === 'po_approval' && item.poDetail && (
-              <PoApprovalDetail item={item} />
+              <PoApprovalDetail item={item} role={role} />
             )}
             {item.entityType === 'buying_plan' &&
               canApprove(role, item.status) &&
@@ -623,6 +623,65 @@ const fmtDate = (v: string | null | undefined) =>
  * whole review happens without leaving the queue.
  */
 /** A small verdict chip: green when the check passes, red when it is worth a look. */
+/**
+ * The approver confirms the TNA dates right on the card — approval is blocked until they
+ * do, and sending them to the PO page for one click was the complaint. The dates arrive
+ * pre-filled from the PO; an edit here is stored the same way the PO page stores it
+ * (converted to day counts against the PO's base, see confirmTna).
+ */
+function TnaConfirm({ poId, tna }: { poId: string; tna: NonNullable<ApprovalQueueItem['poDetail']>['tna'] }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const day = (v: string | null) => (v ? String(v).slice(0, 10) : '');
+  const [dates, setDates] = useState({
+    cs_pp_sample_due: day(tna.ppSampleDue),
+    cs_gpt_due: day(tna.gptDue),
+    cs_cutting_start: day(tna.cuttingStart),
+    cs_inline_qc_due: day(tna.inlineQcDue),
+    critical_path_first_delivery: day(tna.firstDelivery),
+    po_closing_date: day(tna.poClosingDate),
+  });
+  const set = (k: keyof typeof dates, v: string) => setDates((d) => ({ ...d, [k]: v }));
+  const fields: { key: keyof typeof dates; label: string }[] = [
+    { key: 'cs_pp_sample_due', label: 'PP sample due' },
+    { key: 'cs_gpt_due', label: 'GPT due' },
+    { key: 'cs_cutting_start', label: 'Cutting start' },
+    { key: 'cs_inline_qc_due', label: 'Inline QC due' },
+    { key: 'critical_path_first_delivery', label: 'First delivery' },
+    { key: 'po_closing_date', label: 'PO closing' },
+  ];
+  function confirm() {
+    setError(null);
+    const fd = new FormData();
+    fd.set('id', poId);
+    for (const [k, v] of Object.entries(dates)) fd.set(k, v);
+    start(async () => {
+      const r = await confirmTna(fd);
+      if (r.ok) reloadWithToast(r.message ?? 'TNA dates confirmed.');
+      else setError(toastError(r.error));
+    });
+  }
+  return (
+    <div className="wf-tna-confirm">
+      <p className="wf-subtle">
+        Approval is blocked until the dates are confirmed. Check them, adjust if needed, and confirm here.
+      </p>
+      <div className="wf-tna-confirm-grid">
+        {fields.map((f) => (
+          <label key={f.key} className="wf-tna-confirm-field">
+            <span>{f.label}</span>
+            <input type="date" value={dates[f.key]} onChange={(e) => set(f.key, e.target.value)} disabled={pending} />
+          </label>
+        ))}
+      </div>
+      {error && <p className="wf-inline-error">{error}</p>}
+      <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={confirm} disabled={pending}>
+        <CalendarCheck size={13} /> {pending ? 'Confirming…' : 'Confirm TNA dates'}
+      </button>
+    </div>
+  );
+}
+
 function Verdict({ ok, text }: { ok: boolean | null; text: string }) {
   return <span className={`wf-verdict ${ok == null ? 'is-none' : ok ? 'is-ok' : 'is-flag'}`}>{text}</span>;
 }
@@ -632,7 +691,7 @@ function Verdict({ ok, text }: { ok: boolean | null; text: string }) {
  * that are always visible, each with the headline figure first, a verdict, and the numbers
  * behind it. Nothing hides behind a button: the card is the review.
  */
-function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
+function PoApprovalDetail({ item, role }: { item: ApprovalQueueItem; role: SdRole }) {
   const d = item.poDetail!;
   const std = d.stdCost;
   const stdForType = std
@@ -731,6 +790,9 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
           <div><dt>Cutting · Inline QC</dt><dd>{fmtDate(d.tna.cuttingStart)} · {fmtDate(d.tna.inlineQcDue)}</dd></div>
           <div><dt>PO closing</dt><dd>{fmtDate(d.tna.poClosingDate)}</dd></div>
         </dl>
+        {!d.tna.tnaConfirmed && canApprove(role, item.status) && (
+          <TnaConfirm poId={item.entityId} tna={d.tna} />
+        )}
       </section>
 
       {/* ---- Vendor */}
