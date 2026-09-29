@@ -61,6 +61,35 @@ export async function addOosExclusion(formData: FormData): Promise<ActionResult>
   return done(`${sku} excluded from the DOQ calculation${name}.`);
 }
 
+/**
+ * Team/admin: exclude several SKUs in one go — the picks from the suggestion list. One
+ * upsert, one revalidation, one message; the single-SKU action stays for a typed code.
+ */
+export async function addOosExclusions(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role === 'viewer') return fail('Only team or admin can manage OOS exclusions.');
+  const skus = [...new Set(
+    String(formData.get('skus') ?? '')
+      .split(',')
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean),
+  )];
+  const reason = String(formData.get('reason') ?? '').trim() || null;
+  if (!skus.length) return fail('Pick at least one SKU.');
+  if (skus.length > 200) return fail('Exclude at most 200 SKUs at a time.');
+
+  const supabase = await supa();
+  const added_at = new Date().toISOString();
+  const { error } = await supabase
+    .from('sd_oos_sku_exclusion')
+    .upsert(skus.map((sku) => ({ sku, reason, added_by: user.email, added_at })));
+  if (error) return fail(`Could not exclude: ${error.message}`);
+  revalidatePath('/oos-calculation');
+  revalidatePath('/doq-dashboard');
+  return done(skus.length === 1 ? `${skus[0]} excluded.` : `${skus.length} SKUs excluded: ${skus.slice(0, 6).join(', ')}${skus.length > 6 ? '…' : ''}.`);
+}
+
 export type OosSkuSuggestion = {
   sku: string;
   product_name: string | null;
@@ -77,13 +106,14 @@ export async function searchOosSkus(query: string): Promise<OosSkuSuggestion[]> 
   if (q.length < 2) return [];
   const supabase = await supa();
   const like = `%${q.replace(/[%_]/g, '')}%`;
-  // paging-ok: a typeahead — the first 15 matches are all that is shown
+  // paging-ok: a typeahead — the first 60 matches are all that is shown (a product code
+  // with every colour and size runs to a few dozen SKUs, and the list is tick-to-select)
   const { data } = await supabase
     .from('sd_ee_product_master')
     .select('sku, product_name, colour, size, product_state')
     .or(`sku.ilike.${like},product_name.ilike.${like}`)
     .order('sku')
-    .limit(15);
+    .limit(60);
   return ((data ?? []) as OosSkuSuggestion[]).map((r) => ({
     sku: String(r.sku ?? '').toUpperCase(),
     product_name: r.product_name ?? null,

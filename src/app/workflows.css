@@ -2092,3 +2092,16 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .oos-excl-hints li button:disabled { opacity: .5; cursor: default; }
 .oos-excl-hints li .wf-subtle { font-size: 11.5px; }
 .oos-excl-none { padding: 8px 12px; font-size: 12px; }
+.oos-excl-hints li label { display: flex; align-items: flex-start; gap: 10px; padding: 7px 12px; cursor: pointer; font-weight: 400; }
+.oos-excl-hints li label:hover { background: var(--surface-2, #f6f4ee); }
+.oos-excl-hints li label input[type="checkbox"] { margin-top: 3px; flex: 0 0 auto; }
+.oos-excl-hints li.is-picked label { background: var(--accent-soft, #fff7d6); }
+.oos-excl-hints li.is-excluded label { opacity: .5; cursor: default; }
+.oos-excl-hint-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.oos-excl-hint-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--border, #e6e2d8); position: sticky; top: 0; background: inherit; font-size: 12px; }
+.oos-excl-hint-head label { padding: 0 12px; align-items: center; }
+.oos-excl-hint-head label:hover { background: none; }
+.oos-excl-picked { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.oos-excl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 8px; border: 1px solid var(--border, #e6e2d8); border-radius: 999px; background: var(--surface, #fff); }
+.oos-excl-chip button { display: inline-flex; border: 0; background: none; padding: 2px; cursor: pointer; color: inherit; border-radius: 999px; }
+.oos-excl-chip button:hover { background: var(--surface-2, #f6f4ee); }
