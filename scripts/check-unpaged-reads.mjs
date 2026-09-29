@@ -67,7 +67,7 @@ const SMALL_TABLES = {
   sd_feedback: 40,
   sd_feedback_message: 200,
   sd_feedback_vote: 100,
-  sd_inward_plan_entry: 110,
+  sd_inward_plan_entry: 157,
   sd_material_codes: 200,
   sd_material_master: 200,
   sd_material_standard_cost: 60,

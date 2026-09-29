@@ -319,7 +319,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding' | 'inward_plan';
   label: string;
   sublabel: string;
   status: SdStatus;

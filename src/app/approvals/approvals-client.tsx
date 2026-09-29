@@ -46,7 +46,8 @@ const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'standard_cost', label: 'Standard Cost' },
   { key: 'discontinue', label: 'Discontinue' },
   { key: 'vendor_deboarding', label: 'Vendor De-Boarding' },
-  { key: 'receivable_plan', label: 'Inward Plan' },
+  { key: 'inward_plan', label: 'Inward Plan (month)' },
+  { key: 'receivable_plan', label: 'Inward Plan (weekly)' },
 ];
 
 export function ApprovalsClient({
@@ -160,7 +161,7 @@ export function ApprovalsClient({
           <article
             key={`${item.entityType}-${item.entityId}`}
             className={`wf-queue-card${
-              item.entityType === 'buying_plan' || item.entityType === 'po_approval'
+              item.entityType === 'buying_plan' || item.entityType === 'po_approval' || item.entityType === 'inward_plan'
                 ? ' wf-queue-card-wide'
                 : ''
             }`}
@@ -251,6 +252,7 @@ export function ApprovalsClient({
             {item.entityType === 'buying_plan' &&
               canApprove(role, item.status) &&
               !!item.lines?.length && <BuyingPlanApprovalLines item={item} context={context} />}
+            {item.entityType === 'inward_plan' && !!item.lines?.length && <InwardPlanLines item={item} />}
             <div className="wf-queue-foot">
               {item.entityType === 'standard_cost' ? (
                 // Cost is negotiated on its own screen — accept / reject / set
@@ -268,6 +270,7 @@ export function ApprovalsClient({
                       LineRework modal + ApprovalBar are only for the other types, so a
                       buying-plan approver can't accidentally act on all lines at once. */}
                   {item.entityType !== 'buying_plan' &&
+                    item.entityType !== 'inward_plan' &&
                     canApprove(role, item.status) &&
                     !!item.lines?.length && (
                       <LineRework
@@ -724,6 +727,59 @@ function PoApprovalDetail({ item }: { item: ApprovalQueueItem }) {
           <div><dt>Capacity / month</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : '—'}{item.vendorCapacityUpdatedAt ? ` · ${fmtDate(item.vendorCapacityUpdatedAt)}` : ''}</dd></div>
         </dl>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Read-only sheet behind a monthly inward-plan card: one row per PO line the team
+ * intends to inward that month. The whole month is approved / reworked / rejected
+ * from the ApprovalBar below it; the note travels to every row as the management comment.
+ */
+function InwardPlanLines({ item }: { item: ApprovalQueueItem }) {
+  const lines = item.lines ?? [];
+  const qty = lines.reduce((s, l) => s + (l.qty ?? 0), 0);
+  const value = lines.reduce((s, l) => s + (l.value ?? 0), 0);
+  return (
+    <div className="table-scroll">
+      <table className="wide-table wf-line-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>PO</th>
+            <th>Vendor</th>
+            <th className="num">Inward qty</th>
+            <th className="num">Value at cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l) => {
+            const [product, po, vendor] = l.label.split(' · ');
+            return (
+              <tr key={l.id}>
+                <td className="mono">{product}</td>
+                <td className="mono">{po}</td>
+                <td>{vendor}</td>
+                <td className="num">{(l.qty ?? 0).toLocaleString('en-IN')}</td>
+                <td className="num">₹{Math.round(l.value ?? 0).toLocaleString('en-IN')}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={3}>
+              <strong>{lines.length} line(s)</strong>
+            </td>
+            <td className="num">
+              <strong>{qty.toLocaleString('en-IN')}</strong>
+            </td>
+            <td className="num">
+              <strong>₹{Math.round(value).toLocaleString('en-IN')}</strong>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }

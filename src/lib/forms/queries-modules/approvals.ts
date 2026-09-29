@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
   approversFor,
   canApprove,
@@ -76,7 +76,7 @@ export async function countPendingApprovals(): Promise<number> {
   // are the admin's turn (the bell renders for admins only).
   const costPending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
-  const [a, b, c, d, e, f, g, h] = await Promise.all([
+  const [a, b, c, d, e, f, g, h, inward] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
@@ -85,10 +85,14 @@ export async function countPendingApprovals(): Promise<number> {
     pending('sd_vendor_deboarding_request'),
     pending('sd_po_delete_request'),
     pending('sd_po_amendment'),
+    // Monthly inward-plan sheet: one queue card per month with Pending rows.
+    // paging-ok: a handful of month rows, distinct-counted below
+    supabase.from('sd_inward_plan_entry').select('plan_month').eq('approval_status', 'Pending'),
   ]);
+  const inwardMonths = new Set(((inward.data ?? []) as { plan_month: string }[]).map((r) => r.plan_month)).size;
   return (
     (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) +
-    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0)
+    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0) + inwardMonths
   );
 }
 
@@ -140,6 +144,32 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
   ]);
 
   const items: ApprovalNotification[] = [];
+
+  // Monthly inward-plan sheet — an admin decision, one notification per pending month.
+  if (role === 'admin') {
+    // paging-ok: one sheet's worth of pending rows, reduced to distinct months
+    const { data: inwardPending } = await supabase
+      .from('sd_inward_plan_entry')
+      .select('plan_month, created_by, created_at')
+      .eq('approval_status', 'Pending')
+      .order('created_at');
+    const seenMonths = new Set<string>();
+    for (const r of (inwardPending ?? []) as Array<{ plan_month: string; created_by: string | null; created_at: string }>) {
+      if (seenMonths.has(r.plan_month)) continue;
+      seenMonths.add(r.plan_month);
+      const monthLabel = new Date(`${r.plan_month}T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+      items.push({
+        key: `inward_plan-${r.plan_month}`,
+        kind: 'inward_plan',
+        label: `Inward plan — ${monthLabel}`,
+        sublabel: 'Monthly inward sheet awaiting sign-off',
+        status: 'pending_l2',
+        href: '/approvals',
+        submittedBy: r.created_by,
+        submittedAt: r.created_at,
+      });
+    }
+  }
 
   for (const p of (plans.data ?? []) as Array<{
     id: number; plan_month: string; plan_type: string | null; status: SdStatus;
@@ -797,6 +827,53 @@ export async function loadApprovalQueue(): Promise<{
         },
       });
     }
+  }
+
+  // Monthly inward-plan sheet (sd_inward_plan_entry) — one card per month whose
+  // rows are still Pending. The sheet is a management review, so it always sits
+  // with the admin level; the whole month is decided at once (decideInwardPlanBulk).
+  const inwardRows = await pageAll<{
+    id: number;
+    plan_month: string;
+    product_code: string;
+    po_no: string | null;
+    vendor_name: string | null;
+    inward_qty: number | null;
+    cost_per_piece: number | null;
+    created_by: string | null;
+    created_at: string;
+  }>(() =>
+    supabase
+      .from('sd_inward_plan_entry')
+      .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, cost_per_piece, created_by, created_at')
+      .eq('approval_status', 'Pending')
+      .order('id'),
+  );
+  const byMonth = new Map<string, typeof inwardRows>();
+  for (const r of inwardRows) (byMonth.get(r.plan_month) ?? byMonth.set(r.plan_month, []).get(r.plan_month)!).push(r);
+  for (const [month, rows] of byMonth) {
+    const qty = rows.reduce((s, r) => s + Number(r.inward_qty ?? 0), 0);
+    const value = rows.reduce((s, r) => s + Number(r.inward_qty ?? 0) * Number(r.cost_per_piece ?? 0), 0);
+    const monthLabel = new Date(`${month}T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    const first = [...rows].sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
+    items.push({
+      entityType: 'inward_plan',
+      entityId: month,
+      label: `Inward plan — ${monthLabel}`,
+      sublabel: `${rows.length} PO line(s) · ${qty.toLocaleString('en-IN')} pcs · ₹${Math.round(value).toLocaleString('en-IN')} at cost`,
+      status: 'pending_l2',
+      quantity: qty,
+      requiredRole: 'admin',
+      submittedBy: first?.created_by ?? null,
+      submittedAt: first?.created_at ?? null,
+      href: '/receivable-plan',
+      lines: rows.map((r) => ({
+        id: String(r.id),
+        label: `${r.product_code} · ${r.po_no ?? '—'} · ${r.vendor_name ?? '—'}`,
+        qty: Number(r.inward_qty ?? 0),
+        value: Number(r.inward_qty ?? 0) * Number(r.cost_per_piece ?? 0),
+      })),
+    });
   }
 
   const { data: recRows, count: recCount } = await supabase

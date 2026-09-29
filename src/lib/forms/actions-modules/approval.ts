@@ -99,6 +99,11 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (entityType === 'receivable_plan') {
     return decideReceivablePlanBulk(user.role, user.email, decision, notes, label);
   }
+  // The monthly inward-plan sheet is decided a month at a time — entity_id is the
+  // plan month (YYYY-MM-01), and every Pending row of that month takes the decision.
+  if (entityType === 'inward_plan') {
+    return decideInwardPlanBulk(user.role, user.email, decision, notes, String(formData.get('entity_id') ?? ''), label);
+  }
 
   if (!table || !entityId) return fail('Invalid approval request.');
 
@@ -350,6 +355,52 @@ async function decideReceivablePlanBulk(
   revalidatePath('/receivable-plan');
   return done(
     decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+  );
+}
+
+/**
+ * Decide a whole month of the inward-plan sheet (sd_inward_plan_entry). The sheet
+ * is a management review, so it is always an admin (L2) decision; the note is kept
+ * on every row as the management comment.
+ */
+async function decideInwardPlanBulk(
+  role: SdRole,
+  email: string,
+  decision: string,
+  notes: string,
+  month: string,
+  label: string,
+): Promise<ActionResult> {
+  const from: SdStatus = 'pending_l2';
+  if (!canApprove(role, from)) return fail('This decision is above your approval level.');
+  if (!/^\d{4}-\d{2}-01$/.test(month)) return fail('Invalid plan month.');
+  const to: SdStatus = decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
+  const sheetStatus = decision === 'approve' ? 'Approved' : decision === 'rework' ? 'RE-WORK' : 'Rejected';
+  if (!INWARD_PLAN_STATUSES.includes(sheetStatus)) return fail('Invalid decision.');
+  const supabase = await supa();
+  const { data: updated, error } = await supabase
+    .from('sd_inward_plan_entry')
+    .update({
+      approval_status: sheetStatus,
+      mt_comments: notes || null,
+      updated_by: email,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('plan_month', month)
+    .eq('approval_status', 'Pending')
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('Nothing is pending for that month any more.');
+  await writeLog('inward_plan', month, label || `Inward plan — ${month}`, from, to, email, notes || undefined);
+  revalidatePath('/approvals');
+  revalidatePath('/receivable-plan');
+  revalidatePath('/ppm-prep');
+  return done(
+    decision === 'approve'
+      ? `Approved — ${updated.length} line(s) now count as the month's plan.`
+      : decision === 'rework'
+        ? `Sent for rework (${updated.length} line(s)).`
+        : `Rejected (${updated.length} line(s)).`,
   );
 }
 
