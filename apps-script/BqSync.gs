@@ -25,7 +25,10 @@
  *                           GRN-QC 30d     -> sd_ee_grn (+ refresh_vendor_recommendation)
  *                           vendor names + EasyEcom status -> vendor_master_data
  *                           adjustments    -> sd_po_qty_manual_adjustment / _cutting_register
- *   ~6 PM  bqSyncEvening  : PO master -> sd_po_master_raw, GRN 45d -> sd_po_grn_mapping
+ *   ~6 PM  bqSyncEvening  : PO master -> sd_po_master_raw, GRN 45d -> sd_po_grn_mapping,
+ *                           DOQ + OOS + windows again (the latest day's sales land in
+ *                           saadaa_inventory_planning AFTER 6 AM — at the morning run the
+ *                           newest date_day carries ~100 units against ~2,300 on a full day)
  * Every target logs to public.sync_log (same table the sheet sync uses).
  *
  * ONE-TIME SETUP (must be done logged in as an account with BigQuery access on
@@ -383,8 +386,32 @@ const BqSync_ = (function () {
         `WHERE date_day IS NOT NULL GROUP BY 1 ORDER BY 1`,
       ).map((r) => r.d);
       if (!dates.length) throw new Error('saadaa_inventory_planning has no dates');
-      const latest = dates[dates.length - 1];
+      const feedLatest = dates[dates.length - 1];
       const earliest = dates[0];
+
+      // 1b. Is the newest day's sales column complete? The feed writes the day's stock row
+      // early and its sales land later; at 6 AM the newest day reads ~100 units against
+      // ~2,300 on a normal day, and every "Yesterday" figure built on it is nonsense. If the
+      // newest day is under 40% of the average of the six days before it, anchor every
+      // window on the last complete day and say so in the meta (the dashboard shows it).
+      const dayQty = runQuery(
+        `SELECT FORMAT_DATE('%Y-%m-%d', date_day) d, SUM(COALESCE(daily_quantity, 0)) q ` +
+        `FROM ${DATASET}saadaa_inventory_planning\` ` +
+        `WHERE date_day >= DATE_SUB(DATE '${feedLatest}', INTERVAL 7 DAY) AND sku IS NOT NULL ` +
+        `  AND UPPER(COALESCE(Size, '')) != 'IN METERS' GROUP BY 1 ORDER BY 1`,
+      );
+      const qtyByDay = {};
+      for (const r of dayQty) qtyByDay[r.d] = Number(r.q) || 0;
+      const prior = dates.filter((d) => d < feedLatest).slice(-6).map((d) => qtyByDay[d] || 0);
+      const avgPrior = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : 0;
+      const latestQty = qtyByDay[feedLatest] || 0;
+      let latest = feedLatest;
+      let partial = null;
+      if (avgPrior > 0 && latestQty < 0.4 * avgPrior && dates.length > 1) {
+        latest = dates[dates.length - 2];
+        partial = { date: feedLatest, qty: latestQty, avgPrior: Math.round(avgPrior) };
+        console.log(`doqWindows: ${feedLatest} has ${latestQty} units vs ~${Math.round(avgPrior)}/day — windows anchored on ${latest}`);
+      }
 
       const parse = (s) => { const p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
       const iso = (d) => Utilities.formatDate(d, 'Asia/Kolkata', 'yyyy-MM-dd');
@@ -428,7 +455,7 @@ const BqSync_ = (function () {
       const rows = raw.map((r) => Object.assign({}, r, { synced_at }));
       upsert('sd_doq_window', 'sku', rows);
       upsert('sd_doq_window_meta', 'id', [
-        { id: 1, windows: { latest, earliest, windows }, synced_at },
+        { id: 1, windows: { latest, earliest, windows, feedLatest, partial }, synced_at },
       ]);
       return { synced: rows.length };
     });
@@ -731,10 +758,15 @@ const BqSync_ = (function () {
   }
 
   function evening() {
-    throwIfErrors([
+    const errors = [
       runTarget('sd_po_master_raw', poMaster),
       runTarget('sd_po_grn_mapping', grn),
-    ]);
+    ];
+    // The newest day's sales reach saadaa_inventory_planning after the morning run, so
+    // the DOQ tables are pulled again now (~1.5 GB scan, numeric columns only).
+    errors.push(...doqOos(false));
+    errors.push(doqWindows());
+    throwIfErrors(errors);
     syncPoClosures_();
   }
 

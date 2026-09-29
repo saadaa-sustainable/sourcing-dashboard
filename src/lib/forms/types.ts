@@ -673,10 +673,18 @@ export type DoqWindowRow = {
 
 /** Window descriptors for the DOQ dashboard (sd_doq_window_meta.windows). */
 export type DoqWindowMeta = {
+  /** The day the windows end on — the last day whose sales are complete in the feed. */
   latest: string;
   earliest: string;
   windows: Record<string, { start: string; end: string; label: string; ndays: number }>;
+  /** The newest date_day in the feed, when it is later than `latest` (its sales were partial). */
+  feedLatest?: string | null;
+  /** Set when the newest feed day was skipped because its sales column was still filling. */
+  partial?: { date: string; qty: number; avgPrior: number } | null;
 };
+
+/** A feed day whose sales are still filling: the figure it holds against a normal day. */
+export type DoqPartialDay = { date: string; qty: number; avgPrior: number; anchoredOn: string | null };
 
 /** Product-level master attributes the Buying Plan reads (sd_product_master). */
 export type ProductMaster = {

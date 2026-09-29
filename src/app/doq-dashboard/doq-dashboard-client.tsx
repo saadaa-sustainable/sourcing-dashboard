@@ -12,7 +12,8 @@ import {
   type DoqWeave,
   type DoqWindowKey,
 } from '@/lib/doq-dashboard';
-import type { DoqWindowMeta, OosSkuExclusion } from '@/lib/forms/types';
+import { Notice } from '@/components/forms/form-layout';
+import type { DoqWindowMeta, OosSkuExclusion, DoqPartialDay } from '@/lib/forms/types';
 import type { OosSnapshotPoint, OosSummaryData } from '@/lib/forms/queries-modules/oos-summary';
 import { OosSummaryView } from './oos-summary';
 
@@ -149,6 +150,8 @@ function WindowTable({
   );
 }
 
+const fmtInt = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n);
+
 export function DoqDashboardClient({
   tables,
   comTables,
@@ -158,6 +161,7 @@ export function DoqDashboardClient({
   summary = null,
   snapshots = [],
   initialView = 'summary',
+  partialDay = null,
 }: {
   tables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   comTables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
@@ -169,6 +173,8 @@ export function DoqDashboardClient({
   snapshots?: OosSnapshotPoint[];
   /** From ?view= — so a refresh after excluding a SKU keeps the tab that was open. */
   initialView?: 'summary' | 'detail';
+  /** The newest feed day when its sales were still filling at sync time. */
+  partialDay?: DoqPartialDay | null;
 }) {
   const [win, setWin] = useState<DoqWindowKey>('d1');
   const [weave, setWeave] = useState<DoqWeave>('All');
@@ -202,6 +208,25 @@ export function DoqDashboardClient({
 
       {view === 'detail' && (
       <>
+      {partialDay && (
+        <Notice tone="warn">
+          {partialDay.anchoredOn ? (
+            <>
+              The stock feed’s newest day, <strong>{partialDay.date}</strong>, had only {fmtInt(partialDay.qty)} units of sales
+              when the data was pulled, against about {fmtInt(partialDay.avgPrior)} on a normal day — its sales had not
+              finished landing. The windows therefore end on <strong>{partialDay.anchoredOn}</strong>, the last complete day.
+              The evening sync picks the full day up.
+            </>
+          ) : (
+            <>
+              Sales for <strong>{partialDay.date}</strong> are incomplete in the stock feed: {fmtInt(partialDay.qty)} units
+              against about {fmtInt(partialDay.avgPrior)} on a normal day, because the feed’s sales for a day land after
+              the 6 AM pull. DOQ, days-on-hand and sales leakage for Yesterday and Last 7 days are understated until the
+              evening refresh; stock and out-of-stock counts are not affected.
+            </>
+          )}
+        </Notice>
+      )}
       <div className="chip-row">
         <span className="wf-chip">
           Data through <strong>{meta?.latest ?? '—'}</strong>

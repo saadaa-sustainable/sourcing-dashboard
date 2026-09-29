@@ -1,4 +1,5 @@
 import { skuKey } from '@/lib/sku-key';
+import type { DoqPartialDay } from '@/lib/forms/types';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
@@ -86,6 +87,25 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
   // Keyed the feed's way (no underscore) — see skuKey.
   const excluded = new Set(exclusions.map((e) => skuKey(e.sku)));
 
+  // Is the newest day's sales column complete? BqSync (once redeployed) anchors the windows
+  // on the last complete day and says so in the meta. Until then the same check is made
+  // here from the window rows: the latest day against the average of the six before it.
+  let partialDay: DoqPartialDay | null = null;
+  if (meta?.partial) {
+    partialDay = { ...meta.partial, anchoredOn: meta.latest };
+  } else if (meta) {
+    let d1 = 0;
+    let l7 = 0;
+    for (const r of Object.values(windows)) {
+      d1 += Number(r.d1_qty) || 0;
+      l7 += Number(r.l7_qty) || 0;
+    }
+    const avgPrior = (l7 - d1) / 6;
+    if (avgPrior > 0 && d1 < 0.4 * avgPrior) {
+      partialDay = { date: meta.latest, qty: d1, avgPrior: Math.round(avgPrior), anchoredOn: null };
+    }
+  }
+
   // Product Class per SKU from IPDOQ (rules-master thresholds, live).
   const classRules = {
     aAbove: rules.product_class_a_above ?? 10,
@@ -147,6 +167,7 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
         summary={summary}
         snapshots={snapshots}
         initialView={params.view === 'detail' ? 'detail' : 'summary'}
+        partialDay={partialDay}
       />
     </FormLayout>
   );
