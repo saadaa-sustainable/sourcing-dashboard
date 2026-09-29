@@ -1,11 +1,9 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useState } from 'react';
 import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
-import { InfoDot } from '@/components/info-dot';
-import { addOosExclusion, removeOosExclusion } from '@/lib/forms/actions';
-import { reloadWithToast } from '@/lib/toast';
+import { OosExclusionPanel } from '@/components/forms/oos-exclusion-panel';
 import type { OosCalculationRow, OosSkuExclusion } from '@/lib/forms/types';
 
 const money = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
@@ -59,13 +57,6 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'weave_type', label: 'Weave Type', kind: 'text' },
 ];
 
-const EXCLUDED_COLS: Column<OosSkuExclusion>[] = [
-  { key: 'sku', label: 'SKU', kind: 'mono' },
-  { key: 'reason', label: 'Reason', kind: 'text' },
-  { key: 'added_by', label: 'Excluded by', kind: 'text' },
-  { key: 'added_at', label: 'On', kind: 'text', accessor: (r) => String(r.added_at).slice(0, 10) },
-];
-
 export function OosCalculationClient({
   rows,
   exclusions,
@@ -80,10 +71,6 @@ export function OosCalculationClient({
   lastSynced: string | null;
 }) {
   const [tab, setTab] = useState<'calc' | 'excluded'>('calc');
-  const [sku, setSku] = useState('');
-  const [reason, setReason] = useState('');
-  const [busy, start] = useTransition();
-
   const excludedSet = useMemo(
     () => new Set(exclusions.map((e) => e.sku.toUpperCase())),
     [exclusions],
@@ -92,54 +79,6 @@ export function OosCalculationClient({
     () => rows.filter((r) => !excludedSet.has(r.sku.toUpperCase())),
     [rows, excludedSet],
   );
-
-  function add() {
-    const fd = new FormData();
-    fd.set('sku', sku);
-    fd.set('reason', reason);
-    start(async () => {
-      const res = await addOosExclusion(fd);
-      if (res.ok) {
-        setSku('');
-        setReason('');
-        reloadWithToast(res.message);
-      } else {
-        reloadWithToast(res.error ?? 'Could not exclude.');
-      }
-    });
-  }
-
-  function remove(target: string) {
-    const fd = new FormData();
-    fd.set('sku', target);
-    start(async () => {
-      const res = await removeOosExclusion(fd);
-      reloadWithToast(res.ok ? res.message : (res.error ?? 'Could not remove.'));
-    });
-  }
-
-  const cols: Column<OosSkuExclusion>[] = canManage
-    ? [
-        ...EXCLUDED_COLS,
-        {
-          key: '_actions',
-          label: '',
-          filter: 'none',
-          accessor: () => '',
-          render: (r) => (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              style={{ padding: '3px 10px', fontSize: 11 }}
-              disabled={busy}
-              onClick={() => remove(r.sku)}
-            >
-              Restore
-            </button>
-          ),
-        },
-      ]
-    : EXCLUDED_COLS;
 
   return (
     <>
@@ -171,40 +110,7 @@ export function OosCalculationClient({
           download={{ filename: 'oos-calculation' }}
         />
       ) : (
-        <>
-          {canManage && (
-            <div className="chip-row">
-              <input
-                className="wf-search"
-                placeholder="SKU to exclude"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                style={{ minWidth: 220 }}
-              />
-              <input
-                className="wf-search"
-                placeholder="Reason (optional)"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                style={{ minWidth: 260 }}
-              />
-              <button type="button" className="wf-btn wf-btn-primary" disabled={busy || !sku.trim()} onClick={add}>
-                Exclude SKU
-              </button>
-              <InfoDot text={"WHAT: SKUs deliberately hidden from this page, its totals and exports.\n\nHOW: the shared exclusion list, same as the OOS Dashboard's.\n\nUSE: test SKUs and samples only. Restore any time; the data updates on the spot."} />
-            </div>
-          )}
-          <FilterTable
-            rows={exclusions}
-            columns={cols}
-            rowKey={(r) => r.sku}
-            defaultSource="supabase"
-            unit="SKUs"
-            searchPlaceholder="SKU, reason or person"
-            emptyText="No SKUs are excluded — everything counts toward the calculation."
-            download={{ filename: 'oos-excluded-skus' }}
-          />
-        </>
+        <OosExclusionPanel exclusions={exclusions} editable={canManage} />
       )}
     </>
   );

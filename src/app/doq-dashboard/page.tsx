@@ -30,7 +30,8 @@ import { DoqDashboardClient } from './doq-dashboard-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function DoqDashboardPage() {
+export default async function DoqDashboardPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const params = await searchParams;
   let user;
   try {
     user = await currentUser();
@@ -143,6 +144,7 @@ export default async function DoqDashboardPage() {
         editable={user.role !== 'viewer'}
         summary={summary}
         snapshots={snapshots}
+        initialView={params.view === 'detail' ? 'detail' : 'summary'}
       />
     </FormLayout>
   );

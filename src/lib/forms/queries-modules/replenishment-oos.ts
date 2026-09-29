@@ -92,7 +92,21 @@ export async function loadOosExclusions(): Promise<OosSkuExclusion[]> {
     .order('added_at', { ascending: false })
     .limit(PAGE_SIZE);
   if (error) throw new Error(`sd_oos_sku_exclusion: ${error.message}`);
-  return (data ?? []) as OosSkuExclusion[];
+  const rows = (data ?? []) as OosSkuExclusion[];
+  // Product names from the master, so the list reads as products, not just codes.
+  const names = new Map<string, string>();
+  const skus = rows.map((r) => r.sku);
+  for (let i = 0; i < skus.length; i += 200) {
+    // paging-ok: one chunk of at most 200 SKUs, one row each
+    const { data: pm } = await supabase
+      .from('sd_ee_product_master')
+      .select('sku, product_name, colour, size')
+      .in('sku', skus.slice(i, i + 200));
+    for (const r of (pm ?? []) as { sku: string; product_name: string | null; colour: string | null; size: string | null }[]) {
+      names.set(String(r.sku).toUpperCase(), [r.product_name, r.colour, r.size].filter(Boolean).join(' · '));
+    }
+  }
+  return rows.map((r) => ({ ...r, product_name: names.get(r.sku.toUpperCase()) ?? null }));
 }
 
 /** The snapshot date whose data the OOS/DOQ tabs are showing, + last refresh. */

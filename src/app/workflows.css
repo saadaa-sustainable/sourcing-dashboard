@@ -2079,3 +2079,16 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .sc-decision .wf-queue-head h3 { margin: 0 0 4px; }
 .sc-decision-compact { padding: 4px 0 8px; }
 .sc-card-pick { margin: 0 6px 0 0; vertical-align: -1px; }
+
+/* OOS exclusion panel: suggestion list under the SKU box, the list itself is a table. */
+.oos-excl-panel { padding: 12px 16px; margin-bottom: 14px; }
+.oos-excl-panel > summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.oos-excl-add { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+.oos-excl-search { position: relative; flex: 1 1 320px; min-width: 260px; }
+.oos-excl-search .wf-search { width: 100%; }
+.oos-excl-hints { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px 0; list-style: none; background: #fff; border: 1px solid var(--line, #e6e2d8); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.10); max-height: 320px; overflow: auto; }
+.oos-excl-hints li button { width: 100%; text-align: left; background: none; border: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; font: inherit; }
+.oos-excl-hints li button:hover:not(:disabled) { background: var(--surface-2, #f6f4ee); }
+.oos-excl-hints li button:disabled { opacity: .5; cursor: default; }
+.oos-excl-hints li .wf-subtle { font-size: 11.5px; }
+.oos-excl-none { padding: 8px 12px; font-size: 12px; }

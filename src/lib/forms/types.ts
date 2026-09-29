@@ -654,6 +654,8 @@ export type OosSkuExclusion = {
   reason: string | null;
   added_by: string | null;
   added_at: string;
+  /** "Product name · colour · size" from the product master; null when the SKU is not on it. */
+  product_name?: string | null;
 };
 
 /** Per-SKU DOQ-dashboard window aggregates (sd_doq_window, from BqSync doqWindows). */

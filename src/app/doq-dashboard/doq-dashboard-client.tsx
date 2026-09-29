@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { Download, Plus, X, Ban } from 'lucide-react';
+import { useState } from 'react';
+import { Download } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
-import { Notice } from '@/components/forms/form-layout';
-import { reloadWithToast } from '@/lib/toast';
-import { addOosExclusion, removeOosExclusion } from '@/lib/forms/actions';
+import { OosExclusionPanel } from '@/components/forms/oos-exclusion-panel';
 import { downloadCsv } from '@/lib/download';
 import {
   DOQ_WEAVES,
@@ -151,92 +149,6 @@ function WindowTable({
   );
 }
 
-/** Add/remove SKUs to exclude from every table on this page. Shared with OOS Calculation.
- *  On save the page reloads and the tables re-aggregate without the excluded SKUs. */
-function ExclusionManager({ exclusions, editable }: { exclusions: OosSkuExclusion[]; editable: boolean }) {
-  const [sku, setSku] = useState('');
-  const [reason, setReason] = useState('');
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, start] = useTransition();
-
-  function add() {
-    const s = sku.trim();
-    if (!s) return;
-    setErr(null);
-    const fd = new FormData();
-    fd.set('sku', s);
-    fd.set('reason', reason.trim());
-    start(async () => {
-      const r = await addOosExclusion(fd);
-      if (r.ok) reloadWithToast(r.message);
-      else setErr(r.error);
-    });
-  }
-  function remove(s: string) {
-    setErr(null);
-    const fd = new FormData();
-    fd.set('sku', s);
-    start(async () => {
-      const r = await removeOosExclusion(fd);
-      if (r.ok) reloadWithToast(r.message);
-      else setErr(r.error);
-    });
-  }
-
-  return (
-    <details className="panel" style={{ padding: '12px 16px', marginBottom: 14 }} open={editable && exclusions.length === 0}>
-      <summary style={{ cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Ban size={15} /> Excluded SKUs ({exclusions.length})
-        <InfoDot text={"WHAT: SKUs deliberately left out of every table on this page and on DOQ Calculation.\n\nHOW: the shared exclusion list — test SKUs, samples, anything that should not count as a stock-out.\n\nUSE: add or remove any time; the tables update on save. Keep it short — every SKU here is invisible to the OOS numbers."} />
-      </summary>
-
-      <div style={{ marginTop: 12 }}>
-        {err && <Notice tone="error">{err}</Notice>}
-
-        {editable && (
-          <div className="wf-issue-row wf-issue-row-wrap" style={{ marginBottom: 10 }}>
-            <input
-              className="wf-mini-input"
-              placeholder="SKU to exclude (e.g. SDRPTBR_L)"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-            />
-            <input
-              className="wf-mini-input"
-              placeholder="reason (optional)"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-            />
-            <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy || !sku.trim()} onClick={add}>
-              <Plus size={13} /> Exclude
-            </button>
-          </div>
-        )}
-
-        {exclusions.length === 0 ? (
-          <p className="wf-subtle">No SKUs excluded — every SKU is included in the tables below.</p>
-        ) : (
-          <div className="chip-row">
-            {exclusions.map((e) => (
-              <span key={e.sku} className="wf-chip" title={[e.reason, e.added_by ? `by ${e.added_by}` : null].filter(Boolean).join(' · ')}>
-                <span className="mono">{e.sku}</span>
-                {e.reason ? <span className="wf-subtle"> — {e.reason}</span> : null}
-                {editable && (
-                  <button type="button" className="wf-icon-btn" aria-label={`Remove ${e.sku}`} disabled={busy} onClick={() => remove(e.sku)} style={{ marginLeft: 4 }}>
-                    <X size={12} />
-                  </button>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
-
 export function DoqDashboardClient({
   tables,
   comTables,
@@ -245,6 +157,7 @@ export function DoqDashboardClient({
   editable,
   summary = null,
   snapshots = [],
+  initialView = 'summary',
 }: {
   tables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   comTables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
@@ -254,11 +167,20 @@ export function DoqDashboardClient({
   /** The one-pager (KPI numbers only) and its daily history. */
   summary?: OosSummaryData | null;
   snapshots?: OosSnapshotPoint[];
+  /** From ?view= — so a refresh after excluding a SKU keeps the tab that was open. */
+  initialView?: 'summary' | 'detail';
 }) {
   const [win, setWin] = useState<DoqWindowKey>('d1');
   const [weave, setWeave] = useState<DoqWeave>('All');
   // Summary first: the numbers people quote. Detail is the window tables underneath.
-  const [view, setView] = useState<'summary' | 'detail'>('summary');
+  const [view, setViewState] = useState<'summary' | 'detail'>(initialView);
+  // Keep the tab in the URL, so refreshes (and shared links) land on the same view.
+  const setView = (v: 'summary' | 'detail') => {
+    setViewState(v);
+    const url = new URL(window.location.href);
+    if (v === 'summary') url.searchParams.delete('view'); else url.searchParams.set('view', v);
+    window.history.replaceState(null, '', url.toString());
+  };
 
   const w = meta?.windows?.[win];
   const kicker = w
@@ -293,7 +215,7 @@ export function DoqDashboardClient({
         )}
       </div>
 
-      <ExclusionManager exclusions={exclusions} editable={editable} />
+      <OosExclusionPanel exclusions={exclusions} editable={editable} collapsible />
 
       {/* window pills */}
       <div className="role-tabs" role="tablist" aria-label="DOQ windows">
