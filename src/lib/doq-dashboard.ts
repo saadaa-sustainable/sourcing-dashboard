@@ -1,3 +1,4 @@
+import { skuKey } from '@/lib/sku-key';
 import type { DoqWindowRow, OosCalculationRow } from '@/lib/forms/types';
 
 /**
@@ -163,7 +164,7 @@ export function aggregateDoqWindow(
   const countMap: Record<string, number> = {};
 
   for (const m of meta) {
-    if (excluded.has(m.sku.toUpperCase())) continue;
+    if (excluded.has(skuKey(m.sku))) continue;
     if (weave !== 'All' && weaveBucket(m.weave_type) !== weave) continue;
 
     const cat = categoryOf(m);

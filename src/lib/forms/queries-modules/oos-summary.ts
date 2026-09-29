@@ -1,6 +1,7 @@
 import 'server-only';
 import { client, pageAll } from './_shared';
 import { isSellingState, summariseOos, type OosScope, type OosSkuInput, type OosSummary } from '@/lib/oos-summary';
+import { skuKey } from '@/lib/sku-key';
 
 /**
  * Out-of-stock one-pager data.
@@ -34,10 +35,13 @@ export async function loadOosSummary(db?: OosDb): Promise<OosSummaryData | null>
     // the dashboard figure cannot drift apart.
     const supabase = db ?? (await client());
     const norm = (s: string | null | undefined) => (s ?? '').trim().toUpperCase();
-    const { data: excluded } = await supabase.from('sd_oos_sku_exclusion').select('sku');
-    const excludedSkus = new Set(
-      ((excluded ?? []) as { sku: string | null }[]).map((r) => norm(r.sku)).filter(Boolean),
+    // The list runs to thousands of rows (every SKU not on the team's OOS SKU list), and
+    // it is spelt the master's way (CODE_SIZE) while the feed drops the underscore — so
+    // page it, and match on skuKey.
+    const excluded = await pageAll<{ sku: string | null }>(() =>
+      supabase.from('sd_oos_sku_exclusion').select('sku').order('sku'),
     );
+    const excludedSkus = new Set(excluded.map((r) => skuKey(r.sku)).filter(Boolean));
 
     // `category` on the feed is the product code (SDFLK…), which is exactly what the product
     // master calls the category — so the rows here group the way the master does.
@@ -70,7 +74,7 @@ export async function loadOosSummary(db?: OosDb): Promise<OosSummaryData | null>
         leftOut.set(key, set);
         continue;
       }
-      if (excludedSkus.has(norm(r.sku))) {
+      if (excludedSkus.has(skuKey(r.sku))) {
         dropped += 1;
         continue;
       }

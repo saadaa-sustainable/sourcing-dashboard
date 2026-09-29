@@ -130,7 +130,7 @@ export function OosSummaryView({
           {summary.warehouse} · {fmt.format(a.skus)} SKUs on sale
           <InfoDot text={"WHAT: how many SKUs (colour + size) these numbers cover, and which stock.\n\nWHICH SKUs: product state Ongoing, or NPD that has launched. Discontinued, To-Be-Discontinued and NPD-Not-Launched are left out — they cannot be 'out of stock' against demand they do not have. Test SKUs on the shared exclusion list are left out too.\n\nWHICH STOCK: Main Warehouse only. It is the warehouse online orders ship from and the only one with a daily demand figure. Store, FBA and Holisol stock is not counted — a SKU with 0 at Main and 5 in a store counts as out of stock here."} />
         </span>
-        {summary.excludedSkus > 0 && <span className="wf-chip">{summary.excludedSkus} test SKUs excluded</span>}
+        {summary.excludedSkus > 0 && <span className="wf-chip">{summary.excludedSkus} SKUs excluded</span>}
       </div>
 
       {/* The headline: the same measure over three windows, so the fall is a real comparison. */}

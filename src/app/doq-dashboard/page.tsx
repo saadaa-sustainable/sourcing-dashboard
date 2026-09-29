@@ -1,3 +1,4 @@
+import { skuKey } from '@/lib/sku-key';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
@@ -82,7 +83,8 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
   // so Sales Leakage reconciles between the two pages.
   const oosMeta = oosRaw.map((m) => ({ ...m, sales_value: m.sales_value ?? pm[m.sku]?.mrp ?? null }));
 
-  const excluded = new Set(exclusions.map((e) => e.sku.toUpperCase()));
+  // Keyed the feed's way (no underscore) — see skuKey.
+  const excluded = new Set(exclusions.map((e) => skuKey(e.sku)));
 
   // Product Class per SKU from IPDOQ (rules-master thresholds, live).
   const classRules = {

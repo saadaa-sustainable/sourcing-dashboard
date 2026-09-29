@@ -1,5 +1,6 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, PAGE_SIZE, pageAll } from './_shared';
+import { skuKey } from '@/lib/sku-key';
 import type {
   ReplenishmentRow,
   VendorRecommendationRow,
@@ -86,13 +87,14 @@ export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
 /** Team-managed SKU exclusion list for the OOS Calculation view. */
 export async function loadOosExclusions(): Promise<OosSkuExclusion[]> {
   const supabase = await client();
-  const { data, error } = await supabase
-    .from('sd_oos_sku_exclusion')
-    .select('*')
-    .order('added_at', { ascending: false })
-    .limit(PAGE_SIZE);
-  if (error) throw new Error(`sd_oos_sku_exclusion: ${error.message}`);
-  const rows = (data ?? []) as OosSkuExclusion[];
+  // Every SKU not on the team's OOS SKU list sits here too, so the table is thousands long.
+  const rows = await pageAll<OosSkuExclusion>(() =>
+    supabase
+      .from('sd_oos_sku_exclusion')
+      .select('*')
+      .order('added_at', { ascending: false })
+      .order('sku'),
+  );
   // Product names from the master, so the list reads as products, not just codes.
   const names = new Map<string, string>();
   const skus = rows.map((r) => r.sku);
@@ -103,10 +105,10 @@ export async function loadOosExclusions(): Promise<OosSkuExclusion[]> {
       .select('sku, product_name, colour, size')
       .in('sku', skus.slice(i, i + 200));
     for (const r of (pm ?? []) as { sku: string; product_name: string | null; colour: string | null; size: string | null }[]) {
-      names.set(String(r.sku).toUpperCase(), [r.product_name, r.colour, r.size].filter(Boolean).join(' · '));
+      names.set(skuKey(r.sku), [r.product_name, r.colour, r.size].filter(Boolean).join(' · '));
     }
   }
-  return rows.map((r) => ({ ...r, product_name: names.get(r.sku.toUpperCase()) ?? null }));
+  return rows.map((r) => ({ ...r, product_name: names.get(skuKey(r.sku)) ?? null }));
 }
 
 /** The snapshot date whose data the OOS/DOQ tabs are showing, + last refresh. */

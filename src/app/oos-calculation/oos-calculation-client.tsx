@@ -1,5 +1,6 @@
 'use client';
 
+import { skuKey } from '@/lib/sku-key';
 import { useMemo, useState } from 'react';
 import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
@@ -71,12 +72,13 @@ export function OosCalculationClient({
   lastSynced: string | null;
 }) {
   const [tab, setTab] = useState<'calc' | 'excluded'>('calc');
+  // The list is spelt CODE_SIZE, the feed rows without the underscore: compare on skuKey.
   const excludedSet = useMemo(
-    () => new Set(exclusions.map((e) => e.sku.toUpperCase())),
+    () => new Set(exclusions.map((e) => skuKey(e.sku))),
     [exclusions],
   );
   const visible = useMemo(
-    () => rows.filter((r) => !excludedSet.has(r.sku.toUpperCase())),
+    () => rows.filter((r) => !excludedSet.has(skuKey(r.sku))),
     [rows, excludedSet],
   );
 

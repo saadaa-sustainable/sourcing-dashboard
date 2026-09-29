@@ -72,7 +72,6 @@ const SMALL_TABLES = {
   sd_material_master: 200,
   sd_material_standard_cost: 60,
   sd_nav_visibility: 40,
-  sd_oos_sku_exclusion: 0,
   sd_plan_report: 5,
   sd_po_closure: 77,
   sd_po_cycle_time: 3,

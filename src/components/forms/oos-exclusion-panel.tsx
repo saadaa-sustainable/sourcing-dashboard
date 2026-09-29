@@ -8,10 +8,11 @@ import { InfoDot } from '@/components/info-dot';
 import { Notice } from '@/components/forms/form-layout';
 import { addOosExclusion, addOosExclusions, removeOosExclusion, searchOosSkus, type OosSkuSuggestion } from '@/lib/forms/actions';
 import { emitToast } from '@/lib/toast';
+import { skuKey } from '@/lib/sku-key';
 import type { OosSkuExclusion } from '@/lib/forms/types';
 
 const HELP =
-  "WHAT: SKUs deliberately left out of every table on the OOS Dashboard and DOQ Calculation.\n\nHOW: one shared list — test SKUs, samples, anything that should not count as a stock-out. Type a SKU or product name, tick the SKUs you want (Select all shown ticks every match), search again to add more, then Exclude N selected. The reason is optional and applies to the whole batch.\n\nUSE: if a number looks too good, check nothing real is on this list.";
+  "WHAT: SKUs deliberately left out of every table on the OOS Dashboard and DOQ Calculation.\n\nHOW: one shared list. Every SKU that is not on the team's OOS SKU list is on it (reason 'Not on the OOS SKU list'), plus test SKUs, samples, anything else that should not count as a stock-out. Type a SKU or product name, tick the SKUs you want (Select all shown ticks every match), search again to add more, then Exclude N selected. The reason is optional and applies to the whole batch.\n\nUSE: if a number looks too good, check nothing real is on this list.";
 
 /**
  * The shared OOS exclusion list. Suggestions come from the product master as you type,
@@ -78,7 +79,7 @@ export function OosExclusionPanel({
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  const excludedSet = new Set(list.map((e) => e.sku.toUpperCase()));
+  const excludedSet = new Set(list.map((e) => skuKey(e.sku)));
   const nameOf = (h: OosSkuSuggestion) => [h.product_name, h.colour, h.size].filter(Boolean).join(' · ');
 
   function togglePick(h: OosSkuSuggestion) {
@@ -89,7 +90,7 @@ export function OosExclusionPanel({
       return n;
     });
   }
-  const selectable = hints.filter((h) => !excludedSet.has(h.sku));
+  const selectable = hints.filter((h) => !excludedSet.has(skuKey(h.sku)));
   const allShownPicked = selectable.length > 0 && selectable.every((h) => picked.has(h.sku));
   function toggleAllShown() {
     setPicked((m) => {
@@ -223,7 +224,7 @@ export function OosExclusionPanel({
                   </li>
                 )}
                 {hints.map((h) => {
-                  const already = excludedSet.has(h.sku);
+                  const already = excludedSet.has(skuKey(h.sku));
                   const on = picked.has(h.sku);
                   return (
                     <li key={h.sku} role="option" aria-selected={on} className={already ? 'is-excluded' : on ? 'is-picked' : ''}>

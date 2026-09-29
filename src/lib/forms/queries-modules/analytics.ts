@@ -1,6 +1,7 @@
 import 'server-only';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import { productClassOf } from '@/lib/doq-dashboard';
+import { skuKey } from '@/lib/sku-key';
 import { daysBetween, istToday, parseIsoDate } from '@/lib/business-logic';
 import { loadApprovedStandardCosts } from './standard-cost';
 import type { AnalyticsExtras, AnalyticsRuleRow } from '../types';
@@ -461,10 +462,11 @@ export async function loadAnalyticsExtras(
     };
 
     // Test SKUs live on the shared exclusion list (the same one the OOS and DOQ pages use).
-    const { data: excluded } = await supabase.from('sd_oos_sku_exclusion').select('sku');
-    const excludedSkus = new Set(
-      ((excluded ?? []) as { sku: string | null }[]).map((r) => norm(r.sku)).filter(Boolean),
+    // Thousands of rows, spelt CODE_SIZE while the feed drops the underscore: page, key-match.
+    const excluded = await pageAll<{ sku: string | null }>(() =>
+      supabase.from('sd_oos_sku_exclusion').select('sku').order('sku'),
     );
+    const excludedSkus = new Set(excluded.map((r) => skuKey(r.sku)).filter(Boolean));
 
     // Only states that can actually sell. "NPD - Not Launched Yet" is excluded: it has never
     // been on sale, so it cannot be out of stock against demand it does not have.
@@ -486,7 +488,7 @@ export async function loadAnalyticsExtras(
     );
 
     const assessed = data
-      .filter((r) => sellingState(r.product_state) && !excludedSkus.has(norm(r.product_variant)))
+      .filter((r) => sellingState(r.product_state) && !excludedSkus.has(skuKey(r.product_variant)))
       .map((r) => {
         const stock = Number(r.current_stock) || 0;
         const inProcess = Number(r.in_progress) || 0;
