@@ -634,7 +634,8 @@ export async function loadApprovalQueue(): Promise<{
         requiredRole: 'admin',
         submittedBy: null,
         submittedAt: c.updated_at,
-        href: `/standard-cost?${material ? 'track=material&' : ''}open=${encodeURIComponent(c.product_code)}`,
+        // The product page carries the decision bar; ?open= on the list is the old way in.
+        href: `/standard-cost/${encodeURIComponent(c.product_code)}${material ? '?track=material' : ''}`,
       });
     }
   };

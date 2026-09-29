@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Lock, Pencil, X } from 'lucide-react';
 import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
-import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
+import { CostRow, CostDetail, CostDecisionBar, RateHistoryPanel } from '../standard-cost-client';
 import type {
   CmtpComponent,
   ProductCatalogItem,
@@ -160,6 +160,10 @@ export function StandardCostDetailClient({
           </div>
         ))}
       </section>
+
+      {/* The approver decides here, without opening the editor. Renders nothing when the
+          signed-in role has no decision to make at this stage. */}
+      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} />
 
       {editing && (
         <section className="sc-page-edit" aria-label="Change the cost">
