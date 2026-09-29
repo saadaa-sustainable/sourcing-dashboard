@@ -901,7 +901,7 @@ export async function loadApprovalQueue(): Promise<{
       submittedBy: latest?.submitted_by ?? null,
       submittedAt: latest?.submitted_at ?? null,
       submitNote: note,
-      href: '/receivable-plan',
+      href: '/receivable-plan?tab=input',
     });
   }
   // Spec 7.5 — stamp each card with whose turn it is and how long it has been theirs, so

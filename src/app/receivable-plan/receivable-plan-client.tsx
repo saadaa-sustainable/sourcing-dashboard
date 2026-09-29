@@ -5,8 +5,10 @@ import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
-import { STATUS_LABEL } from '@/lib/forms/approval';
+import { STATUS_LABEL, canApprove } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
+import { ApprovalBar } from '@/components/forms/approval-bar';
+import { reloadWithToast } from '@/lib/toast';
 import type { ReceivablePlanRow, SdRole } from '@/lib/forms/types';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
@@ -165,6 +167,7 @@ export function ReceivablePlanClient({
 
   const sort = useColumnSort<ReceivablePlanRow>();
   const oosCount = rows.filter((r) => r.oos_flag).length;
+  const submittedCount = rows.filter((r) => r.input_status === 'submitted').length;
 
   // Most-recent weekly-input save across all rows — the "last updated" stamp.
   const lastUpdated = useMemo(() => {
@@ -222,6 +225,28 @@ export function ReceivablePlanClient({
           <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
         )}
       </Notice>
+
+      {/* The approver decides the submitted week here as well as on Approvals — the
+          same batch decision, so "Open record" never lands on a page with nothing to press. */}
+      {canApprove(role, 'submitted') && submittedCount > 0 && (
+        <section className="wf-queue-card wf-queue-card-wide sc-decision" aria-label="Your decision">
+          <div className="wf-queue-head">
+            <div>
+              <h3>Decide the submitted week — {submittedCount} row(s)</h3>
+              <p className="wf-subtle">
+                Approve, send back or reject every row the team submitted for this week at once. Rows
+                approved by month can then be moved to any week inside it without another approval.
+              </p>
+            </div>
+          </div>
+          <ApprovalBar
+            entityType="receivable_plan"
+            entityId="batch"
+            entityLabel={`Receivable plan — ${submittedCount} row(s)`}
+            onDone={(result) => { if (result.ok) reloadWithToast(result.message ?? 'Saved.'); }}
+          />
+        </section>
+      )}
 
       {message && <Notice tone="ok">{message}</Notice>}
 

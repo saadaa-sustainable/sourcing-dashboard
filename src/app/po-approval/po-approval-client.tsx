@@ -1398,6 +1398,12 @@ function PoRow({
             (deleteRequest.status === 'submitted' || deleteRequest.status === 'pending_l2') && (
               <small className="wf-over-tag" title={`Reason: ${deleteRequest.reason} — raised by ${deleteRequest.requested_by}`}>
                 Deletion requested
+                {canApprove(role, deleteRequest.status) && (
+                  <>
+                    {' · '}
+                    <a href="/approvals">decide in Approvals &rarr;</a>
+                  </>
+                )}
               </small>
             )}
           {timelineExtDays != null && timelineExtDays > 0 && (
