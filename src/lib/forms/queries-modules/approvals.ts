@@ -900,7 +900,8 @@ export async function loadPoReviewItems(poList: PoApproval[]): Promise<ApprovalQ
             : po.in_buying_plan === false
               ? `Ad-hoc purchase — outside the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ' (no reason given)'}`
               : undefined,
-          po.submit_remark ? `Remark: ${po.submit_remark}` : null,
+          // A remark of just punctuation is nobody's remark.
+          po.submit_remark && /[A-Za-z0-9]/.test(po.submit_remark) ? `Remark: ${po.submit_remark}` : null,
         ]
           .filter(Boolean)
           .join(' · ') || undefined,
