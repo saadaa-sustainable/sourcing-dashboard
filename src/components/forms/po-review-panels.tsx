@@ -105,7 +105,9 @@ export function PoReviewPanels({ item, role }: { item: ApprovalQueueItem; role: 
         ? std.efob
         : std.fob
     : null;
-  const variance = d.writtenRate != null && stdForType != null ? d.writtenRate - stdForType : null;
+  // A standard of 0 means no approved rate for this PO type — say so rather than "₹275 above".
+  const hasStd = stdForType != null && stdForType > 0;
+  const variance = d.writtenRate != null && hasStd ? d.writtenRate - stdForType : null;
   const cmDelta = d.poCm != null && d.stdCm != null ? d.poCm - d.stdCm : null;
   const fabricDelta =
     d.poFinishedFabric != null && d.stdFinishedFabric != null ? d.poFinishedFabric - d.stdFinishedFabric : null;
@@ -156,7 +158,7 @@ export function PoReviewPanels({ item, role }: { item: ApprovalQueueItem; role: 
         </div>
         <dl>
           <div><dt>Rate on PO</dt><dd><strong>₹{fmtNum(d.writtenRate)}</strong></dd></div>
-          <div><dt>Standard ({typeLabel})</dt><dd>{stdForType != null ? `₹${fmtNum(stdForType)}` : 'not approved'}</dd></div>
+          <div><dt>Standard ({typeLabel})</dt><dd>{hasStd ? `₹${fmtNum(stdForType)}` : 'not approved'}</dd></div>
           <div>
             <dt>CM vs standard</dt>
             <dd className={cmDelta != null && cmDelta > 0 ? 'wf-error-text' : undefined}>
