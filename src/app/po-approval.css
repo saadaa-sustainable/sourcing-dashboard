@@ -177,3 +177,16 @@ body.poa-drawer-open { overflow: hidden; }
 .poa-drawer .wf-footer-actions { flex-wrap: wrap; }
 .poa-summary .line span:last-child { white-space: normal; max-width: 58%; }
 .poa-summary .quiet { font-size: 12px; color: var(--ink-3, #6d7175); margin: 0; }
+
+/* "What the approver will see" — one label/value grid with even rows */
+.poa-summary .panel-title { min-height: 0; padding: 12px 14px 4px; }
+.poa-summary .panel-title h3 { font-size: 12.5px; }
+.poa-summary .panel-body { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 0; }
+.poa-summary .big { font-size: 22px; font-weight: 650; letter-spacing: -.02em; margin: 4px 0 8px; }
+.poa-summary .quiet { margin: 4px 0 8px; line-height: 1.4; }
+.poa-summary .line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--line-2, #eceeef); font-size: 12px; }
+.poa-summary .line:last-of-type { border-bottom: 0; }
+.poa-summary .line span:first-child { color: var(--ink-3, #6d7175); }
+.poa-summary .line span:last-child { font-family: var(--font-mono); font-size: 11.5px; text-align: right; white-space: normal; max-width: 140px; font-variant-numeric: tabular-nums; color: var(--ink-1, #202223); }
+.poa-summary .wf-verdict { margin-top: 8px; white-space: normal; line-height: 1.4; }
+.poa-summary .wf-verdict + .wf-verdict { margin-top: 6px; }
