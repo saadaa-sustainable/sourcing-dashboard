@@ -77,7 +77,8 @@ export function poFlag(
   return { tone: 'ok', text: po.critical_path_first_delivery ? `On schedule · first delivery ${dayLabel(po.critical_path_first_delivery)}` : 'Issued' };
 }
 
-export type NextStep = { who: 'you' | 'other' | 'done'; title: string; detail: string };
+export type NextStepFocus = 'cost' | 'lines' | 'submit' | 'tna' | 'decide' | 'easycom' | null;
+export type NextStep = { who: 'you' | 'other' | 'done'; title: string; detail: string; focus: NextStepFocus };
 
 /**
  * What happens next on this PO, and whether it is this person's move. Written from the
@@ -87,39 +88,39 @@ export function nextStep(po: PoApproval, role: SdRole, lines: PoApprovalLine[], 
   const canWork = canEdit(role, 'draft');
   if (deleteRequest && (deleteRequest.status === 'submitted' || deleteRequest.status === 'pending_l2')) {
     return canApprove(role, deleteRequest.status)
-      ? { who: 'you', title: 'Decide the deletion request', detail: `${deleteRequest.requested_by} asked to delete this request: “${deleteRequest.reason}”. Approve or decline it in the Approvals queue; nothing else should move until then.` }
-      : { who: 'other', title: 'Deletion request with the admin', detail: `Raised by ${deleteRequest.requested_by}: “${deleteRequest.reason}”. The request stays live until the admin decides.` };
+      ? { who: 'you', title: 'Decide the deletion request', detail: `${deleteRequest.requested_by} asked to delete this request: “${deleteRequest.reason}”. Approve or decline it in the Approvals queue; nothing else should move until then.`, focus: null }
+      : { who: 'other', title: 'Deletion request with the admin', detail: `Raised by ${deleteRequest.requested_by}: “${deleteRequest.reason}”. The request stays live until the admin decides.`, focus: null };
   }
   switch (po.status) {
     case 'draft':
     case 'rework': {
       const fix = po.status === 'rework' ? `It was sent back${po.rework_notes ? `: “${po.rework_notes}”` : ''}. ` : '';
-      if (!canWork) return { who: 'other', title: 'Being drafted by the sourcing team', detail: fix + 'It reaches the approver once the team submits it.' };
-      if (po.rate == null) return { who: 'you', title: 'Add the cost', detail: fix + 'Open Edit, read the cost sheet in (or paste it), and save. The rate is required to submit.' };
-      if (!lines.length || !Number(po.po_qty)) return { who: 'you', title: 'Add the SKU quantities', detail: fix + 'Open SKU lines and paste the team sheet or fill the size matrix. The PO quantity is the sum of the lines.' };
-      return { who: 'you', title: 'Submit for approval', detail: fix + 'Everything needed is here. Submit runs the three checks (rate vs standard, vendor load, TNA against the vendor’s history) and routes it by value.' };
+      if (!canWork) return { who: 'other', title: 'Being drafted by the sourcing team', detail: fix + 'It reaches the approver once the team submits it.', focus: null };
+      if (po.rate == null) return { who: 'you', title: 'Add the cost', detail: fix + 'Open Edit, read the cost sheet in (or paste it), and save. The rate is required to submit.', focus: 'cost' };
+      if (!lines.length || !Number(po.po_qty)) return { who: 'you', title: 'Add the SKU quantities', detail: fix + 'Paste the team sheet or fill the size matrix in the SKU quantities box below. The PO quantity is the sum of the lines.', focus: 'lines' };
+      return { who: 'you', title: 'Submit for approval', detail: fix + 'Everything needed is here. Submit runs the three checks (rate vs standard, vendor load, TNA against the vendor’s history) and routes it by value.', focus: 'submit' };
     }
     case 'submitted':
     case 'pending_l2': {
       const approver = po.status === 'pending_l2' ? 'the admin' : 'the approver';
-      if (!canApprove(role, po.status)) return { who: 'other', title: `Awaiting ${approver}`, detail: `Submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}${po.submit_remark ? ` with the remark “${po.submit_remark}”` : ''}. Nothing to do here until they decide.` };
-      if (!po.tna_confirmed) return { who: 'you', title: 'Confirm the TNA dates, then decide', detail: 'Check the critical-path dates in the TNA panel against the quantity and the vendor’s history, adjust if needed, and confirm. Approve unlocks after that; Rework and Reject are open now.' };
-      return { who: 'you', title: 'Approve, rework or reject', detail: 'The four panels below are the review: stock, cost against standard, the confirmed TNA, and the vendor’s load with this PO. Decide under them; a reason is required to rework or reject.' };
+      if (!canApprove(role, po.status)) return { who: 'other', title: `Awaiting ${approver}`, detail: `Submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}${po.submit_remark && /[A-Za-z0-9]/.test(po.submit_remark) ? ` with the remark “${po.submit_remark}”` : ''}. Nothing to do here until they decide.`, focus: null };
+      if (!po.tna_confirmed) return { who: 'you', title: 'Confirm the TNA dates, then decide', detail: 'Check the critical-path dates in the TNA panel against the quantity and the vendor’s history, adjust if needed, and confirm. Approve unlocks after that; Rework and Reject are open now.', focus: 'tna' };
+      return { who: 'you', title: 'Approve, rework or reject', detail: 'The four panels below are the review: stock, cost against standard, the confirmed TNA, and the vendor’s load with this PO. Decide under them; a reason is required to rework or reject.', focus: 'decide' };
     }
     case 'approved': {
       if (!po.po_issued_at) {
         const d = awaitingEasycomDays(po);
         return canWork
-          ? { who: 'you', title: 'Create the PO in EasyCom and link it here', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}${d != null ? `, ${d} day${d === 1 ? '' : 's'} ago` : ''}. The critical path cannot start until the PO exists in EasyCom. Enter its number below; the TNA dates are rebased on the issue date.` }
-          : { who: 'other', title: 'Waiting to be created in EasyCom', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}. The sourcing team links the EasyCom PO; the critical path starts from that date.` };
+          ? { who: 'you', title: 'Create the PO in EasyCom and link it here', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}${d != null ? `, ${d} day${d === 1 ? '' : 's'} ago` : ''}. The critical path cannot start until the PO exists in EasyCom. Enter its number below; the TNA dates are rebased on the issue date.`, focus: 'easycom' }
+          : { who: 'other', title: 'Waiting to be created in EasyCom', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}. The sourcing team links the EasyCom PO; the critical path starts from that date.`, focus: null };
       }
-      if (po.first_actual_delivery_date) return { who: 'done', title: 'Delivering', detail: `First delivery landed ${dayLabel(po.first_actual_delivery_date)}${po.critical_path_first_delivery ? ` against ${dayLabel(po.critical_path_first_delivery)} planned` : ''}. Receipts and closure are tracked under Submission & closure and PO Closure.` };
-      return { who: 'done', title: 'In production', detail: `Issued in EasyCom ${dayLabel(dateOnly(po.po_issued_at))}${po.critical_path_first_delivery ? `; first delivery due ${dayLabel(po.critical_path_first_delivery)}` : ''}. Record the first actual delivery date under Signing details when it lands.` };
+      if (po.first_actual_delivery_date) return { who: 'done', title: 'Delivering', detail: `First delivery landed ${dayLabel(po.first_actual_delivery_date)}${po.critical_path_first_delivery ? ` against ${dayLabel(po.critical_path_first_delivery)} planned` : ''}. Receipts and closure are tracked under Submission & closure and PO Closure.`, focus: null };
+      return { who: 'done', title: 'In production', detail: `Issued in EasyCom ${dayLabel(dateOnly(po.po_issued_at))}${po.critical_path_first_delivery ? `; first delivery due ${dayLabel(po.critical_path_first_delivery)}` : ''}. Record the first actual delivery date under Signing details when it lands.`, focus: null };
     }
     case 'rejected':
-      return { who: 'done', title: 'Rejected', detail: `${po.rejection_notes ? `“${po.rejection_notes}”. ` : ''}A rejected request is closed; raise a new PO if the purchase is still needed.` };
+      return { who: 'done', title: 'Rejected', detail: `${po.rejection_notes ? `“${po.rejection_notes}”. ` : ''}A rejected request is closed; raise a new PO if the purchase is still needed.`, focus: null };
     default:
-      return { who: 'done', title: 'No action', detail: '' };
+      return { who: 'done', title: 'No action', detail: '', focus: null };
   }
 }
 
@@ -184,7 +185,11 @@ export function PoCardBody({
 }: BodyProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [linesOpen, setLinesOpen] = useState(defaultLinesOpen);
+  // The next step's control is opened and spotlit, so "add the SKU quantities" is not a
+  // small button among six — it is the box with the accent border and the label on it.
+  const step = nextStep(po, role, lines, deleteRequest);
+  const focus = step.who === 'you' ? step.focus : null;
+  const [linesOpen, setLinesOpen] = useState(defaultLinesOpen || focus === 'lines');
   const [detailOpen, setDetailOpen] = useState(defaultDetailOpen);
   const [signingOpen, setSigningOpen] = useState(false);
   const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
@@ -265,7 +270,7 @@ export function PoCardBody({
   const showReview = Boolean(review?.poDetail) && (queued || reviewAlways);
 
   return (
-    <div className="poa-body">
+    <div className={`poa-body${focus ? ` is-focus-${focus}` : ''}`}>
       {rowChecks && (
         <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
       )}
@@ -284,7 +289,7 @@ export function PoCardBody({
       )}
 
       {/* ---- The review: the four panels, from the same item the Approvals queue reads. */}
-      {showReview && review && <PoReviewPanels item={review} role={role} />}
+      {showReview && review && <PoReviewPanels item={review} role={role} spotlightTna={focus === 'tna'} />}
       {queued && !review?.poDetail && (
         <p className="wf-subtle">Awaiting approval{po.submit_remark ? ` — remark: ${po.submit_remark}` : ''}.</p>
       )}
@@ -292,7 +297,8 @@ export function PoCardBody({
 
       {/* ---- The decision, right under the review. */}
       {isApprover && (
-        <div className="poa-decide">
+        <div className={`poa-decide${focus === 'decide' ? ' poa-focus' : ''}`} id={focus === 'decide' ? 'poa-focus' : undefined}>
+          {focus === 'decide' && <div className="poa-focus-label">Your next step · decide</div>}
           {!po.tna_confirmed && <p className="wf-subtle">Approve unlocks once the TNA dates are confirmed above. Rework and Reject are open.</p>}
           <ApprovalBar
             entityType="po_approval"
@@ -308,7 +314,8 @@ export function PoCardBody({
 
       {/* ---- Approved: link the EasyCom PO (the critical path starts there). */}
       {showIssuance && (
-        <div className="poa-issue">
+        <div className={`poa-issue${focus === 'easycom' ? ' poa-focus' : ''}`} id={focus === 'easycom' ? 'poa-focus' : undefined}>
+          {focus === 'easycom' && <div className="poa-focus-label">Your next step · link the EasyCom PO</div>}
           <div className="poa-issue-head">
             <strong>{issued ? 'Signing details' : 'Link the EasyCom PO'}</strong>
             <span className="wf-subtle">
@@ -366,22 +373,22 @@ export function PoCardBody({
       {/* ---- Everything else that can be done from here. */}
       <div className="poa-actions">
         {editableHere && editHref && (
-          <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={editHref} title="Open this request in the form">
-            <FilePen size={14} /> Edit
+          <Link className={`wf-btn wf-btn-sm ${focus === 'cost' ? 'wf-btn-primary poa-btn-focus' : 'wf-btn-ghost'}`} href={editHref} title="Open this request in the form">
+            <FilePen size={14} /> {focus === 'cost' ? 'Add the cost' : 'Edit'}
           </Link>
         )}
         {editableHere && !editHref && (
-          <button type="button" className={`wf-btn wf-btn-sm ${isEditing ? 'wf-btn-primary' : 'wf-btn-ghost'}`} onClick={() => onEdit?.(po)} title="Open this request in the form">
-            <FilePen size={14} /> {isEditing ? 'Editing' : 'Edit'}
+          <button type="button" className={`wf-btn wf-btn-sm ${isEditing || focus === 'cost' ? 'wf-btn-primary' : 'wf-btn-ghost'}${focus === 'cost' && !isEditing ? ' poa-btn-focus' : ''}`} onClick={() => onEdit?.(po)} title="Open this request in the form">
+            <FilePen size={14} /> {isEditing ? 'Editing' : focus === 'cost' ? 'Add the cost' : 'Edit'}
           </button>
         )}
         {canSubmit(role, po.status) && (
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={submit} disabled={pending || !qty} title={qty ? 'Run the three checks and submit' : 'Add SKU lines first'}>
+          <button type="button" className={`wf-btn wf-btn-primary wf-btn-sm${focus === 'submit' ? ' poa-btn-focus' : ''}`} onClick={submit} disabled={pending || !qty} title={qty ? 'Run the three checks and submit' : 'Add SKU lines first'}>
             <Send size={14} /> Submit for approval
           </button>
         )}
-        <button type="button" className={`wf-btn wf-btn-sm ${linesOpen ? 'wf-btn-primary' : 'wf-btn-ghost'}`} onClick={() => setLinesOpen((v) => !v)}>
-          <Layers size={14} /> SKU lines ({lines.length})
+        <button type="button" className={`wf-btn wf-btn-sm ${linesOpen || focus === 'lines' ? 'wf-btn-primary' : 'wf-btn-ghost'}${focus === 'lines' ? ' poa-btn-focus' : ''}`} onClick={() => setLinesOpen((v) => !v)}>
+          <Layers size={14} /> {focus === 'lines' ? 'Add the SKU quantities' : `SKU lines (${lines.length})`}
         </button>
         <button type="button" className={`wf-btn wf-btn-sm ${detailOpen ? 'wf-btn-primary' : 'wf-btn-ghost'}`} onClick={() => setDetailOpen((v) => !v)}>
           <ListChecks size={14} /> Full record
@@ -405,15 +412,22 @@ export function PoCardBody({
       </div>
 
       {linesOpen && (
-        <PoLinesPanel
-          poId={po.id}
-          poRef={po.po_ref_num ?? po.request_id}
-          productCode={po.product_code}
-          lines={lines}
-          editable={linesEditable}
-          onSaved={() => reloadWithToast()}
-          onClose={() => setLinesOpen(false)}
-        />
+        <div className={focus === 'lines' ? 'poa-focus' : undefined} id={focus === 'lines' ? 'poa-focus' : undefined}>
+          {focus === 'lines' && (
+            <div className="poa-focus-label">
+              Your next step · add the SKU quantities — paste the team’s sheet or fill the size matrix, save, then Submit for approval
+            </div>
+          )}
+          <PoLinesPanel
+            poId={po.id}
+            poRef={po.po_ref_num ?? po.request_id}
+            productCode={po.product_code}
+            lines={lines}
+            editable={linesEditable}
+            onSaved={() => reloadWithToast()}
+            onClose={() => setLinesOpen(false)}
+          />
+        </div>
       )}
       {detailOpen && <PoDetailPanel po={po} lines={lines} cycle={cycle} />}
     </div>

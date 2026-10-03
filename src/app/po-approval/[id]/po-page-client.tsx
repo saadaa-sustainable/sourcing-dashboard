@@ -71,6 +71,12 @@ export function PoPageClient({
         </div>
         <h3>{step.title}</h3>
         {step.detail && <p>{step.detail}</p>}
+        {step.who === 'you' && step.focus && step.focus !== 'cost' && (
+          <a className="wf-btn wf-btn-primary wf-btn-sm poa-nextstep-go" href="#poa-focus">Go to it ↓</a>
+        )}
+        {step.who === 'you' && step.focus === 'cost' && (
+          <a className="wf-btn wf-btn-primary wf-btn-sm poa-nextstep-go" href={`/po-approval?edit=${po.id}`}>Open the form</a>
+        )}
       </section>
 
       <section className="panel poa-page-body">

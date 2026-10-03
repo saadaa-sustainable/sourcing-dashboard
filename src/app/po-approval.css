@@ -145,3 +145,13 @@ body.poa-drawer-open { overflow: hidden; }
 .poa-nextstep p { margin: 0; font-size: 12.5px; color: var(--ink-2, #4a4f53); max-width: 80ch; }
 .poa-page-body { padding: 0; overflow: hidden; }
 .poa-page-body .poa-body { border-top: 0; }
+
+/* the next step, spotlit */
+.poa-focus { position: relative; border: 2px solid var(--accent, #008060); border-radius: 12px; padding: 12px; background: linear-gradient(180deg, var(--accent-soft, #e4f5ef), #fff 28%); box-shadow: 0 0 0 4px rgba(0,128,96,.10); scroll-margin-top: 16px; }
+.poa-focus-label { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 10px; padding: 3px 10px; border-radius: 999px; background: var(--accent, #008060); color: #fff; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.poa-focus-label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+.poa-issue.poa-focus { background: linear-gradient(180deg, var(--accent-soft, #e4f5ef), #fafafa 30%); }
+.poa-decide.poa-focus { padding: 12px; }
+.poa-btn-focus { box-shadow: 0 0 0 3px rgba(0,128,96,.25) !important; }
+.poa-body.is-focus-tna .wf-verify-card:nth-child(3) { border: 2px solid var(--accent, #008060); box-shadow: 0 0 0 4px rgba(0,128,96,.10); background: linear-gradient(180deg, var(--accent-soft, #e4f5ef), #fff 30%); scroll-margin-top: 16px; }
+.poa-nextstep-go { margin-top: 10px; text-decoration: none; }

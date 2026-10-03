@@ -95,7 +95,7 @@ function Verdict({ ok, text }: { ok: boolean | null; text: string }) {
  * that are always visible, each with the headline figure first, a verdict, and the numbers
  * behind it. Nothing hides behind a button: the card is the review.
  */
-export function PoReviewPanels({ item, role }: { item: ApprovalQueueItem; role: SdRole }) {
+export function PoReviewPanels({ item, role, spotlightTna = false }: { item: ApprovalQueueItem; role: SdRole; /** The TNA card is the next step: give it the accent border and the anchor. */ spotlightTna?: boolean }) {
   const d = item.poDetail!;
   const std = d.stdCost;
   const stdForType = std
@@ -182,7 +182,8 @@ export function PoReviewPanels({ item, role }: { item: ApprovalQueueItem; role: 
       </section>
 
       {/* ---- TNA */}
-      <section className="wf-verify-card">
+      <section className={`wf-verify-card${spotlightTna ? ' poa-focus' : ''}`} id={spotlightTna ? 'poa-focus' : undefined}>
+        {spotlightTna && <div className="poa-focus-label">Your next step · confirm the dates</div>}
         <div className="wf-verify-head">
           <h4>
             TNA <InfoDot text={"WHAT: the production timeline the PO commits to.\n\nHOW: the critical-path dates as entered — PP sample, GPT, cutting, inline QC, first delivery, closing — and the days from submission to first delivery. 'Confirmed' means an approver has locked the dates; cost cannot be approved before that.\n\nUSE: compare the requested days with what this vendor actually takes (Vendor Performance → OTIF scorecard)."} />
