@@ -6,6 +6,7 @@ import {
   loadDeletedPoRequests,
   loadPoApprovals,
   loadPoDeleteRequests,
+  loadPoReviewItems,
   loadPoSubmissions,
   loadStandardCmByCode,
   loadTnaLeadtimes,
@@ -32,8 +33,8 @@ export default async function PoApprovalPage() {
   }
 
   if (!user) redirect('/login');
-  // Access is grantable via custom roles (e.g. the Sourcing role). Team users can raise / submit /
-  // issue POs here; approve & reject stay admin-only, in the Approvals queue.
+  // Access is grantable via custom roles (e.g. the Sourcing role). Team users raise / submit /
+  // issue POs here; the approver decides on the card (the same bar as the Approvals queue).
   if (!canView('/po-approval', user.role, user.allowed_pages ?? null)) redirect('/');
 
   const [
@@ -50,6 +51,10 @@ export default async function PoApprovalPage() {
     loadDeboardedVendors(),
   ]);
   const deleteRequests = await loadPoDeleteRequests();
+  // The review (stock, cost, TNA, vendor) for every PO still in the queue — the same item
+  // the Approvals page renders, so the two pages never disagree.
+  const reviewItems = await loadPoReviewItems(pos.filter((p) => p.status === 'submitted' || p.status === 'pending_l2'));
+  const reviewById = Object.fromEntries(reviewItems.map((i) => [i.entityId, i]));
 
   // The deleted-requests log is an admin view — the team sees its own deletions as
   // they happen (the request simply leaves their list), admin sees the whole record.
@@ -81,6 +86,7 @@ export default async function PoApprovalPage() {
         userEmail={user.email}
         deletedRequests={deletedRequests}
         deleteRequests={deleteRequests}
+        reviewById={reviewById}
       />
     </FormLayout>
   );

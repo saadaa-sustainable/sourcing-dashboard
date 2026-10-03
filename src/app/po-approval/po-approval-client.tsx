@@ -3,12 +3,10 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileCheck, FileDown, FilePen, FileSpreadsheet, Layers, Save, Send, Trash2, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import {
   checkPlanMembership,
-  confirmTna,
   deletePoApproval,
-  issuePoApproval,
   readCostSheet,
   previewPoSubmission,
   savePoApproval,
@@ -16,7 +14,7 @@ import {
   setPoClosure,
   submitPoApproval,
 } from '@/lib/forms/actions';
-import { addMonths, canApprove, canDeletePo, canEdit, canSubmit, isPlanFrozen, monthLabel, monthStart, STATUS_LABEL } from '@/lib/forms/approval';
+import { addMonths, canApprove, canDeletePo, canEdit, isPlanFrozen, monthLabel, monthStart, routeApproval, STATUS_LABEL } from '@/lib/forms/approval';
 import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
 import type { CostSheetFigures } from '@/lib/cost-sheet';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
@@ -24,11 +22,11 @@ import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
-import { PoDetailPanel } from './po-detail-panel';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
-import { PoLinesPanel } from './po-lines-panel';
+import { PoCard, poFlag } from './po-card';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
+  ApprovalQueueItem,
   DeboardedVendor,
   DeletedPoRequest,
   PoApproval,
@@ -119,8 +117,11 @@ const dayLabel = (iso: string | null) =>
       })
     : '—';
 
-const catLabel = (c: PoCategory) =>
-  c === 'fg' ? 'FG' : c === 'mat' ? 'MAT' : 'NPD';
+type Filter = 'mine' | 'draft' | 'waiting' | 'approved' | 'issued' | 'all';
+const inr = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
+/** ₹1.42 Cr / ₹8.3 L / ₹64,300 — the short money form the tiles use. */
+const inrShort = (v: number) =>
+  v >= 1e7 ? `₹${(v / 1e7).toFixed(2)} Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(1)} L` : inr(v);
 
 /** One labelled part of the raise-a-PO form. The form is long; sections make it read as the
  *  steps people actually think in rather than one wall of fields. Each one folds away —
@@ -176,6 +177,7 @@ export function PoApprovalClient({
   userEmail = null,
   deletedRequests = [],
   deleteRequests = {},
+  reviewById = {},
 }: {
   pos: PoApproval[];
   cycle: Record<string, PoCycleTime>;
@@ -196,9 +198,18 @@ export function PoApprovalClient({
   deletedRequests?: DeletedPoRequest[];
   /** Latest deletion request per PO id — a pending one is waiting with the admin. */
   deleteRequests?: Record<string, PoDeleteRequest>;
+  /** The queue's review item per PO id (submitted / pending_l2 only) — the four panels + lines. */
+  reviewById?: Record<string, ApprovalQueueItem>;
 }) {
   const editable = canEdit(role, 'draft');
   const [form, setForm] = useState({ ...BLANK });
+  // The page: which POs are listed, the search, the tab, and whether the raise-a-PO drawer is open.
+  const [filter, setFilter] = useState<Filter>('mine');
+  const [q, setQ] = useState('');
+  const [tab, setTab] = useState<'pos' | 'closure' | 'deleted'>('pos');
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // One clock read for the page's "this month" and "older than a week" figures.
+  const [now] = useState(() => Date.now());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -314,7 +325,7 @@ export function PoApprovalClient({
       buying_plan_no: po.buying_plan_no ?? monthStart().slice(0, 7),
       ad_hoc_reason: po.ad_hoc_reason ?? '',
     });
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    setDrawerOpen(true);
   }
 
   function cancelEdit() {
@@ -322,6 +333,7 @@ export function PoApprovalClient({
     setForm({ ...BLANK });
     setError(null);
     setMessage(null);
+    setDrawerOpen(false);
   }
 
   // Deleting the request being edited — the only place a request can be deleted from.
@@ -381,6 +393,7 @@ export function PoApprovalClient({
       setMessage(saved.message ?? 'Saved.');
       setEditing(null);
       setForm({ ...BLANK });
+      setDrawerOpen(false);
       reloadWithToast();
     });
   }
@@ -397,6 +410,7 @@ export function PoApprovalClient({
       setMessage(res.message ?? 'Submitted.');
       setEditing(null);
       setForm({ ...BLANK });
+      setDrawerOpen(false);
       reloadWithToast(res.message ?? 'Saved.');
     });
   }
@@ -416,29 +430,85 @@ export function PoApprovalClient({
   const [membership, setMembership] = useState<PlanMembership | null>(null);
   useEffect(() => {
     const code = form.product_code.trim();
-    if (!code) {
-      setMembership(null);
-      return;
-    }
     const fd = new FormData();
     fd.set('product_code', code);
     fd.set('buying_plan_no', form.buying_plan_no);
+    // Nothing is set synchronously here; a blank code clears the verdict on the next tick.
     const t = setTimeout(() => {
+      if (!code) { setMembership(null); return; }
       void checkPlanMembership(fd).then((m) => setMembership(m));
-    }, 300);
+    }, code ? 300 : 0);
     return () => clearTimeout(t);
   }, [form.product_code, form.buying_plan_no]);
 
+  // ---------------------------------------------------------------- the page
+  const queued = (p: PoApproval) => p.status === 'submitted' || p.status === 'pending_l2';
+  const approvedNotIssued = (p: PoApproval) => p.status === 'approved' && !p.po_issued_at;
+  const mine = (p: PoApproval) =>
+    (queued(p) && canApprove(role, p.status)) ||
+    ((p.status === 'draft' || p.status === 'rework') && editable) ||
+    (approvedNotIssued(p) && editable);
+  const FILTERS: { key: Filter; label: string; test: (p: PoApproval) => boolean }[] = [
+    { key: 'mine', label: 'Needs my action', test: mine },
+    { key: 'draft', label: 'Draft', test: (p) => p.status === 'draft' || p.status === 'rework' },
+    { key: 'waiting', label: 'Awaiting approval', test: queued },
+    { key: 'approved', label: 'Approved, not in EasyCom', test: approvedNotIssued },
+    { key: 'issued', label: 'Issued', test: (p) => Boolean(p.po_issued_at) },
+    { key: 'all', label: 'All', test: () => true },
+  ];
+  const needle = q.trim().toLowerCase();
+  const inSearch = (p: PoApproval) =>
+    !needle ||
+    [p.request_id, p.product_code, p.vendor_name, p.vendor_code, p.easycom_po_no, p.po_ref_num]
+      .some((v) => (v ?? '').toLowerCase().includes(needle));
+  const shown = pos.filter((p) => (FILTERS.find((f) => f.key === filter)?.test(p) ?? true) && inSearch(p));
+
+  // Tiles — every one is a count that exists today, never a dash.
+  const tnaToConfirm = pos.filter((p) => queued(p) && !p.tna_confirmed && canApprove(role, p.status)).length;
+  const waitingList = pos
+    .map((p) => ({ po: p, days: awaitingEasycomDays(p) }))
+    .filter((w): w is { po: PoApproval; days: number } => w.days != null)
+    .sort((a, b) => b.days - a.days);
+  const oldest = waitingList[0] ?? null;
+  const monthKey = new Date(now + 5.5 * 3600_000).toISOString().slice(0, 7);
+  const issuedThisMonth = pos.filter((p) => p.po_issued_at && dateOnly(p.po_issued_at)?.startsWith(monthKey));
+  const issuedPcs = issuedThisMonth.reduce((s, p) => s + Number(p.po_qty || 0), 0);
+  const issuedValue = issuedThisMonth.reduce((s, p) => s + Number(p.po_qty || 0) * Number(p.rate || 0), 0);
+  const issuedVendors = new Set(issuedThisMonth.map((p) => (p.vendor_code ?? p.vendor_name ?? '').toLowerCase()).filter(Boolean)).size;
+  const flagged = pos
+    .filter(queued)
+    .map((p) => poFlag(p, { deleteRequest: deleteRequests[String(p.id)], review: reviewById[String(p.id)], stdCm: p.product_code ? stdCm[p.product_code.trim()] : undefined, role }))
+    .filter((f) => f.tone === 'bad' || f.tone === 'warn');
+  const flagCount = (needleText: string) => flagged.filter((f) => f.text.toLowerCase().includes(needleText)).length;
+  const deletionsPending = Object.values(deleteRequests).filter((d) => d.status === 'submitted' || d.status === 'pending_l2').length;
+  const adHocQueued = pos.filter((p) => queued(p) && p.in_buying_plan === false).length;
+  const stale14 = waitingList.filter((w) => w.days > 14).length;
+  const oldDrafts = pos.filter((p) => (p.status === 'draft' || p.status === 'rework') && now - Date.parse(p.timestamp_created ?? p.created_at) > 7 * 86_400_000).length;
+  const toIssue = pos.filter(approvedNotIssued).sort((a, b) => (a.po_closing_date ?? '9999').localeCompare(b.po_closing_date ?? '9999'));
+
+  // Cycle times, same arithmetic as before: request → approval → EasyCom, and the critical path.
+  const cycleRows = Object.values(cycle);
+  const avg = (pick: (c: PoCycleTime) => number | null) => {
+    const vals = cycleRows.map(pick).filter((v): v is number => v != null);
+    return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+  };
+  const toApproveDays = avg((c) => c.days_to_approve);
+  const toIssueDays = avg((c) => c.days_to_issue);
+  const delivered = pos.filter((p) => p.po_issued_at && p.first_actual_delivery_date && p.critical_path_first_delivery);
+  const onTime = delivered.filter((p) => (p.first_actual_delivery_date as string) <= (p.critical_path_first_delivery as string)).length;
+
+  // What the approver will see — the live verdicts on the form in the drawer.
+  const draftQty = editing ? Number(editing.po_qty || 0) : 0;
+  const draftRate = Number(form.rate) || 0;
+  const draftCm = Number(form.cm_cost) || 0;
+  const cmAbove = draftCm > 0 && stdCmForProduct != null && draftCm > stdCmForProduct + 0.005;
+  const tnaFilled = TNA_DAY_FIELDS.filter((f) => form[f.key] !== '').length;
+  const route = routeApproval('po_approval', draftQty, form.category);
+
   return (
     <>
-      <Notice tone="info">
-        The approval gate before a PO is issued on EasyCom — every PO written and
-        visible, with the vendor’s live capacity on the approver’s card. After
-        approval, enter the EasyCom PO number to tie it back to real data.
-      </Notice>
-
       {message && <Notice tone="ok">{message}</Notice>}
-      {error && <Notice tone="error">{error}</Notice>}
+      {error && !drawerOpen && <Notice tone="error">{error}</Notice>}
       {checks && (
         <SubmitChecksModal checks={checks.checks} pending={pending} onConfirm={confirmSubmit} onCancel={() => setChecks(null)} />
       )}
@@ -454,11 +524,168 @@ export function PoApprovalClient({
         />
       )}
 
-      <ReportingScreen pos={pos} />
+      <div className="poa-pagebar">
+        <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
+          {FILTERS.map((f) => {
+            const n = f.key === 'all' ? null : pos.filter(f.test).length;
+            return (
+              <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
+                {f.label}{n != null && <span className="c">{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="spacer" />
+        <label className="poa-search">
+          <Search size={13} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
+        </label>
+        {editable && (
+          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setDrawerOpen(true); }}>
+            <Plus size={14} /> Raise a PO
+          </button>
+        )}
+      </div>
 
-      <CycleKpis cycle={cycle} pos={pos} />
+      <div className="poa-tiles">
+        <div className={`poa-tile${pos.filter(mine).length ? ' hot' : ''}`}>
+          <div className="label">Waiting on me <InfoDot text={"WHAT: POs that need something from you.\n\nHOW: POs you can approve (at their stage), drafts and reworks you can edit, and approved POs still to be linked to an EasyCom PO.\n\nUSE: the 'Needs my action' filter shows exactly these."} /></div>
+          <div className="value">{pos.filter(mine).length}</div>
+          <div className="sub">{tnaToConfirm ? `${tnaToConfirm} need TNA dates confirmed first` : 'nothing blocked on TNA'}</div>
+        </div>
+        <div className="poa-tile">
+          <div className="label">Approved, not in EasyCom <InfoDot text={"WHAT: approved here, but no PO exists in EasyCom yet, so nothing has started.\n\nHOW: status Approved with no EasyCom PO number; the days count from the approval.\n\nUSE: the critical path cannot begin until the PO is created there — link it from the card."} /></div>
+          <div className="value">{waitingList.length}{oldest && <small>oldest {oldest.days} d</small>}</div>
+          <div className="sub">{oldest ? `${oldest.po.request_id} since ${dayLabel(dateOnly(oldest.po.approved_at))}` : 'every approved PO is in EasyCom'}</div>
+        </div>
+        <div className="poa-tile">
+          <div className="label">Issued this month <InfoDot text={"WHAT: POs created in EasyCom this calendar month.\n\nHOW: count, pieces, and value = pieces × rate on the PO.\n\nUSE: the pace of ordering against the buying plan."} /></div>
+          <div className="value">{issuedThisMonth.length}{issuedValue > 0 && <small>{inrShort(issuedValue)}</small>}</div>
+          <div className="sub">{issuedThisMonth.length ? `${nfmt(issuedPcs)} pcs · ${issuedVendors} vendor${issuedVendors === 1 ? '' : 's'}` : 'none yet this month'}</div>
+        </div>
+        <div className="poa-tile">
+          <div className="label">Flags on POs awaiting approval <InfoDot text={"WHAT: how many POs in the queue carry a warning.\n\nHOW: TNA dates not confirmed, vendor over capacity with this PO, CMTP above the standard, outside the buying plan, or a deletion request pending.\n\nUSE: each card's pill names its flag; the right column counts them."} /></div>
+          <div className="value">{flagged.length}</div>
+          <div className="sub">
+            {flagged.length
+              ? [
+                  flagCount('tna') ? `${flagCount('tna')} TNA` : null,
+                  flagCount('capacity') ? `${flagCount('capacity')} over capacity` : null,
+                  flagCount('standard') ? `${flagCount('standard')} above standard` : null,
+                  flagCount('not in plan') ? `${flagCount('not in plan')} not in plan` : null,
+                  flagCount('deletion') ? `${flagCount('deletion')} deletion` : null,
+                ].filter(Boolean).join(' · ')
+              : 'nothing flagged in the queue'}
+          </div>
+        </div>
+      </div>
 
-      {editable && (
+      <div className="poa-layout">
+        <section>
+          <div className="poa-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === 'pos'} className={tab === 'pos' ? 'active' : ''} onClick={() => setTab('pos')}>
+              Purchase orders <span className="c">{pos.length}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'closure'} className={tab === 'closure' ? 'active' : ''} onClick={() => setTab('closure')}>
+              Submission &amp; closure <span className="c">{submissions.length} open</span>
+            </button>
+            {role === 'admin' && (
+              <button type="button" role="tab" aria-selected={tab === 'deleted'} className={tab === 'deleted' ? 'active' : ''} onClick={() => setTab('deleted')}>
+                Deleted requests <span className="c">{deletedRequests.length}</span>
+              </button>
+            )}
+          </div>
+
+          {tab === 'pos' && (
+            <div className="poa-list">
+              {shown.map((po, i) => (
+                <PoCard
+                  key={po.id}
+                  po={po}
+                  cycle={cycle[String(po.id)]}
+                  lines={linesByPo[String(po.id)] ?? []}
+                  role={role}
+                  deleteRequest={deleteRequests[String(po.id)]}
+                  review={reviewById[String(po.id)]}
+                  stdCm={stdCm}
+                  onEdit={startEdit}
+                  editingId={editing?.id ?? null}
+                  defaultOpen={i === 0 && filter === 'mine'}
+                />
+              ))}
+              {!shown.length && (
+                <div className="poa-empty">
+                  {pos.length ? 'Nothing in this view.' : 'No POs raised yet.'}
+                </div>
+              )}
+            </div>
+          )}
+          {tab === 'closure' && <PoSubmissionTable submissions={submissions} editable={editable} />}
+          {tab === 'deleted' && role === 'admin' && <DeletedRequestsTable rows={deletedRequests} />}
+        </section>
+
+        <aside className="poa-rail">
+          <div className="panel">
+            <div className="panel-title"><h3>Needs attention</h3><span>open POs</span></div>
+            <div className="panel-body poa-attn">
+              <a href="#" className={tnaToConfirm ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('mine'); }}><span>TNA dates to confirm</span><b>{tnaToConfirm}</b></a>
+              <a href="#" className={flagCount('capacity') ? 'bad' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('waiting'); }}><span>Vendor over capacity</span><b>{flagCount('capacity')}</b></a>
+              <a href="#" className={flagCount('standard') ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('waiting'); }}><span>CMTP above standard</span><b>{flagCount('standard')}</b></a>
+              <a href="#" className={adHocQueued ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('waiting'); }}><span>Outside the buying plan</span><b>{adHocQueued}</b></a>
+              <a href="#" className={deletionsPending ? 'bad' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('all'); }}><span>Deletion requests pending</span><b>{deletionsPending}</b></a>
+              <a href="#" className={stale14 ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('approved'); }}><span>Approved &gt; 14 d, not in EasyCom</span><b>{stale14}</b></a>
+              <a href="#" className={oldDrafts ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('draft'); }}><span>Drafts older than a week</span><b>{oldDrafts}</b></a>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-title">
+              <h3>To issue <InfoDot text={"WHAT: approved POs with no EasyCom PO yet, soonest closing date first.\n\nHOW: status Approved, no EasyCom PO number recorded.\n\nUSE: the queue to clear — link each one from its card."} /></h3>
+              <span>{toIssue.length} approved</span>
+            </div>
+            <div className="panel-body poa-week">
+              {toIssue.slice(0, 7).map((p) => (
+                <div key={p.id}>
+                  <span className="d">{p.po_closing_date ? dayLabel(p.po_closing_date) : '—'}</span>
+                  <span className="n">{p.request_id} · {p.vendor_name || p.vendor_code || '—'}</span>
+                  <span className="v">{nfmt(Number(p.po_qty || 0))} pcs</span>
+                </div>
+              ))}
+              {!toIssue.length && <p className="wf-subtle" style={{ margin: '6px 0 0' }}>Nothing waiting to be issued.</p>}
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-title">
+              <h3>Cycle times <InfoDot text={"WHAT: how long a PO takes to move.\n\nHOW: request → approval and approval → EasyCom PO, averaged over the POs that have those dates. Critical path met = issued POs whose actual first delivery was on or before the approved date.\n\nUSE: the middle gap is ours alone — an approval with no EasyCom PO behind it has started nothing."} /></h3>
+              <span>all POs</span>
+            </div>
+            <div className="panel-body poa-kv">
+              <span>Request → approval</span><span>{toApproveDays == null ? 'no data' : `${toApproveDays} d`}</span>
+              <span>Approval → EasyCom PO</span><span>{toIssueDays == null ? 'no data' : `${toIssueDays} d`}</span>
+              <span>Critical path met</span><span>{delivered.length ? `${onTime} of ${delivered.length}` : 'none delivered yet'}</span>
+            </div>
+          </div>
+
+          {editable && leadtimes && <TnaLeadtimesPanel leadtimes={leadtimes} />}
+        </aside>
+      </div>
+
+      {editable && drawerOpen && (
+        <>
+          <div className="poa-scrim" onClick={cancelEdit} />
+          <div className="poa-drawer" role="dialog" aria-label={editing ? `Edit ${editing.request_id}` : 'Raise a PO'}>
+            <div className="poa-drawer-head">
+              <h2>{editing ? `Edit ${editing.request_id}` : 'Raise a PO'}</h2>
+              <span className="wf-subtle">{editing ? 'Saving updates this request; it stays editable until it is submitted.' : 'Save the draft to get a Request ID, then add SKU quantities on its card and submit from there.'}</span>
+              <div className="spacer" />
+              <button type="button" className="wf-btn wf-btn-sm" onClick={cancelEdit} disabled={pending}>
+                <X size={14} /> Close
+              </button>
+            </div>
+            <div className="poa-drawer-body">
+              <div>
+                {error && <Notice tone="error">{error}</Notice>}
         <div className="panel wf-form-panel">
           <div className="panel-title">
             <div>
@@ -946,765 +1173,28 @@ export function PoApprovalClient({
             </button>
           </div>
         </div>
-      )}
-
-      <div className="table-panel">
-        <div className="table-meta">
-          <h3>Purchase orders</h3>
-          <span>{pos.length} total</span>
-        </div>
-        <div className="table-scroll">
-          <table className="wide-table wf-po-table">
-            <thead>
-              <tr>
-                <th>PO ref <HeaderInfo label="PO ref" /></th>
-                <th>Category <HeaderInfo label="Category" /></th>
-                <th>Product <HeaderInfo label="Product" /></th>
-                <th>Vendor (live load) <HeaderInfo label="Vendor (live load)" /></th>
-                <th>Qty <HeaderInfo label="Qty" /></th>
-                <th>Status <HeaderInfo label="Status" /></th>
-                <th>Date log <HeaderInfo label="Date log" /></th>
-                <th>Action <HeaderInfo label="Action" /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pos.map((po) => (
-                <PoRow
-                  key={po.id}
-                  po={po}
-                  cycle={cycle[String(po.id)]}
-                  lines={linesByPo[String(po.id)] ?? []}
-                  liveLoad={
-                    po.vendor_code
-                      ? capacity[po.vendor_code.toLowerCase()]
-                      : undefined
-                  }
-                  role={role}
-                  deleteRequest={deleteRequests[String(po.id)]}
-                  stdCm={stdCm}
-                  onEdit={startEdit}
-                  editingId={editing?.id ?? null}
-                />
-              ))}
-              {!pos.length && (
-                <tr>
-                  <td colSpan={8} className="wf-empty-cell">
-                    No POs raised yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {role === 'admin' && <DeletedRequestsTable rows={deletedRequests} />}
-
-      <PoSubmissionTable submissions={submissions} editable={editable} />
-
-      {editable && leadtimes && <TnaLeadtimesPanel leadtimes={leadtimes} />}
-    </>
-  );
-}
-
-/** Reporting screen (sheet REQ rows 14-15): issued last week / to issue this week. */
-function ReportingScreen({ pos }: { pos: PoApproval[] }) {
-  const { issued, toIssue } = useMemo(() => {
-    // "Last 7 days" is measured from render time — an intentional clock read.
-    // eslint-disable-next-line react-hooks/purity
-    const weekAgo = Date.now() - 7 * 86_400_000;
-    const issued = pos.filter(
-      (p) => p.po_issued_at && new Date(p.po_issued_at).getTime() >= weekAgo,
-    );
-    // Approved but not yet issued — the queue of POs still to go out.
-    const toIssue = pos.filter((p) => p.status === 'approved' && !p.easycom_po_no);
-    return { issued, toIssue };
-  }, [pos]);
-
-  return (
-    <div className="wf-report-grid">
-      <ReportCard
-        title="POs issued last week"
-        rows={issued}
-        kind="issued"
-        info={"WHAT: POs that went out to vendors this week.\n\nHOW: approved POs marked issued in the last 7 days.\n\nUSE: the pace of ordering; compare with the Stock Out Risk list to see if it is enough."}
-      />
-      <ReportCard
-        title="POs to be issued this week"
-        rows={toIssue}
-        kind="toIssue"
-        info={"WHAT: POs approved but not yet issued to the vendor.\n\nHOW: status Approved, no EasyEcom PO number recorded yet.\n\nUSE: the queue to clear — an approved PO that is not issued is not producing anything."}
-      />
-    </div>
-  );
-}
-
-function ReportCard({
-  title,
-  rows,
-  kind,
-  info,
-}: {
-  title: string;
-  rows: PoApproval[];
-  kind: 'issued' | 'toIssue';
-  info?: string;
-}) {
-  return (
-    <div className="panel wf-report-card">
-      <div className="panel-title">
-        <h3>
-          {title}
-          {info && <InfoDot text={info} label={`About ${title}`} />}
-        </h3>
-        <span className="wf-report-count">{rows.length}</span>
-      </div>
-      {rows.length ? (
-        <ul className="wf-report-list">
-          {rows.slice(0, 8).map((p) => (
-            <li key={p.id}>
-              <span className="mono">{p.request_id}</span>
-              <span className="wf-subtle">
-                {catLabel(p.category)} · {p.vendor_name || p.vendor_code || '—'} ·{' '}
-                {Number(p.po_qty).toLocaleString('en-IN')} pcs
-              </span>
-              <span className="wf-subtle">
-                {kind === 'issued'
-                  ? p.po_issued_at
-                    ? new Date(p.po_issued_at).toLocaleDateString('en-IN')
-                    : ''
-                  : p.po_closing_date
-                    ? `close ${new Date(p.po_closing_date).toLocaleDateString('en-IN')}`
-                    : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="wf-subtle wf-report-empty">Nothing here.</p>
-      )}
-    </div>
-  );
-}
-
-/**
- * The two analytics spec 7.3 asks to keep apart.
- *
- * 1 — the CYCLE: request → approval → EasyCom PO. Three dates, three gaps, and the middle
- *     one is ours alone: an approval with no EasyCom PO behind it has started nothing
- *     (spec 7.4), so POs stuck in that gap are counted and the longest wait named.
- * 2 — the CRITICAL PATH: of the POs that did reach EasyCom, how many met their planned
- *     first delivery. That is a production question and is measured separately.
- */
-function CycleKpis({ cycle, pos }: { cycle: Record<string, PoCycleTime>; pos: PoApproval[] }) {
-  const rows = Object.values(cycle);
-  const avg = (pick: (c: PoCycleTime) => number | null) => {
-    const vals = rows.map(pick).filter((v): v is number => v != null);
-    if (!vals.length) return null;
-    return Math.round((vals.reduce((s, v) => s + v, 0) / vals.length) * 10) / 10;
-  };
-  const toApprove = avg((c) => c.days_to_approve);
-  const toIssue = avg((c) => c.days_to_issue);
-  const total = avg((c) => c.total_cycle_days);
-  const fmtDays = (v: number | null) => (v == null ? '—' : `${v}d`);
-
-  // Spec 7.4 — approved here, never created in EasyCom.
-  const waiting = pos
-    .map((p) => ({ po: p, days: awaitingEasycomDays(p) }))
-    .filter((w): w is { po: PoApproval; days: number } => w.days != null)
-    .sort((a, b) => b.days - a.days);
-  const longest = waiting[0] ?? null;
-
-  // Critical path achieved: issued POs whose actual first delivery met the planned date.
-  const delivered = pos.filter((p) => p.po_issued_at && p.first_actual_delivery_date && p.critical_path_first_delivery);
-  const onTime = delivered.filter(
-    (p) => (p.first_actual_delivery_date as string) <= (p.critical_path_first_delivery as string),
-  ).length;
-  const achievedPct = delivered.length ? Math.round((onTime / delivered.length) * 100) : null;
-
-  return (
-    <div className="wf-kpi-strip">
-      <div className="wf-kpi">
-        <span className="wf-kpi-label">Request → approval</span>
-        <strong className="wf-kpi-value">{fmtDays(toApprove)}</strong>
-      </div>
-      <div className="wf-kpi">
-        <span className="wf-kpi-label">Approval → EasyCom PO</span>
-        <strong className="wf-kpi-value">{fmtDays(toIssue)}</strong>
-      </div>
-      <div className="wf-kpi">
-        <span className="wf-kpi-label">Request → EasyCom PO</span>
-        <strong className="wf-kpi-value">{fmtDays(total)}</strong>
-      </div>
-      <div className={`wf-kpi${waiting.length ? ' wf-kpi-warn' : ''}`}>
-        <span className="wf-kpi-label">Approved, not in EasyCom</span>
-        <strong className="wf-kpi-value">{waiting.length}</strong>
-      </div>
-      <div className="wf-kpi">
-        <span className="wf-kpi-label">Critical path met</span>
-        <strong className="wf-kpi-value">
-          {achievedPct == null ? '—' : `${achievedPct}%`}
-        </strong>
-      </div>
-      <p className="wf-kpi-note">
-        {longest
-          ? `Longest wait for an EasyCom PO: ${longest.po.request_id} at ${longest.days} day${longest.days === 1 ? '' : 's'} since approval — the critical path cannot start until it is created there.`
-          : 'Two separate things: the approval cycle above, and — once a PO reaches EasyCom — whether its critical path was met.'}
-        {delivered.length ? ` Critical path measured on ${delivered.length} delivered PO${delivered.length === 1 ? '' : 's'}.` : ''}
-      </p>
-    </div>
-  );
-}
-
-function PoRow({
-  po,
-  cycle,
-  liveLoad,
-  lines,
-  role,
-  deleteRequest,
-  stdCm = {},
-  onEdit,
-  editingId = null,
-}: {
-  po: PoApproval;
-  cycle?: PoCycleTime;
-  liveLoad?: number;
-  lines: PoApprovalLine[];
-  role: SdRole;
-  /** The latest deletion ask for this request, if there is one. */
-  deleteRequest?: PoDeleteRequest;
-  stdCm?: Record<string, number>;
-  /** Load this request back into the form above — draft / rework only. */
-  onEdit?: (po: PoApproval) => void;
-  editingId?: number | null;
-}) {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const [signing, setSigning] = useState(false);
-  const [iss, setIss] = useState({
-    easycom_po_no: po.easycom_po_no ?? '',
-    po_ref_num: po.po_ref_num ?? '',
-    first_actual_delivery_date: po.first_actual_delivery_date ?? '',
-    signed_po_document_url: po.signed_po_document_url ?? '',
-    signed_cost_sheet_url: po.signed_cost_sheet_url ?? '',
-    signed_tna_url: po.signed_tna_url ?? '',
-    signed_po_ref_number: po.signed_po_ref_number ?? '',
-    date_of_po_sign: po.date_of_po_sign ?? '',
-    trim_card_signed: po.trim_card_signed ? 'true' : 'false',
-  });
-  const setI = (k: keyof typeof iss, v: string) => setIss((s) => ({ ...s, [k]: v }));
-  const [benchmark, setBenchmark] = useState(false);
-  const canIssue = canEdit(role, 'draft');
-  const issued = Boolean(po.po_issued_at);
-  // Spec 7.4 — days this PO has been approved with no EasyCom PO behind it.
-  const awaitingDays = awaitingEasycomDays(po);
-  // Clicking the row opens everything that was submitted, read-only.
-  const [detailOpen, setDetailOpen] = useState(false);
-
-  // §7 issuance gate: a PO whose CMTP is above the product's standard can only be
-  // issued once the above-standard cost is confirmed with a remark (logged as an
-  // approved exception). An already-logged exception (cm_override_at) clears it.
-  const stdCmForPo = po.product_code ? stdCm[po.product_code.trim()] : undefined;
-  const aboveStdCm =
-    po.cm_cost != null && stdCmForPo != null && po.cm_cost > stdCmForPo + 0.005;
-  const exceptionLogged = Boolean(po.cm_override_at);
-  const needsCostOverride = aboveStdCm && !exceptionLogged && !issued;
-  const [costOverrideNote, setCostOverrideNote] = useState('');
-
-  // Timeline-change flag: actual first delivery landing past the approved
-  // first-delivery date is an "extended after approval" case — surfaced, not blocked.
-  const timelineExtDays =
-    po.first_actual_delivery_date && po.critical_path_first_delivery
-      ? Math.round(
-          (Date.parse(po.first_actual_delivery_date) -
-            Date.parse(po.critical_path_first_delivery)) /
-            86_400_000,
-        )
-      : null;
-
-  // TNA gate — only this PO's approver may review/lock the critical-path dates.
-  const isApprover =
-    (po.status === 'submitted' || po.status === 'pending_l2') &&
-    canApprove(role, po.status);
-  const [tnaOpen, setTnaOpen] = useState(false);
-  const [tna, setTna] = useState({
-    po_closing_date: po.po_closing_date ?? '',
-    cs_pp_sample_due: po.cs_pp_sample_due ?? '',
-    cs_gpt_due: po.cs_gpt_due ?? '',
-    cs_cutting_start: po.cs_cutting_start ?? '',
-    cs_inline_qc_due: po.cs_inline_qc_due ?? '',
-    critical_path_first_delivery: po.critical_path_first_delivery ?? '',
-  });
-  const setT = (k: keyof typeof tna, v: string) => setTna((s) => ({ ...s, [k]: v }));
-
-  // Spec 7.2 — SKU quantities are entered in PoLinesPanel (paste / matrix / CSV), which
-  // owns its own draft state and saves through savePoLines.
-  // Lines stay locked once the PO is queued or approved (the server enforces the same).
-  const linesEditable = (po.status === 'draft' || po.status === 'rework') && canIssue;
-  const [linesOpen, setLinesOpen] = useState(false);
-  const lineRows = lines;
-  // The request's own fields are editable on the same terms as its lines: until it is
-  // submitted. The server enforces the same (savePoApproval guards on draft / rework).
-  const editableHere = linesEditable && canEdit(role, po.status);
-  const isEditing = editingId === po.id;
-
-  function confirmTnaDates() {
-    setError(null);
-    const p = new FormData();
-    p.set('id', String(po.id));
-    Object.entries(tna).forEach(([k, v]) => p.set(k, v));
-    start(async () => {
-      const res = await confirmTna(p);
-      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
-      else setError(toastError(res.error));
-    });
-  }
-
-  // Spec 7.1: the pop-up with the three validations before the row is submitted.
-  const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
-
-  // Deleting happens in the edit box above (its top-right corner), never from this row.
-
-  function submit() {
-    setError(null);
-    const p = new FormData();
-    p.set('id', String(po.id));
-    start(async () => {
-      const pv = await previewPoSubmission(p);
-      if (!pv.ok) return setError(toastError(pv.error));
-      setRowChecks(pv.checks);
-    });
-  }
-  function confirmRowSubmit(remark: string) {
-    setError(null);
-    const p = new FormData();
-    p.set('id', String(po.id));
-    p.set('submit_remark', remark);
-    start(async () => {
-      const res = await submitPoApproval(p);
-      if (res.ok) {
-        setRowChecks(null);
-        reloadWithToast(res.message ?? 'Saved.');
-      } else setError(toastError(res.error));
-    });
-  }
-
-  function saveIssuance() {
-    setError(null);
-    if (needsCostOverride && !costOverrideNote.trim()) {
-      setError('This PO is above the standard CMTP — confirm with a reason to issue.');
-      return;
-    }
-    const p = new FormData();
-    p.set('id', String(po.id));
-    Object.entries(iss).forEach(([k, v]) => p.set(k, v));
-    p.set('set_benchmark', benchmark ? 'true' : 'false');
-    if (needsCostOverride) {
-      p.set('cost_override', 'true');
-      p.set('cost_override_note', costOverrideNote);
-    }
-    start(async () => {
-      const res = await issuePoApproval(p);
-      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
-      else setError(toastError(res.error));
-    });
-  }
-
-  return (
-    <>
-      {rowChecks && (
-        <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
-      )}
-      <tr
-        className={`wf-po-row${signing || tnaOpen || detailOpen ? ' wf-row-open' : ''}`}
-        // Click the row to read the whole request. Clicks that land on a control are that
-        // control's own — Edit, Submit and the rest must not also open the panel.
-        onClick={(e) => {
-          if ((e.target as HTMLElement).closest('button, a, input, select, textarea, label')) return;
-          setDetailOpen((v) => !v);
-        }}
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setDetailOpen((v) => !v);
-          }
-        }}
-        tabIndex={0}
-        aria-expanded={detailOpen}
-        title="Click to see everything submitted on this request"
-      >
-        <td className="mono">
-          {detailOpen ? <ChevronDown size={13} className="wf-row-caret" /> : <ChevronRight size={13} className="wf-row-caret" />}
-          {po.request_id}
-          {po.po_ref_num && <small className="wf-subtle wf-block">{po.po_ref_num}</small>}
-        </td>
-        <td>
-          <span className={`wf-cat-chip wf-cat-${po.category}`}>{catLabel(po.category)}</span>
-        </td>
-        <td className="mono wf-po-product">
-          {po.product_code ?? '—'}
-          {/* Spec item 6: plan relationship, recorded at submission. Display only. */}
-          {po.in_buying_plan === true && (
-            <small className="wf-subtle" title={po.plan_qty_at_submit ? `Approved ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs in the ${po.buying_plan_no ?? ''} plan` : 'In the buying plan'}>
-              In plan{po.plan_qty_at_submit ? ` · ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs approved` : ''}
-            </small>
-          )}
-          {po.in_buying_plan === false && (
-            <small className="wf-over-tag" title={po.ad_hoc_reason ? `Outside the buying plan: ${po.ad_hoc_reason}` : 'Outside the buying plan (no reason given)'}>
-              Ad-hoc{po.ad_hoc_reason ? ` · ${po.ad_hoc_reason}` : ''}
-            </small>
-          )}
-        </td>
-        <td className="wf-po-vendor">
-          {po.vendor_code && po.vendor_name
-            ? `${po.vendor_code.toUpperCase()} - ${po.vendor_name}`
-            : po.vendor_name || po.vendor_code || '—'}
-          {po.vendor_code && (
-            <small className="wf-subtle">
-              {liveLoad == null
-                ? 'no open POs'
-                : `${liveLoad.toLocaleString('en-IN')} pcs in process`}
-            </small>
-          )}
-        </td>
-        <td>{Number(po.po_qty).toLocaleString('en-IN')}</td>
-        <td>
-          <StatusBadge status={po.status} />
-          {(po.status === 'submitted' || po.status === 'pending_l2') && (
-            <small className={po.tna_confirmed ? 'wf-tna-ok' : 'wf-tna-pending'}>
-              {po.tna_confirmed ? 'TNA confirmed' : 'TNA pending'}
-            </small>
-          )}
-          {po.status === 'rejected' && po.rejection_notes && (
-            <small className="wf-subtle">{po.rejection_notes}</small>
-          )}
-          {po.easycom_po_no && (
-            <small className="wf-subtle">EasyCom {po.easycom_po_no}</small>
-          )}
-          {/* Spec 7.4 — approved here, but no PO in EasyCom yet, so nothing has begun. */}
-          {awaitingDays != null && (
-            <small
-              className="wf-over-tag"
-              title={`Approved ${po.approved_at ? new Date(po.approved_at).toLocaleDateString('en-IN') : ''} but never created in EasyCom. The critical path cannot start until it is.`}
-            >
-              No EasyCom PO · {awaitingDays}d
-            </small>
-          )}
-          {/* A deletion is a separate approval — say so here, so nobody acts on a request
-              that is about to go away. */}
-          {deleteRequest &&
-            (deleteRequest.status === 'submitted' || deleteRequest.status === 'pending_l2') && (
-              <small className="wf-over-tag" title={`Reason: ${deleteRequest.reason} — raised by ${deleteRequest.requested_by}`}>
-                Deletion requested
-                {canApprove(role, deleteRequest.status) && (
-                  <>
-                    {' · '}
-                    <a href="/approvals">decide in Approvals &rarr;</a>
-                  </>
-                )}
-              </small>
-            )}
-          {timelineExtDays != null && timelineExtDays > 0 && (
-            <small
-              className="wf-timeline-flag"
-              title={`Actual first delivery ${po.first_actual_delivery_date} is ${timelineExtDays} day(s) past the approved ${po.critical_path_first_delivery}`}
-            >
-              ⚠ timeline +{timelineExtDays}d
-            </small>
-          )}
-        </td>
-        {/* Spec 7.3 — the three date logs, in the order they happen. The EasyCom PO date is
-            the one the critical path counts from, so it is named even when it is missing. */}
-        <td className="wf-subtle">
-          <span title="PO approval request raised">Req {dayLabel(dateOnly(po.submitted_for_approval_at))}</span>
-          <small className="wf-subtle" title="Approved internally">
-            Appr {dayLabel(dateOnly(po.approved_at))}
-            {cycle?.days_to_approve != null ? ` · ${cycle.days_to_approve}d` : ''}
-          </small>
-          <small
-            className={po.po_issued_at ? 'wf-subtle' : 'wf-over-tag'}
-            title="PO actually created in EasyCom — day 0 of the critical path"
-          >
-            EasyCom {po.po_issued_at ? dayLabel(dateOnly(po.po_issued_at)) : 'not yet'}
-            {cycle?.days_to_issue != null ? ` · ${cycle.days_to_issue}d` : ''}
-          </small>
-        </td>
-        <td className="wf-po-action">
-          {error && <small className="wf-subtle wf-error-text">{error}</small>}
-          {/* The buttons wrap onto a second line rather than widening the table. */}
-          <div className="wf-po-actions">
-            {/* A raised PO is editable right up to submission. */}
-            {editableHere && (
-              <button
-                type="button"
-                className={`wf-btn wf-btn-sm ${isEditing ? 'wf-btn-primary' : 'wf-btn-ghost'}`}
-                onClick={() => onEdit?.(po)}
-                title="Open this request in the form above"
-              >
-                <FilePen size={14} /> {isEditing ? 'Editing' : 'Edit'}
-              </button>
-            )}
-            {canSubmit(role, po.status) && (
-              <button
-                type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                onClick={submit}
-                disabled={pending}
-              >
-                <Send size={14} /> Submit
-              </button>
-            )}
-            {(po.status === 'submitted' || po.status === 'pending_l2') &&
-              (isApprover ? (
-                po.tna_confirmed ? (
-                  // Approve / Reject / Rework happen only in the Approvals queue — not
-                  // inline here — so admin decisions route through one place.
-                  <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/approvals">
-                    Decide in Approvals &rarr;
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-primary wf-btn-sm"
-                    onClick={() => setTnaOpen((v) => !v)}
-                  >
-                    <CalendarCheck size={14} /> Review &amp; confirm TNA
-                  </button>
-                )
-              ) : (
-                <span className="wf-subtle">Awaiting approval</span>
-              ))}
-            {po.status === 'approved' && canIssue && (
-              <button
-                type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                onClick={() => setSigning((v) => !v)}
-              >
-                <FileCheck size={14} /> {issued ? 'Signing' : 'Issue / sign'}
-              </button>
-            )}
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm"
-              onClick={() => setLinesOpen((v) => !v)}
-            >
-              <Layers size={14} /> Lines ({lineRows.length})
-            </button>
-            {po.status === 'approved' && !canIssue && issued && (
-              <span className="wf-subtle">Issued</span>
-            )}
-            {/* Spec 7.6 — the approved PO as a document. Generated on request from the
-                record itself, so it is never a stale copy. */}
-            {po.status === 'approved' && (
-              <a
-                className="wf-btn wf-btn-ghost wf-btn-sm"
-                href={`/api/po/${po.id}/pdf`}
-                title={`Download ${po.request_id} as a PDF`}
-              >
-                <FileDown size={14} /> PDF
-              </a>
-            )}
-          </div>
-        </td>
-      </tr>
-      {detailOpen && (
-        <tr className="wf-issue-panel-row">
-          <td colSpan={8}>
-            <PoDetailPanel po={po} lines={lineRows} cycle={cycle} />
-          </td>
-        </tr>
-      )}
-      {tnaOpen && isApprover && (
-        <tr className="wf-issue-panel-row">
-          <td colSpan={8}>
-            <div className="wf-issue-panel">
-              <strong className="wf-issue-title">
-                Review &amp; confirm TNA — {po.request_id}
-              </strong>
-              <p className="wf-subtle">
-                Check these critical-path dates make sense for the quantity (
-                {Number(po.po_qty).toLocaleString('en-IN')} pcs). Cost approval stays
-                blocked until you confirm — confirming locks them as the approved TNA.
-              </p>
-              <div className="wf-form-grid">
-                <Field label="PO closing date">
-                  <input
-                    type="date"
-                    value={tna.po_closing_date}
-                    onChange={(e) => setT('po_closing_date', e.target.value)}
-                  />
-                </Field>
-                <Field label="PP sample due">
-                  <input
-                    type="date"
-                    value={tna.cs_pp_sample_due}
-                    onChange={(e) => setT('cs_pp_sample_due', e.target.value)}
-                  />
-                </Field>
-                <Field label="GPT due">
-                  <input
-                    type="date"
-                    value={tna.cs_gpt_due}
-                    onChange={(e) => setT('cs_gpt_due', e.target.value)}
-                  />
-                </Field>
-                <Field label="Cutting start">
-                  <input
-                    type="date"
-                    value={tna.cs_cutting_start}
-                    onChange={(e) => setT('cs_cutting_start', e.target.value)}
-                  />
-                </Field>
-                <Field label="Inline QC due">
-                  <input
-                    type="date"
-                    value={tna.cs_inline_qc_due}
-                    onChange={(e) => setT('cs_inline_qc_due', e.target.value)}
-                  />
-                </Field>
-                <Field label="First delivery (critical path)">
-                  <input
-                    type="date"
-                    value={tna.critical_path_first_delivery}
-                    onChange={(e) => setT('critical_path_first_delivery', e.target.value)}
-                  />
-                </Field>
               </div>
-              <div className="wf-footer-actions">
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary wf-btn-sm"
-                  onClick={confirmTnaDates}
-                  disabled={pending}
-                >
-                  <CalendarCheck size={14} />{' '}
-                  {po.tna_confirmed ? 'Re-confirm TNA' : 'Confirm TNA & unblock cost'}
-                </button>
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => setTnaOpen(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-      {signing && po.status === 'approved' && canIssue && (
-        <tr className="wf-issue-panel-row">
-          <td colSpan={8}>
-            <div className="wf-issue-panel">
-              <strong className="wf-issue-title">
-                Issue &amp; sign — {po.request_id}
-              </strong>
-              <div className="wf-form-grid">
-                <Field label="EasyCom PO no." hint={`The real PO number — links it to ${po.request_id}`}>
-                  <input
-                    value={iss.easycom_po_no}
-                    placeholder="EasyCom PO #"
-                    onChange={(e) => setI('easycom_po_no', e.target.value)}
-                  />
-                </Field>
-                <Field label="EasyCom PO reference" hint="As EasyCom shows it — optional, for later matching">
-                  <input
-                    value={iss.po_ref_num}
-                    placeholder="e.g. FY26-27/FOB/SDRPT/REG-01"
-                    onChange={(e) => setI('po_ref_num', e.target.value)}
-                  />
-                </Field>
-                <Field label="First actual delivery date" hint="EasyCom">
-                  <input
-                    type="date"
-                    value={iss.first_actual_delivery_date}
-                    onChange={(e) => setI('first_actual_delivery_date', e.target.value)}
-                  />
-                </Field>
-              </div>
-              <Notice tone="info">
-                DiGiO e-signing (signed PO / cost sheet / TNA, sign date) is <strong>Phase 2</strong> —
-                not captured here yet.
-              </Notice>
-              <label className="wf-check-field">
-                <input
-                  type="checkbox"
-                  checked={iss.trim_card_signed === 'true'}
-                  onChange={(e) =>
-                    setI('trim_card_signed', e.target.checked ? 'true' : 'false')
-                  }
-                />
-                <span>Trim card signed — captured at issuance, not before</span>
-              </label>
-              <label className="wf-check-field wf-benchmark">
-                <input
-                  type="checkbox"
-                  checked={benchmark}
-                  onChange={(e) => setBenchmark(e.target.checked)}
-                />
-                <span>
-                  Set as <strong>standard benchmark cost</strong> — freezes this
-                  product’s standard cost as the fixed reference (no later drift).
-                </span>
-              </label>
-              {needsCostOverride && (
-                <div className="wf-cost-gate">
-                  <p className="wf-inline-error">
-                    CMTP ₹{po.cm_cost} is above the standard ₹{stdCmForPo}. Confirm the
-                    above-standard cost with a reason — it&rsquo;s logged as an approved exception.
-                  </p>
-                  <input
-                    className="wf-mini-input"
-                    placeholder="Reason for issuing above standard"
-                    value={costOverrideNote}
-                    onChange={(e) => setCostOverrideNote(e.target.value)}
-                  />
+              <aside className="poa-summary">
+                <div className="panel">
+                  <div className="panel-title"><h3>What the approver will see</h3></div>
+                  <div className="panel-body">
+                    <div className="big">{draftQty && draftRate ? inr(draftQty * draftRate) : '—'}</div>
+                    <div className="line"><span>Pieces</span><span>{draftQty ? nfmt(draftQty) : 'add SKU lines after saving'}</span></div>
+                    <div className="line"><span>Rate per piece</span><span>{draftRate ? `₹${nfmt(draftRate)}` : 'from the cost sheet'}</span></div>
+                    <div className="line"><span>CMTP vs standard</span><span>{draftCm ? `₹${nfmt(draftCm)}` : '—'}{stdCmForProduct != null ? ` vs ₹${nfmt(stdCmForProduct)}` : ''}</span></div>
+                    <div className="line"><span>Vendor in process</span><span>{liveLoad != null ? `${nfmt(liveLoad)} pcs` : form.vendor_code ? 'no open POs' : '—'}</span></div>
+                    <div className="line"><span>TNA stages filled</span><span>{tnaFilled} of {TNA_DAY_FIELDS.length}</span></div>
+                    <div className="line"><span>Route</span><span>{route === 'admin' ? 'admin' : 'team'}{!draftQty ? ' (by quantity)' : ''}</span></div>
+                    {cmAbove && <span className="wf-verdict is-flag">CMTP above standard — will be flagged</span>}
+                    {membership && !membership.inPlan && <span className="wf-verdict is-none">Outside the plan — ad-hoc reason needed</span>}
+                    {membership && membership.inPlan && <span className="wf-verdict is-ok">In the {monthLabel(membership.planMonth)} plan</span>}
+                    {deboardedPick && <span className="wf-verdict is-flag">Vendor de-boarded</span>}
+                  </div>
                 </div>
-              )}
-              {exceptionLogged && (
-                <p className="wf-subtle">
-                  Above-standard cost approved{po.cm_override_by ? ` by ${po.cm_override_by}` : ''}
-                  {po.cm_override_note ? ` — ${po.cm_override_note}` : ''}.
-                </p>
-              )}
-              <div className="wf-footer-actions">
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary wf-btn-sm"
-                  onClick={saveIssuance}
-                  disabled={pending || (!issued && !iss.easycom_po_no.trim()) || (needsCostOverride && !costOverrideNote.trim())}
-                >
-                  <FileCheck size={14} />{' '}
-                  {issued ? 'Save signing details' : 'Issue PO'}
-                </button>
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => setSigning(false)}
-                >
-                  Close
-                </button>
-              </div>
+              </aside>
             </div>
-          </td>
-        </tr>
-      )}
-      {linesOpen && (
-        <tr className="wf-issue-panel-row">
-          <td colSpan={8}>
-            <PoLinesPanel
-              poId={po.id}
-              poRef={po.po_ref_num ?? po.request_id}
-              productCode={po.product_code}
-              lines={lines}
-              editable={linesEditable}
-              onSaved={() => reloadWithToast()}
-              onClose={() => setLinesOpen(false)}
-            />
-          </td>
-        </tr>
+          </div>
+        </>
       )}
     </>
   );

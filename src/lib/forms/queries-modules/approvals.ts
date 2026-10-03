@@ -652,191 +652,7 @@ export async function loadApprovalQueue(): Promise<{
   pushCostItems(matCostReqs as CostReq[] | null, true);
 
   if ((pos ?? []).length) {
-    const poList = (pos ?? []) as PoApproval[];
-    const [inProcessByVendor, latestCapacity, stdCosts, analyticsRules] = await Promise.all([
-      loadInProcessByVendor(),
-      loadLatestVendorCapacity(),
-      loadApprovedStandardCosts(),
-      loadAnalyticsRules(),
-    ]);
-    const capacityRules = capacityRulesFrom(analyticsRules);
-    // Product-level inventory snapshot (DOQ / stock / days) for the PO products.
-    const poCodes = [...new Set(poList.map((p) => p.product_code).filter(Boolean))] as string[];
-    const invByProduct: Record<string, { stock: number; inProgress: number; daily: number; doq45: number }> = {};
-    if (poCodes.length) {
-      const { data: inv } = await supabase
-        .from('sd_inventory_by_product')
-        .select('product_code, current_stock, total_inprogress, daily_quantity, doq_45')
-        .in('product_code', poCodes);
-      for (const r of (inv ?? []) as Record<string, unknown>[]) {
-        invByProduct[String(r.product_code)] = {
-          stock: Number(r.current_stock) || 0,
-          inProgress: Number(r.total_inprogress) || 0,
-          daily: Number(r.daily_quantity) || 0,
-          doq45: Number(r.doq_45) || 0,
-        };
-      }
-    }
-
-    // Standard CM (CMTP total) + standard finished-fabric per product — the
-    // benchmarks the PO cost-pivot compares against (spec §5). CM gates approval;
-    // finished fabric is shown for awareness only.
-    const stdCmByCode: Record<string, number> = {};
-    const stdFabricByCode: Record<string, number> = {};
-    if (poCodes.length) {
-      const { data: scRows } = await supabase
-        .from('sd_standard_cost')
-        .select('product_code, cm_cost, fabric_code')
-        .in('product_code', poCodes);
-      const fabricCodes = [
-        ...new Set(
-          ((scRows ?? []) as { fabric_code: string | null }[])
-            .map((r) => r.fabric_code)
-            .filter(Boolean) as string[],
-        ),
-      ];
-      const fabricRate: Record<string, number> = {};
-      if (fabricCodes.length) {
-        const { data: fb } = await supabase
-          .from('sd_fabric_cost_base')
-          .select('fabric_code, finished_fabric_cost')
-          .in('fabric_code', fabricCodes);
-        for (const r of (fb ?? []) as { fabric_code: string; finished_fabric_cost: number | null }[]) {
-          if (r.finished_fabric_cost != null) fabricRate[r.fabric_code] = Number(r.finished_fabric_cost);
-        }
-      }
-      for (const r of (scRows ?? []) as {
-        product_code: string;
-        cm_cost: number | null;
-        fabric_code: string | null;
-      }[]) {
-        if (r.cm_cost != null) stdCmByCode[r.product_code] = Number(r.cm_cost);
-        if (r.fabric_code && fabricRate[r.fabric_code] != null) {
-          stdFabricByCode[r.product_code] = fabricRate[r.fabric_code];
-        }
-      }
-    }
-
-    for (const po of poList) {
-      const qty = Number(po.po_qty || 0);
-      const vendor = (po.vendor_code ?? '').trim();
-      const { data: poLines } = await supabase
-        .from('sd_po_approval_line')
-        .select('id, product_variant, size, qty')
-        .eq('po_id', po.id);
-      const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
-      // The one capacity model, for THIS PO's type: an E-FOB PO is judged against what the
-      // vendor can make in 45 days, a FOB PO against 75 — not against one month.
-      const capModel = cap
-        ? vendorCapacityModel(
-            {
-              machines: cap.machines,
-              karigar: cap.karigar,
-              vendorType: po.po_type ?? po.category,
-              inProcessQty: vendor ? inProcessByVendor.get(vendor.toLowerCase()) ?? 0 : 0,
-            },
-            capacityRules,
-          )
-        : null;
-      const stdCost = po.product_code ? stdCosts[po.product_code] ?? null : null;
-      // Pending pieces per SKU for this PO's product, for the SKU-level line labels.
-      const pendingBySku = new Map<string, number>();
-      if (po.product_code) {
-        const { data: openForProduct } = await supabase
-          .from('sd_po_dashboard')
-          .select('sku, pending_qty')
-          .eq('product_code', po.product_code)
-          .gt('pending_qty', 0)
-          .limit(500); // paging-ok: one product's open lines, a few dozen at most
-        for (const r of (openForProduct ?? []) as { sku: string | null; pending_qty: number | null }[]) {
-          const sku = (r.sku ?? '').trim().toUpperCase();
-          if (!sku) continue;
-          pendingBySku.set(sku, (pendingBySku.get(sku) ?? 0) + (Number(r.pending_qty) || 0));
-        }
-      }
-      const inv = po.product_code ? invByProduct[po.product_code] ?? null : null;
-      items.push({
-        entityType: 'po_approval',
-        entityId: String(po.id),
-        label: `PO request ${po.request_id ?? `#${po.id}`}${po.po_ref_num ? ` · ${po.po_ref_num}` : ''} — ${po.category.toUpperCase()}`,
-        sublabel: `${po.product_code ?? '—'} · ${po.vendor_name || vendor || '—'} · ${qty.toLocaleString('en-IN')} pcs`,
-        status: po.status,
-        quantity: qty,
-        requiredRole: routeApproval('po_approval', qty, po.category),
-        submittedBy: po.created_by,
-        submittedAt: po.submitted_for_approval_at,
-        href: '/po-approval',
-        // Spec item 6 — plan relationship is shown to the approver, never enforced.
-        submitNote:
-          [
-            po.in_buying_plan === true
-              ? `In the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.plan_qty_at_submit ? ` — approved ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs` : ''}`
-              : po.in_buying_plan === false
-                ? `Ad-hoc purchase — outside the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ' (no reason given)'}`
-                : undefined,
-            po.submit_remark ? `Remark: ${po.submit_remark}` : null,
-          ]
-            .filter(Boolean)
-            .join(' · ') || undefined,
-        vendorCode: vendor || null,
-        vendorInProcessQty: vendor
-          ? inProcessByVendor.get(vendor.toLowerCase()) ?? null
-          : null,
-        vendorCapacityPerMonth: capModel?.entered ? capModel.capacityPerMonth : null,
-        vendorPoCapacity: capModel?.entered ? capModel.poCapacity : null,
-        vendorCapacityUtil: capModel?.capacityUtil ?? null,
-        vendorLeadDays: capModel?.leadDays ?? null,
-        vendorCapacityUpdatedAt: cap?.weekOf ?? null,
-        // Spec 7.2 — the approver sees the PO at SKU level, with what is already pending for
-        // that SKU beside it (same comparison the person entering the quantities saw).
-        lines: ((poLines ?? []) as { id: number; product_variant: string | null; size: string | null; qty: number | null }[]).map((l) => {
-          const variant = (l.product_variant ?? '').trim().toUpperCase();
-          const size = (l.size ?? '').trim().toUpperCase();
-          const sku = size ? `${variant}_${size}` : variant;
-          const qty = Number(l.qty || 0);
-          const pendingForSku = pendingBySku.get(sku) ?? 0;
-          return {
-            id: String(l.id),
-            label: `${sku || '—'} · ${qty.toLocaleString('en-IN')} pcs${
-              pendingForSku ? ` · ${pendingForSku.toLocaleString('en-IN')} already pending` : ''
-            }`,
-            qty,
-          };
-        }),
-        poDetail: {
-          productCode: po.product_code,
-          poType: po.po_type,
-          poQty: qty,
-          writtenRate: po.rate,
-          stdCost,
-          poCm: po.cm_cost,
-          stdCm: po.product_code ? stdCmByCode[po.product_code] ?? null : null,
-          poGrey: po.grey_cost,
-          poFinishedFabric: po.finished_fabric_cost,
-          stdFinishedFabric: po.product_code ? stdFabricByCode[po.product_code] ?? null : null,
-          marginPct: po.margin_pct,
-          inventory: inv
-            ? {
-                currentStock: inv.stock,
-                inProgress: inv.inProgress,
-                dailyQty: inv.daily,
-                doq45: inv.doq45,
-                daysOfStock: inv.daily > 0 ? Math.round(inv.stock / inv.daily) : null,
-              }
-            : null,
-          tna: {
-            poClosingDate: po.po_closing_date,
-            ppSampleDue: po.cs_pp_sample_due,
-            gptDue: po.cs_gpt_due,
-            cuttingStart: po.cs_cutting_start,
-            inlineQcDue: po.cs_inline_qc_due,
-            firstDelivery: po.critical_path_first_delivery,
-            requestedTotalDays: po.requested_total_days,
-            tnaConfirmed: po.tna_confirmed,
-          },
-        },
-      });
-    }
+    items.push(...(await loadPoReviewItems((pos ?? []) as PoApproval[])));
   }
 
   // Monthly inward-plan sheet (sd_inward_plan_entry) — one card per month whose
@@ -952,4 +768,200 @@ export async function loadApprovalStats(): Promise<{ approved: number; edited: n
     edited += counts[i + 1].count ?? 0;
   }
   return { approved, edited, pct: approved ? Math.round((edited / approved) * 100) : 0 };
+}
+
+/**
+ * The PO Approval review item for every PO still in the queue (submitted / pending_l2):
+ * stock, cost, TNA and vendor figures plus the SKU lines. The Approvals queue and the PO
+ * Approval page both read these, so the review is the same wherever it is done.
+ */
+export async function loadPoReviewItems(poList: PoApproval[]): Promise<ApprovalQueueItem[]> {
+  if (!poList.length) return [];
+  const supabase = await client();
+  const items: ApprovalQueueItem[] = [];
+  const [inProcessByVendor, latestCapacity, stdCosts, analyticsRules] = await Promise.all([
+    loadInProcessByVendor(),
+    loadLatestVendorCapacity(),
+    loadApprovedStandardCosts(),
+    loadAnalyticsRules(),
+  ]);
+  const capacityRules = capacityRulesFrom(analyticsRules);
+  // Product-level inventory snapshot (DOQ / stock / days) for the PO products.
+  const poCodes = [...new Set(poList.map((p) => p.product_code).filter(Boolean))] as string[];
+  const invByProduct: Record<string, { stock: number; inProgress: number; daily: number; doq45: number }> = {};
+  if (poCodes.length) {
+    const { data: inv } = await supabase
+      .from('sd_inventory_by_product')
+      .select('product_code, current_stock, total_inprogress, daily_quantity, doq_45')
+      .in('product_code', poCodes);
+    for (const r of (inv ?? []) as Record<string, unknown>[]) {
+      invByProduct[String(r.product_code)] = {
+        stock: Number(r.current_stock) || 0,
+        inProgress: Number(r.total_inprogress) || 0,
+        daily: Number(r.daily_quantity) || 0,
+        doq45: Number(r.doq_45) || 0,
+      };
+    }
+  }
+
+  // Standard CM (CMTP total) + standard finished-fabric per product — the
+  // benchmarks the PO cost-pivot compares against (spec §5). CM gates approval;
+  // finished fabric is shown for awareness only.
+  const stdCmByCode: Record<string, number> = {};
+  const stdFabricByCode: Record<string, number> = {};
+  if (poCodes.length) {
+    const { data: scRows } = await supabase
+      .from('sd_standard_cost')
+      .select('product_code, cm_cost, fabric_code')
+      .in('product_code', poCodes);
+    const fabricCodes = [
+      ...new Set(
+        ((scRows ?? []) as { fabric_code: string | null }[])
+          .map((r) => r.fabric_code)
+          .filter(Boolean) as string[],
+      ),
+    ];
+    const fabricRate: Record<string, number> = {};
+    if (fabricCodes.length) {
+      const { data: fb } = await supabase
+        .from('sd_fabric_cost_base')
+        .select('fabric_code, finished_fabric_cost')
+        .in('fabric_code', fabricCodes);
+      for (const r of (fb ?? []) as { fabric_code: string; finished_fabric_cost: number | null }[]) {
+        if (r.finished_fabric_cost != null) fabricRate[r.fabric_code] = Number(r.finished_fabric_cost);
+      }
+    }
+    for (const r of (scRows ?? []) as {
+      product_code: string;
+      cm_cost: number | null;
+      fabric_code: string | null;
+    }[]) {
+      if (r.cm_cost != null) stdCmByCode[r.product_code] = Number(r.cm_cost);
+      if (r.fabric_code && fabricRate[r.fabric_code] != null) {
+        stdFabricByCode[r.product_code] = fabricRate[r.fabric_code];
+      }
+    }
+  }
+
+  for (const po of poList) {
+    const qty = Number(po.po_qty || 0);
+    const vendor = (po.vendor_code ?? '').trim();
+    const { data: poLines } = await supabase
+      .from('sd_po_approval_line')
+      .select('id, product_variant, size, qty')
+      .eq('po_id', po.id);
+    const cap = vendor ? latestCapacity.get(vendor.toLowerCase()) : undefined;
+    // The one capacity model, for THIS PO's type: an E-FOB PO is judged against what the
+    // vendor can make in 45 days, a FOB PO against 75 — not against one month.
+    const capModel = cap
+      ? vendorCapacityModel(
+          {
+            machines: cap.machines,
+            karigar: cap.karigar,
+            vendorType: po.po_type ?? po.category,
+            inProcessQty: vendor ? inProcessByVendor.get(vendor.toLowerCase()) ?? 0 : 0,
+          },
+          capacityRules,
+        )
+      : null;
+    const stdCost = po.product_code ? stdCosts[po.product_code] ?? null : null;
+    // Pending pieces per SKU for this PO's product, for the SKU-level line labels.
+    const pendingBySku = new Map<string, number>();
+    if (po.product_code) {
+      const { data: openForProduct } = await supabase
+        .from('sd_po_dashboard')
+        .select('sku, pending_qty')
+        .eq('product_code', po.product_code)
+        .gt('pending_qty', 0)
+        .limit(500); // paging-ok: one product's open lines, a few dozen at most
+      for (const r of (openForProduct ?? []) as { sku: string | null; pending_qty: number | null }[]) {
+        const sku = (r.sku ?? '').trim().toUpperCase();
+        if (!sku) continue;
+        pendingBySku.set(sku, (pendingBySku.get(sku) ?? 0) + (Number(r.pending_qty) || 0));
+      }
+    }
+    const inv = po.product_code ? invByProduct[po.product_code] ?? null : null;
+    items.push({
+      entityType: 'po_approval',
+      entityId: String(po.id),
+      label: `PO request ${po.request_id ?? `#${po.id}`}${po.po_ref_num ? ` · ${po.po_ref_num}` : ''} — ${po.category.toUpperCase()}`,
+      sublabel: `${po.product_code ?? '—'} · ${po.vendor_name || vendor || '—'} · ${qty.toLocaleString('en-IN')} pcs`,
+      status: po.status,
+      quantity: qty,
+      requiredRole: routeApproval('po_approval', qty, po.category),
+      submittedBy: po.created_by,
+      submittedAt: po.submitted_for_approval_at,
+      href: '/po-approval',
+      // Spec item 6 — plan relationship is shown to the approver, never enforced.
+      submitNote:
+        [
+          po.in_buying_plan === true
+            ? `In the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.plan_qty_at_submit ? ` — approved ${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs` : ''}`
+            : po.in_buying_plan === false
+              ? `Ad-hoc purchase — outside the ${(po.buying_plan_no && /^\d{4}-\d{2}$/.test(po.buying_plan_no) ? po.buying_plan_no : 'current')} buying plan${po.ad_hoc_reason ? `: ${po.ad_hoc_reason}` : ' (no reason given)'}`
+              : undefined,
+          po.submit_remark ? `Remark: ${po.submit_remark}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
+      vendorCode: vendor || null,
+      vendorInProcessQty: vendor
+        ? inProcessByVendor.get(vendor.toLowerCase()) ?? null
+        : null,
+      vendorCapacityPerMonth: capModel?.entered ? capModel.capacityPerMonth : null,
+      vendorPoCapacity: capModel?.entered ? capModel.poCapacity : null,
+      vendorCapacityUtil: capModel?.capacityUtil ?? null,
+      vendorLeadDays: capModel?.leadDays ?? null,
+      vendorCapacityUpdatedAt: cap?.weekOf ?? null,
+      // Spec 7.2 — the approver sees the PO at SKU level, with what is already pending for
+      // that SKU beside it (same comparison the person entering the quantities saw).
+      lines: ((poLines ?? []) as { id: number; product_variant: string | null; size: string | null; qty: number | null }[]).map((l) => {
+        const variant = (l.product_variant ?? '').trim().toUpperCase();
+        const size = (l.size ?? '').trim().toUpperCase();
+        const sku = size ? `${variant}_${size}` : variant;
+        const qty = Number(l.qty || 0);
+        const pendingForSku = pendingBySku.get(sku) ?? 0;
+        return {
+          id: String(l.id),
+          label: `${sku || '—'} · ${qty.toLocaleString('en-IN')} pcs${
+            pendingForSku ? ` · ${pendingForSku.toLocaleString('en-IN')} already pending` : ''
+          }`,
+          qty,
+        };
+      }),
+      poDetail: {
+        productCode: po.product_code,
+        poType: po.po_type,
+        poQty: qty,
+        writtenRate: po.rate,
+        stdCost,
+        poCm: po.cm_cost,
+        stdCm: po.product_code ? stdCmByCode[po.product_code] ?? null : null,
+        poGrey: po.grey_cost,
+        poFinishedFabric: po.finished_fabric_cost,
+        stdFinishedFabric: po.product_code ? stdFabricByCode[po.product_code] ?? null : null,
+        marginPct: po.margin_pct,
+        inventory: inv
+          ? {
+              currentStock: inv.stock,
+              inProgress: inv.inProgress,
+              dailyQty: inv.daily,
+              doq45: inv.doq45,
+              daysOfStock: inv.daily > 0 ? Math.round(inv.stock / inv.daily) : null,
+            }
+          : null,
+        tna: {
+          poClosingDate: po.po_closing_date,
+          ppSampleDue: po.cs_pp_sample_due,
+          gptDue: po.cs_gpt_due,
+          cuttingStart: po.cs_cutting_start,
+          inlineQcDue: po.cs_inline_qc_due,
+          firstDelivery: po.critical_path_first_delivery,
+          requestedTotalDays: po.requested_total_days,
+          tnaConfirmed: po.tna_confirmed,
+        },
+      },
+    });
+  }
+  return items;
 }
