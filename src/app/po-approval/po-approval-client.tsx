@@ -157,20 +157,28 @@ function formFromPo(po: PoApproval): typeof BLANK {
  *  steps people actually think in rather than one wall of fields. Each one folds away —
  *  the first is open so the form still starts with something to fill in.
  *  The fields stay mounted while folded, so a collapsed section keeps whatever is typed in it. */
+type StepStatus = { tone: 'ok' | 'warn' | 'none'; label: string };
+
 function FormSection({
+  step,
   title,
   hint,
+  status,
   defaultOpen = false,
   children,
 }: {
+  /** 1-based position in the form — the number on the badge. */
+  step: number;
   title: string;
   hint?: string;
+  /** What this step still needs, or that it is done — the chip on the right. */
+  status?: StepStatus;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="wf-form-section">
+    <section className={`wf-form-section poa-step${open ? ' is-open' : ''}${status ? ` is-${status.tone}` : ''}`}>
       {/* A button, not a heading — a heading inside a button is invalid HTML. */}
       <button
         type="button"
@@ -178,11 +186,13 @@ function FormSection({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span>
+        <span className="poa-step-no" aria-hidden="true">{status?.tone === 'ok' ? '✓' : step}</span>
+        <span className="poa-step-text">
           <span className="wf-form-section-title">{title}</span>
           {hint && <span className="wf-subtle wf-form-section-hint">{hint}</span>}
         </span>
+        {status && <span className={`poa-step-status is-${status.tone}`}>{status.label}</span>}
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
       <div className="wf-form-grid" hidden={!open}>
         {children}
@@ -513,6 +523,36 @@ export function PoApprovalClient({
   const cmAbove = draftCm > 0 && stdCmForProduct != null && draftCm > stdCmForProduct + 0.005;
   const tnaFilled = TNA_DAY_FIELDS.filter((f) => form[f.key] !== '').length;
   const route = routeApproval('po_approval', draftQty, form.category);
+  // What each step of the form still needs — the chip on its header, live as you type.
+  const stepStatus: Record<'order' | 'cost' | 'tna' | 'plan', StepStatus> = (() => {
+    const orderMissing = [
+      !form.product_code.trim() ? 'product' : null,
+      !form.po_type ? 'PO type' : null,
+      !form.vendor_code.trim() ? 'vendor' : null,
+    ].filter(Boolean) as string[];
+    const order: StepStatus = orderMissing.length
+      ? { tone: 'none', label: `Needs ${orderMissing.join(', ')}` }
+      : { tone: 'ok', label: `${form.product_code.trim().toUpperCase()} · ${form.po_type === 'job_work' ? 'Job Work' : form.po_type === 'efob' ? 'E-FOB' : form.po_type} · ${form.vendor_code.trim().toUpperCase()}` };
+    const cost: StepStatus = !draftRate
+      ? { tone: 'none', label: 'Needs the rate' }
+      : cmAbove
+        ? { tone: 'warn', label: `₹${nfmt(draftRate)} / pc · CMTP above standard` }
+        : { tone: 'ok', label: `₹${nfmt(draftRate)} / pc${draftCm ? ` · CMTP ₹${nfmt(draftCm)}` : ''}` };
+    const tna: StepStatus =
+      tnaFilled === TNA_DAY_FIELDS.length
+        ? { tone: 'ok', label: `${form.tna_days_first_delivery} d to first delivery` }
+        : tnaFilled
+          ? { tone: 'warn', label: `${tnaFilled} of ${TNA_DAY_FIELDS.length} stages set` }
+          : { tone: 'none', label: 'Needs the stage days' };
+    const plan: StepStatus = !form.buying_plan_no
+      ? { tone: 'none', label: 'No plan month' }
+      : membership && !membership.inPlan
+        ? { tone: 'warn', label: `${monthLabel(membership.planMonth)} · ad-hoc${form.ad_hoc_reason.trim() ? '' : ' — reason?'}` }
+        : membership && membership.inPlan
+          ? { tone: 'ok', label: `In the ${monthLabel(membership.planMonth)} plan` }
+          : { tone: 'ok', label: /^\d{4}-\d{2}$/.test(form.buying_plan_no) ? `${monthLabel(`${form.buying_plan_no}-01`)} plan` : form.buying_plan_no };
+    return { order, cost, tna, plan };
+  })();
 
   return (
     <>
@@ -752,7 +792,9 @@ export function PoApprovalClient({
             </Notice>
           )}
           <FormSection
+            step={1}
             title="Order"
+            status={stepStatus.order}
             defaultOpen
             hint="What is being bought, and from whom. Category and PO type decide how it is approved and how long it takes."
           >
@@ -855,7 +897,10 @@ export function PoApprovalClient({
           </FormSection>
 
           <FormSection
+            step={2}
             title="Cost"
+            status={stepStatus.cost}
+            defaultOpen={Boolean(editing) && stepStatus.order.tone === 'ok'}
             hint="Start with the cost sheet — read it in and the figures below fill themselves. Per piece: the rate is checked against the approved Standard Cost when you submit, CMTP is what the vendor controls, grey and fabric are commodity."
           >
             <Field
@@ -1008,7 +1053,9 @@ export function PoApprovalClient({
           </FormSection>
 
           <FormSection
+            step={3}
             title="Timeline (TNA)"
+            status={stepStatus.tna}
             hint="Days, not dates. Nothing can start before the PO exists in EasyCom, so every stage is counted from the day it is created there — fill these once and the dates follow, however late the PO issues."
           >
             <div style={{ gridColumn: '1 / -1' }}>
@@ -1081,7 +1128,9 @@ export function PoApprovalClient({
           </FormSection>
 
           <FormSection
+            step={4}
             title="Plan & quantity"
+            status={stepStatus.plan}
             hint="Which month's plan this draws on. The quantity is the sum of the SKU lines — add them on the row after saving."
           >
             <Field label="Buying plan month" hint="The plan this PO draws on — closed months are locked">
@@ -1165,7 +1214,7 @@ export function PoApprovalClient({
             <p className="wf-footer-note">
               {editing
                 ? 'Saving updates this request. It stays editable until it is submitted.'
-                : 'Save the draft — it gets its Request ID — then add the SKU quantities on its row (PO qty totals itself) and submit from there.'}
+                : 'Step 1 is enough to save. The draft gets its Request ID; the SKU quantities go on its card, then Submit for approval.'}
             </p>
             {editing && (
               <button type="button" className="wf-btn wf-btn-ghost" onClick={cancelEdit} disabled={pending}>
