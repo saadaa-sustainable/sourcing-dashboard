@@ -123,6 +123,36 @@ const inr = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 const inrShort = (v: number) =>
   v >= 1e7 ? `₹${(v / 1e7).toFixed(2)} Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(1)} L` : inr(v);
 
+/** A raised PO as the form holds it — for Edit (list drawer) and ?edit= (from the PO's page). */
+function formFromPo(po: PoApproval): typeof BLANK {
+  return {
+    ...BLANK,
+    po_type: (po.po_type ?? '') as PoType | '',
+    category: (po.category ?? 'fg') as PoCategory,
+    product_code: po.product_code ?? '',
+    vendor_code: po.vendor_code ?? '',
+    vendor_name: po.vendor_name ?? '',
+    tna_sheet_url: po.tna_sheet_url ?? '',
+    cost_sheet_url: po.cost_sheet_url ?? '',
+    rate: po.rate != null ? String(po.rate) : '',
+    grey_cost: po.grey_cost != null ? String(po.grey_cost) : '',
+    finished_fabric_cost: po.finished_fabric_cost != null ? String(po.finished_fabric_cost) : '',
+    cm_cost: po.cm_cost != null ? String(po.cm_cost) : '',
+    margin_pct: po.margin_pct != null ? String(po.margin_pct) : '',
+    po_qty: po.po_qty != null ? String(po.po_qty) : '',
+    cad_folder_url: po.cad_folder_url ?? '',
+    // The stage days as stored; the dates on the row are what these produced.
+    tna_days_pp_sample: po.tna_days_pp_sample != null ? String(po.tna_days_pp_sample) : '',
+    tna_days_gpt: po.tna_days_gpt != null ? String(po.tna_days_gpt) : '',
+    tna_days_cutting: po.tna_days_cutting != null ? String(po.tna_days_cutting) : '',
+    tna_days_inline_qc: po.tna_days_inline_qc != null ? String(po.tna_days_inline_qc) : '',
+    tna_days_first_delivery: po.tna_days_first_delivery != null ? String(po.tna_days_first_delivery) : '',
+    tna_days_po_closing: po.tna_days_po_closing != null ? String(po.tna_days_po_closing) : '',
+    buying_plan_no: po.buying_plan_no ?? monthStart().slice(0, 7),
+    ad_hoc_reason: po.ad_hoc_reason ?? '',
+  };
+}
+
 /** One labelled part of the raise-a-PO form. The form is long; sections make it read as the
  *  steps people actually think in rather than one wall of fields. Each one folds away —
  *  the first is open so the form still starts with something to fill in.
@@ -178,6 +208,7 @@ export function PoApprovalClient({
   deletedRequests = [],
   deleteRequests = {},
   reviewById = {},
+  initialEditId = null,
 }: {
   pos: PoApproval[];
   cycle: Record<string, PoCycleTime>;
@@ -200,14 +231,17 @@ export function PoApprovalClient({
   deleteRequests?: Record<string, PoDeleteRequest>;
   /** The queue's review item per PO id (submitted / pending_l2 only) — the four panels + lines. */
   reviewById?: Record<string, ApprovalQueueItem>;
+  /** ?edit=<id> — the PO's own page sends people here to edit; the drawer opens on it. */
+  initialEditId?: number | null;
 }) {
   const editable = canEdit(role, 'draft');
-  const [form, setForm] = useState({ ...BLANK });
+  const initialEdit = initialEditId != null ? pos.find((p) => p.id === initialEditId && (p.status === 'draft' || p.status === 'rework')) ?? null : null;
+  const [form, setForm] = useState(() => (initialEdit ? formFromPo(initialEdit) : { ...BLANK }));
   // The page: which POs are listed, the search, the tab, and whether the raise-a-PO drawer is open.
   const [filter, setFilter] = useState<Filter>('mine');
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<'pos' | 'closure' | 'deleted'>('pos');
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(Boolean(initialEdit) && editable);
   // One clock read for the page's "this month" and "older than a week" figures.
   const [now] = useState(() => Date.now());
   const [message, setMessage] = useState<string | null>(null);
@@ -299,32 +333,7 @@ export function PoApprovalClient({
     setError(null);
     setMessage(null);
     setEditing(po);
-    setForm({
-      ...BLANK,
-      po_type: (po.po_type ?? '') as PoType | '',
-      category: (po.category ?? 'fg') as PoCategory,
-      product_code: po.product_code ?? '',
-      vendor_code: po.vendor_code ?? '',
-      vendor_name: po.vendor_name ?? '',
-      tna_sheet_url: po.tna_sheet_url ?? '',
-      cost_sheet_url: po.cost_sheet_url ?? '',
-      rate: po.rate != null ? String(po.rate) : '',
-      grey_cost: po.grey_cost != null ? String(po.grey_cost) : '',
-      finished_fabric_cost: po.finished_fabric_cost != null ? String(po.finished_fabric_cost) : '',
-      cm_cost: po.cm_cost != null ? String(po.cm_cost) : '',
-      margin_pct: po.margin_pct != null ? String(po.margin_pct) : '',
-      po_qty: po.po_qty != null ? String(po.po_qty) : '',
-      cad_folder_url: po.cad_folder_url ?? '',
-      // The stage days as stored; the dates on the row are what these produced.
-      tna_days_pp_sample: po.tna_days_pp_sample != null ? String(po.tna_days_pp_sample) : '',
-      tna_days_gpt: po.tna_days_gpt != null ? String(po.tna_days_gpt) : '',
-      tna_days_cutting: po.tna_days_cutting != null ? String(po.tna_days_cutting) : '',
-      tna_days_inline_qc: po.tna_days_inline_qc != null ? String(po.tna_days_inline_qc) : '',
-      tna_days_first_delivery: po.tna_days_first_delivery != null ? String(po.tna_days_first_delivery) : '',
-      tna_days_po_closing: po.tna_days_po_closing != null ? String(po.tna_days_po_closing) : '',
-      buying_plan_no: po.buying_plan_no ?? monthStart().slice(0, 7),
-      ad_hoc_reason: po.ad_hoc_reason ?? '',
-    });
+    setForm(formFromPo(po));
     setDrawerOpen(true);
   }
 
@@ -364,7 +373,7 @@ export function PoApprovalClient({
   // with a remark, then route it for approval.
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
   // A raised PO stays editable until it is submitted: Edit on its row loads it back here.
-  const [editing, setEditing] = useState<PoApproval | null>(null);
+  const [editing, setEditing] = useState<PoApproval | null>(initialEdit);
   // The latest deletion ask for the request being edited: pending = sitting with the admin,
   // rejected = they said no and it can be asked again.
   const latestDelete = editing ? deleteRequests[String(editing.id)] : undefined;

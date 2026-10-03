@@ -17,7 +17,8 @@ import { PoApprovalClient } from './po-approval-client';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PoApprovalPage() {
+export default async function PoApprovalPage({ searchParams }: { searchParams: Promise<{ edit?: string }> }) {
+  const params = await searchParams;
   let user;
   try {
     user = await currentUser();
@@ -87,6 +88,7 @@ export default async function PoApprovalPage() {
         deletedRequests={deletedRequests}
         deleteRequests={deleteRequests}
         reviewById={reviewById}
+        initialEditId={params.edit ? Number(params.edit) : null}
       />
     </FormLayout>
   );
