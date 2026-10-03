@@ -1470,14 +1470,6 @@ export type PoApproval = {
   finished_fabric_cost: number | null;
   cm_cost: number | null;
   margin_pct: number | null;
-  // The team's sheet columns the request carries verbatim (2026-10-03): the planned pieces
-  // typed up front (po_qty stays the sum of the SKU lines), how an E-FOB PO's fabric is
-  // settled, the fabric sold to the vendor (rate per metre × metres), and free remarks.
-  estimated_qty?: number | null;
-  payment_type?: string | null;
-  fabric_rate?: number | null;
-  fabric_qty?: number | null;
-  remarks?: string | null;
   // Approved above-standard-CM exception (remark mandatory when it applies).
   cm_override_note: string | null;
   cm_override_by: string | null;

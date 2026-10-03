@@ -66,12 +66,6 @@ const BLANK = {
   finished_fabric_cost: '',
   cm_cost: '',
   margin_pct: '',
-  // The sheet's own columns (see the PoApproval type).
-  estimated_qty: '',
-  payment_type: '',
-  fabric_rate: '',
-  fabric_qty: '',
-  remarks: '',
   po_qty: '',
   cad_folder_url: '',
   // Spec 7.3 — the critical path is entered as days from the EasyCom PO issue date.
@@ -145,11 +139,6 @@ function formFromPo(po: PoApproval): typeof BLANK {
     finished_fabric_cost: po.finished_fabric_cost != null ? String(po.finished_fabric_cost) : '',
     cm_cost: po.cm_cost != null ? String(po.cm_cost) : '',
     margin_pct: po.margin_pct != null ? String(po.margin_pct) : '',
-    estimated_qty: po.estimated_qty != null ? String(po.estimated_qty) : '',
-    payment_type: po.payment_type ?? '',
-    fabric_rate: po.fabric_rate != null ? String(po.fabric_rate) : '',
-    fabric_qty: po.fabric_qty != null ? String(po.fabric_qty) : '',
-    remarks: po.remarks ?? '',
     po_qty: po.po_qty != null ? String(po.po_qty) : '',
     cad_folder_url: po.cad_folder_url ?? '',
     // The stage days as stored; the dates on the row are what these produced.
@@ -220,7 +209,6 @@ export function PoApprovalClient({
   productCodes,
   vendorCodes,
   vendorNames = {},
-  weaveByCode = {},
   deboarded = {},
   submissions = [],
   leadtimes,
@@ -239,8 +227,6 @@ export function PoApprovalClient({
   productCodes: string[];
   vendorCodes: string[];
   vendorNames?: Record<string, string>;
-  /** Woven / Knitted per product code, from the product master. */
-  weaveByCode?: Record<string, string>;
   /** Approved de-boardings by upper-cased code — the vendor is flagged, not hidden. */
   deboarded?: Record<string, DeboardedVendor>;
   submissions?: PoSubmissionGroup[];
@@ -530,51 +516,31 @@ export function PoApprovalClient({
   const delivered = pos.filter((p) => p.po_issued_at && p.first_actual_delivery_date && p.critical_path_first_delivery);
   const onTime = delivered.filter((p) => (p.first_actual_delivery_date as string) <= (p.critical_path_first_delivery as string)).length;
 
-  // What the approver will see — the live figures on the form in the drawer. The sheet's
-  // flow: pieces × rate = total buying cost; for an E-FOB PO the fabric sold to the vendor
-  // (rate per metre × metres) is the fabric sale value, and the total amount is the buying
-  // cost less that sale. ❓ the net-of-fabric rule is an assumption until the team confirms.
-  const linesQty = editing ? Number(editing.po_qty || 0) : 0;
-  const estQty = Number(form.estimated_qty) || 0;
-  const draftQty = linesQty || estQty;
-  const qtyBasis = linesQty ? 'SKU lines' : estQty ? 'estimated' : null;
+  // What the approver will see — the live verdicts on the form in the drawer.
+  const draftQty = editing ? Number(editing.po_qty || 0) : 0;
   const draftRate = Number(form.rate) || 0;
   const draftCm = Number(form.cm_cost) || 0;
-  const totalBuying = draftQty && draftRate ? draftQty * draftRate : 0;
-  const fabricRate = Number(form.fabric_rate) || 0;
-  const fabricQty = Number(form.fabric_qty) || 0;
-  const fabricSale = fabricRate && fabricQty ? fabricRate * fabricQty : 0;
-  const isEfob = form.po_type === 'efob';
-  const totalAmount = totalBuying - (isEfob ? fabricSale : 0);
   const cmAbove = draftCm > 0 && stdCmForProduct != null && draftCm > stdCmForProduct + 0.005;
   const tnaFilled = TNA_DAY_FIELDS.filter((f) => form[f.key] !== '').length;
   const route = routeApproval('po_approval', draftQty, form.category);
-  const weave = form.product_code.trim() ? weaveByCode[form.product_code.trim().toUpperCase()] ?? null : null;
-  const poTypeLabel = form.po_type === 'job_work' ? 'Job Work' : form.po_type === 'efob' ? 'E-FOB' : form.po_type;
   // What each step of the form still needs — the chip on its header, live as you type.
-  const stepStatus: Record<'order' | 'docs' | 'cost' | 'tna' | 'plan', StepStatus> = (() => {
+  const stepStatus: Record<'order' | 'cost' | 'tna' | 'plan', StepStatus> = (() => {
     const orderMissing = [
       !form.product_code.trim() ? 'product' : null,
-      !estQty && !linesQty ? 'estimated qty' : null,
-      !form.vendor_code.trim() ? 'vendor' : null,
       !form.po_type ? 'PO type' : null,
+      !form.vendor_code.trim() ? 'vendor' : null,
     ].filter(Boolean) as string[];
     const order: StepStatus = orderMissing.length
       ? { tone: 'none', label: `Needs ${orderMissing.join(', ')}` }
-      : { tone: 'ok', label: `${form.product_code.trim().toUpperCase()} · ${nfmt(draftQty)} pcs · ${form.vendor_code.trim().toUpperCase()} · ${poTypeLabel}` };
-    const docs: StepStatus = !form.cost_sheet_url.trim()
-      ? { tone: 'none', label: 'Needs the cost sheet link' }
-      : !form.tna_sheet_url.trim()
-        ? { tone: 'warn', label: 'Cost sheet linked · TNA link missing' }
-        : { tone: 'ok', label: 'Cost sheet and TNA linked' };
+      : { tone: 'ok', label: `${form.product_code.trim().toUpperCase()} · ${form.po_type === 'job_work' ? 'Job Work' : form.po_type === 'efob' ? 'E-FOB' : form.po_type} · ${form.vendor_code.trim().toUpperCase()}` };
     const cost: StepStatus = !draftRate
       ? { tone: 'none', label: 'Needs the rate' }
       : cmAbove
-        ? { tone: 'warn', label: `${inr(totalAmount)} · CMTP above standard` }
-        : { tone: 'ok', label: totalBuying ? `${inr(totalAmount)} total` : `₹${nfmt(draftRate)} / pc` };
+        ? { tone: 'warn', label: `₹${nfmt(draftRate)} / pc · CMTP above standard` }
+        : { tone: 'ok', label: `₹${nfmt(draftRate)} / pc${draftCm ? ` · CMTP ₹${nfmt(draftCm)}` : ''}` };
     const tna: StepStatus =
       tnaFilled === TNA_DAY_FIELDS.length
-        ? { tone: 'ok', label: `${form.tna_days_first_delivery} d to first delivery · closes in ${form.tna_days_po_closing} d` }
+        ? { tone: 'ok', label: `${form.tna_days_first_delivery} d to first delivery` }
         : tnaFilled
           ? { tone: 'warn', label: `${tnaFilled} of ${TNA_DAY_FIELDS.length} stages set` }
           : { tone: 'none', label: 'Needs the stage days' };
@@ -585,7 +551,7 @@ export function PoApprovalClient({
         : membership && membership.inPlan
           ? { tone: 'ok', label: `In the ${monthLabel(membership.planMonth)} plan` }
           : { tone: 'ok', label: /^\d{4}-\d{2}$/.test(form.buying_plan_no) ? `${monthLabel(`${form.buying_plan_no}-01`)} plan` : form.buying_plan_no };
-    return { order, docs, cost, tna, plan };
+    return { order, cost, tna, plan };
   })();
 
   return (
@@ -830,9 +796,34 @@ export function PoApprovalClient({
             title="Order"
             status={stepStatus.order}
             defaultOpen
-            hint="Product, estimated pieces, vendor and PO type — the same order as the team's sheet. Category and PO type decide how it is approved."
+            hint="What is being bought, and from whom. Category and PO type decide how it is approved and how long it takes."
           >
-            <Field label="Product code" hint={weave ? `${weave} · from the product master` : 'from the Standard Cost list'}>
+            <Field label="Category" hint={activeCat?.hint}>
+              <select
+                value={form.category}
+                onChange={(e) => set('category', e.target.value)}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="PO type">
+              <select
+                value={form.po_type}
+                onChange={(e) => set('po_type', e.target.value)}
+              >
+                <option value="">Select…</option>
+                {PO_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Product code">
               <input
                 list="po-product-codes"
                 value={form.product_code}
@@ -845,14 +836,11 @@ export function PoApprovalClient({
                 ))}
               </datalist>
             </Field>
-            <Field label="Estimated qty" hint={linesQty ? `the SKU lines total ${nfmt(linesQty)} pcs — that is the PO quantity` : 'planned pieces — the PO quantity becomes the sum of the SKU lines once they are entered'}>
-              <input
-                type="number"
-                min={0}
-                value={form.estimated_qty}
-                placeholder="e.g. 600"
-                onChange={(e) => set('estimated_qty', e.target.value)}
-              />
+            <Field
+              label="Request ID"
+              hint={editing ? 'Assigned when this request was saved' : 'Assigned when you save — the EasyCom PO number is linked to it at issuance'}
+            >
+              <input value={editing ? editing.request_id : 'Assigned on save'} disabled readOnly className="wf-fixed-value" />
             </Field>
             <Field
               label="Vendor code"
@@ -882,6 +870,7 @@ export function PoApprovalClient({
                   Raise a PO to them only if it is a deliberately agreed last order.
                 </Notice>
               )}
+              {/* Spec 7.8 — what this vendor has actually taken, PO by PO, before you commit. */}
               {form.vendor_code.trim() && (
                 <VendorHistoryButton
                   vendorCode={form.vendor_code}
@@ -905,53 +894,14 @@ export function PoApprovalClient({
                   ))}
               </datalist>
             </Field>
-            <Field label="PO type">
-              <select
-                value={form.po_type}
-                onChange={(e) => set('po_type', e.target.value)}
-              >
-                <option value="">Select…</option>
-                {PO_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Category" hint={activeCat?.hint}>
-              <select
-                value={form.category}
-                onChange={(e) => set('category', e.target.value)}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Woven / Knitted" hint="from the product master — not typed here">
-              <input value={weave ?? (form.product_code.trim() ? 'not in the product master' : '')} placeholder="follows the product" disabled readOnly className="wf-fixed-value" />
-            </Field>
-            <Field
-              label="Request"
-              hint={editing ? 'The request this is — its page carries the approval and everything after it' : 'Assigned when you save — the EasyCom PO number is linked to it at issuance'}
-            >
-              {editing ? (
-                <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/po-approval/${editing.id}`} target="_blank" rel="noreferrer">
-                  {editing.request_id} · {STATUS_LABEL[editing.status]} ↗
-                </a>
-              ) : (
-                <input value="Assigned on save" disabled readOnly className="wf-fixed-value" />
-              )}
-            </Field>
           </FormSection>
 
           <FormSection
             step={2}
-            title="Documents"
-            status={stepStatus.docs}
-            hint="The cost sheet and the TNA sheet this PO was agreed on. Read the cost sheet in and the cost figures fill themselves."
+            title="Cost"
+            status={stepStatus.cost}
+            defaultOpen={Boolean(editing) && stepStatus.order.tone === 'ok'}
+            hint="Start with the cost sheet — read it in and the figures below fill themselves. Per piece: the rate is checked against the approved Standard Cost when you submit, CMTP is what the vendor controls, grey and fabric are commodity."
           >
             <Field
               label="Cost sheet link"
@@ -974,22 +924,9 @@ export function PoApprovalClient({
                 </button>
               </div>
             </Field>
-            <Field label="TNA sheet link" hint="Google Drive">
-              <input
-                value={form.tna_sheet_url}
-                placeholder="https://…"
-                onChange={(e) => set('tna_sheet_url', e.target.value)}
-              />
-            </Field>
-            {form.po_type === 'FOB' && (
-              <Field label="CAD file folder link" hint="FOB POs only">
-                <input
-                  value={form.cad_folder_url}
-                  placeholder="https://…"
-                  onChange={(e) => set('cad_folder_url', e.target.value)}
-                />
-              </Field>
-            )}
+
+            {/* The figures are only ever suggested: what was taken, and from where, is
+                spelled out so it can be checked against the sheet in one glance. */}
             <div style={{ gridColumn: '1 / -1' }}>
               {sheetRead && (
                 <Notice tone={sheetRead.warnings.length ? 'warn' : 'ok'}>
@@ -1005,11 +942,12 @@ export function PoApprovalClient({
                   ]
                     .filter(Boolean)
                     .join(' · ') || 'nothing could be read'}
-                  . Check them in the Cost step and change anything that is wrong.
+                  . Check them against the sheet and change anything that is wrong.
                   {sheetRead.paymentTermsDays != null && (
                     <>
                       {' '}
-                      The sheet also says <strong>payment terms {sheetRead.paymentTermsDays} days</strong>.
+                      The sheet also says <strong>payment terms {sheetRead.paymentTermsDays} days</strong>, which this
+                      form does not hold.
                     </>
                   )}
                   {sheetRead.warnings.length > 0 && <> {sheetRead.warnings.join(' ')}</>}
@@ -1048,16 +986,7 @@ export function PoApprovalClient({
                 </button>
               )}
             </div>
-          </FormSection>
-
-          <FormSection
-            step={3}
-            title="Cost"
-            status={stepStatus.cost}
-            defaultOpen={Boolean(editing) && stepStatus.order.tone === 'ok'}
-            hint="Per piece first — the rate is checked against the approved Standard Cost when you submit, CMTP is what the vendor controls, grey and fabric are commodity — then the totals, and for E-FOB the fabric sold to the vendor."
-          >
-            <Field label="Rate (per piece)" hint="filled with the cost sheet — required to submit">
+            <Field label="Rate" hint="filled with the cost sheet — required to submit">
               <input
                 type="number"
                 min={0}
@@ -1065,9 +994,6 @@ export function PoApprovalClient({
                 placeholder="e.g. 265"
                 onChange={(e) => set('rate', e.target.value)}
               />
-            </Field>
-            <Field label="Total buying cost" hint={qtyBasis ? `rate × ${nfmt(draftQty)} pcs (${qtyBasis})` : 'rate × pieces — needs the estimated qty or SKU lines'}>
-              <input value={totalBuying ? inr(totalBuying) : ''} placeholder="follows rate × pieces" disabled readOnly className="wf-fixed-value" />
             </Field>
             <Field
               label="CMTP cost (this PO)"
@@ -1097,15 +1023,6 @@ export function PoApprovalClient({
                 )}
               </div>
             </Field>
-            <Field label="Margin %" hint="optional">
-              <input
-                type="number"
-                min={0}
-                value={form.margin_pct}
-                placeholder="e.g. 5"
-                onChange={(e) => set('margin_pct', e.target.value)}
-              />
-            </Field>
             <Field label="Grey cost (this PO)" hint="commodity — informational, not gated">
               <input
                 type="number"
@@ -1115,7 +1032,7 @@ export function PoApprovalClient({
                 onChange={(e) => set('grey_cost', e.target.value)}
               />
             </Field>
-            <Field label="Finished fabric cost (this PO)" hint="per piece · commodity — informational">
+            <Field label="Finished fabric cost (this PO)" hint="commodity — informational">
               <input
                 type="number"
                 min={0}
@@ -1124,48 +1041,22 @@ export function PoApprovalClient({
                 onChange={(e) => set('finished_fabric_cost', e.target.value)}
               />
             </Field>
-            {(isEfob || form.payment_type || form.fabric_rate || form.fabric_qty) && (
-              <>
-                <Field label="E-FOB payment type" hint="how the fabric is settled with the vendor, as agreed">
-                  <input
-                    value={form.payment_type}
-                    placeholder="as on the cost sheet"
-                    onChange={(e) => set('payment_type', e.target.value)}
-                  />
-                </Field>
-                <Field label="Fabric rate" hint="per metre, sold to the vendor">
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.fabric_rate}
-                    placeholder="e.g. 210"
-                    onChange={(e) => set('fabric_rate', e.target.value)}
-                  />
-                </Field>
-                <Field label="Fabric qty" hint="metres sold to the vendor">
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.fabric_qty}
-                    placeholder="e.g. 1,200"
-                    onChange={(e) => set('fabric_qty', e.target.value)}
-                  />
-                </Field>
-                <Field label="Fabric sale value" hint="fabric rate × fabric qty">
-                  <input value={fabricSale ? inr(fabricSale) : ''} placeholder="follows rate × metres" disabled readOnly className="wf-fixed-value" />
-                </Field>
-              </>
-            )}
-            <Field label="Total amount" hint={isEfob && fabricSale ? 'total buying cost less the fabric sold to the vendor' : 'the total buying cost'}>
-              <input value={totalBuying ? inr(totalAmount) : ''} placeholder="follows the totals above" disabled readOnly className="wf-fixed-value" />
+            <Field label="Margin %" hint="optional">
+              <input
+                type="number"
+                min={0}
+                value={form.margin_pct}
+                placeholder="e.g. 5"
+                onChange={(e) => set('margin_pct', e.target.value)}
+              />
             </Field>
           </FormSection>
 
           <FormSection
-            step={4}
+            step={3}
             title="Timeline (TNA)"
             status={stepStatus.tna}
-            hint="Days, not dates. Nothing can start before the PO exists in EasyCom, so every stage is counted from the day it is created there — PO closing included — and the dates follow, however late the PO issues."
+            hint="Days, not dates. Nothing can start before the PO exists in EasyCom, so every stage is counted from the day it is created there — fill these once and the dates follow, however late the PO issues."
           >
             <div style={{ gridColumn: '1 / -1' }}>
               <Notice tone={tnaBase.source === 'issued' ? 'ok' : 'info'}>
@@ -1184,7 +1075,7 @@ export function PoApprovalClient({
             {TNA_DAY_FIELDS.map((f) => (
               <Field
                 key={f.key}
-                label={f.key === 'tna_days_po_closing' ? 'PO closure date' : f.label}
+                label={f.label}
                 hint={
                   form[f.key]
                     ? `${dayLabel(addTnaDays(tnaBase.date, Number(form[f.key])))}${
@@ -1218,13 +1109,29 @@ export function PoApprovalClient({
                 <CalendarCheck size={13} /> Use the standard lead times
               </button>
             </div>
+            <Field label="TNA sheet link" hint="Google Drive">
+              <input
+                value={form.tna_sheet_url}
+                placeholder="https://…"
+                onChange={(e) => set('tna_sheet_url', e.target.value)}
+              />
+            </Field>
+            {form.po_type === 'FOB' && (
+              <Field label="CAD file folder link" hint="FOB POs only">
+                <input
+                  value={form.cad_folder_url}
+                  placeholder="https://…"
+                  onChange={(e) => set('cad_folder_url', e.target.value)}
+                />
+              </Field>
+            )}
           </FormSection>
 
           <FormSection
-            step={5}
-            title="Plan & remarks"
+            step={4}
+            title="Plan & quantity"
             status={stepStatus.plan}
-            hint="Which month's plan this draws on, and anything the approver should know. The EasyCom PO number comes after approval, on the request's card."
+            hint="Which month's plan this draws on. The quantity is the sum of the SKU lines — add them on the row after saving."
           >
             <Field label="Buying plan month" hint="The plan this PO draws on — closed months are locked">
               <select value={form.buying_plan_no} onChange={(e) => set('buying_plan_no', e.target.value)}>
@@ -1237,6 +1144,7 @@ export function PoApprovalClient({
                     </option>
                   );
                 })}
+                {/* A legacy free-text reference, or a closed month, stays visible so the row still reads correctly. */}
                 {form.buying_plan_no && !/^\d{4}-\d{2}$/.test(form.buying_plan_no) && (
                   <option value={form.buying_plan_no}>{form.buying_plan_no} (legacy reference)</option>
                 )}
@@ -1245,9 +1153,11 @@ export function PoApprovalClient({
                 )}
               </select>
             </Field>
-            <Field label="PO quantity" hint={linesQty ? 'the sum of the SKU lines' : 'becomes the sum of the SKU lines, entered on the request after saving'}>
-              <input value={linesQty ? `${nfmt(linesQty)} pcs` : estQty ? `est. ${nfmt(estQty)} pcs` : ''} placeholder="from the SKU lines" readOnly disabled className="wf-fixed-value" />
+            <Field label="PO quantity" hint="= sum of size lines (add them on the row after saving)">
+              <input type="number" value={form.po_qty} readOnly disabled />
             </Field>
+
+            {/* Spec item 6 — plan membership is shown, never enforced. */}
             {form.product_code.trim() && membership && (
               <div style={{ gridColumn: '1 / -1' }}>
                 {membership.inPlan ? (
@@ -1299,17 +1209,6 @@ export function PoApprovalClient({
                 )}
               </div>
             )}
-            <div style={{ gridColumn: '1 / -1' }}>
-              <Field label="Remarks" hint="anything the approver should know — travels with the request">
-                <textarea
-                  className="wf-textarea"
-                  rows={2}
-                  value={form.remarks}
-                  placeholder="e.g. repeat of last season's run, vendor asked for a 10-day extension"
-                  onChange={(e) => set('remarks', e.target.value)}
-                />
-              </Field>
-            </div>
           </FormSection>
           <div className="wf-footer-actions">
             <p className="wf-footer-note">
@@ -1337,15 +1236,13 @@ export function PoApprovalClient({
                 <div className="panel">
                   <div className="panel-title"><h3>What the approver will see</h3></div>
                   <div className="panel-body">
-                    {totalBuying ? (
-                      <div className="big">{inr(totalAmount)}</div>
+                    {draftQty && draftRate ? (
+                      <div className="big">{inr(draftQty * draftRate)}</div>
                     ) : (
-                      <p className="quiet">The total appears once the rate and the pieces are in.</p>
+                      <p className="quiet">The value appears once the rate and the SKU lines are in.</p>
                     )}
-                    <div className="line"><span>Pieces</span><span>{draftQty ? `${nfmt(draftQty)}${qtyBasis === 'estimated' ? ' est.' : ''}` : 'not yet'}</span></div>
+                    <div className="line"><span>Pieces</span><span>{draftQty ? nfmt(draftQty) : 'after saving'}</span></div>
                     <div className="line"><span>Rate per piece</span><span>{draftRate ? `₹${nfmt(draftRate)}` : 'not yet'}</span></div>
-                    <div className="line"><span>Total buying cost</span><span>{totalBuying ? inr(totalBuying) : '—'}</span></div>
-                    {isEfob && <div className="line"><span>Fabric sale value</span><span>{fabricSale ? inr(fabricSale) : '—'}</span></div>}
                     <div className="line"><span>CMTP vs standard</span><span>{draftCm ? `₹${nfmt(draftCm)}` : '—'}{stdCmForProduct != null ? ` vs ₹${nfmt(stdCmForProduct)}` : ''}</span></div>
                     <div className="line"><span>Vendor in process</span><span>{liveLoad != null ? `${nfmt(liveLoad)} pcs` : form.vendor_code ? 'no open POs' : '—'}</span></div>
                     <div className="line"><span>TNA stages filled</span><span>{tnaFilled} of {TNA_DAY_FIELDS.length}</span></div>
