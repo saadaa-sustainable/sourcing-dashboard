@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Search, Send, Trash2, X } from 'lucide-react';
 import {
   checkPlanMembership,
   deletePoApproval,
@@ -24,6 +24,7 @@ import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import { PoCard, poFlag } from './po-card';
+import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
 import type {
   ApprovalQueueItem,
@@ -158,45 +159,57 @@ function formFromPo(po: PoApproval): typeof BLANK {
  *  the first is open so the form still starts with something to fill in.
  *  The fields stay mounted while folded, so a collapsed section keeps whatever is typed in it. */
 type StepStatus = { tone: 'ok' | 'warn' | 'none'; label: string };
+type StepKey = 'order' | 'cost' | 'tna' | 'plan' | 'lines';
+const STEP_ORDER: StepKey[] = ['order', 'cost', 'tna', 'plan', 'lines'];
 
+/** The tab strip across the top of the form: one numbered tab per step, with what it still needs. */
+function StepTabs({
+  steps,
+  active,
+  onSelect,
+}: {
+  steps: { key: StepKey; n: number; title: string; status?: StepStatus; disabled?: boolean; disabledWhy?: string }[];
+  active: StepKey;
+  onSelect: (k: StepKey) => void;
+}) {
+  return (
+    <div className="poa-steptabs" role="tablist" aria-label="Raise a PO — steps">
+      {steps.map((st) => (
+        <button
+          key={st.key}
+          type="button"
+          role="tab"
+          aria-selected={active === st.key}
+          className={`poa-steptab${active === st.key ? ' is-active' : ''}${st.status ? ` is-${st.status.tone}` : ''}`}
+          onClick={() => onSelect(st.key)}
+          disabled={st.disabled}
+          title={st.disabled ? st.disabledWhy : st.status?.label}
+        >
+          <span className="poa-step-no" aria-hidden="true">{st.status?.tone === 'ok' ? '✓' : st.n}</span>
+          <span className="poa-steptab-text">
+            <span className="wf-form-section-title">{st.title}</span>
+            {st.status && <span className={`poa-step-status is-${st.status.tone}`}>{st.status.label}</span>}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One step's fields. Only the active step is shown; the others stay mounted so nothing typed is lost. */
 function FormSection({
-  step,
-  title,
+  active,
   hint,
-  status,
-  defaultOpen = false,
   children,
 }: {
-  /** 1-based position in the form — the number on the badge. */
-  step: number;
-  title: string;
+  active: boolean;
   hint?: string;
-  /** What this step still needs, or that it is done — the chip on the right. */
-  status?: StepStatus;
-  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className={`wf-form-section poa-step${open ? ' is-open' : ''}${status ? ` is-${status.tone}` : ''}`}>
-      {/* A button, not a heading — a heading inside a button is invalid HTML. */}
-      <button
-        type="button"
-        className="wf-form-section-head"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="poa-step-no" aria-hidden="true">{status?.tone === 'ok' ? '✓' : step}</span>
-        <span className="poa-step-text">
-          <span className="wf-form-section-title">{title}</span>
-          {hint && <span className="wf-subtle wf-form-section-hint">{hint}</span>}
-        </span>
-        {status && <span className={`poa-step-status is-${status.tone}`}>{status.label}</span>}
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-      </button>
-      <div className="wf-form-grid" hidden={!open}>
-        {children}
-      </div>
+    <section className="poa-steppanel" role="tabpanel" hidden={!active}>
+      {hint && <p className="wf-subtle poa-steppanel-hint">{hint}</p>}
+      <div className="wf-form-grid">{children}</div>
     </section>
   );
 }
@@ -252,6 +265,10 @@ export function PoApprovalClient({
   const [q, setQ] = useState('');
   const [tab, setTab] = useState<'pos' | 'closure' | 'deleted'>('pos');
   const [drawerOpen, setDrawerOpen] = useState(Boolean(initialEdit) && editable);
+  // Which step of the form is showing, and the draft a first save created (so later saves
+  // update it and the SKU step can open on it before the list has refreshed).
+  const [activeStep, setActiveStep] = useState<StepKey>('order');
+  const [draftId, setDraftId] = useState<number | null>(null);
   // One clock read for the page's "this month" and "older than a week" figures.
   const [now] = useState(() => Date.now());
   const [message, setMessage] = useState<string | null>(null);
@@ -333,8 +350,10 @@ export function PoApprovalClient({
     const p = new FormData();
     Object.entries(form).forEach(([k, v]) => p.set(k, v));
     // With an id the server updates that request (draft / rework only) instead of raising
-    // another one — same validation either way.
-    if (editing) p.set('id', String(editing.id));
+    // another one — same validation either way. `editing` is declared below; by the time
+    // this runs (a click) it is set.
+    const id = editing?.id ?? draftId;
+    if (id != null) p.set('id', String(id));
     return p;
   };
 
@@ -344,11 +363,15 @@ export function PoApprovalClient({
     setMessage(null);
     setEditing(po);
     setForm(formFromPo(po));
+    setDraftId(null);
+    setActiveStep('order');
     setDrawerOpen(true);
   }
 
   function cancelEdit() {
     setEditing(null);
+    setDraftId(null);
+    setActiveStep('order');
     setForm({ ...BLANK });
     setError(null);
     setMessage(null);
@@ -384,6 +407,8 @@ export function PoApprovalClient({
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
   // A raised PO stays editable until it is submitted: Edit on its row loads it back here.
   const [editing, setEditing] = useState<PoApproval | null>(initialEdit);
+  // The request this form is about: the one being edited, or the draft the first save made.
+  const current: PoApproval | null = editing ?? (draftId != null ? pos.find((p) => p.id === draftId) ?? null : null);
   // The latest deletion ask for the request being edited: pending = sitting with the admin,
   // rejected = they said no and it can be asked again.
   const latestDelete = editing ? deleteRequests[String(editing.id)] : undefined;
@@ -394,7 +419,19 @@ export function PoApprovalClient({
   const declinedDelete = latestDelete?.status === 'rejected' ? latestDelete : null;
   // What the stage dates are counted from: the EasyCom issue date once the PO exists
   // there, otherwise today — the honest "if it issued now" projection.
-  const tnaBase = tnaBaseFor({ po_issued_at: editing?.po_issued_at ?? null });
+  const tnaBase = tnaBaseFor({ po_issued_at: current?.po_issued_at ?? null });
+  /** Save this step and move to the next tab. The first save creates the draft (Request ID). */
+  function saveAndNext(next: StepKey) {
+    setError(null);
+    setMessage(null);
+    start(async () => {
+      const saved = await savePoApproval(buildPayload());
+      if (!saved.ok) return setError(toastError(saved.error));
+      if (!editing && saved.id) setDraftId(saved.id);
+      setActiveStep(next);
+      reloadWithToast(saved.message ?? 'Saved.');
+    });
+  }
   function run(submitAfter: boolean) {
     setError(null);
     setMessage(null);
@@ -517,12 +554,13 @@ export function PoApprovalClient({
   const onTime = delivered.filter((p) => (p.first_actual_delivery_date as string) <= (p.critical_path_first_delivery as string)).length;
 
   // What the approver will see — the live verdicts on the form in the drawer.
-  const draftQty = editing ? Number(editing.po_qty || 0) : 0;
+  const draftQty = current ? Number(current.po_qty || 0) : 0;
   const draftRate = Number(form.rate) || 0;
   const draftCm = Number(form.cm_cost) || 0;
   const cmAbove = draftCm > 0 && stdCmForProduct != null && draftCm > stdCmForProduct + 0.005;
   const tnaFilled = TNA_DAY_FIELDS.filter((f) => form[f.key] !== '').length;
   const route = routeApproval('po_approval', draftQty, form.category);
+  const currentLines = current ? linesByPo[String(current.id)] ?? [] : [];
   // What each step of the form still needs — the chip on its header, live as you type.
   const stepStatus: Record<'order' | 'cost' | 'tna' | 'plan', StepStatus> = (() => {
     const orderMissing = [
@@ -590,7 +628,7 @@ export function PoApprovalClient({
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
         </label>
         {editable && (
-          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setDrawerOpen(true); }}>
+          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); }}>
             <Plus size={14} /> Raise a PO
           </button>
         )}
@@ -725,8 +763,8 @@ export function PoApprovalClient({
           <div className="poa-scrim" onClick={cancelEdit} />
           <div className="poa-drawer" role="dialog" aria-label={editing ? `Edit ${editing.request_id}` : 'Raise a PO'}>
             <div className="poa-drawer-head">
-              <h2>{editing ? `Edit ${editing.request_id}` : 'Raise a PO'}</h2>
-              <span className="wf-subtle">{editing ? 'Saving updates this request; it stays editable until it is submitted.' : 'Save the draft to get a Request ID, then add SKU quantities on its card and submit from there.'}</span>
+              <h2>{current ? `${editing ? 'Edit' : 'Raise'} ${current.request_id}` : 'Raise a PO'}</h2>
+              <span className="wf-subtle">Five steps — each Save &amp; continue saves what is filled and opens the next.</span>
               <div className="spacer" />
               <button type="button" className="wf-btn wf-btn-sm" onClick={cancelEdit} disabled={pending}>
                 <X size={14} /> Close
@@ -791,11 +829,30 @@ export function PoApprovalClient({
               something has changed.
             </Notice>
           )}
+          <StepTabs
+            active={activeStep}
+            onSelect={setActiveStep}
+            steps={[
+              { key: 'order', n: 1, title: 'Order', status: stepStatus.order },
+              { key: 'cost', n: 2, title: 'Cost', status: stepStatus.cost },
+              { key: 'tna', n: 3, title: 'Timeline (TNA)', status: stepStatus.tna },
+              { key: 'plan', n: 4, title: 'Plan', status: stepStatus.plan },
+              {
+                key: 'lines',
+                n: 5,
+                title: 'SKU quantities',
+                status: current
+                  ? currentLines.length
+                    ? { tone: 'ok', label: `${currentLines.length} lines · ${nfmt(Number(current.po_qty || 0))} pcs` }
+                    : { tone: 'none', label: 'None yet' }
+                  : { tone: 'none', label: 'After the first save' },
+                disabled: !current,
+                disabledWhy: 'Save the order first — the quantities go on the request once it exists.',
+              },
+            ]}
+          />
           <FormSection
-            step={1}
-            title="Order"
-            status={stepStatus.order}
-            defaultOpen
+            active={activeStep === 'order'}
             hint="What is being bought, and from whom. Category and PO type decide how it is approved and how long it takes."
           >
             <Field label="Category" hint={activeCat?.hint}>
@@ -838,9 +895,9 @@ export function PoApprovalClient({
             </Field>
             <Field
               label="Request ID"
-              hint={editing ? 'Assigned when this request was saved' : 'Assigned when you save — the EasyCom PO number is linked to it at issuance'}
+              hint={current ? 'Assigned when this request was saved' : 'Assigned when you save — the EasyCom PO number is linked to it at issuance'}
             >
-              <input value={editing ? editing.request_id : 'Assigned on save'} disabled readOnly className="wf-fixed-value" />
+              <input value={current ? current.request_id : 'Assigned on save'} disabled readOnly className="wf-fixed-value" />
             </Field>
             <Field
               label="Vendor code"
@@ -897,10 +954,7 @@ export function PoApprovalClient({
           </FormSection>
 
           <FormSection
-            step={2}
-            title="Cost"
-            status={stepStatus.cost}
-            defaultOpen={Boolean(editing) && stepStatus.order.tone === 'ok'}
+            active={activeStep === 'cost'}
             hint="Start with the cost sheet — read it in and the figures below fill themselves. Per piece: the rate is checked against the approved Standard Cost when you submit, CMTP is what the vendor controls, grey and fabric are commodity."
           >
             <Field
@@ -1053,9 +1107,7 @@ export function PoApprovalClient({
           </FormSection>
 
           <FormSection
-            step={3}
-            title="Timeline (TNA)"
-            status={stepStatus.tna}
+            active={activeStep === 'tna'}
             hint="Days, not dates. Nothing can start before the PO exists in EasyCom, so every stage is counted from the day it is created there — fill these once and the dates follow, however late the PO issues."
           >
             <div style={{ gridColumn: '1 / -1' }}>
@@ -1128,9 +1180,7 @@ export function PoApprovalClient({
           </FormSection>
 
           <FormSection
-            step={4}
-            title="Plan & quantity"
-            status={stepStatus.plan}
+            active={activeStep === 'plan'}
             hint="Which month's plan this draws on. The quantity is the sum of the SKU lines — add them on the row after saving."
           >
             <Field label="Buying plan month" hint="The plan this PO draws on — closed months are locked">
@@ -1210,25 +1260,74 @@ export function PoApprovalClient({
               </div>
             )}
           </FormSection>
+          {activeStep === 'lines' && (
+            <section className="poa-steppanel" role="tabpanel">
+              {current ? (
+                <>
+                  <p className="wf-subtle poa-steppanel-hint">
+                    Paste the team’s sheet or fill the size matrix. The PO quantity is the sum of these lines; submit once they are saved.
+                  </p>
+                  <PoLinesPanel
+                    key={current.id}
+                    poId={current.id}
+                    poRef={current.po_ref_num ?? current.request_id}
+                    productCode={form.product_code.trim() || current.product_code}
+                    lines={currentLines}
+                    editable={current.status === 'draft' || current.status === 'rework'}
+                    onSaved={() => reloadWithToast()}
+                    onClose={() => setActiveStep('plan')}
+                  />
+                </>
+              ) : (
+                <p className="wf-subtle poa-steppanel-hint">Save the order first — the quantities go on the request once it exists.</p>
+              )}
+            </section>
+          )}
           <div className="wf-footer-actions">
             <p className="wf-footer-note">
-              {editing
-                ? 'Saving updates this request. It stays editable until it is submitted.'
-                : 'Step 1 is enough to save. The draft gets its Request ID; the SKU quantities go on its card, then Submit for approval.'}
+              {activeStep === 'lines'
+                ? currentLines.length
+                  ? 'Lines saved. Submit runs the three checks (rate vs standard, vendor load, TNA against the vendor’s history) and routes it by value.'
+                  : 'Save the lines above, then submit.'
+                : current
+                  ? `Saving updates ${current.request_id}. It stays editable until it is submitted.`
+                  : 'Save & continue creates the draft and gives it its Request ID; every later save updates it.'}
             </p>
-            {editing && (
-              <button type="button" className="wf-btn wf-btn-ghost" onClick={cancelEdit} disabled={pending}>
-                Cancel
+            {STEP_ORDER.indexOf(activeStep) > 0 && (
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setActiveStep(STEP_ORDER[STEP_ORDER.indexOf(activeStep) - 1])} disabled={pending}>
+                ← Back
               </button>
             )}
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary"
-              onClick={() => run(false)}
-              disabled={pending || !form.product_code}
-            >
-              <Save size={15} /> {pending ? 'Working…' : editing ? 'Save changes' : 'Save draft'}
-            </button>
+            {activeStep !== 'lines' ? (
+              <>
+                <button type="button" className="wf-btn wf-btn-ghost" onClick={() => run(false)} disabled={pending || !form.product_code} title="Save and close the form">
+                  <Save size={15} /> Save &amp; close
+                </button>
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary"
+                  onClick={() => saveAndNext(STEP_ORDER[STEP_ORDER.indexOf(activeStep) + 1])}
+                  disabled={pending || !form.product_code}
+                >
+                  {pending ? 'Working…' : activeStep === 'plan' ? 'Save & add SKU quantities →' : 'Save & continue →'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="wf-btn wf-btn-ghost" onClick={cancelEdit} disabled={pending}>
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-primary"
+                  onClick={() => run(true)}
+                  disabled={pending || !current || !currentLines.length}
+                  title={currentLines.length ? 'Run the three checks and submit' : 'Save the SKU lines first'}
+                >
+                  <Send size={15} /> {pending ? 'Working…' : 'Submit for approval'}
+                </button>
+              </>
+            )}
           </div>
         </div>
               </div>

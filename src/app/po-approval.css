@@ -216,3 +216,23 @@ body.poa-drawer-open { overflow: hidden; }
 .poa-drawer .wf-footer-note { font-size: 12px; color: var(--ink-2, #4a4f53); }
 .poa-drawer .wf-footer-actions .wf-btn-primary:disabled { opacity: .45; }
 @media (max-width: 720px) { .poa-step .wf-form-section-head { grid-template-columns: 30px minmax(0, 1fr) 16px; } .poa-step-status { display: none; } }
+
+/* the form as tabs */
+.poa-steptabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; background: #ececec; border-radius: 10px; margin-bottom: 12px; }
+.poa-steptab { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; color: #62666a; text-align: left; font: inherit; cursor: pointer; }
+.poa-steptab:hover:not(:disabled) { background: rgba(255,255,255,.6); }
+.poa-steptab:disabled { opacity: .55; cursor: not-allowed; }
+.poa-steptab.is-active { background: #fff; color: #111; box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.poa-steptab:focus-visible { outline: 2px solid var(--accent, #008060); outline-offset: 2px; }
+.poa-steptab .poa-step-no { flex: 0 0 24px; width: 24px; height: 24px; font-size: 11px; }
+.poa-steptab.is-active .poa-step-no { background: var(--ink-1, #202223); color: #fff; }
+.poa-steptab.is-ok .poa-step-no, .poa-steptab.is-active.is-ok .poa-step-no { background: var(--accent, #008060); color: #fff; }
+.poa-steptab-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.poa-steptab .wf-form-section-title { font-size: 11px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.poa-steptab .poa-step-status { font-size: 10px; padding: 1px 7px; max-width: 100%; }
+.poa-steppanel { border: 1px solid var(--line, #e1e3e5); border-radius: 10px; background: #fff; padding: 14px 14px 18px; }
+.poa-steppanel[hidden] { display: none; }
+.poa-steppanel-hint { margin: 0 0 12px; font-size: 12px; max-width: none; }
+.poa-steppanel .wf-form-grid { padding: 0; }
+.poa-drawer .wf-form-panel > .poa-steppanel + .poa-steppanel { margin-top: 0; }
+@media (max-width: 900px) { .poa-steptabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
