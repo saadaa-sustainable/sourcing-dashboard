@@ -108,11 +108,11 @@
 
 /* the raise-a-PO drawer */
 .poa-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; }
-.poa-drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(880px, 100%); background: var(--bg, #f6f6f7); border-left: 1px solid var(--line, #e1e3e5); box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 41; display: flex; flex-direction: column; }
+.poa-drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(1040px, 100%); background: var(--bg, #f6f6f7); border-left: 1px solid var(--line, #e1e3e5); box-shadow: 0 12px 32px rgba(0,0,0,.18); z-index: 41; display: flex; flex-direction: column; }
 .poa-drawer-head { display: flex; align-items: center; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--line, #e1e3e5); background: #fff; }
 .poa-drawer-head h2 { margin: 0; font-size: 16px; font-weight: 680; letter-spacing: -.02em; }
 .poa-drawer-head .spacer { flex: 1; }
-.poa-drawer-body { flex: 1; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; padding: 18px 22px; align-items: start; }
+.poa-drawer-body { flex: 1; overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; padding: 18px 22px; align-items: start; }
 @media (max-width: 900px) { .poa-drawer-body { grid-template-columns: 1fr; } }
 .poa-drawer-body > .panel { margin: 0; }
 .poa-summary { position: sticky; top: 0; }
@@ -155,3 +155,25 @@ body.poa-drawer-open { overflow: hidden; }
 .poa-btn-focus { box-shadow: 0 0 0 3px rgba(0,128,96,.25) !important; }
 .poa-body.is-focus-tna .wf-verify-card:nth-child(3) { border: 2px solid var(--accent, #008060); box-shadow: 0 0 0 4px rgba(0,128,96,.10); background: linear-gradient(180deg, var(--accent-soft, #e4f5ef), #fff 30%); scroll-margin-top: 16px; }
 .poa-nextstep-go { margin-top: 10px; text-decoration: none; }
+
+/* The form inside the drawer: two columns whatever the viewport (the media queries on the
+   form grid read the viewport, not the drawer), fields that shrink to their track, and
+   inputs that fill it. */
+.poa-drawer .wf-form-panel { padding: 18px 20px 20px; gap: 16px; }
+.poa-drawer .wf-form-panel > .panel-title { display: none; }
+.poa-drawer .wf-form-grid,
+.poa-drawer .wf-form-grid:has(> :nth-child(5):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; row-gap: 16px; align-items: start; }
+.poa-drawer .wf-form-grid > * { min-width: 0; }
+.poa-drawer .wf-form-grid .field > input,
+.poa-drawer .wf-form-grid .field > select,
+.poa-drawer .wf-form-grid .field > textarea,
+.poa-drawer .wf-form-grid .wf-issue-row > input,
+.poa-drawer .wf-form-grid .wf-issue-row > select,
+.poa-drawer .wf-form-grid .wf-issue-row > textarea { width: 100%; min-width: 0; flex: 1 1 160px; }
+.poa-drawer .wf-form-grid .wf-issue-row { flex-wrap: wrap; }
+.poa-drawer .wf-form-section-head { padding: 14px 0 10px; }
+.poa-drawer .wf-form-section-hint { max-width: none; }
+.poa-drawer .wf-field span small, .poa-drawer .field > span small { white-space: normal; }
+.poa-drawer .wf-footer-actions { flex-wrap: wrap; }
+.poa-summary .line span:last-child { white-space: normal; max-width: 58%; }
+.poa-summary .quiet { font-size: 12px; color: var(--ink-3, #6d7175); margin: 0; }

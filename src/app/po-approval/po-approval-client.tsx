@@ -1187,9 +1187,13 @@ export function PoApprovalClient({
                 <div className="panel">
                   <div className="panel-title"><h3>What the approver will see</h3></div>
                   <div className="panel-body">
-                    <div className="big">{draftQty && draftRate ? inr(draftQty * draftRate) : '—'}</div>
-                    <div className="line"><span>Pieces</span><span>{draftQty ? nfmt(draftQty) : 'add SKU lines after saving'}</span></div>
-                    <div className="line"><span>Rate per piece</span><span>{draftRate ? `₹${nfmt(draftRate)}` : 'from the cost sheet'}</span></div>
+                    {draftQty && draftRate ? (
+                      <div className="big">{inr(draftQty * draftRate)}</div>
+                    ) : (
+                      <p className="quiet">The value appears once the rate and the SKU lines are in.</p>
+                    )}
+                    <div className="line"><span>Pieces</span><span>{draftQty ? nfmt(draftQty) : 'after saving'}</span></div>
+                    <div className="line"><span>Rate per piece</span><span>{draftRate ? `₹${nfmt(draftRate)}` : 'not yet'}</span></div>
                     <div className="line"><span>CMTP vs standard</span><span>{draftCm ? `₹${nfmt(draftCm)}` : '—'}{stdCmForProduct != null ? ` vs ₹${nfmt(stdCmForProduct)}` : ''}</span></div>
                     <div className="line"><span>Vendor in process</span><span>{liveLoad != null ? `${nfmt(liveLoad)} pcs` : form.vendor_code ? 'no open POs' : '—'}</span></div>
                     <div className="line"><span>TNA stages filled</span><span>{tnaFilled} of {TNA_DAY_FIELDS.length}</span></div>
