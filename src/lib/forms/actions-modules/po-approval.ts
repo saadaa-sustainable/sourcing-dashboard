@@ -109,6 +109,13 @@ function readPoFields(formData: FormData) {
     finished_fabric_cost: numOrNull(formData.get('finished_fabric_cost')),
     cm_cost: numOrNull(formData.get('cm_cost')),
     margin_pct: numOrNull(formData.get('margin_pct')),
+    // The sheet's own columns: estimated pieces, E-FOB payment type, fabric sold to the
+    // vendor (rate per metre, metres), remarks. The sale value and totals are derived.
+    estimated_qty: numOrNull(formData.get('estimated_qty')),
+    payment_type: textOrNull(formData.get('payment_type')),
+    fabric_rate: numOrNull(formData.get('fabric_rate')),
+    fabric_qty: numOrNull(formData.get('fabric_qty')),
+    remarks: textOrNull(formData.get('remarks')),
     // po_qty is NOT taken from the form — it is derived from the size lines
     // (savePoLines keeps sd_po_approval.po_qty = sum of line qty).
     cad_folder_url: textOrNull(formData.get('cad_folder_url')),

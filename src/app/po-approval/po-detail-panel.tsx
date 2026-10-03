@@ -139,6 +139,15 @@ export function PoDetailPanel({
           <Row label="Grey">{money(po.grey_cost)}</Row>
           <Row label="Finished fabric">{money(po.finished_fabric_cost)}</Row>
           <Row label="Margin %">{po.margin_pct == null ? '—' : `${po.margin_pct}%`}</Row>
+          <Row label="Total buying cost">{po.rate != null && (Number(po.po_qty) || Number(po.estimated_qty)) ? money(Number(po.rate) * (Number(po.po_qty) || Number(po.estimated_qty))) : '—'}</Row>
+          {(po.payment_type || po.fabric_rate != null || po.fabric_qty != null) && (
+            <>
+              <Row label="E-FOB payment type">{text(po.payment_type)}</Row>
+              <Row label="Fabric rate / metre">{money(po.fabric_rate)}</Row>
+              <Row label="Fabric qty">{po.fabric_qty == null ? '—' : `${Number(po.fabric_qty).toLocaleString('en-IN')} m`}</Row>
+              <Row label="Fabric sale value">{po.fabric_rate != null && po.fabric_qty != null ? money(Number(po.fabric_rate) * Number(po.fabric_qty)) : '—'}</Row>
+            </>
+          )}
           <Row label="Cost sheet">
             <Link href={po.cost_sheet_url} />
           </Row>
@@ -150,6 +159,7 @@ export function PoDetailPanel({
         </Block>
 
         <Block title="Quantity">
+          <Row label="Estimated qty">{po.estimated_qty == null ? '—' : `${Number(po.estimated_qty).toLocaleString('en-IN')} pcs`}</Row>
           <Row label="PO quantity">{Number(po.po_qty || 0).toLocaleString('en-IN')} pcs</Row>
           <Row label="SKU lines">{lines.length ? `${lines.length} lines · ${lineQty.toLocaleString('en-IN')} pcs` : 'none entered'}</Row>
         </Block>
@@ -188,6 +198,7 @@ export function PoDetailPanel({
             {po.plan_qty_at_submit == null ? '—' : `${Number(po.plan_qty_at_submit).toLocaleString('en-IN')} pcs`}
           </Row>
           <Row label="Ad-hoc reason">{text(po.ad_hoc_reason)}</Row>
+          <Row label="Remarks">{text(po.remarks)}</Row>
           <Row label="Remark at submission">{text(po.submit_remark)}</Row>
         </Block>
 

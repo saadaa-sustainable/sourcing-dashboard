@@ -25,7 +25,7 @@ import type {
 export async function loadPoApprovals() {
   const supabase = await client();
 
-  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }] = await Promise.all([
+  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }, { data: weaveRows }] = await Promise.all([
     supabase
       .from('sd_po_approval')
       .select('*')
@@ -43,7 +43,13 @@ export async function loadPoApprovals() {
       .select('vendor_code, vendor_name, is_active')
       .eq('is_active', true)
       .limit(PAGE_SIZE),
+    // Woven / Knitted per product code, from the product master (one weave source project-wide).
+    supabase.from('sd_ee_product_code_status').select('product_code, fabric_type').limit(PAGE_SIZE),
   ]);
+  const weaveByCode: Record<string, string> = {};
+  ((weaveRows ?? []) as { product_code: string | null; fabric_type: string | null }[]).forEach((r) => {
+    if (r.product_code && r.fabric_type) weaveByCode[r.product_code.trim().toUpperCase()] = r.fabric_type;
+  });
 
   const poIds = ((pos ?? []) as PoApproval[]).map((p) => p.id);
   const { data: poLines } = poIds.length
@@ -86,6 +92,7 @@ export async function loadPoApprovals() {
     vendorCodes,
     vendorNames,
     capacityByVendor,
+    weaveByCode,
   };
 }
 

@@ -464,8 +464,10 @@ export function PoCard({
   const [open, setOpen] = useState(defaultOpen);
   const stdCmForPo = po.product_code ? stdCm[po.product_code.trim()] : undefined;
   const flag = poFlag(po, { deleteRequest, review, stdCm: stdCmForPo, role });
-  const qty = Number(po.po_qty || 0);
-  const value = po.rate != null ? qty * Number(po.rate) : null;
+  const linesQty = Number(po.po_qty || 0);
+  const estQty = Number(po.estimated_qty || 0);
+  const qty = linesQty || estQty;
+  const value = po.rate != null && qty ? qty * Number(po.rate) : null;
   const vendorLabel = po.vendor_name || po.vendor_code || '—';
   const queued = po.status === 'submitted' || po.status === 'pending_l2';
   const issued = Boolean(po.po_issued_at);
@@ -503,7 +505,7 @@ export function PoCard({
             </span>
           </span>
           <span className="poa-qty">
-            <b>{qty ? `${nfmt(qty)} pcs` : 'no lines'}</b>
+            <b>{linesQty ? `${nfmt(linesQty)} pcs` : estQty ? `est. ${nfmt(estQty)} pcs` : 'no lines'}</b>
             <span>{value != null ? `${inr(value)} · ₹${nfmt(Number(po.rate))}/pc` : po.rate != null ? `₹${nfmt(Number(po.rate))}/pc` : 'rate missing'}</span>
           </span>
           <span className="poa-flagcol">
