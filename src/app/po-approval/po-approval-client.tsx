@@ -532,8 +532,8 @@ export function PoApprovalClient({
 
   // What the approver will see — the live figures on the form in the drawer. The sheet's
   // flow: pieces × rate = total buying cost; for an E-FOB PO the fabric sold to the vendor
-  // (rate per metre × metres) is the fabric sale value, shown on its own. The total amount
-  // is the total buying cost — the user asked for no netting (2026-10-03).
+  // (rate per metre × metres) is the fabric sale value, and the total amount is the buying
+  // cost less that sale. ❓ the net-of-fabric rule is an assumption until the team confirms.
   const linesQty = editing ? Number(editing.po_qty || 0) : 0;
   const estQty = Number(form.estimated_qty) || 0;
   const draftQty = linesQty || estQty;
@@ -545,7 +545,7 @@ export function PoApprovalClient({
   const fabricQty = Number(form.fabric_qty) || 0;
   const fabricSale = fabricRate && fabricQty ? fabricRate * fabricQty : 0;
   const isEfob = form.po_type === 'efob';
-  const totalAmount = totalBuying;
+  const totalAmount = totalBuying - (isEfob ? fabricSale : 0);
   const cmAbove = draftCm > 0 && stdCmForProduct != null && draftCm > stdCmForProduct + 0.005;
   const tnaFilled = TNA_DAY_FIELDS.filter((f) => form[f.key] !== '').length;
   const route = routeApproval('po_approval', draftQty, form.category);
@@ -1156,7 +1156,7 @@ export function PoApprovalClient({
                 </Field>
               </>
             )}
-            <Field label="Total amount" hint="the total buying cost">
+            <Field label="Total amount" hint={isEfob && fabricSale ? 'total buying cost less the fabric sold to the vendor' : 'the total buying cost'}>
               <input value={totalBuying ? inr(totalAmount) : ''} placeholder="follows the totals above" disabled readOnly className="wf-fixed-value" />
             </Field>
           </FormSection>
