@@ -321,7 +321,7 @@ export function PoCard({
               {needsCostOverride && (
                 <div className="wf-cost-gate">
                   <p className="wf-inline-error">
-                    CMTP ₹{po.cm_cost} is above the standard ₹{stdCmForPo}. Confirm the above-standard cost with a reason — it is logged as an approved exception.
+                    CMTP ₹{nfmt(Number(po.cm_cost))} is above the standard ₹{nfmt(Math.round(Number(stdCmForPo) * 100) / 100)}. Confirm the above-standard cost with a reason — it is logged as an approved exception.
                   </p>
                   <input className="wf-mini-input" placeholder="Reason for issuing above standard" value={costOverrideNote} onChange={(e) => setCostOverrideNote(e.target.value)} />
                 </div>
