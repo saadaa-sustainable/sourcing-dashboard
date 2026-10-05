@@ -777,7 +777,7 @@ function ProductAllocationTab({
               <div className="vc-card-head"><div><h2>Add a product</h2><p>Choose a Product Master item or enter a new code</p></div></div>
               <div className="vc-card-body">
                 <Field label="Product" hint="search by code or name">
-                  <ProductPicker items={catalog} exclude={existingCodes} onPick={(code) => setNewCode(code)} placeholder="Search product code or name…" />
+                  <ProductPicker items={catalog} exclude={existingCodes} onPick={(code) => setNewCode(code)} allowFreeText={false} placeholder="Search product code or name…" />
                 </Field>
                 {newCode && <AllocationEditor key={newCode} vendorCode={vendorCode} productCode={newCode} initialQty="" isNew />}
               </div>

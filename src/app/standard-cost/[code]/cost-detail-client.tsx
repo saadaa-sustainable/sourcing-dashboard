@@ -62,7 +62,8 @@ export function StandardCostDetailClient({
   masterFabric,
   temp,
   catalog,
-  linkCandidates = [],
+  costByCode = {},
+  linkedFrom = [],
   role,
   marginPct,
   track = 'fg',
@@ -81,8 +82,10 @@ export function StandardCostDetailClient({
   masterFabric: { fabricCode: string | null; multi: boolean } | null;
   temp?: TempProductInfo;
   catalog: ProductCatalogItem[];
-  /** EasyEcom products with no Standard Cost of their own — what an unlinked product can be linked to. */
-  linkCandidates?: ProductCatalogItem[];
+  /** Every costed product's rates, so linking into one that already has a cost can offer a merge. */
+  costByCode?: Record<string, CostSummary>;
+  /** Codes that were linked INTO this EasyEcom product earlier (offers "Change linked product"). */
+  linkedFrom?: string[];
   role: SdRole;
   marginPct: number;
   track?: 'fg' | 'material';
@@ -147,9 +150,27 @@ export function StandardCostDetailClient({
         </button>
       </header>
 
-      {!isMat && !catalog.some((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase()) && (
-        <UnlinkedProductPanel code={cost.product_code} role={role} candidates={linkCandidates} temp={!!temp} />
-      )}
+      {!isMat && !catalog.some((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase()) ? (
+        <LinkPanel
+          cost={cost}
+          mode="unlinked"
+          role={role}
+          candidates={catalog}
+          costByCode={costByCode}
+          tempName={temp?.name ?? null}
+          linkedFrom={[]}
+        />
+      ) : !isMat && linkedFrom.length > 0 && role === 'admin' ? (
+        <LinkPanel
+          cost={cost}
+          mode="relink"
+          role={role}
+          candidates={catalog}
+          costByCode={costByCode}
+          tempName={null}
+          linkedFrom={linkedFrom}
+        />
+      ) : null}
 
       <section className="sc-page-rates" aria-label="Current rates">
         {[
@@ -216,7 +237,6 @@ export function StandardCostDetailClient({
                   role={role}
                   track={track}
                   temp={temp}
-                  mergeCandidates={catalog}
                   name={productName || undefined}
                 />
               </tbody>
@@ -264,40 +284,95 @@ export function StandardCostDetailClient({
   );
 }
 
+/** The cost figures the merge panel compares, for a product that already has a cost. */
+export type CostSummary = {
+  job_cost: number | null;
+  fob_cost: number | null;
+  efob_cost: number | null;
+  neg_stage: string | null;
+  frozen: boolean;
+};
+
+const RATE_FIELDS = [
+  { key: 'job_cost', label: 'Job' },
+  { key: 'fob_cost', label: 'FOB' },
+  { key: 'efob_cost', label: 'E-FOB' },
+] as const;
+type RateKey = (typeof RATE_FIELDS)[number]['key'];
+
+const rateText = (v: number | null) => (v == null ? '' : String(Number(v)));
+
 /**
- * Shown on a product that is not in EasyEcom (a typed code such as "ABCD", or a TMP-xxxx
- * temporary product): link it to its EasyEcom product once that exists, or delete it. Both run
- * in the database in one step and are checked there (link: admin; delete: team or admin,
- * refused while a PO or plan line still uses it).
+ * Link this product's cost to an EasyEcom product. Three cases, one flow:
+ *  - a product not in EasyEcom (TMP-xxxx) is linked to its EasyEcom code;
+ *  - a product linked earlier is re-linked to a different EasyEcom code (to fix a wrong link);
+ *  - when the EasyEcom product already has its own cost, the two are MERGED: both sets of rates
+ *    side by side, the admin picks a side or types a value per rate and chooses whose cost
+ *    sheet stays. The chosen rates become the accepted standard.
+ * Delete is offered only for a product not in EasyEcom. Everything is checked again in the
+ * database (sd_link_product / sd_delete_unlinked_product).
  */
-function UnlinkedProductPanel({
-  code,
+function LinkPanel({
+  cost,
+  mode,
   role,
   candidates,
-  temp,
+  costByCode,
+  tempName,
+  linkedFrom,
 }: {
-  code: string;
+  cost: StandardCost;
+  /** 'unlinked' = not in EasyEcom; 'relink' = an EasyEcom product that was linked into. */
+  mode: 'unlinked' | 'relink';
   role: SdRole;
   candidates: ProductCatalogItem[];
-  temp: boolean;
+  costByCode: Record<string, CostSummary>;
+  tempName: string | null;
+  linkedFrom: string[];
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<'idle' | 'link' | 'delete'>('idle');
+  const code = cost.product_code;
+  const [step, setStep] = useState<'idle' | 'pick' | 'merge' | 'delete'>('idle');
+  const [target, setTarget] = useState<string | null>(null);
+  const [rates, setRates] = useState<Record<RateKey, string>>({ job_cost: '', fob_cost: '', efob_cost: '' });
+  const [sheet, setSheet] = useState<'to' | 'from'>('to');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const canLink = role === 'admin';
-  const canDelete = canEdit(role, 'draft');
+  const isAdmin = role === 'admin';
+  const canDelete = mode === 'unlinked' && canEdit(role, 'draft');
+  const other = target ? costByCode[target.toUpperCase()] ?? null : null;
+  const pool = candidates.filter((p) => p.product_code.toUpperCase() !== code.toUpperCase());
 
-  function link(realCode: string) {
+  function choose(realCode: string) {
+    setErr(null);
+    const up = realCode.toUpperCase();
+    setTarget(up);
+    const existing = costByCode[up];
+    if (existing) {
+      // Start from the EasyEcom product's own rates; the admin switches or types per rate.
+      setRates({
+        job_cost: rateText(existing.job_cost),
+        fob_cost: rateText(existing.fob_cost),
+        efob_cost: rateText(existing.efob_cost),
+      });
+      setSheet('to');
+      setStep('merge');
+    } else {
+      submit(up, null);
+    }
+  }
+
+  function submit(realCode: string, merge: Record<string, unknown> | null) {
     setErr(null);
     const fd = new FormData();
     fd.set('product_code', code);
     fd.set('real_code', realCode);
+    if (merge) fd.set('merge', JSON.stringify(merge));
     start(async () => {
       const res = await linkProductToEasyEcom(fd);
       if (!res.ok) return setErr(toastError(res.error));
       emitToast(res.message ?? 'Linked.');
-      router.replace(`/standard-cost/${encodeURIComponent(realCode.toUpperCase())}`);
+      router.replace(`/standard-cost/${encodeURIComponent(realCode)}`);
       router.refresh();
     });
   }
@@ -309,7 +384,7 @@ function UnlinkedProductPanel({
     start(async () => {
       const res = await deleteUnlinkedProduct(fd);
       if (!res.ok) {
-        setMode('idle');
+        setStep('idle');
         return setErr(toastError(res.error));
       }
       emitToast(res.message ?? 'Deleted.');
@@ -318,56 +393,161 @@ function UnlinkedProductPanel({
     });
   }
 
+  if (!isAdmin && !canDelete) return null;
+
   return (
-    <section className="sc-unlinked" aria-label="Product not in EasyEcom">
-      <div className="sc-unlinked-text">
-        <strong>{temp ? 'Temporary product, not in EasyEcom yet' : 'Not an EasyEcom product'}</strong>
-        <p className="wf-subtle">
-          {code} is not in the product master. When the product is created in EasyEcom, link it here:
-          its cost, cost sheet, buying-plan lines and POs move to the EasyEcom code. If it was added by
-          mistake, delete it.
-        </p>
-        {err && <small className="wf-line-error">{err}</small>}
+    <section className={`sc-unlinked${mode === 'relink' ? ' is-relink' : ''}`} aria-label="Link to EasyEcom">
+      <div className="sc-unlinked-row">
+        <div className="sc-unlinked-text">
+          {mode === 'unlinked' ? (
+            <>
+              <strong>Not in EasyEcom yet{tempName ? ` · ${tempName}` : ''}</strong>
+              <p className="wf-subtle">
+                {code} is a temporary product. When it is created in EasyEcom, link it here: its cost,
+                cost sheet, buying-plan lines and POs move to the EasyEcom code. If it was added by
+                mistake, delete it.
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>Linked from {linkedFrom.join(', ')}</strong>
+              <p className="wf-subtle">
+                If this was the wrong EasyEcom product, link it to the right one: the cost, cost
+                sheet, plan lines and POs under {code} move there.
+              </p>
+            </>
+          )}
+          {err && <small className="wf-line-error">{err}</small>}
+        </div>
+        <div className="sc-unlinked-actions">
+          {step === 'pick' ? (
+            <div className="sc-unlinked-link">
+              <ProductPicker
+                items={pool}
+                onPick={choose}
+                disabled={busy}
+                allowFreeText={false}
+                placeholder="Search the EasyEcom product code or name…"
+              />
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setStep('idle')}>
+                Cancel
+              </button>
+            </div>
+          ) : step === 'delete' ? (
+            <div className="sc-unlinked-confirm">
+              <span>Delete {code} and its cost sheet?</span>
+              <button type="button" className="wf-btn wf-btn-danger wf-btn-sm" disabled={busy} onClick={remove}>
+                {busy ? 'Deleting…' : 'Delete'}
+              </button>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setStep('idle')}>
+                Cancel
+              </button>
+            </div>
+          ) : step === 'idle' ? (
+            <>
+              {isAdmin && (
+                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => setStep('pick')}>
+                  <Link2 size={14} /> {mode === 'unlinked' ? 'Link to EasyEcom product' : 'Change linked product'}
+                </button>
+              )}
+              {canDelete && (
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setStep('delete')}>
+                  <Trash2 size={14} /> Delete product
+                </button>
+              )}
+            </>
+          ) : null}
+        </div>
       </div>
-      <div className="sc-unlinked-actions">
-        {mode === 'link' ? (
-          <div className="sc-unlinked-link">
-            <ProductPicker
-              items={candidates}
-              onPick={link}
+
+      {step === 'merge' && target && other && (
+        <div className="sc-merge">
+          <p className="sc-merge-lead">
+            <strong>{target}</strong> already has its own cost. Choose the rates to keep: pick a side
+            or type a value. What you save becomes the accepted standard for {target}.
+          </p>
+          {other.frozen && (
+            <p className="wf-line-error">
+              {target} is frozen by an issued PO, so its rates cannot change. Keep its rates to merge.
+            </p>
+          )}
+          <div className="table-scroll">
+            <table className="wf-grid sc-merge-table">
+              <thead>
+                <tr>
+                  <th>Rate</th>
+                  <th className="num">{code}</th>
+                  <th className="num">{target}</th>
+                  <th className="num">Keep</th>
+                </tr>
+              </thead>
+              <tbody>
+                {RATE_FIELDS.map((f) => {
+                  const mine = rateText(cost[f.key]);
+                  const theirs = rateText(other[f.key]);
+                  return (
+                    <tr key={f.key}>
+                      <td>{f.label}</td>
+                      <td className="num">
+                        <button
+                          type="button"
+                          className={`sc-merge-pick${rates[f.key] === mine ? ' is-on' : ''}`}
+                          disabled={other.frozen}
+                          onClick={() => setRates((r) => ({ ...r, [f.key]: mine }))}
+                        >
+                          {mine === '' ? '—' : `₹${mine}`}
+                        </button>
+                      </td>
+                      <td className="num">
+                        <button
+                          type="button"
+                          className={`sc-merge-pick${rates[f.key] === theirs ? ' is-on' : ''}`}
+                          disabled={other.frozen}
+                          onClick={() => setRates((r) => ({ ...r, [f.key]: theirs }))}
+                        >
+                          {theirs === '' ? '—' : `₹${theirs}`}
+                        </button>
+                      </td>
+                      <td className="num input-col">
+                        <input
+                          type="number"
+                          min={0}
+                          aria-label={`${f.label} rate to keep`}
+                          value={rates[f.key]}
+                          disabled={other.frozen}
+                          onChange={(e) => setRates((r) => ({ ...r, [f.key]: e.target.value }))}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <fieldset className="sc-merge-sheet">
+            <legend>Cost sheet to keep (colour / size lines, CMTP, extra fabric)</legend>
+            <label>
+              <input type="radio" name="sc-merge-sheet" checked={sheet === 'to'} onChange={() => setSheet('to')} /> From {target}
+            </label>
+            <label>
+              <input type="radio" name="sc-merge-sheet" checked={sheet === 'from'} onChange={() => setSheet('from')} /> From {code}
+            </label>
+          </fieldset>
+          <div className="sc-merge-actions">
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
               disabled={busy}
-              allowFreeText={false}
-              placeholder="Search the EasyEcom product code or name…"
-            />
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMode('idle')}>
+              onClick={() => submit(target, { ...rates, sheet })}
+            >
+              {busy ? 'Merging…' : `Merge into ${target}`}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setStep('idle')}>
               Cancel
             </button>
           </div>
-        ) : mode === 'delete' ? (
-          <div className="sc-unlinked-confirm">
-            <span>Delete {code} and its cost sheet?</span>
-            <button type="button" className="wf-btn wf-btn-danger wf-btn-sm" disabled={busy} onClick={remove}>
-              {busy ? 'Deleting…' : 'Delete'}
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMode('idle')}>
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <>
-            {canLink && (
-              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => setMode('link')}>
-                <Link2 size={14} /> Link to EasyEcom product
-              </button>
-            )}
-            {canDelete && (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMode('delete')}>
-                <Trash2 size={14} /> Delete product
-              </button>
-            )}
-          </>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

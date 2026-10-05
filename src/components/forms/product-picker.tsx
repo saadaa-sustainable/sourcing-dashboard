@@ -27,6 +27,7 @@ export function ProductPicker({
   placeholder = 'Search product code or name…',
   disabled = false,
   allowFreeText = true,
+  onAddNew,
 }: {
   items: ProductCatalogItem[];
   onPick: (code: string) => void;
@@ -35,6 +36,9 @@ export function ProductPicker({
   disabled?: boolean;
   /** Let the user add a typed code that isn't in the catalog yet (new/unsynced products). */
   allowFreeText?: boolean;
+  /** When given, the free-text row creates a NEW product from what was typed (Standard Cost:
+   *  it gets a TMP-xxxx code) instead of adding the typed text as a product code. */
+  onAddNew?: (typed: string) => void;
 }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -155,11 +159,24 @@ export function ProductPicker({
               className="wf-picker-item wf-picker-add"
               onMouseDown={(e) => {
                 e.preventDefault();
-                pick(typed);
+                if (onAddNew) {
+                  onAddNew(q.trim());
+                  setQ('');
+                  setOpen(false);
+                } else pick(typed);
               }}
             >
-              <span className="mono wf-picker-code">＋ Add “{typed}”</span>
-              <span className="wf-picker-name">not in the catalog — add as a new product code</span>
+              {onAddNew ? (
+                <>
+                  <span className="mono wf-picker-code">＋ Create “{q.trim()}” as a new product</span>
+                  <span className="wf-picker-name">not in EasyEcom: gets a temporary ID (TMP-…) you can link later</span>
+                </>
+              ) : (
+                <>
+                  <span className="mono wf-picker-code">＋ Add “{typed}”</span>
+                  <span className="wf-picker-name">not in the catalog — add as a new product code</span>
+                </>
+              )}
             </button>
           )}
           {!matches.length && !canAddTyped && <div className="wf-picker-empty">No products match.</div>}

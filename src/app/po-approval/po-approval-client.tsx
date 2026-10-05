@@ -924,6 +924,9 @@ export function PoApprovalClient({
                 ariaLabel="Product code"
                 value={form.product_code}
                 onChange={(v) => set('product_code', v)}
+                // A PO is raised against a costed product (EasyEcom or TMP), never a typed name.
+                allowFreeText={false}
+                emptyText="No costed product matches. Add it on Standard Cost first."
                 placeholder="Search code or product name…"
                 options={productOptions}
               />

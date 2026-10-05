@@ -1916,15 +1916,35 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* A product that is not in EasyEcom: link it to its EasyEcom code, or delete it. */
 .sc-unlinked {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px 20px;
+  flex-direction: column;
+  gap: 12px;
   padding: 14px 16px;
   border: 1px solid #f1d9a6;
   border-radius: 12px;
   background: #fff8ea;
 }
+.sc-unlinked.is-relink { border-color: #e1e3e5; background: #fafafa; }
+.sc-unlinked-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+.sc-merge { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid #f1d9a6; }
+.sc-merge-lead { margin: 0; font-size: 13px; line-height: 1.5; }
+.sc-merge-table { max-width: 560px; }
+.sc-merge-table td.input-col input { width: 96px; text-align: right; }
+.sc-merge-pick {
+  padding: 4px 10px; border: 1px solid #e1e3e5; border-radius: 8px; background: #fff;
+  font: inherit; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.sc-merge-pick.is-on { border-color: #1f1d1a; background: #1f1d1a; color: #fff; }
+.sc-merge-pick:disabled { cursor: not-allowed; opacity: .6; }
+.sc-merge-sheet { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; border: 0; font-size: 13px; }
+.sc-merge-sheet legend { width: 100%; margin-bottom: 4px; font-weight: 600; }
+.sc-merge-sheet label { display: inline-flex; align-items: center; gap: 6px; }
+.sc-merge-actions { display: flex; gap: 8px; }
 .sc-unlinked-text { flex: 1 1 320px; min-width: 0; }
 .sc-unlinked-text strong { display: block; font-size: 13.5px; color: #6b4a07; }
 .sc-unlinked-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; }

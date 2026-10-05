@@ -58,6 +58,17 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   if (existing?.frozen) {
     return fail('This cost is frozen (a PO was issued) and can no longer be edited.');
   }
+  // A NEW cost row must be an EasyEcom product or a temporary (TMP-xxxx) one: a typed name
+  // ("ABCD") is never a product code. New products not in EasyEcom go through mintTempProduct.
+  if (!existing) {
+    const [{ data: inCatalog }, { data: temp }] = await Promise.all([
+      supabase.from('sd_product_catalog').select('product_code').eq('product_code', product_code.toUpperCase()).maybeSingle(),
+      supabase.from('sd_temp_product').select('temp_code').eq('temp_code', product_code).eq('status', 'active').maybeSingle(),
+    ]);
+    if (!inCatalog && !temp) {
+      return fail(`${product_code} is not in EasyEcom. Create it as a new product instead: it gets a temporary TMP ID you can link later.`);
+    }
+  }
   // Documentation (fabric link, consumption-derived total, CAD/RFP) stays editable even
   // after sign-off — only a PO-issued freeze locks it. The rate (job/FOB/EFOB) is owned by
   // the negotiation flow, so this save only touches rate columns when they're explicitly sent.
@@ -642,15 +653,31 @@ export async function linkProductToEasyEcom(formData: FormData): Promise<ActionR
   const from = String(formData.get('product_code') ?? '').trim();
   const to = String(formData.get('real_code') ?? '').trim().toUpperCase();
   if (!from || !to) return fail('Pick the EasyEcom product to link to.');
+  // When the EasyEcom product already has its own cost: the rates (and cost sheet) the admin
+  // chose to keep, as JSON from the merge panel.
+  let merge: Record<string, unknown> | null = null;
+  const rawMerge = formData.get('merge');
+  if (rawMerge) {
+    try {
+      merge = JSON.parse(String(rawMerge));
+    } catch {
+      return fail('Could not read the chosen rates.');
+    }
+  }
 
   const supabase = await supa();
-  const { error } = await supabase.rpc('sd_link_product', { p_from: from, p_to: to, p_by: user.email });
+  const { error } = await supabase.rpc('sd_link_product', { p_from: from, p_to: to, p_by: user.email, p_merge: merge as never });
   if (error) return fail(error.message);
 
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   revalidatePath('/po-approval');
-  return { ok: true, message: `Linked ${from} to ${to}. Its cost, plan lines and POs now sit under ${to}.` };
+  return {
+    ok: true,
+    message: merge
+      ? `Merged ${from} into ${to} with the rates you chose. Its plan lines and POs now sit under ${to}.`
+      : `Linked ${from} to ${to}. Its cost, plan lines and POs now sit under ${to}.`,
+  };
 }
 
 /**

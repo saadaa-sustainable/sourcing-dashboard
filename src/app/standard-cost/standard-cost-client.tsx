@@ -25,7 +25,6 @@ import {
   signOffCost,
   submitActualRate,
   mintTempProduct,
-  mergeTempProduct,
   decideCostsBulk,
   type ActionResult,
 } from '@/lib/forms/actions';
@@ -245,8 +244,8 @@ export function StandardCostClient({
   }
 
   // Create a not-yet-in-EasyEcom product with a system-minted TMP-xxxx code.
-  function addTemp() {
-    const name = tempName.trim();
+  function addTemp(typed?: string) {
+    const name = (typed ?? tempName).trim();
     if (!name) return;
     setError(null);
     setMessage(null);
@@ -308,11 +307,14 @@ export function StandardCostClient({
               items={catalog}
               exclude={existingCodes}
               onPick={(code) => addCode(code)}
+              // Anything typed that is not in the product master becomes a temporary product
+              // with a TMP code, never a free-text product code.
+              onAddNew={(typed) => addTemp(typed)}
               disabled={pending}
               placeholder="Search product code or name…"
             />
           </Field>
-          <Field label="…or a new product not in EasyEcom yet" hint="gets a temporary ID (TMP-…) you can merge later">
+          <Field label="…or a new product not in EasyEcom yet" hint="gets a temporary ID (TMP-…) you can link to EasyEcom later">
             <div className="wf-temp-add">
               <input
                 value={tempName}
@@ -323,7 +325,7 @@ export function StandardCostClient({
                 type="button"
                 className="wf-btn wf-btn-ghost wf-btn-sm"
                 disabled={pending || !tempName.trim()}
-                onClick={addTemp}
+                onClick={() => addTemp()}
               >
                 <Plus size={13} /> Create temporary
               </button>
@@ -728,7 +730,6 @@ export function CostRow({
   expanded,
   onToggle,
   temp,
-  mergeCandidates = [],
   name,
 }: {
   cost: StandardCost;
@@ -740,8 +741,6 @@ export function CostRow({
   name?: string;
   /** Set when this product is a temporary (not-yet-in-EasyEcom) product. */
   temp?: TempProductInfo;
-  /** Real product codes a temp can be merged into (admin). */
-  mergeCandidates?: ProductCatalogItem[];
 }) {
   const isMat = track === 'material';
   const jobLabel = isMat ? 'FOB Fabric' : 'Job';
@@ -758,26 +757,10 @@ export function CostRow({
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
   const [note, setNote] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [mergeOpen, setMergeOpen] = useState(false);
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const canManageList = canEdit(role, 'draft');
   const isTemp = temp?.status === 'active';
-
-  function mergeInto(realCode: string) {
-    setErr(null);
-    const fd = new FormData();
-    fd.set('temp_code', cost.product_code);
-    fd.set('real_code', realCode);
-    start(async () => {
-      const res = await mergeTempProduct(fd);
-      if (res.ok) reloadWithToast(res.message);
-      else {
-        setErr(res.error);
-        setMergeOpen(false);
-      }
-    });
-  }
 
   // Soft-delete: remove from the list but keep every field + the history; re-adding
   // the code restores it. Never edits the cost itself, so allowed even when frozen.
@@ -889,27 +872,8 @@ export function CostRow({
         <div className="wf-cost-actions">
           {err && <small className="wf-line-error">{err}</small>}
 
-          {isTemp && role === 'admin' && (
-            mergeOpen ? (
-              <span className="wf-issue-row wf-issue-row-wrap">
-                <small className="wf-subtle">Merge into the real product now in EasyEcom:</small>
-                <ProductPicker
-                  items={mergeCandidates}
-                  onPick={(code) => mergeInto(code)}
-                  disabled={busy}
-                  placeholder="Search the real product code…"
-                />
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMergeOpen(false)}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMergeOpen(true)}>
-                Merge…
-              </button>
-            )
-          )}
-
+          {/* Linking a temporary product to EasyEcom (and merging with an existing cost) lives in
+              the panel at the top of the product page, which offers the rate choice. */}
           {canManageList && (
             confirmRemove ? (
               <span className="wf-issue-row">

@@ -158,9 +158,16 @@ export default async function StandardCostDetailPage({
         masterFabric={productFabric[cost.product_code] ?? null}
         temp={tempProducts[cost.product_code]}
         catalog={catalog}
-        linkCandidates={catalog.filter(
-          (p) => !costs.some((c) => c.product_code.toUpperCase() === p.product_code.toUpperCase()),
+        costByCode={Object.fromEntries(
+          (track === 'material' ? [] : costs).map((c) => [
+            c.product_code.toUpperCase(),
+            { job_cost: c.job_cost, fob_cost: c.fob_cost, efob_cost: c.efob_cost, neg_stage: c.neg_stage, frozen: !!c.frozen },
+          ]),
         )}
+        // What was linked into this product earlier: the typed name or TMP code, as recorded.
+        linkedFrom={Object.entries(tempProducts as Record<string, { status: string; merged_into: string | null }>)
+          .filter(([, t]) => t.status === 'merged' && (t.merged_into ?? '').toUpperCase() === cost.product_code.toUpperCase())
+          .map(([k]) => k)}
         role={user.role}
         marginPct={rules.margin_pct / 100}
         track={track}
