@@ -12,6 +12,7 @@ import {
   updateMaterial,
 } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
+import { Combobox, type ComboOption } from '@/components/forms/combobox';
 import { InfoDot } from '@/components/info-dot';
 import type { Colour, MaterialMaster, MaterialType } from '@/lib/forms/types';
 
@@ -44,6 +45,7 @@ export function MaterialMasterClient({
   initialType?: MaterialType;
   editable: boolean;
 }) {
+  const fabricOpts = useMemo<ComboOption[]>(() => fabricCodes.map((f) => ({ value: f, label: f, detail: 'Raw fabric · material master' })), [fabricCodes]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -163,12 +165,7 @@ export function MaterialMasterClient({
             {type === 'dyed' && (
               <>
                 <Field label="Base grey fabric" hint="the raw fabric it is dyed from">
-                  <input
-                    list="fabric-codes"
-                    value={base}
-                    placeholder="fabric code"
-                    onChange={(e) => setBase(e.target.value)}
-                  />
+                  <Combobox ariaLabel="Base grey fabric" value={base} onChange={setBase} placeholder="fabric code" options={fabricOpts} />
                 </Field>
                 <Field label="Colour" hint="managed list below">
                   <select value={colour} onChange={(e) => setColour(e.target.value)}>
@@ -201,11 +198,6 @@ export function MaterialMasterClient({
               <Plus size={15} /> Add {TYPE_LABEL[type].toLowerCase()}
             </button>
           </div>
-          <datalist id="fabric-codes">
-            {fabricCodes.map((f) => (
-              <option key={f} value={f} />
-            ))}
-          </datalist>
         </div>
       )}
 
@@ -241,6 +233,7 @@ export function MaterialMasterClient({
                   editable={editable}
                   pending={pending}
                   activeColours={activeColours}
+                  fabricOpts={fabricOpts}
                   onSave={(fd) => run(() => updateMaterial(fd))}
                 />
               ))}
@@ -321,12 +314,14 @@ function MaterialRow({
   editable,
   pending,
   activeColours,
+  fabricOpts,
   onSave,
 }: {
   material: MaterialMaster;
   editable: boolean;
   pending: boolean;
   activeColours: string[];
+  fabricOpts: ComboOption[];
   onSave: (fd: FormData) => void;
 }) {
   const [name, setName] = useState(material.name ?? '');
@@ -378,7 +373,7 @@ function MaterialRow({
       </td>
       {isDyed && (
         <td className="input-col">
-          <input list="fabric-codes" value={base} onChange={(e) => setBase(e.target.value)} />
+          <Combobox ariaLabel="Base grey fabric" value={base} onChange={setBase} placeholder="fabric code" options={fabricOpts} />
         </td>
       )}
       {isDyed && (

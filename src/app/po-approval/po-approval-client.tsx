@@ -23,6 +23,7 @@ import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
+import { Combobox, type ComboOption } from '@/components/forms/combobox';
 import { PoCard, poFlag } from './po-card';
 import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
@@ -222,6 +223,8 @@ export function PoApprovalClient({
   productCodes,
   vendorCodes,
   vendorNames = {},
+  vendorTypes = {},
+  productNames = {},
   deboarded = {},
   submissions = [],
   leadtimes,
@@ -240,6 +243,10 @@ export function PoApprovalClient({
   productCodes: string[];
   vendorCodes: string[];
   vendorNames?: Record<string, string>;
+  /** PO type each vendor mainly works on, from the vendor master. */
+  vendorTypes?: Record<string, string>;
+  /** Product name per code, from the product catalog. */
+  productNames?: Record<string, string>;
   /** Approved de-boardings by upper-cased code — the vendor is flagged, not hidden. */
   deboarded?: Record<string, DeboardedVendor>;
   submissions?: PoSubmissionGroup[];
@@ -470,6 +477,34 @@ export function PoApprovalClient({
       reloadWithToast(res.message ?? 'Saved.');
     });
   }
+
+  // Dropdown rows: bold name over a grey detail line.
+  const productOptions = useMemo<ComboOption[]>(
+    () =>
+      productCodes.map((c) => {
+        const name = productNames[c.trim().toUpperCase()];
+        return { value: c, label: name ? `${c} · ${name}` : c, detail: name ? 'Standard Cost' : 'Standard Cost · no name in the catalog', keywords: name };
+      }),
+    [productCodes, productNames],
+  );
+  const vendorOptions = useMemo<ComboOption[]>(
+    () =>
+      vendorCodes.map((c) => {
+        const name = vendorNames[c];
+        const load = capacity[c.toLowerCase()];
+        const type = vendorTypes[c];
+        const typeLabel = type === 'job_work' ? 'Job Work' : type === 'efob' ? 'E-FOB' : type;
+        return {
+          value: c,
+          label: name || c,
+          detail: [c.toUpperCase(), typeLabel, load != null ? `${load.toLocaleString('en-IN')} pcs in process` : null, deboarded[c.toUpperCase()] ? 'DE-BOARDED' : null]
+            .filter(Boolean)
+            .join(', '),
+          keywords: c,
+        };
+      }),
+    [vendorCodes, vendorNames, vendorTypes, capacity, deboarded],
+  );
 
   const liveLoad = form.vendor_code
     ? capacity[form.vendor_code.toLowerCase()]
@@ -881,17 +916,13 @@ export function PoApprovalClient({
               </select>
             </Field>
             <Field label="Product code">
-              <input
-                list="po-product-codes"
+              <Combobox
+                ariaLabel="Product code"
                 value={form.product_code}
-                placeholder="Select or type…"
-                onChange={(e) => set('product_code', e.target.value)}
+                onChange={(v) => set('product_code', v)}
+                placeholder="Search code or product name…"
+                options={productOptions}
               />
-              <datalist id="po-product-codes">
-                {productCodes.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
             </Field>
             <Field
               label="Request ID"
@@ -907,20 +938,13 @@ export function PoApprovalClient({
                   : 'Pick a code — name fills itself'
               }
             >
-              <input
-                list="po-vendor-codes"
+              <Combobox
+                ariaLabel="Vendor"
                 value={form.vendor_code}
-                placeholder="Select or type a code…"
-                onChange={(e) => setVendorCode(e.target.value)}
+                onChange={(v) => setVendorCode(v)}
+                placeholder="Search vendor name or code…"
+                options={vendorOptions}
               />
-              <datalist id="po-vendor-codes">
-                {vendorCodes.map((c) => (
-                  <option key={c} value={c}>
-                    {vendorNames[c] ? `${c} — ${vendorNames[c]}` : c}
-                    {deboarded[c.toUpperCase()] ? ' — DE-BOARDED' : ''}
-                  </option>
-                ))}
-              </datalist>
               {deboardedPick && (
                 <Notice tone="warn">
                   <DeboardedPill flag={deboardedPick} /> This vendor’s de-boarding was approved.
@@ -936,20 +960,12 @@ export function PoApprovalClient({
                 />
               )}
             </Field>
-            <Field label="Vendor name" hint="auto-fills from the code (or pick to back-fill the code)">
+            <Field label="Vendor name" hint="fills itself from the vendor picked — type only if the vendor is not in the master">
               <input
-                list="po-vendor-names"
                 value={form.vendor_name}
-                placeholder="Auto from code…"
+                placeholder="Fills from the vendor"
                 onChange={(e) => setVendorName(e.target.value)}
               />
-              <datalist id="po-vendor-names">
-                {Object.values(vendorNames)
-                  .filter(Boolean)
-                  .map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-              </datalist>
             </Field>
           </FormSection>
 

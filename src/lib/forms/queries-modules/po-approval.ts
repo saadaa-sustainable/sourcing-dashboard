@@ -25,7 +25,7 @@ import type {
 export async function loadPoApprovals() {
   const supabase = await client();
 
-  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }] = await Promise.all([
+  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }, { data: catalog }] = await Promise.all([
     supabase
       .from('sd_po_approval')
       .select('*')
@@ -40,9 +40,11 @@ export async function loadPoApprovals() {
     supabase.from('sd_standard_cost').select('product_code').eq('hidden', false).limit(PAGE_SIZE),
     supabase
       .from('vendor_master_data')
-      .select('vendor_code, vendor_name, is_active')
+      .select('vendor_code, vendor_name, is_active, primary_type')
       .eq('is_active', true)
       .limit(PAGE_SIZE),
+    // Product names for the product dropdown (bold name over the code).
+    supabase.from('sd_product_catalog').select('product_code, product_name').limit(PAGE_SIZE),
   ]);
 
   const poIds = ((pos ?? []) as PoApproval[]).map((p) => p.id);
@@ -67,9 +69,15 @@ export async function loadPoApprovals() {
   // Vendor code ↔ name from the vendor master (the source for auto-fill + the
   // "CODE - Full Name" display). Fall back to any codes seen in open POs.
   const vendorNames: Record<string, string> = {};
-  ((vendors ?? []) as { vendor_code: string | null; vendor_name: string | null }[]).forEach((v) => {
+  const vendorTypes: Record<string, string> = {};
+  ((vendors ?? []) as { vendor_code: string | null; vendor_name: string | null; primary_type: string | null }[]).forEach((v) => {
     const code = (v.vendor_code ?? '').trim();
     if (code) vendorNames[code] = (v.vendor_name ?? '').trim();
+    if (code && v.primary_type) vendorTypes[code] = v.primary_type.trim();
+  });
+  const productNames: Record<string, string> = {};
+  ((catalog ?? []) as { product_code: string | null; product_name: string | null }[]).forEach((r) => {
+    if (r.product_code && r.product_name) productNames[r.product_code.trim().toUpperCase()] = r.product_name.trim();
   });
   const vendorCodes = [
     ...new Set([...Object.keys(vendorNames), ...capacityByVendor.keys()]),
@@ -85,6 +93,8 @@ export async function loadPoApprovals() {
     productCodes,
     vendorCodes,
     vendorNames,
+    vendorTypes,
+    productNames,
     capacityByVendor,
   };
 }
