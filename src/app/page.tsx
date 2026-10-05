@@ -20,7 +20,18 @@ import type { AnalyticsExtras, PoClosureView, SdRole } from '@/lib/forms/types';
 
 export const dynamic = 'force-dynamic';
 
+// Per-section load times for the home page, logged once per render ("[perf] home …" in the
+// Vercel runtime logs). The page is the heaviest in the app; this is how it is tuned.
+function timed<T>(times: Record<string, number>, label: string, p: Promise<T>): Promise<T> {
+  const t0 = Date.now();
+  return p.finally(() => {
+    times[label] = Date.now() - t0;
+  });
+}
+
 export default async function Home() {
+  const times: Record<string, number> = {};
+  const started = Date.now();
   let userEmail: string | null = null;
   // Local fixture mode (no Supabase env) has no auth — show the full nav. In
   // production, isFixtureMode() THROWS on missing env so a misconfigured deploy
@@ -29,7 +40,7 @@ export default async function Home() {
   let allowedPages: string[] | null = null;
   const fixtureMode = isFixtureMode();
   if (!fixtureMode) {
-    const user = await currentUser();
+    const user = await timed(times, 'user', currentUser());
     if (!user) redirect('/login');
     userEmail = user.email;
     if (!userEmail.endsWith('@saadaa.in')) redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
@@ -38,7 +49,7 @@ export default async function Home() {
   }
   // Everything below that does not need another result runs at the same time. Shared loaders
   // (dashboard data, rules) are request-cached, so the issue check reuses the same read.
-  const dashPromise = loadDashboardData();
+  const dashPromise = timed(times, 'dashboardData', loadDashboardData());
   let dashboardData: Awaited<typeof dashPromise>;
   // Pending-closure panel on the PO Tracker (best-effort — never block the dashboard).
   let closures: PoClosureView[] = [];
@@ -53,20 +64,18 @@ export default async function Home() {
   } else {
     const [dash, closuresR, rulesR, openIssues, plan, oos] = await Promise.all([
       dashPromise,
-      loadOpenClosures().catch(() => [] as PoClosureView[]),
-      loadAnalyticsRules(), // never throws
+      timed(times, 'closures', loadOpenClosures()).catch(() => [] as PoClosureView[]),
+      timed(times, 'rules', loadAnalyticsRules()), // never throws
       // Part 3 — the dashboard raises its own issues from its checks (missing TNA, no
       // delivery date, discontinued product on order, stale feed) and closes them when the
       // condition is gone; the Objectives tab then shows the open count. Best-effort.
-      syncAutoIssues()
-        .catch(() => undefined)
-        .then(() => countOpenIssues()),
+      timed(times, 'autoIssues', syncAutoIssues().catch(() => undefined).then(() => countOpenIssues())),
       // Buying Plan synopsis for the month — the same analysis the Buying Plan Analysis page runs.
-      loadBuyingPlanAnalysis().catch(() => null),
+      timed(times, 'buyingPlan', loadBuyingPlanAnalysis()).catch(() => null),
       // Spec 1.10 — in-stock rate for yesterday, taken from the DOQ dashboard's own summary
       // (Main Warehouse, on-sale SKUs, exclusions applied) rather than counted a second way,
       // so the headline here and the OOS one-pager cannot disagree.
-      loadOosSummary()
+      timed(times, 'oosSummary', loadOosSummary())
         .then(async (o) => {
           // The OOS trend is one point per data day, saved the first time the position is
           // computed that day. The home page is opened far more often than the DOQ dashboard,
@@ -87,7 +96,7 @@ export default async function Home() {
     const [extrasR] = await Promise.all([
       // Only lines with quantity still to arrive count as "on order" — a fully
       // received line must not mark a zero-stock variant as covered.
-      loadAnalyticsExtras(
+      timed(times, 'extras', loadAnalyticsExtras(
         dashboardData.pendingPos
           .filter((p) => (Number(p.pending_qty_actual) || 0) > 0)
           .map((p) => ({
@@ -96,7 +105,7 @@ export default async function Home() {
             qty: Number(p.pending_qty_actual) || 0,
           })),
         analyticsRules,
-      ).catch(() => null),
+      )).catch(() => null),
       // Daily TNA-status snapshot for the compliance-trend card: first load of the
       // day records the mix; later loads are DB-side no-ops. Best-effort.
       (async () => {
@@ -154,13 +163,15 @@ export default async function Home() {
     }
     // Sub-tab data, built from what is already loaded above; each best-effort.
     const [ph, prh, vh] = await Promise.allSettled([
-      loadPoHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras }),
-      loadProductHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras }),
-      loadVendorHub(180, { dash: dashboardData }),
+      timed(times, 'poHub', loadPoHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras })),
+      timed(times, 'productHub', loadProductHub({ dash: dashboardData, rules: analyticsRules, extras: analyticsExtras })),
+      timed(times, 'vendorHub', loadVendorHub(180, { dash: dashboardData })),
     ]);
     poHub = ph.status === 'fulfilled' ? ph.value : null;
     productHub = prh.status === 'fulfilled' ? prh.value : null;
     vendorHub = vh.status === 'fulfilled' ? vh.value : null;
+    times.total = Date.now() - started;
+    console.log(`[perf] home ${JSON.stringify(times)}`);
   }
   return (
     <DashboardShell
