@@ -2182,3 +2182,21 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .pl-fill tr.is-filled td { background: #f6fbf8; }
 .pl-fill td.pl-nosku input { background: #f4f4f4; border-style: dashed; }
 .pl-fill tr.pl-fill-total td { font-weight: 700; border-top: 2px solid #e1e3e5; background: #fafafa; }
+
+/* CMTP breakdown as one table: a section per head, every sub-item a row to fill. */
+.wf-cmtp-table { width: 100%; max-width: 760px; }
+.wf-cmtp-table th, .wf-cmtp-table td { vertical-align: middle; }
+.wf-cmtp-table .wf-cmtp-section-head th,
+.wf-cmtp-table .wf-cmtp-section-head td {
+  padding-top: 14px; background: #fafafa; font-weight: 700; text-align: left; border-top: 1px solid #e1e3e5;
+}
+.wf-cmtp-table .wf-cmtp-section-head td.num { text-align: right; }
+.wf-cmtp-table .wf-cmtp-item { padding-left: 22px; }
+.wf-cmtp-table td.input-col input { width: 120px; text-align: right; }
+.wf-cmtp-table tr.is-filled td { background: #f6fbf8; }
+.wf-cmtp-table .wf-cmtp-remove { width: 40px; text-align: center; }
+.wf-cmtp-table .wf-cmtp-none { padding-left: 22px; font-size: 12px; }
+.wf-cmtp-table .wf-cmtp-addrow td { padding-left: 18px; border-bottom: 0; }
+.wf-cmtp-table .wf-cmtp-total-row th,
+.wf-cmtp-table .wf-cmtp-total-row td { font-weight: 800; background: #fff8ea; border-top: 2px solid #f1d9a6; text-align: left; }
+.wf-cmtp-table .wf-cmtp-total-row td.num { text-align: right; }

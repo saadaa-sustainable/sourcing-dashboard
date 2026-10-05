@@ -1691,10 +1691,11 @@ let cmtpUidSeq = 0;
 const nextCmtpUid = () => (cmtpUidSeq += 1);
 
 /**
- * CMTP cost breakdown — the CM cost built from category heads (§1 of the spec).
- * The 6 core heads always render; the team adds line items (sub-tabs) under any
- * head, and can add custom heads ad hoc. The sum of all amounts is the CM cost,
- * saved onto the product's standard-cost row.
+ * CMTP cost breakdown — the CM cost built from category heads (§1 of the spec), as one table.
+ * Every head is a section and every sub-item the master holds for it is already a row, so the
+ * team types amounts straight in (no picking from a dropdown first). A row can be removed, a
+ * new sub-item added under a head (it joins the master), and a whole head added. Only rows
+ * with an amount are cost lines: they are what is saved and what the total adds up.
  */
 function CmtpBreakdown({
   cost,
@@ -1707,23 +1708,55 @@ function CmtpBreakdown({
   subitems: Record<string, string[]>;
   editable: boolean;
 }) {
-  // Local, extendable copy of the sub-item master so a newly-added name appears
-  // in every dropdown for its head immediately (the server revalidates too).
+  // Local, extendable copy of the sub-item master so a newly-added name shows at once.
   const [subs, setSubs] = useState<Record<string, string[]>>(subitems);
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [newSub, setNewSub] = useState('');
   const [subBusy, startSub] = useTransition();
 
-  // Options for a head's dropdown: the master list, plus the row's own legacy
-  // free-typed value if it predates the master (so it still shows and can be kept).
-  const optionsFor = (cat: string, current: string) => {
-    const list = subs[cat] ?? [];
-    return current && !list.includes(current) ? [current, ...list] : list;
+  // The saved lines, then every master sub-item of each head that has no line yet, blank.
+  const seed = (heads: string[], master: Record<string, string[]>): CmtpRow[] => {
+    const out: CmtpRow[] = [];
+    for (const cat of heads) {
+      const saved = cmtp.filter((c) => c.category === cat);
+      for (const name of master[cat] ?? []) {
+        const hits = saved.filter((c) => (c.label ?? '') === name);
+        if (hits.length) {
+          for (const c of hits) out.push({ uid: nextCmtpUid(), category: cat, label: name, amount: c.amount != null ? String(c.amount) : '' });
+        } else {
+          out.push({ uid: nextCmtpUid(), category: cat, label: name, amount: '' });
+        }
+      }
+      // Saved lines whose sub-item is not (or no longer) in the master keep their place.
+      for (const c of saved) {
+        if (!(master[cat] ?? []).includes(c.label ?? '')) {
+          out.push({ uid: nextCmtpUid(), category: cat, label: c.label ?? '', amount: c.amount != null ? String(c.amount) : '' });
+        }
+      }
+    }
+    return out;
   };
+  const initialHeads = (() => {
+    const order: string[] = [...CMTP_MANDATORY];
+    for (const c of cmtp) if (!order.includes(c.category)) order.push(c.category);
+    return order;
+  })();
+  const [heads, setHeads] = useState<string[]>(initialHeads);
+  const [rows, setRows] = useState<CmtpRow[]>(() => seed(initialHeads, subitems));
+  const [newHead, setNewHead] = useState('');
+  const [busy, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
 
   function addSubitem(cat: string) {
     const name = newSub.trim();
     if (!name) return;
+    // Already in the master for this head: just give it a row (again, if it was removed).
+    if ((subs[cat] ?? []).includes(name)) {
+      setRows((cur) => [...cur, { uid: nextCmtpUid(), category: cat, label: name, amount: '' }]);
+      setNewSub('');
+      setAddingFor(null);
+      return;
+    }
     const fd = new FormData();
     fd.set('category', cat);
     fd.set('name', name);
@@ -1734,32 +1767,20 @@ function CmtpBreakdown({
           const list = cur[cat] ?? [];
           return list.includes(name) ? cur : { ...cur, [cat]: [...list, name].sort() };
         });
+        setRows((cur) => [...cur, { uid: nextCmtpUid(), category: cat, label: name, amount: '' }]);
         setNewSub('');
         setAddingFor(null);
-      }
+      } else setErr(toastError(res.error));
     });
   }
-  const [rows, setRows] = useState<CmtpRow[]>(() =>
-    cmtp.length
-      ? cmtp.map((c) => ({
-          uid: nextCmtpUid(),
-          category: c.category,
-          label: c.label ?? '',
-          amount: c.amount != null ? String(c.amount) : '',
-        }))
-      : // No breakdown yet — seed the mandatory heads with one blank line each.
-        CMTP_HEADS.map((h) => ({ uid: nextCmtpUid(), category: h.key, label: '', amount: '' })),
-  );
-  const [newHead, setNewHead] = useState('');
-  const [busy, start] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
-  // Item 2 — a revision reason is mandatory when an EXISTING breakdown's amounts
-  // change (not on first entry). Snapshot the amounts as loaded, keyed by head+sub.
+
+  // Item 2 — a revision reason is mandatory when an EXISTING breakdown's amounts change (not
+  // on first entry). Only lines with an amount count, on both sides, so the blank pre-listed
+  // rows never read as a change.
   const [reason, setReason] = useState('');
-  const hadData = cmtp.length > 0;
-  // Keys carry an occurrence index so a duplicated head+sub-item counts as a
-  // second line (mirrors the server diff) — otherwise a duplicate slips through
-  // as "unchanged" while doubling the CM total.
+  const hadData = cmtp.some((c) => c.amount != null);
+  // Keys carry an occurrence index so a duplicated head+sub-item counts as a second line
+  // (mirrors the server diff) — otherwise a duplicate slips through as "unchanged".
   const keyed = (list: { category: string; label: string | null; amount: string }[]) => {
     const seen = new Map<string, number>();
     const m = new Map<string, string>();
@@ -1772,14 +1793,18 @@ function CmtpBreakdown({
     return m;
   };
   const initialAmts = useMemo(
-    () => keyed(cmtp.map((c) => ({ category: c.category, label: c.label, amount: c.amount != null ? String(c.amount) : '' }))),
+    () =>
+      keyed(
+        cmtp
+          .filter((c) => c.amount != null)
+          .map((c) => ({ category: c.category, label: c.label, amount: String(c.amount) })),
+      ),
     [cmtp],
   );
+  const filled = rows.filter((r) => r.amount.trim() !== '');
   const isRevision = useMemo(() => {
     if (!hadData) return false;
-    const now = keyed(
-      rows.filter((r) => r.category && (r.label || r.amount)).map((r) => ({ category: r.category, label: r.label, amount: r.amount })),
-    );
+    const now = keyed(filled.map((r) => ({ category: r.category, label: r.label, amount: r.amount })));
     if (now.size !== initialAmts.size) return true;
     for (const [k, v] of now) {
       const old = initialAmts.get(k);
@@ -1787,27 +1812,24 @@ function CmtpBreakdown({
       if (Math.abs((numv(v) || 0) - (numv(old) || 0)) >= 0.005) return true;
     }
     return false;
-  }, [rows, initialAmts, hadData]);
+  }, [filled, initialAmts, hadData]);
 
-  // Head order: the 6 mandatory heads first, then any custom heads present.
-  const categories = useMemo(() => {
-    const order = [...CMTP_MANDATORY];
-    for (const r of rows) if (!order.includes(r.category)) order.push(r.category);
-    return order;
-  }, [rows]);
+  const total = filled.reduce((sum, r) => sum + (numv(r.amount) || 0), 0);
 
-  const total = rows.reduce((s, r) => s + (numv(r.amount) || 0), 0);
-
-  const addRow = (category: string, label = '') =>
-    setRows((cur) => [...cur, { uid: nextCmtpUid(), category, label, amount: '' }]);
   const removeRow = (u: number) => setRows((cur) => cur.filter((r) => r.uid !== u));
-  const patchRow = (u: number, key: 'label' | 'amount', value: string) =>
-    setRows((cur) => cur.map((r) => (r.uid === u ? { ...r, [key]: value } : r)));
+  const patchAmount = (u: number, value: string) =>
+    setRows((cur) => cur.map((r) => (r.uid === u ? { ...r, amount: value } : r)));
 
   function addHead() {
     const c = newHead.trim();
-    if (c && !rows.some((r) => r.category === c)) addRow(c);
     setNewHead('');
+    if (!c || heads.includes(c)) return;
+    setHeads((cur) => [...cur, c]);
+    // A head the master already knows comes with its sub-items listed.
+    setRows((cur) => [
+      ...cur,
+      ...(subs[c] ?? []).map((name) => ({ uid: nextCmtpUid(), category: c, label: name, amount: '' })),
+    ]);
   }
 
   function save() {
@@ -1818,10 +1840,8 @@ function CmtpBreakdown({
     }
     const fd = new FormData();
     fd.set('product_code', cost.product_code);
-    fd.set(
-      'components',
-      JSON.stringify(rows.map((r) => ({ category: r.category, label: r.label, amount: r.amount }))),
-    );
+    // Only lines with an amount are cost lines; blank pre-listed rows are not saved.
+    fd.set('components', JSON.stringify(filled.map((r) => ({ category: r.category, label: r.label, amount: r.amount }))));
     if (isRevision) fd.set('revision_reason', reason.trim());
     start(async () => {
       const res = await saveCmtpComponents(fd);
@@ -1832,143 +1852,129 @@ function CmtpBreakdown({
     });
   }
 
+  const fmtAmt = (v: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(v);
+
   return (
     <div className="wf-cmtp">
       {err && <Notice tone="error">{err}</Notice>}
       <p className="wf-subtle">
-        CMTP cost is built from these heads — the total below is the product&rsquo;s FINAL CMTP. The
-        core heads are mandatory; add lines under a head, or a whole head, as the product needs
+        CMTP cost is built from these heads — the total is the product&rsquo;s FINAL CMTP. Every
+        sub-item is listed: fill the amounts that apply and leave the rest blank (blank rows are not
+        saved). Remove a row you do not need, or add a sub-item or a whole head the product needs
         (e.g. buttoning under Product Trims for shirts).
       </p>
 
-      {/* Heads tile across the full panel width. Stacked in one narrow column they left
-          the right half of the screen empty and pushed Finishing below the fold. */}
-      <div className="wf-cmtp-heads">
-      {categories.map((cat) => {
-        const head = CMTP_HEADS.find((h) => h.key === cat);
-        const catRows = rows.filter((r) => r.category === cat);
-        const sub = catRows.reduce((s, r) => s + (numv(r.amount) || 0), 0);
-        const mandatory = CMTP_MANDATORY.includes(cat);
-        return (
-          <div key={cat} className="wf-cmtp-head">
-            <div className="wf-cmtp-head-row">
-              <span className="wf-cmtp-head-name">
-                {head?.label ?? cat}
-                {mandatory && <small className="wf-subtle"> · required</small>}
-              </span>
-              <span className="wf-cmtp-sub wf-cell-calc">{sub || '—'}</span>
-            </div>
-            {catRows.map((r) => (
-              <div key={r.uid} className="wf-cmtp-line">
-                {/* Sub-item is picked from the managed master (per head), not
-                    free-typed — so the same sub-item can't get two spellings. */}
-                <select
-                  className="wf-cmtp-label"
-                  value={r.label}
-                  disabled={!editable}
-                  onChange={(e) => patchRow(r.uid, 'label', e.target.value)}
-                >
-                  <option value="">— sub-item —</option>
-                  {optionsFor(cat, r.label).map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="wf-cmtp-amt"
-                  type="number"
-                  min={0}
-                  placeholder="amount"
-                  value={r.amount}
-                  disabled={!editable}
-                  onChange={(e) => patchRow(r.uid, 'amount', e.target.value)}
-                />
+      <div className="table-scroll">
+        <table className="wf-grid wf-cmtp-table">
+          <thead>
+            <tr>
+              <th>Sub-item</th>
+              <th className="num">Amount (₹)</th>
+              {editable && <th aria-label="Remove" />}
+            </tr>
+          </thead>
+          {heads.map((cat) => {
+            const head = CMTP_HEADS.find((h) => h.key === cat);
+            const mandatory = CMTP_MANDATORY.includes(cat);
+            const all = rows.filter((r) => r.category === cat);
+            // Read-only shows the cost lines only; editing shows every row to fill.
+            const catRows = editable ? all : all.filter((r) => r.amount.trim() !== '');
+            const sub = all.reduce((sum, r) => sum + (numv(r.amount) || 0), 0);
+            return (
+              <tbody key={cat} className="wf-cmtp-section">
+                <tr className="wf-cmtp-section-head">
+                  <th scope="rowgroup">
+                    {head?.label ?? cat}
+                    {mandatory && <small className="wf-subtle"> · required</small>}
+                  </th>
+                  <td className="num wf-cell-calc">{sub ? fmtAmt(sub) : '—'}</td>
+                  {editable && <td />}
+                </tr>
+                {catRows.map((r) => (
+                  <tr key={r.uid} className={r.amount.trim() !== '' ? 'is-filled' : undefined}>
+                    <td className="wf-cmtp-item">{r.label || <span className="wf-subtle">(no sub-item)</span>}</td>
+                    <td className="num input-col">
+                      {editable ? (
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="—"
+                          aria-label={`${head?.label ?? cat}: ${r.label || 'amount'}`}
+                          value={r.amount}
+                          onChange={(e) => patchAmount(r.uid, e.target.value)}
+                        />
+                      ) : (
+                        fmtAmt(numv(r.amount) || 0)
+                      )}
+                    </td>
+                    {editable && (
+                      <td className="wf-cmtp-remove">
+                        <button type="button" className="wf-icon-btn" aria-label={`Remove ${r.label || 'row'}`} title="Remove this row" onClick={() => removeRow(r.uid)}>
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {!catRows.length && (
+                  <tr>
+                    <td colSpan={editable ? 3 : 2} className="wf-subtle wf-cmtp-none">
+                      {editable ? 'No sub-items listed — add one below.' : 'Nothing recorded.'}
+                    </td>
+                  </tr>
+                )}
                 {editable && (
-                  <button
-                    type="button"
-                    className="wf-icon-btn"
-                    aria-label="Remove line"
-                    onClick={() => removeRow(r.uid)}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  <tr className="wf-cmtp-addrow">
+                    <td colSpan={3}>
+                      {addingFor === cat ? (
+                        <span className="wf-cmtp-newsub">
+                          <input
+                            placeholder="Sub-item name (joins the master)"
+                            value={newSub}
+                            disabled={subBusy}
+                            autoFocus
+                            onChange={(e) => setNewSub(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); addSubitem(cat); }
+                              if (e.key === 'Escape') { setAddingFor(null); setNewSub(''); }
+                            }}
+                          />
+                          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={subBusy || !newSub.trim()} onClick={() => addSubitem(cat)}>
+                            {subBusy ? 'Adding…' : 'Add'}
+                          </button>
+                          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={subBusy} onClick={() => { setAddingFor(null); setNewSub(''); }}>
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button type="button" className="wf-chip-btn" onClick={() => { setAddingFor(cat); setNewSub(''); }}>
+                          <Plus size={12} /> Add sub-item
+                        </button>
+                      )}
+                    </td>
+                  </tr>
                 )}
-              </div>
-            ))}
-            {editable && (
-              <div className="wf-cmtp-add">
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => addRow(cat)}>
-                  <Plus size={12} /> Add line
-                </button>
-                {addingFor === cat ? (
-                  <span className="wf-cmtp-newsub">
-                    <input
-                      placeholder="New sub-item name"
-                      value={newSub}
-                      disabled={subBusy}
-                      autoFocus
-                      onChange={(e) => setNewSub(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); addSubitem(cat); }
-                        if (e.key === 'Escape') { setAddingFor(null); setNewSub(''); }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="wf-btn wf-btn-primary wf-btn-sm"
-                      disabled={subBusy || !newSub.trim()}
-                      onClick={() => addSubitem(cat)}
-                    >
-                      {subBusy ? 'Adding…' : 'Add to master'}
-                    </button>
-                    <button
-                      type="button"
-                      className="wf-btn wf-btn-ghost wf-btn-sm"
-                      disabled={subBusy}
-                      onClick={() => { setAddingFor(null); setNewSub(''); }}
-                    >
-                      Cancel
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="wf-chip-btn"
-                    onClick={() => { setAddingFor(cat); setNewSub(''); }}
-                  >
-                    <Plus size={12} /> New sub-item
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              </tbody>
+            );
+          })}
+          <tfoot>
+            <tr className="wf-cmtp-total-row">
+              <th>FINAL CMTP cost</th>
+              <td className="num wf-cell-calc">{total ? fmtAmt(total) : '—'}</td>
+              {editable && <td />}
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
       {editable && (
         <div className="wf-cmtp-newhead">
-          <input
-            placeholder="Add a head (e.g. Embroidery)"
-            value={newHead}
-            onChange={(e) => setNewHead(e.target.value)}
-          />
-          <button
-            type="button"
-            className="wf-btn wf-btn-ghost wf-btn-sm"
-            disabled={!newHead.trim()}
-            onClick={addHead}
-          >
+          <input placeholder="Add a head (e.g. Embroidery)" value={newHead} onChange={(e) => setNewHead(e.target.value)} />
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={!newHead.trim()} onClick={addHead}>
             <Plus size={12} /> Add head
           </button>
         </div>
       )}
-
-      <div className="wf-cmtp-total">
-        <span>FINAL CMTP cost</span>
-        <strong className="wf-cell-calc">{total || '—'}</strong>
-      </div>
 
       {editable && isRevision && (
         <label className="field wf-field wf-cmtp-reason">

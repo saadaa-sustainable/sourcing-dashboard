@@ -288,7 +288,7 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
     .maybeSingle();
   if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
 
-  // Keep only rows that carry a head; drop fully-empty scratch rows.
+  // A cost line is a head with an amount; a listed sub-item left blank is not saved.
   const clean = rows
     .map((r, i) => ({
       product_code,
@@ -297,7 +297,7 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
       amount: numOrNull(r.amount),
       position: i,
     }))
-    .filter((r) => r.category && (r.label != null || r.amount != null));
+    .filter((r) => r.category && r.amount != null);
 
   const total = clean.reduce((s, r) => s + (r.amount ?? 0), 0);
 
@@ -321,8 +321,11 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
     keyCounts.set(base, n + 1);
     return n ? `${base} #${n + 1}` : base;
   };
+  // Only lines with an amount are cost lines. The CMTP table lists every sub-item and saves
+  // the filled ones, so an old line saved with no amount dropping out is not a revision.
+  const existingFilled = (existing ?? []).filter((r) => numOrNull(r.amount) != null);
   const oldByKey = new Map<string, number | null>(
-    (existing ?? []).map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
+    existingFilled.map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
   );
   keyCounts.clear();
   const amtEq = (a: number | null, b: number | null) =>
@@ -338,13 +341,13 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
       changes.push({ category: r.category, label: r.label, old, next: r.amount });
     }
   }
-  for (const r of existing ?? []) {
+  for (const r of existingFilled) {
     const k = lineKey(String(r.category), textOrNull(r.label));
     if (!seen.has(k)) {
       changes.push({ category: String(r.category), label: textOrNull(r.label), old: numOrNull(r.amount), next: null });
     }
   }
-  const isRevision = (existing?.length ?? 0) > 0 && changes.length > 0;
+  const isRevision = existingFilled.length > 0 && changes.length > 0;
   const reason = String(formData.get('revision_reason') ?? '').trim();
   if (isRevision && !reason) {
     return fail(
