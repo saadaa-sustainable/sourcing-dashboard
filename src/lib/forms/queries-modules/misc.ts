@@ -106,6 +106,8 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
         .select('received_quantity')
         .gte('grn_created_at', planMonth)
         .lt('grn_created_at', monthEnd)
+        // Date first, then id: a stable page order the (grn_created_at, grn_detail_id) index serves.
+        .order('grn_created_at')
         .order('grn_detail_id'),
     ),
     loadDashboardData(),

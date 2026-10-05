@@ -300,6 +300,8 @@ export async function loadAnalyticsExtras(
           .from('sd_ee_grn')
           .select('received_quantity, grn_created_at')
           .gte('grn_created_at', weekAgoDate)
+          // Date first, then id: a stable page order the (grn_created_at, grn_detail_id) index serves.
+          .order('grn_created_at')
           .order('grn_detail_id'),
       ),
     ]);
@@ -343,6 +345,8 @@ export async function loadAnalyticsExtras(
           .select('received_quantity, po_number')
           .gte('grn_created_at', monthStartDate)
           .lt('grn_created_at', nextMonth)
+          // Date first, then id: a stable page order the (grn_created_at, grn_detail_id) index serves.
+          .order('grn_created_at')
           .order('grn_detail_id'),
       ),
       // Open PO lines the team is meant to fill an expected quantity against. When the
