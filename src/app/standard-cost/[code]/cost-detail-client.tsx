@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { HeaderInfo } from '@/components/header-info';
 import Link from 'next/link';
-import { ArrowLeft, Lock, Pencil, X } from 'lucide-react';
+import { ArrowLeft, Link2, Lock, Pencil, Trash2, X } from 'lucide-react';
+import { ProductPicker } from '@/components/forms/product-picker';
+import { deleteUnlinkedProduct, linkProductToEasyEcom } from '@/lib/forms/actions';
+import { emitToast, toastError } from '@/lib/toast';
 import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
 import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
@@ -58,6 +62,7 @@ export function StandardCostDetailClient({
   masterFabric,
   temp,
   catalog,
+  linkCandidates = [],
   role,
   marginPct,
   track = 'fg',
@@ -76,6 +81,8 @@ export function StandardCostDetailClient({
   masterFabric: { fabricCode: string | null; multi: boolean } | null;
   temp?: TempProductInfo;
   catalog: ProductCatalogItem[];
+  /** EasyEcom products with no Standard Cost of their own — what an unlinked product can be linked to. */
+  linkCandidates?: ProductCatalogItem[];
   role: SdRole;
   marginPct: number;
   track?: 'fg' | 'material';
@@ -139,6 +146,10 @@ export function StandardCostDetailClient({
           {editing ? 'Close editing' : 'Edit cost'}
         </button>
       </header>
+
+      {!isMat && !catalog.some((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase()) && (
+        <UnlinkedProductPanel code={cost.product_code} role={role} candidates={linkCandidates} temp={!!temp} />
+      )}
 
       <section className="sc-page-rates" aria-label="Current rates">
         {[
@@ -250,5 +261,113 @@ export function StandardCostDetailClient({
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Shown on a product that is not in EasyEcom (a typed code such as "ABCD", or a TMP-xxxx
+ * temporary product): link it to its EasyEcom product once that exists, or delete it. Both run
+ * in the database in one step and are checked there (link: admin; delete: team or admin,
+ * refused while a PO or plan line still uses it).
+ */
+function UnlinkedProductPanel({
+  code,
+  role,
+  candidates,
+  temp,
+}: {
+  code: string;
+  role: SdRole;
+  candidates: ProductCatalogItem[];
+  temp: boolean;
+}) {
+  const router = useRouter();
+  const [mode, setMode] = useState<'idle' | 'link' | 'delete'>('idle');
+  const [busy, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const canLink = role === 'admin';
+  const canDelete = canEdit(role, 'draft');
+
+  function link(realCode: string) {
+    setErr(null);
+    const fd = new FormData();
+    fd.set('product_code', code);
+    fd.set('real_code', realCode);
+    start(async () => {
+      const res = await linkProductToEasyEcom(fd);
+      if (!res.ok) return setErr(toastError(res.error));
+      emitToast(res.message ?? 'Linked.');
+      router.replace(`/standard-cost/${encodeURIComponent(realCode.toUpperCase())}`);
+      router.refresh();
+    });
+  }
+
+  function remove() {
+    setErr(null);
+    const fd = new FormData();
+    fd.set('product_code', code);
+    start(async () => {
+      const res = await deleteUnlinkedProduct(fd);
+      if (!res.ok) {
+        setMode('idle');
+        return setErr(toastError(res.error));
+      }
+      emitToast(res.message ?? 'Deleted.');
+      router.replace('/standard-cost');
+      router.refresh();
+    });
+  }
+
+  return (
+    <section className="sc-unlinked" aria-label="Product not in EasyEcom">
+      <div className="sc-unlinked-text">
+        <strong>{temp ? 'Temporary product, not in EasyEcom yet' : 'Not an EasyEcom product'}</strong>
+        <p className="wf-subtle">
+          {code} is not in the product master. When the product is created in EasyEcom, link it here:
+          its cost, cost sheet, buying-plan lines and POs move to the EasyEcom code. If it was added by
+          mistake, delete it.
+        </p>
+        {err && <small className="wf-line-error">{err}</small>}
+      </div>
+      <div className="sc-unlinked-actions">
+        {mode === 'link' ? (
+          <div className="sc-unlinked-link">
+            <ProductPicker
+              items={candidates}
+              onPick={link}
+              disabled={busy}
+              allowFreeText={false}
+              placeholder="Search the EasyEcom product code or name…"
+            />
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMode('idle')}>
+              Cancel
+            </button>
+          </div>
+        ) : mode === 'delete' ? (
+          <div className="sc-unlinked-confirm">
+            <span>Delete {code} and its cost sheet?</span>
+            <button type="button" className="wf-btn wf-btn-danger wf-btn-sm" disabled={busy} onClick={remove}>
+              {busy ? 'Deleting…' : 'Delete'}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMode('idle')}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            {canLink && (
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => setMode('link')}>
+                <Link2 size={14} /> Link to EasyEcom product
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setMode('delete')}>
+                <Trash2 size={14} /> Delete product
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }

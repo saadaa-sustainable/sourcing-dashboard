@@ -164,7 +164,10 @@ export function StandardCostClient({
     const q = filter.trim().toLowerCase();
     const base = mineOnly ? costs.filter((c) => myTurn(c.neg_stage)) : costs;
     return base.filter((c) => {
-      if (!isMat && stageFilter !== 'all' && (c.neg_stage ?? 'not_started') !== stageFilter) return false;
+      if (!isMat && stageFilter === 'not_in_easyecom') {
+        // Products the product master does not know: typed codes and TMP-xxxx temporaries.
+        if (productNames.has(c.product_code.toUpperCase())) return false;
+      } else if (!isMat && stageFilter !== 'all' && (c.neg_stage ?? 'not_started') !== stageFilter) return false;
       return !q || c.product_code.toLowerCase().includes(q) ||
         (!isMat && (productNames.get(c.product_code.toUpperCase()) ?? '').toLowerCase().includes(q));
     });
@@ -466,6 +469,7 @@ export function StandardCostClient({
                 <option value="signed_off">Signed off</option>
                 <option value="renegotiate">Renegotiate</option>
                 <option value="rejected">Rejected</option>
+                <option value="not_in_easyecom">Not in EasyEcom</option>
               </select>
               <select
                 aria-label="Sort products"
@@ -530,6 +534,11 @@ export function StandardCostClient({
                     </div>
                     <div className="sc-card-tags">
                       {temp?.status === 'active' && <span className="wf-temp-badge">TEMP</span>}
+                      {!productNames.has(cost.product_code.toUpperCase()) && temp?.status !== 'active' && (
+                        <span className="wf-temp-badge" title="Not in the product master: open Cost Details to link it to its EasyEcom product or delete it">
+                          Not in EasyEcom
+                        </span>
+                      )}
                       {cost.frozen && <span className="sc-card-frozen"><Lock size={11} /> Frozen</span>}
                       {!cost.documented && cost.neg_stage == null && (
                         <span className="wf-gap-tag">Undocumented</span>

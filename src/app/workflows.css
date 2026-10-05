@@ -1913,6 +1913,25 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .sc-page-code { font-size: 12px; font-weight: 600; color: #4d6fa9; }
 .sc-page-title h1 { margin: 0; font-size: 20px; line-height: 1.25; overflow-wrap: anywhere; }
 .sc-page-title p { margin: 0; font-size: 12px; }
+/* A product that is not in EasyEcom: link it to its EasyEcom code, or delete it. */
+.sc-unlinked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 14px 16px;
+  border: 1px solid #f1d9a6;
+  border-radius: 12px;
+  background: #fff8ea;
+}
+.sc-unlinked-text { flex: 1 1 320px; min-width: 0; }
+.sc-unlinked-text strong { display: block; font-size: 13.5px; color: #6b4a07; }
+.sc-unlinked-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; }
+.sc-unlinked-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sc-unlinked-link { display: flex; align-items: center; gap: 8px; min-width: min(380px, 100%); }
+.sc-unlinked-link .wf-picker { flex: 1 1 auto; }
+.sc-unlinked-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .sc-page-rates {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));

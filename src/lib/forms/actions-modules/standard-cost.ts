@@ -625,3 +625,50 @@ export async function mergeTempProduct(formData: FormData): Promise<ActionResult
   return { ok: true, message: `Merged ${temp_code} into ${real_code}. All its cost, plan and PO data now lives under ${real_code}.` };
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Products not in EasyEcom — typed codes ("ABCD") and TMP-xxxx alike   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Link a product that is not in EasyEcom to its EasyEcom product code: its cost, cost sheet,
+ * rate history, plan lines and POs all move to the real code (sd_link_product, one
+ * transaction; the database itself checks the caller is an admin).
+ */
+export async function linkProductToEasyEcom(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role !== 'admin') return fail('Only an admin can link a product to EasyEcom.');
+  const from = String(formData.get('product_code') ?? '').trim();
+  const to = String(formData.get('real_code') ?? '').trim().toUpperCase();
+  if (!from || !to) return fail('Pick the EasyEcom product to link to.');
+
+  const supabase = await supa();
+  const { error } = await supabase.rpc('sd_link_product', { p_from: from, p_to: to, p_by: user.email });
+  if (error) return fail(error.message);
+
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  revalidatePath('/po-approval');
+  return { ok: true, message: `Linked ${from} to ${to}. Its cost, plan lines and POs now sit under ${to}.` };
+}
+
+/**
+ * Delete a product that is not in EasyEcom, with its cost sheet. The database refuses while a
+ * PO, plan line, inward or cutting record still uses it (link it instead), once it is frozen,
+ * and for a signed-off cost unless the caller is an admin. Deleted rows stay in the audit log.
+ */
+export async function deleteUnlinkedProduct(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to delete products.');
+  const code = String(formData.get('product_code') ?? '').trim();
+  if (!code) return fail('Product code is required.');
+
+  const supabase = await supa();
+  const { error } = await supabase.rpc('sd_delete_unlinked_product', { p_code: code, p_by: user.email });
+  if (error) return fail(error.message);
+
+  revalidatePath('/standard-cost');
+  return { ok: true, message: `Deleted ${code}.` };
+}

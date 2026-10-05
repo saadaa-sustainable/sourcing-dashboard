@@ -158,6 +158,9 @@ export default async function StandardCostDetailPage({
         masterFabric={productFabric[cost.product_code] ?? null}
         temp={tempProducts[cost.product_code]}
         catalog={catalog}
+        linkCandidates={catalog.filter(
+          (p) => !costs.some((c) => c.product_code.toUpperCase() === p.product_code.toUpperCase()),
+        )}
         role={user.role}
         marginPct={rules.margin_pct / 100}
         track={track}
