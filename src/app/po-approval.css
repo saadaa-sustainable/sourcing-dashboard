@@ -236,3 +236,13 @@ body.poa-drawer-open { overflow: hidden; }
 .poa-steppanel .wf-form-grid { padding: 0; }
 .poa-drawer .wf-form-panel > .poa-steppanel + .poa-steppanel { margin-top: 0; }
 @media (max-width: 900px) { .poa-steptabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Raise a PO: full screen, not a side panel (2026-10-05). */
+.poa-drawer { left: 0; width: 100%; border-left: 0; box-shadow: none; }
+.poa-scrim { display: none; }
+.poa-drawer-head { padding: 14px 28px; }
+.poa-drawer-body { width: min(1500px, 100%); margin: 0 auto; padding: 20px 28px 32px; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; }
+.poa-drawer .wf-form-grid,
+.poa-drawer .wf-form-grid:has(> :nth-child(5):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1200px) { .poa-drawer .wf-form-grid, .poa-drawer .wf-form-grid:has(> :nth-child(5):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .poa-drawer-body { grid-template-columns: 1fr; padding: 16px; } .poa-drawer .wf-form-grid, .poa-drawer .wf-form-grid:has(> :nth-child(5):last-child) { grid-template-columns: 1fr; } }
