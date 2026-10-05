@@ -195,6 +195,9 @@ export async function loadAnalyticsExtras(
   const twoWeeksAgoIso = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const weekAgoDate = weekAgoIso.slice(0, 10);
   const todayDate = new Date().toISOString().slice(0, 10);
+  // Each card section is independent (it fills its own extras.* field and swallows its own
+  // errors), so they run side by side: ~25 sections one after another took 2.3–2.7 s.
+  const tasks: Promise<unknown>[] = [];
 
   /* Spec 1.11 — POs issued this week vs the preceding week: quantity, value and PO count.
      Source is the real EasyEcom book (sd_po_filtered, by po_date), NOT
@@ -204,6 +207,7 @@ export async function loadAnalyticsExtras(
      Value is Σ(qty × item price) per line. NOT total_po_value: that column carries a GROUP
      total repeated on every line of the PO, so summing it turned one ₹16.7 lakh PO into
      ₹6 crore. */
+  tasks.push((async () => {
   try {
     type Line = {
       po_ref_num: string | null; vendor_name: string | null; po_date: string | null;
@@ -260,8 +264,10 @@ export async function loadAnalyticsExtras(
       },
     };
   } catch { /* stays null */ }
+  })());
 
   /* POs pending approval right now (submitted / pending_l2). */
+  tasks.push((async () => {
   try {
     const { data } = await supabase
       .from('sd_po_approval')
@@ -280,9 +286,11 @@ export async function loadAnalyticsExtras(
       })),
     };
   } catch { /* stays null */ }
+  })());
 
   /* Inward last week: planned (arrivals due last week, still-open lines) vs actual
      (GRN received last week). Approximate — the two aren't line-matched. */
+  tasks.push((async () => {
   try {
     // Both sides page. A single week of GRN is ~2,900 lines against a 1,000-row response cap,
     // so the unpaged version was summing the first thousand and calling it the week's receipts.
@@ -310,12 +318,14 @@ export async function loadAnalyticsExtras(
     const actual = grn.reduce((s, r) => s + (Number(r.received_quantity) || 0), 0);
     extras.inwardLastWeek = { planned, actual };
   } catch { /* stays null */ }
+  })());
 
   /* 8.1 Inward Plan coverage — current month, live. Actual = GRN received in the month.
      Planned is taken from whichever inward source the team is actually filling: the
      Receivable Plan (expected qty dated in the month) when it holds anything, otherwise the
      monthly Inward Plan sheet with rejected lines excluded — the same "rejected counts for
      nothing" rule the Buying Plan uses. Month-level totals, not line-matched. */
+  tasks.push((async () => {
   try {
     const today = istDateKey();
     const monthStartDate = `${today.slice(0, 7)}-01`;
@@ -420,6 +430,7 @@ export async function loadAnalyticsExtras(
       receivedQty: actual,
     };
   } catch { /* stays null */ }
+  })());
 
   // Weave + lifecycle per product code — shared by 1.5 and 1.10.
   let weaveByCode: Record<string, string> = {};
@@ -448,6 +459,7 @@ export async function loadAnalyticsExtras(
   /* 1.4 Stockout Risk — EVERY variant with no stock and no open PO covering it.
      No demand/DOQ threshold (a stockout is a stockout); the full list is instead
      segmented by ABC/D class so priority is shown, not used to hide items. */
+  tasks.push((async () => {
   try {
     /* Stock-out risk, variant level.
        Rewritten 2026-09-17 after the team found the old list wrong end to end. The old
@@ -561,14 +573,18 @@ export async function loadAnalyticsExtras(
       byClass,
     };
   } catch { /* section stays null */ }
+  })());
 
   /* PO book — open POs as a share of every PO there has ever been (open + completed). */
+  tasks.push((async () => {
   try {
     const { data } = await supabase.from('sd_po_book').select('open_pos, completed_pos').maybeSingle();
     if (data) extras.poBook = { open: Number(data.open_pos) || 0, completed: Number(data.completed_pos) || 0 };
   } catch { /* stays null */ }
+  })());
 
   /* Approval requisitions — everything waiting for a decision, by kind. */
+  tasks.push((async () => {
   try {
     const pending = (t: string) =>
       supabase.from(t).select('*', { count: 'exact', head: true }).in('status', ['submitted', 'pending_l2']);
@@ -586,9 +602,11 @@ export async function loadAnalyticsExtras(
       total: n(bp) + n(po) + n(pd) + n(dc) + n(vd) + n(iw),
     };
   } catch { /* stays null */ }
+  })());
 
   /* ISR — pieces received (GRN) against pieces sold over the same four complete weeks the
      DOQ windows cover, so the two sides of the ratio are the same days. */
+  tasks.push((async () => {
   try {
     const { data: meta } = await supabase.from('sd_doq_window_meta').select('windows').eq('id', 1).maybeSingle();
     const w = (meta as { windows?: { windows?: Record<string, { start: string; end: string }> } } | null)?.windows?.windows;
@@ -611,10 +629,12 @@ export async function loadAnalyticsExtras(
       };
     }
   } catch { /* stays null */ }
+  })());
 
   /* 1.9 Delivery reliability — per-vendor delay rate over the Rules-Master window
      (default 2 quarters), combining COMPLETED POs (final delivered status) and
      OPEN POs (in-flight), deduped by PO number. See sd_vendor_reliability(). */
+  tasks.push((async () => {
   try {
     const windowDays = Math.round(rules.reliability_window_days ?? 180);
     const { data } = await supabase.rpc('sd_vendor_reliability', { p_window_days: windowDays });
@@ -635,12 +655,14 @@ export async function loadAnalyticsExtras(
       })),
     };
   } catch { /* section stays null */ }
+  })());
 
   /* OTIF — COMPLETED POs only, over the same window as Delivery Reliability.
      On time = the PO was closed on or before its expected delivery date; in full = nothing
      was left pending on it. OTIF is both. Deduped to one row per PO number, since the table
      is one row per SKU line. Completed POs carry a real value, so this objective can be
      counted AND valued. */
+  tasks.push((async () => {
   try {
     const otifWindowDays = Math.round(rules.reliability_window_days ?? 180);
     const cutoff = new Date(Date.now() - otifWindowDays * 86_400_000).toISOString().slice(0, 10);
@@ -696,10 +718,12 @@ export async function loadAnalyticsExtras(
       otifValue,
     };
   } catch { /* stays null */ }
+  })());
 
   /* Item 3 — Expected vs actual delivery volume, last 12 ISO weeks. From completed
      POs: expected = qty due that week (by EDD), actual = qty that completed that
      week (by po_updated_date). The gap between them is the delivery slippage. */
+  tasks.push((async () => {
   try {
     const from12w = new Date(Date.now() - 12 * 7 * 86_400_000).toISOString().slice(0, 10);
     // 12 weeks of completed PO lines runs past a thousand, so this pages too.
@@ -752,6 +776,7 @@ export async function loadAnalyticsExtras(
       actual: v.actual,
     }));
   } catch { /* section stays null */ }
+  })());
 
   /* Months for 1.5 / 1.8 / 1.10 — current + two prior (IST). */
   const ist = new Date(Date.now() + 5.5 * 3600_000);
@@ -761,6 +786,7 @@ export async function loadAnalyticsExtras(
   });
 
   /* 1.5 Buying Plan Realization — planned vs issued value per month × weave. */
+  tasks.push((async () => {
   try {
     const stdCosts = await loadApprovedStandardCosts();
     const { data: plans } = await supabase
@@ -837,11 +863,13 @@ export async function loadAnalyticsExtras(
         .filter((b) => b.planned > 0 || b.actual > 0),
     }));
   } catch { /* section stays null */ }
+  })());
 
   /* 1.6 TNA compliance trend — recorded daily by the dashboard itself. */
-  extras.tnaTrend = await loadTnaSnapshots();
+  tasks.push(loadTnaSnapshots().then((t) => { extras.tnaTrend = t; }, () => undefined));
 
   /* 1.7 PO Closure compliance vs the SLA. */
+  tasks.push((async () => {
   try {
     const sla = rules.closure_sla_days ?? 15;
     // Same calendar-day rule as the PO Closure page (computeClosureCompliance):
@@ -864,8 +892,10 @@ export async function loadAnalyticsExtras(
     });
     extras.closure = { closedTotal, closedWithinSla, openBeyondSla, slaDays: sla };
   } catch { /* section stays null */ }
+  })());
 
   /* 1.8 Cost variance — approved POs issued above standard this month. */
+  tasks.push((async () => {
   try {
     const stdCosts = await loadApprovedStandardCosts();
     const monthStartIso = months[0];
@@ -906,8 +936,10 @@ export async function loadAnalyticsExtras(
       top: variances.slice(0, 3),
     };
   } catch { /* section stays null */ }
+  })());
 
   /* 1.10 Discontinued-but-active integrity check. */
+  tasks.push((async () => {
   try {
     if (discontinuedCodes.size > 0) {
       const offendersPo = openPos.filter((p) => discontinuedCodes.has(p.code));
@@ -941,8 +973,10 @@ export async function loadAnalyticsExtras(
       };
     }
   } catch { /* section stays null */ }
+  })());
 
   /* 04 Workspace — replenishment queue: variants the ROP maths says to order now. */
+  tasks.push((async () => {
   try {
     const rows: { rop_30: number | null; oos_flag: boolean | null }[] = [];
     for (let from = 0; ; from += PAGE_SIZE) {
@@ -963,8 +997,10 @@ export async function loadAnalyticsExtras(
       oosVariants: rows.filter((r) => Boolean(r.oos_flag)).length,
     };
   } catch { /* section stays null */ }
+  })());
 
   /* 04 Workspace — OOS Calculation summary (head counts only; detail is on the page). */
+  tasks.push((async () => {
   try {
     const [total, zero, day] = await Promise.all([
       supabase.from('sd_oos_calculation').select('sku', { count: 'exact', head: true }),
@@ -984,11 +1020,13 @@ export async function loadAnalyticsExtras(
       dataAsOf: (day.data?.[0] as { date_day?: string } | undefined)?.date_day ?? null,
     };
   } catch { /* section stays null */ }
+  })());
 
   /* 01 Money — sales lost to stockouts, over the 45-day window (spec 1.10).
      Leakage = selling price × DOQ × OOS days, per SKU — the same formula the OOS
      Calculation page prints per row and the DOQ dashboard totals, computed here rather
      than read from sd_oos_calculation.sales_leakage, which the feed leaves empty. */
+  tasks.push((async () => {
   try {
     const rows = await pageAll<{
       sales_value: number | null; doq_45: number | null; total_oos_days: number | null;
@@ -1009,6 +1047,7 @@ export async function loadAnalyticsExtras(
     }
     extras.salesLeakage = { amount: Math.round(leakage), skus, windowDays: 45 };
   } catch { /* section stays null */ }
+  })());
 
   /* 01 Money — POs that finished without their critical path ever being recorded (spec 1.10).
      The dashboard's other "Missing TNA" counts OPEN POs; this is the closed ones, where
@@ -1017,11 +1056,13 @@ export async function loadAnalyticsExtras(
   // sd_po_completed lines through PostgREST on every dashboard load, and with the inward
   // trend below it pushed the page past Vercel's 300-second limit — the dashboard died after
   // sign-in. A TNA row counts as filled when any core stage has an actual date.
+  tasks.push((async () => {
   try {
     const { data } = await supabase.rpc('sd_missing_tna_closed');
     const r = (Array.isArray(data) ? data[0] : data) as { closed: number | null; missing: number | null } | null;
     if (r) extras.missingTnaClosed = { closed: Number(r.closed) || 0, missing: Number(r.missing) || 0 };
   } catch { /* section stays null */ }
+  })());
 
   /* Spec 2.4 — inward trend: planned vs received per month, the coverage that falls out of
      it, and how it moves month on month. Same rules as the single-month card above so the
@@ -1034,6 +1075,7 @@ export async function loadAnalyticsExtras(
   // Aggregated in SQL (sd_inward_trend): six months of sd_ee_grn is ~114,000 lines, and the
   // first version paged every one of them through PostgREST on each dashboard load — 114
   // sequential requests, each re-sorting the whole set. That is what timed the page out.
+  tasks.push((async () => {
   try {
     const { data } = await supabase.rpc('sd_inward_trend', { p_months: 6 });
     const rows = (Array.isArray(data) ? data : []) as {
@@ -1054,8 +1096,10 @@ export async function loadAnalyticsExtras(
       });
     }
   } catch { /* stays null */ }
+  })());
 
   /* 04 Workspace — vendor recommendation extremes (≥3 completed POs to count). */
+  tasks.push((async () => {
   try {
     const { data } = await supabase
       .from('sd_vendor_recommendation')
@@ -1087,8 +1131,10 @@ export async function loadAnalyticsExtras(
         })),
     };
   } catch { /* section stays null */ }
+  })());
 
   /* 04 Workspace — inward pipeline: open Approved lines still to arrive, by EDD. */
+  tasks.push((async () => {
   try {
     const lines: { pending_qty: number | null; expected_delivery_date: string | null }[] = [];
     for (let from = 0; ; from += PAGE_SIZE) {
@@ -1115,8 +1161,10 @@ export async function loadAnalyticsExtras(
     });
     extras.inwardPipeline = pipe;
   } catch { /* section stays null */ }
+  })());
 
   /* 05 Data & sync — feed freshness from the Sync Health view. */
+  tasks.push((async () => {
   try {
     const staleHours = rules.sync_stale_hours ?? 30;
     const { data } = await supabase
@@ -1143,6 +1191,9 @@ export async function loadAnalyticsExtras(
       oldestHours: finiteAges.length ? Math.max(...finiteAges) : null,
     };
   } catch { /* section stays null */ }
+  })());
 
+  // Every card section above was started without waiting for the one before it.
+  await Promise.all(tasks);
   return extras;
 }
