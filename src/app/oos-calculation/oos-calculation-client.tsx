@@ -6,6 +6,7 @@ import { DataAsOf } from '@/components/forms/data-as-of';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { OosExclusionPanel } from '@/components/forms/oos-exclusion-panel';
 import type { OosCalculationRow, OosSkuExclusion } from '@/lib/forms/types';
+import { unpackRows, type PackedRows } from '@/lib/packed-rows';
 
 const money = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
@@ -59,18 +60,20 @@ const COLS: Column<OosCalculationRow>[] = [
 ];
 
 export function OosCalculationClient({
-  rows,
+  rows: packed,
   exclusions,
   canManage,
   dataAsOf,
   lastSynced,
 }: {
-  rows: OosCalculationRow[];
+  /** Packed (keys once): 5k SKUs × ~40 columns as objects made a 4.4 MB page. */
+  rows: PackedRows<OosCalculationRow>;
   exclusions: OosSkuExclusion[];
   canManage: boolean;
   dataAsOf: string | null;
   lastSynced: string | null;
 }) {
+  const rows = useMemo(() => unpackRows(packed), [packed]);
   const [tab, setTab] = useState<'calc' | 'excluded'>('calc');
   // The list is spelt CODE_SIZE, the feed rows without the underscore: compare on skuKey.
   const excludedSet = useMemo(

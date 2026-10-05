@@ -1,5 +1,7 @@
 import { skuKey } from '@/lib/sku-key';
 import { redirect } from 'next/navigation';
+import { packRows } from '@/lib/packed-rows';
+import type { OosCalculationRow } from '@/lib/forms/types';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
@@ -82,7 +84,7 @@ export default async function OosCalculationPage() {
       allowedPages={user.allowed_pages ?? null}
     >
       <OosCalculationClient
-        rows={rows}
+        rows={packRows<OosCalculationRow>(rows)}
         exclusions={exclusions}
         canManage={user.role !== 'viewer'}
         dataAsOf={meta.dataAsOf}
