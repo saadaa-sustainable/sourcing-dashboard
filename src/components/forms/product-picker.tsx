@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search } from 'lucide-react';
 import type { ProductCatalogItem } from '@/lib/forms/types';
 
@@ -13,6 +14,11 @@ import type { ProductCatalogItem } from '@/lib/forms/types';
  * it is never overlapped or clipped by the table / panels below it — every row is
  * clickable across its full width (a plain absolute dropdown sat *under* the grid,
  * so only the non-overlapped slivers registered clicks).
+ *
+ * The overlay is portaled to <body>: inside a dialog centred with `transform` (Standard
+ * Cost's Add product), position:fixed anchors to the dialog instead of the window, so the
+ * list landed in the wrong place, was clipped by the dialog's scroll box and picked up the
+ * dialog's text styles.
  */
 export function ProductPicker({
   items,
@@ -35,6 +41,7 @@ export function ProductPicker({
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // Codes are compared upper-cased everywhere (pick() upper-cases what it emits).
   const excludeUp = useMemo(
@@ -68,9 +75,15 @@ export function ProductPicker({
   // Reposition on scroll / resize while open; close on outside interaction / Escape.
   useEffect(() => {
     if (!open) return;
-    const onScrollResize = () => place();
+    const onScrollResize = (e: Event) => {
+      // Scrolling the list itself must not re-anchor it.
+      if (listRef.current && e.target instanceof Node && listRef.current.contains(e.target)) return;
+      place();
+    };
     const onDown = (e: Event) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // The list lives in <body> now, outside rootRef: a press inside it is not "outside".
+      if (!rootRef.current?.contains(t) && !listRef.current?.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('scroll', onScrollResize, true);
@@ -114,8 +127,9 @@ export function ProductPicker({
           onFocus={() => setOpen(true)}
         />
       </div>
-      {open && !disabled && pos && (
+      {open && !disabled && pos && createPortal(
         <div
+          ref={listRef}
           className="wf-picker-list"
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
         >
@@ -149,7 +163,8 @@ export function ProductPicker({
             </button>
           )}
           {!matches.length && !canAddTyped && <div className="wf-picker-empty">No products match.</div>}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

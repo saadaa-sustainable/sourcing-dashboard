@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
 export type ComboOption = {
@@ -17,7 +18,8 @@ export type ComboOption = {
 /**
  * A searchable dropdown: type to filter, pick a row with the mouse or the arrow keys and
  * Enter. Each row is a bold name over a grey detail line. The list is a fixed overlay
- * anchored to the input, so tables and panels below never clip it. With `allowFreeText`
+ * anchored to the input and portaled to <body>, so tables, panels and transformed dialogs
+ * never clip or misplace it. With `allowFreeText`
  * (the default) whatever is typed is kept even if it matches no option.
  */
 export function Combobox({
@@ -142,7 +144,7 @@ export function Combobox({
         <ChevronDown size={14} className="wf-combo-caret" aria-hidden="true" onMouseDown={(e) => { e.preventDefault(); if (!disabled) { setOpen((v) => !v); inputRef.current?.focus(); } }} />
       </div>
       {selected?.detail && !open && <span className="wf-combo-selected-detail">{selected.detail}</span>}
-      {open && !disabled && pos && (
+      {open && !disabled && pos && createPortal(
         <div
           ref={listRef}
           id={listId}
@@ -173,7 +175,8 @@ export function Combobox({
           {!matches.length && (
             <div className="wf-combo-empty">{allowFreeText && q ? `No match — “${query?.trim()}” will be kept as typed.` : emptyText}</div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

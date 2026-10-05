@@ -1096,8 +1096,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .wf-picker-list {
   /* position/top/left/width are set inline (fixed overlay anchored to the input);
-     a high z-index keeps it above tables, sticky headers and toolbars below. */
-  z-index: 200;
+     portaled to <body>; z-index above every dialog layer (300) so it shows inside them too. */
+  z-index: 400;
   max-height: 300px; overflow-y: auto; background: #fff; border: 1px solid #e7e2d2;
   border-radius: 10px; box-shadow: 0 8px 24px rgba(40, 36, 28, 0.14); padding: 4px;
 }
@@ -2122,7 +2122,7 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-combo-input.is-open input { border-color: #8c9196 !important; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
 .wf-combo-caret { position: absolute; right: 9px; color: #8c9196; cursor: pointer; }
 .wf-combo-selected-detail { display: block; margin-top: 3px; font-size: 11px; color: #8c9196; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.wf-combo-list { z-index: 300; max-height: 340px; overflow-y: auto; background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.06); padding: 6px; }
+.wf-combo-list { z-index: 400; max-height: 340px; overflow-y: auto; background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.06); padding: 6px; }
 .wf-combo-item { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 8px; cursor: pointer; }
 .wf-combo-item.is-active { background: #f1f1f1; }
 .wf-combo-item.is-selected .wf-combo-label::after { content: '  ✓'; color: #008060; }
