@@ -7,7 +7,7 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules, loadApprovalMatrix } from '../queries';
+import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules, loadApprovalMatrix, loadPoReviewItems } from '../queries';
 import {
   approversFor,
   canApprove,
@@ -31,7 +31,7 @@ import {
   canSignOff,
   canSubmitRate,
 } from '../cost';
-import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from '../types';
+import type { ApprovalEntity, PoApproval, PoCategory, PoType, SdRole, SdStatus } from '../types';
 import { INWARD_PLAN_STATUSES } from '../types';
 import { notifyReworkSlack } from '@/lib/slack';
 import {
@@ -168,6 +168,18 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     if (!applied.ok) return applied;
   }
 
+  // Freeze the review exactly as the approver saw it: the panels are computed live, so without
+  // this a year-old approval would show today's stock and cost. Taken before the status moves.
+  let reviewSnapshot: unknown = null;
+  if (entityType === 'po_approval' && decision === 'approve') {
+    try {
+      const [item] = await loadPoReviewItems([row as unknown as PoApproval]);
+      reviewSnapshot = item ?? null;
+    } catch {
+      reviewSnapshot = null; // never block an approval on the snapshot
+    }
+  }
+
   const to: SdStatus =
     decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
   const now = new Date().toISOString();
@@ -195,6 +207,13 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
 
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already processed by another approver.');
+
+  if (reviewSnapshot) {
+    await supabase
+      .from('sd_po_approval')
+      .update({ review_snapshot: reviewSnapshot as never, review_snapshot_at: now })
+      .eq('id', entityId);
+  }
 
   await writeLog(entityType, String(entityId), label, from, to, user.email, notes || undefined);
 

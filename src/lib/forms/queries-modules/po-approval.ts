@@ -3,6 +3,7 @@ import { client, PAGE_SIZE } from './_shared';
 import { monthStart, addMonths } from '../approval';
 import { loadInProcessByVendor } from './vendor';
 import type {
+  ApprovalQueueItem,
   DeletedPoRequest,
   PoDeleteRequest,
   PoApproval,
@@ -87,7 +88,9 @@ export async function loadPoApprovals() {
   ((cycle ?? []) as PoCycleTime[]).forEach((c) => cycleById.set(c.id, c));
 
   return {
-    pos: (pos ?? []) as PoApproval[],
+    // The frozen review snapshot is read only on the PO's own page (loadPoReviewSnapshot);
+    // it stays off the list so the page payload does not grow with every approved PO.
+    pos: ((pos ?? []) as (PoApproval & { review_snapshot?: unknown })[]).map(({ review_snapshot: _s, ...p }) => p as PoApproval),
     cycleById,
     linesByPo,
     productCodes,
@@ -234,4 +237,16 @@ export async function loadNpdBudget(month = monthStart()): Promise<NpdBudget> {
     pendingCount,
     missingRate,
   };
+}
+
+/** What the approver saw when this PO was approved (written once by decideApproval), or null. */
+export async function loadPoReviewSnapshot(id: number): Promise<{ item: ApprovalQueueItem; at: string } | null> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_po_approval')
+    .select('review_snapshot, review_snapshot_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!data?.review_snapshot || !data.review_snapshot_at) return null;
+  return { item: data.review_snapshot as unknown as ApprovalQueueItem, at: data.review_snapshot_at };
 }
