@@ -373,6 +373,7 @@ export function PoApprovalClient({
     setDraftId(null);
     setActiveStep('order');
     setDrawerOpen(true);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   }
 
   function cancelEdit() {
@@ -646,6 +647,8 @@ export function PoApprovalClient({
         />
       )}
 
+      {/* The form takes the page in place of the list — sidebar and header stay. */}
+      {!(editable && drawerOpen) && (<>
       <div className="poa-pagebar">
         <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
           {FILTERS.map((f) => {
@@ -663,7 +666,7 @@ export function PoApprovalClient({
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
         </label>
         {editable && (
-          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); }}>
+          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
             <Plus size={14} /> Raise a PO
           </button>
         )}
@@ -793,10 +796,11 @@ export function PoApprovalClient({
         </aside>
       </div>
 
+      </>)}
+
       {editable && drawerOpen && (
         <>
-          <div className="poa-scrim" onClick={cancelEdit} />
-          <div className="poa-drawer" role="dialog" aria-label={editing ? `Edit ${editing.request_id}` : 'Raise a PO'}>
+          <div className="poa-drawer" role="region" aria-label={editing ? `Edit ${editing.request_id}` : 'Raise a PO'}>
             <div className="poa-drawer-head">
               <h2>{current ? `${editing ? 'Edit' : 'Raise'} ${current.request_id}` : 'Raise a PO'}</h2>
               <span className="wf-subtle">Five steps — each Save &amp; continue saves what is filled and opens the next.</span>
