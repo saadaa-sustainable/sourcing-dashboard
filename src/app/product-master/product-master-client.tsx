@@ -2,7 +2,9 @@
 
 import { Notice } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { useMemo } from 'react';
 import type { EeProductMaster } from '@/lib/forms/types';
+import { unpackRows, type PackedRows } from '@/lib/packed-rows';
 
 const COLS: Column<EeProductMaster>[] = [
   { key: 'sku', label: 'SKU', kind: 'mono' },
@@ -97,7 +99,8 @@ const COLS: Column<EeProductMaster>[] = [
   },
 ];
 
-export function ProductMasterClient({ products }: { products: EeProductMaster[] }) {
+export function ProductMasterClient({ products: packed }: { products: PackedRows<EeProductMaster> }) {
+  const products = useMemo(() => unpackRows(packed), [packed]);
   return (
     <>
       <Notice tone="info">

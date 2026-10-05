@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import { productClassOf } from '@/lib/doq-dashboard';
 import { skuKey } from '@/lib/sku-key';
@@ -47,7 +48,7 @@ export const ANALYTICS_RULE_DEFAULTS: Record<string, number> = {
   plan_approval_deadline_day: 7,
 };
 
-export async function loadAnalyticsRules(): Promise<Record<string, number>> {
+export const loadAnalyticsRules = cache(async function loadAnalyticsRules(): Promise<Record<string, number>> {
   const rules = { ...ANALYTICS_RULE_DEFAULTS };
   try {
     const supabase = await client();
@@ -60,7 +61,7 @@ export async function loadAnalyticsRules(): Promise<Record<string, number>> {
     /* fall back to defaults — cards must never take the dashboard down */
   }
   return rules;
-}
+});
 
 /**
  * Full Rules Master rows (label + description + who/when) for the editor page.

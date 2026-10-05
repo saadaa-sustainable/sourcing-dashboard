@@ -36,7 +36,10 @@ export default async function Home() {
     role = user.role;
     allowedPages = user.allowed_pages ?? null;
   }
-  const dashboardData = await loadDashboardData();
+  // Everything below that does not need another result runs at the same time. Shared loaders
+  // (dashboard data, rules) are request-cached, so the issue check reuses the same read.
+  const dashPromise = loadDashboardData();
+  let dashboardData: Awaited<typeof dashPromise>;
   // Pending-closure panel on the PO Tracker (best-effort — never block the dashboard).
   let closures: PoClosureView[] = [];
   let analyticsRules = ANALYTICS_RULE_DEFAULTS;
@@ -45,15 +48,46 @@ export default async function Home() {
   let poHub: PoHubData | null = null;
   let productHub: ProductHubData | null = null;
   let vendorHub: VendorHubData | null = null;
-  if (!fixtureMode) {
-    try { closures = await loadOpenClosures(); } catch { closures = []; }
-    analyticsRules = await loadAnalyticsRules(); // never throws
-    // Cross-tab card sections (replenishment gaps, plan realization, closure
-    // SLA, cost variance, discontinued check) — each section best-effort.
-    try {
+  if (fixtureMode) {
+    dashboardData = await dashPromise;
+  } else {
+    const [dash, closuresR, rulesR, openIssues, plan, oos] = await Promise.all([
+      dashPromise,
+      loadOpenClosures().catch(() => [] as PoClosureView[]),
+      loadAnalyticsRules(), // never throws
+      // Part 3 — the dashboard raises its own issues from its checks (missing TNA, no
+      // delivery date, discontinued product on order, stale feed) and closes them when the
+      // condition is gone; the Objectives tab then shows the open count. Best-effort.
+      syncAutoIssues()
+        .catch(() => undefined)
+        .then(() => countOpenIssues()),
+      // Buying Plan synopsis for the month — the same analysis the Buying Plan Analysis page runs.
+      loadBuyingPlanAnalysis().catch(() => null),
+      // Spec 1.10 — in-stock rate for yesterday, taken from the DOQ dashboard's own summary
+      // (Main Warehouse, on-sale SKUs, exclusions applied) rather than counted a second way,
+      // so the headline here and the OOS one-pager cannot disagree.
+      loadOosSummary()
+        .then(async (o) => {
+          // The OOS trend is one point per data day, saved the first time the position is
+          // computed that day. The home page is opened far more often than the DOQ dashboard,
+          // so recording here too is what keeps the trend from having gaps (22-25 Sep 2026
+          // were lost because nobody opened the DOQ page). Idempotent per data day.
+          if (o) await recordOosSnapshot(o.asOf, [o.all, ...o.categories]);
+          return o;
+        })
+        .catch(() => undefined),
+    ]);
+    dashboardData = dash;
+    closures = closuresR;
+    analyticsRules = rulesR;
+
+    // Cross-tab card sections (replenishment gaps, plan realization, closure SLA, cost
+    // variance, discontinued check) — each section best-effort. Runs alongside the daily
+    // TNA-status snapshot; both only need the PO data.
+    const [extrasR] = await Promise.all([
       // Only lines with quantity still to arrive count as "on order" — a fully
       // received line must not mark a zero-stock variant as covered.
-      analyticsExtras = await loadAnalyticsExtras(
+      loadAnalyticsExtras(
         dashboardData.pendingPos
           .filter((p) => (Number(p.pending_qty_actual) || 0) > 0)
           .map((p) => ({
@@ -62,59 +96,47 @@ export default async function Home() {
             qty: Number(p.pending_qty_actual) || 0,
           })),
         analyticsRules,
-      );
-    } catch { analyticsExtras = null; }
-    // Daily TNA-status snapshot for the compliance-trend card: first load of the
-    // day records the mix; later loads are DB-side no-ops. Best-effort.
-    try {
-      const rows = buildTrackerRows(
-        dashboardData.pendingPos, dashboardData.vendorTypes,
-        dashboardData.vendorMasters, dashboardData.tnaRecords,
-      );
-      await recordTnaSnapshot({
-        onTime: rows.filter((r) => r.internalStatus === 'On Track').length,
-        highRisk: rows.filter((r) => r.internalStatus === 'High Risk').length,
-        overdue: rows.filter((r) => r.internalStatus === 'Overdue').length,
-        openTotal: rows.length,
-      });
-    } catch { /* snapshot must never block the dashboard */ }
-    // Part 3 — the dashboard raises its own issues from its checks (missing TNA, no
-    // delivery date, discontinued product on order, stale feed) and closes them when the
-    // condition is gone; the Objectives tab then shows the open count. Best-effort.
-    try { await syncAutoIssues(); } catch { /* never block the dashboard */ }
-    if (analyticsExtras) analyticsExtras.openIssues = await countOpenIssues();
-    // Buying Plan synopsis for the month — the same analysis the Buying Plan Analysis page runs.
+      ).catch(() => null),
+      // Daily TNA-status snapshot for the compliance-trend card: first load of the
+      // day records the mix; later loads are DB-side no-ops. Best-effort.
+      (async () => {
+        const rows = buildTrackerRows(
+          dashboardData.pendingPos, dashboardData.vendorTypes,
+          dashboardData.vendorMasters, dashboardData.tnaRecords,
+        );
+        await recordTnaSnapshot({
+          onTime: rows.filter((r) => r.internalStatus === 'On Track').length,
+          highRisk: rows.filter((r) => r.internalStatus === 'High Risk').length,
+          overdue: rows.filter((r) => r.internalStatus === 'Overdue').length,
+          openTotal: rows.length,
+        });
+      })().catch(() => undefined),
+    ]);
+    analyticsExtras = extrasR;
+
     if (analyticsExtras) {
-      try {
-        const a = await loadBuyingPlanAnalysis();
-        const by = (s: string) => a.products.filter((p) => p.status === s).length;
+      analyticsExtras.openIssues = openIssues;
+      if (plan) {
+        const by = (st: string) => plan.products.filter((p) => p.status === st).length;
         analyticsExtras.planSynopsis = {
-          month: a.planMonth.slice(0, 7),
-          hasPlan: a.hasPlan,
-          plannedQty: a.metrics.plannedQty,
-          issuedQty: a.metrics.issuedQty,
-          pendingQty: Math.max(0, a.metrics.plannedQty - a.metrics.issuedQty),
-          plannedProducts: a.metrics.approvedProducts,
+          month: plan.planMonth.slice(0, 7),
+          hasPlan: plan.hasPlan,
+          plannedQty: plan.metrics.plannedQty,
+          issuedQty: plan.metrics.issuedQty,
+          pendingQty: Math.max(0, plan.metrics.plannedQty - plan.metrics.issuedQty),
+          plannedProducts: plan.metrics.approvedProducts,
           onPlan: by('on_plan'),
           over: by('over'),
           short: by('short'),
           unissued: by('unissued'),
           notInPlan: by('not_planned') + by('not_approved'),
-          issuedProducts: a.metrics.issuedProducts,
+          issuedProducts: plan.metrics.issuedProducts,
         };
-      } catch { analyticsExtras.planSynopsis = null; }
-    }
-    // Spec 1.10 — in-stock rate for yesterday, taken from the DOQ dashboard's own summary
-    // (Main Warehouse, on-sale SKUs, exclusions applied) rather than counted a second way,
-    // so the headline here and the OOS one-pager cannot disagree.
-    if (analyticsExtras) {
-      try {
-        const oos = await loadOosSummary();
-        // The OOS trend is one point per data day, saved the first time the position is
-        // computed that day. The home page is opened far more often than the DOQ dashboard,
-        // so recording here too is what keeps the trend from having gaps (22-25 Sep 2026
-        // were lost because nobody opened the DOQ page). Idempotent per data day.
-        if (oos) await recordOosSnapshot(oos.asOf, [oos.all, ...oos.categories]);
+      } else {
+        analyticsExtras.planSynopsis = null;
+      }
+      // undefined = the summary failed (card hidden); null = no data yet.
+      if (oos !== undefined) {
         analyticsExtras.inStock = oos
           ? {
               // pctYesterday is a FRACTION (0.055 = 5.5% of SKUs empty), as the OOS
@@ -126,7 +148,9 @@ export default async function Home() {
               asOf: oos.asOf,
             }
           : null;
-      } catch { analyticsExtras.inStock = null; }
+      } else {
+        analyticsExtras.inStock = null;
+      }
     }
     // Sub-tab data, built from what is already loaded above; each best-effort.
     const [ph, prh, vh] = await Promise.allSettled([

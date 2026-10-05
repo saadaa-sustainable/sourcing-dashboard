@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { client, pageAll, PAGE_SIZE } from './_shared';
 import { buildVendorRollups, buildTrackerRows, capacityRulesFrom } from '@/lib/business-logic';
 import { loadAnalyticsRules } from './analytics';
@@ -239,7 +240,7 @@ export async function loadVendorOtif(
  * (sd_vendor_in_process). Feeds Vendor Capacity's available-capacity — real PO
  * load instead of the sheet's open-qty. Keyed by lower-cased vendor_code.
  */
-export async function loadInProcessByVendor(): Promise<Map<string, number>> {
+export const loadInProcessByVendor = cache(async function loadInProcessByVendor(): Promise<Map<string, number>> {
   const supabase = await client();
   const { data } = await supabase
     .from('sd_vendor_in_process')
@@ -253,13 +254,13 @@ export async function loadInProcessByVendor(): Promise<Map<string, number>> {
     if (code) map.set(code, Number(row.in_process_qty) || 0);
   });
   return map;
-}
+});
 
 /**
  * Each vendor's most recently logged monthly capacity (sd_vendor_capacity_log),
  * so the PO approval card can show "last-updated capacity". Keyed lower-case.
  */
-export async function loadLatestVendorCapacity(): Promise<
+export const loadLatestVendorCapacity = cache(async function loadLatestVendorCapacity(): Promise<
   Map<string, { capacityPerMonth: number; weekOf: string | null; machines: number; karigar: number }>
 > {
   const supabase = await client();
@@ -293,7 +294,7 @@ export async function loadLatestVendorCapacity(): Promise<
     }
   });
   return map;
-}
+});
 
 /* ------------------------------------------------------------------ */
 /* Vendor capacity                                                     */

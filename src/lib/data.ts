@@ -1,9 +1,11 @@
+import { cache } from 'react';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { csvObjects, csvTable } from './csv';
 import { sheetBoolean, sheetDate, sheetNumber, sheetText } from './sheet-values';
 import { createClient, hasSupabaseEnv } from './supabase/server';
+import { pageAll } from './forms/queries-modules/_shared';
 import type { DashboardData, PendingPo, StageInspection, StageInspectionEntry, TnaRecord, VendorMaster, VendorType } from './types';
 
 const n = sheetNumber;
@@ -11,26 +13,20 @@ const s = sheetText;
 const bool = sheetBoolean;
 const date = sheetDate;
 
-/**
+/*
  * PostgREST caps a single response (Supabase defaults to 1000 rows), so a plain
- * `select('*')` silently truncates. pending_po_master is already ~3k live rows, which
- * would drop most open POs with no error surfaced. Page through with a stable sort.
+ * `select('*')` silently truncates. Every multi-row read below pages with pageAll and a
+ * stable sort.
  */
-const PAGE_SIZE = 1000;
 
 type Reader = Awaited<ReturnType<typeof createClient>>;
 
 async function fetchAllRows<T>(supabase: Reader, table: string, orderBy: string): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase.from(table).select('*').eq('is_active', true)
-      .order(orderBy, { ascending: true }).range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`Supabase read failed for ${table}: ${error.message}`);
-    if (!data?.length) break;
-    rows.push(...(data as T[]));
-    if (data.length < PAGE_SIZE) break;
+  try {
+    return await pageAll<T>(() => supabase.from(table).select('*').eq('is_active', true).order(orderBy, { ascending: true }));
+  } catch (e) {
+    throw new Error(`Supabase read failed for ${table}: ${(e as Error).message}`);
   }
-  return rows;
 }
 
 /**
@@ -87,16 +83,14 @@ const PO_DASHBOARD_COLUMNS =
   'expected_delivery_date,po_ref_num,product_variant,product_code,po_type';
 
 async function fetchDashboardPos(supabase: Reader): Promise<PendingPo[]> {
-  const rows: PendingPo[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase.from('sd_po_dashboard').select(PO_DASHBOARD_COLUMNS)
-      .order('po_detail_id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`Supabase read failed for sd_po_dashboard: ${error.message}`);
-    if (!data?.length) break;
-    rows.push(...(data as unknown as Record<string, unknown>[]).map(mapPipelinePo));
-    if (data.length < PAGE_SIZE) break;
+  try {
+    const rows = await pageAll<Record<string, unknown>>(() =>
+      supabase.from('sd_po_dashboard').select(PO_DASHBOARD_COLUMNS).order('po_detail_id', { ascending: true }),
+    );
+    return rows.map(mapPipelinePo);
+  } catch (e) {
+    throw new Error(`Supabase read failed for sd_po_dashboard: ${(e as Error).message}`);
   }
-  return rows;
 }
 
 /**
@@ -232,16 +226,11 @@ type StageActualsRow = {
 
 /** sd_po_stage_actuals — one row per PO ref with each stage's latest form actual date. */
 async function fetchStageActuals(supabase: Reader): Promise<StageActualsRow[]> {
-  const rows: StageActualsRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase.from('sd_po_stage_actuals').select('*')
-      .order('po_ref_num', { ascending: true }).range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`Supabase read failed for sd_po_stage_actuals: ${error.message}`);
-    if (!data?.length) break;
-    rows.push(...(data as StageActualsRow[]));
-    if (data.length < PAGE_SIZE) break;
+  try {
+    return await pageAll<StageActualsRow>(() => supabase.from('sd_po_stage_actuals').select('*').order('po_ref_num', { ascending: true }));
+  } catch (e) {
+    throw new Error(`Supabase read failed for sd_po_stage_actuals: ${(e as Error).message}`);
   }
-  return rows;
 }
 
 /**
@@ -275,16 +264,16 @@ type StageInspectionRow = {
 
 /** sd_po_stage_inspections - one row per form submission (pass or fail) per stage. */
 async function fetchStageInspections(supabase: Reader): Promise<StageInspectionRow[]> {
-  const rows: StageInspectionRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase.from('sd_po_stage_inspections').select('*')
-      .order('po_ref_num', { ascending: true }).range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`Supabase read failed for sd_po_stage_inspections: ${error.message}`);
-    if (!data?.length) break;
-    rows.push(...(data as StageInspectionRow[]));
-    if (data.length < PAGE_SIZE) break;
+  // po_ref_num alone is not unique here (one row per submission), so the page order adds the
+  // remaining columns to stay stable across pages.
+  try {
+    return await pageAll<StageInspectionRow>(() =>
+      supabase.from('sd_po_stage_inspections').select('*')
+        .order('po_ref_num', { ascending: true }).order('stage').order('submitted_at').order('actual_date'),
+    );
+  } catch (e) {
+    throw new Error(`Supabase read failed for sd_po_stage_inspections: ${(e as Error).message}`);
   }
-  return rows;
 }
 
 /**
@@ -333,7 +322,7 @@ async function fetchVendorCapacity(supabase: Reader): Promise<VendorCapacityRow[
   return (data ?? []) as VendorCapacityRow[];
 }
 
-export async function loadDashboardData(): Promise<DashboardData> {
+export const loadDashboardData = cache(async function loadDashboardData(): Promise<DashboardData> {
   if (!hasSupabaseEnv()) return loadFixtures();
   const supabase = await createClient();
   const [pendingPos, vendorTypes, vendorMasters, tnaRecords, stageActuals, stageInspectionRows, vendorCapacity, weaveByCode] = await Promise.all([
@@ -363,7 +352,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
     vendorCapacity,
     source: 'supabase', warnings, loadedAt: new Date().toISOString(),
   };
-}
+});
 
 /**
  * TNA records with their stage ACTUAL dates merged in (planned from tna_tracker,

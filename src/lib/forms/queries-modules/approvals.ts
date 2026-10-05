@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
   approversFor,
@@ -37,7 +38,7 @@ import type {
  * Spec 7.5 — who sits at L1 / L2 / L3, in order (primary first, then the fallbacks).
  * An empty level means "not configured", and the role ladder decides instead.
  */
-export async function loadApprovalMatrix(): Promise<ApprovalMatrix> {
+export const loadApprovalMatrix = cache(async function loadApprovalMatrix(): Promise<ApprovalMatrix> {
   const supabase = await client();
   // paging-ok: a handful of named approvers per level, by design
   const { data } = await supabase
@@ -52,7 +53,7 @@ export async function loadApprovalMatrix(): Promise<ApprovalMatrix> {
     if (matrix[r.level]) matrix[r.level].push(r.email);
   }
   return matrix;
-}
+});
 
 /** The matrix as rows, for the User Panel editor (includes who is switched off). */
 export async function loadApprovalMatrixRows(): Promise<ApprovalMatrixMember[]> {
