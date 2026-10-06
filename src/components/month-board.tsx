@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import type { MonthBoardCard, MonthBoardColumn, MonthBoardData } from '@/lib/month-board';
+import { MonthOverview } from './month-overview';
 
 type View = 'kanban' | 'cards' | 'list';
 
@@ -26,6 +27,25 @@ export function MonthBoard({
   const [filter, setFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'new' | 'old'>('new');
+  // The open month overview, kept in the URL (?open=<card id>) so a link reopens it.
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('open');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the URL on mount
+    if (id) setOpenId(id);
+  }, []);
+  const openCard = useCallback((id: string | null) => {
+    setOpenId(id);
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set('open', id);
+    else url.searchParams.delete('open');
+    window.history.replaceState(null, '', url);
+  }, []);
+  const closeCard = useCallback(() => openCard(null), [openCard]);
+  const opened = openId ? data.cards.find((c) => c.id === openId) : undefined;
+  // Previous / next month of the same track, for the overview's arrows.
+  const sameTrack = opened ? data.cards.filter((c) => (c.track ?? '') === (opened.track ?? '') && c.detail).sort((a, b) => a.month.localeCompare(b.month)) : [];
+  const at = opened ? sameTrack.findIndex((c) => c.id === opened.id) : -1;
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -97,7 +117,7 @@ export function MonthBoard({
                   <span className="mb-col-n">{items.length}</span>
                 </div>
                 <small>{col.hint}</small>
-                {items.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} />)}
+                {items.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} />)}
                 {!items.length && <p className="mb-empty">Nothing here.</p>}
               </section>
             );
@@ -105,7 +125,7 @@ export function MonthBoard({
         </div>
       ) : view === 'cards' ? (
         <div className="mb-grid">
-          {shown.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} />)}
+          {shown.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} />)}
           {!shown.length && <p className="mb-empty">No months match.</p>}
         </div>
       ) : (
@@ -134,7 +154,12 @@ export function MonthBoard({
                     {c.list.map((v, i) => (
                       <td key={i} className={data.listColumns[i]?.num ? 'num' : undefined}>{v}</td>
                     ))}
-                    <td>{open && <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={open.href}>{open.label}</Link>}</td>
+                    <td className="mb-list-actions">
+                      {c.detail && (
+                        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => openCard(c.id)}>Overview</button>
+                      )}
+                      {open && <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={open.href}>{open.label}</Link>}
+                    </td>
                   </tr>
                 );
               })}
@@ -142,13 +167,29 @@ export function MonthBoard({
           </table>
         </div>
       )}
+      {opened && (
+        <MonthOverview
+          card={opened}
+          col={colOf(opened.status)}
+          prev={at > 0 ? sameTrack[at - 1] : undefined}
+          next={at >= 0 && at < sameTrack.length - 1 ? sameTrack[at + 1] : undefined}
+          onNavigate={openCard}
+          onClose={closeCard}
+        />
+      )}
     </div>
   );
 }
 
-function Card({ card: c, col }: { card: MonthBoardCard; col?: MonthBoardColumn }) {
+function Card({ card: c, col, onOpen }: { card: MonthBoardCard; col?: MonthBoardColumn; onOpen: (id: string) => void }) {
+  // Clicking anywhere on the card opens the month's overview (the Overview button is the
+  // keyboard route); its buttons and links keep their own job.
+  const open = (e: React.MouseEvent) => {
+    if (!c.detail || (e.target as HTMLElement).closest('a, button')) return;
+    onOpen(c.id);
+  };
   return (
-    <article className="mb-card">
+    <article className={`mb-card${c.detail ? ' is-clickable' : ''}`} onClick={open}>
       <div className="mb-card-top">
         <div className="mb-chips">
           {c.track && <span className="mb-chip">{c.track}</span>}
@@ -186,6 +227,11 @@ function Card({ card: c, col }: { card: MonthBoardCard; col?: MonthBoardColumn }
       )}
       {c.warn && <p className={`mb-warn mb-t-${c.warn.tone}`}>{c.warn.text}</p>}
       <div className="mb-actions">
+        {c.detail && (
+          <button type="button" className="wf-btn wf-btn-sm wf-btn-ghost" onClick={() => onOpen(c.id)}>
+            Overview
+          </button>
+        )}
         {c.actions.map((a) => (
           <Link key={a.label} href={a.href} className={`wf-btn wf-btn-sm ${a.primary ? 'wf-btn-primary' : 'wf-btn-ghost'}`}>
             {a.label}

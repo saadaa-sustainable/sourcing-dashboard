@@ -97,7 +97,9 @@ export default async function VendorCapacityPage({
 
   // Landing view: one card per month showing how many active vendors updated capacity in it.
   if (!params.view) {
-    const board = await loadVendorCapacityBoard(vendors.length);
+    const board = await loadVendorCapacityBoard(
+      vendors.map((v) => ({ code: v.vendor_code, name: v.vendor_name, signed: Number(v.capacitySigned) || 0 })),
+    );
     return (
       <FormLayout
         title="Vendor Capacity"

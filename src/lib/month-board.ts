@@ -34,6 +34,46 @@ export type MonthBoardCard = {
   actions: { label: string; href: string; primary?: boolean }[];
   /** Values for the List view, in the order of the board's listColumns. */
   list: string[];
+  /** The month's overview (opened from the card): headline ring, tiles, analysis sections. */
+  detail?: MonthBoardDetail;
+};
+
+/** One block of the month overview. */
+export type MonthDetailSection =
+  | {
+      kind: 'bars';
+      title: string;
+      hint?: string;
+      /** pct 0-100 (never above); `value` is the printed figure. */
+      bars: { label: string; value: string; pct: number; tone?: MonthBoardColumn['tone'] }[];
+      empty?: string;
+    }
+  | {
+      kind: 'table';
+      title: string;
+      hint?: string;
+      columns: { label: string; num?: boolean }[];
+      rows: { cells: string[]; tone?: MonthBoardColumn['tone']; href?: string }[];
+      empty?: string;
+      /** Filter chips over the rows (by tone). */
+      filters?: { label: string; tone: MonthBoardColumn['tone'] }[];
+    }
+  | {
+      kind: 'timeline';
+      title: string;
+      hint?: string;
+      events: { when: string; what: string; note?: string; tone?: MonthBoardColumn['tone'] }[];
+      empty?: string;
+    };
+
+export type MonthBoardDetail = {
+  /** e.g. "Buying Plan · FG" */
+  kicker: string;
+  /** One-line description under the title. */
+  lede?: string;
+  ring?: { pct: number; label: string; caption: string; sub?: string; over?: boolean };
+  tiles: { label: string; value: string }[];
+  sections: MonthDetailSection[];
 };
 
 export type MonthBoardData = {
