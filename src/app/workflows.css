@@ -2220,3 +2220,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .wf-cmtp-line.is-filled .wf-cmtp-label-text { border-color: #cfe5d6; background: #f3faf5; }
 .wf-cmtp-amt-text { font-variant-numeric: tabular-nums; }
+/* The name gets the room; the amount box stays narrow (page-wide input styles were stretching
+   it, which cut names like "Thekedar Comission" short). */
+.wf-cmtp-line .wf-cmtp-label-text { flex: 1 1 auto; min-width: 0; }
+.wf-cmtp-line input.wf-cmtp-amt,
+.wf-cmtp-line .wf-cmtp-amt-text { flex: 0 0 84px; width: 84px; min-width: 0; text-align: right; }
