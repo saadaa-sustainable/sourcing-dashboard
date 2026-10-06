@@ -303,9 +303,9 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     const href = `/buying-plan?month=${p.plan_month}&type=${track}`;
     const actions: MonthBoardCard['actions'] = [
       { label: status === 'draft' ? 'Edit plan' : 'Open', href: status === 'draft' ? `${href}&mode=input` : href, primary: true },
-      ...(track === 'fg' && (status === 'live' || status === 'closed')
-        ? [{ label: 'Analysis', href: `/buying-plan?month=${p.plan_month}&type=analysis` }]
-        : []),
+      // Analysis (approved plan vs POs issued) reads for any FG month: lines not yet approved
+      // show as such, and POs issued against them as not budgeted.
+      ...(track === 'fg' ? [{ label: 'Analysis', href: `/buying-plan?month=${p.plan_month}&type=analysis` }] : []),
     ];
 
     /* ---- overview ---- */
@@ -577,7 +577,10 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       big: { value: '—', label: 'Plan value' },
       sub: 'Not started',
       facts: [`Submit by ${deadlineDay} ${short(m).split(' ')[0]}`],
-      actions: [{ label: 'Start plan', href: `/buying-plan?month=${m}&type=fg&mode=input`, primary: true }],
+      actions: [
+        { label: 'Start plan', href: `/buying-plan?month=${m}&type=fg&mode=input`, primary: true },
+        { label: 'Analysis', href: `/buying-plan?month=${m}&type=analysis` },
+      ],
       list: ['0', '—', '—', '—'],
       detail: {
         kicker: 'Buying Plan · FG',
@@ -665,7 +668,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
 
 export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
   const supabase = await client();
-  const [rows, log] = await Promise.all([
+  const [rows, log, weekly] = await Promise.all([
     pageAll<{ plan_month: string; product_code: string | null; po_no: string | null; vendor_name: string | null; inward_qty: number | null; actual_inward_qty: number | null; cost_per_piece: number | null; approval_status: string | null; mt_comments: string | null }>(() =>
       supabase
         .from('sd_inward_plan_entry')
@@ -673,9 +676,135 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
         .order('id'),
     ),
     loadLog(['inward_plan']),
+    pageAll<{ row_key: string; po_number: string | null; product_variant: string | null; delivery_date_this_week: string | null; qty_expected_this_week: number | null; status: string | null }>(() =>
+      supabase
+        .from('sd_receivable_input')
+        .select('row_key, po_number, product_variant, delivery_date_this_week, qty_expected_this_week, status')
+        .order('row_key'),
+    ),
   ]);
   const cur = monthStart();
   const prev = addMonths(cur, -1);
+  type InwardRow = (typeof rows)[number];
+  const poTypeOf = (ref: string | null) => {
+    const m = (ref ?? '').toUpperCase().match(/\/(JOB|FOB|EFOB|E-FOB)\//);
+    return m ? (m[1] === 'JOB' ? 'Job Work' : m[1] === 'FOB' ? 'FOB' : 'E-FOB') : 'Unknown type';
+  };
+  const sumBy = (rs: InwardRow[], f: (r: InwardRow) => number) => rs.reduce((t, r) => t + f(r), 0);
+
+  /** Lines to look at: no cost / PO / vendor, sent back, short or above plan once the month is over. */
+  const inwardAttention = (m: string, mine: InwardRow[]): MonthDetailSection => {
+    const out: { tone: Tone; cells: string[] }[] = [];
+    for (const r of mine) {
+      const who = [r.po_no, r.product_code].filter(Boolean).join(' · ') || '—';
+      const planned = n(r.inward_qty);
+      const got = n(r.actual_inward_qty);
+      if (r.approval_status === 'RE-WORK' || r.approval_status === 'Rejected')
+        out.push({ tone: 'back', cells: [who, r.approval_status === 'RE-WORK' ? 'Sent back' : 'Rejected', r.mt_comments ?? '—'] });
+      if (!r.po_no) out.push({ tone: 'back', cells: [who, 'No PO number', 'Receipts cannot be matched to this line'] });
+      if (r.cost_per_piece == null || n(r.cost_per_piece) <= 0) out.push({ tone: 'pending', cells: [who, 'No cost per piece', 'The line is not counted in the planned value'] });
+      if (!r.vendor_name) out.push({ tone: 'pending', cells: [who, 'No vendor', '—'] });
+      if (m < cur && planned > 0 && got < planned) out.push({ tone: 'pending', cells: [who, 'Short', `${num(got)} of ${num(planned)} received · ${num(planned - got)} short`] });
+      if (planned > 0 && got > planned) out.push({ tone: 'draft', cells: [who, 'Above plan', `${num(got)} received against ${num(planned)} planned`] });
+    }
+    return {
+      kind: 'table',
+      title: 'Needs attention',
+      hint: 'Lines to check on this month’s plan.',
+      columns: [{ label: 'Line' }, { label: 'Issue' }, { label: 'Detail' }],
+      rows: out,
+      filters: [
+        { label: 'Blocking', tone: 'back' },
+        { label: 'Check', tone: 'pending' },
+        { label: 'Above plan', tone: 'draft' },
+      ],
+      empty: 'Nothing to flag this month.',
+    };
+  };
+
+  /** Planned vs received by PO type, read off the PO reference. */
+  const byPoType = (mine: InwardRow[]): MonthDetailSection => {
+    const t = new Map<string, { planned: number; received: number }>();
+    for (const r of mine) {
+      const k = poTypeOf(r.po_no);
+      const row = t.get(k) ?? { planned: 0, received: 0 };
+      row.planned += n(r.inward_qty);
+      row.received += n(r.actual_inward_qty);
+      t.set(k, row);
+    }
+    return {
+      kind: 'bars',
+      title: 'Received against plan, by PO type',
+      bars: [...t.entries()]
+        .sort((a, b) => b[1].planned - a[1].planned)
+        .map(([k, v]) => ({
+          label: `${k} · ${num(v.planned)} planned`,
+          value: v.received > v.planned ? `${num(v.received)} · above plan` : `${num(v.received)} received · ${pct(v.received, v.planned)}%`,
+          pct: pct(v.received, v.planned),
+          tone: (v.received >= v.planned ? 'live' : v.received > 0 ? 'pending' : 'draft') as Tone,
+        })),
+      empty: 'No lines this month.',
+    };
+  };
+
+  /** This month against the month before: totals, then vendor by vendor. */
+  const inwardCompare = (m: string, mine: InwardRow[]): MonthDetailSection[] => {
+    const pm = addMonths(m, -1);
+    const before = rows.filter((r) => r.plan_month === pm);
+    const title = `Compared with ${short(pm)}`;
+    if (!before.length) return [{ kind: 'bars', title, bars: [], empty: `There is no inward plan for ${long(pm)} to compare with.` }];
+    const change = (a: number, b: number) => (b === 0 ? (a === 0 ? '—' : 'new') : `${a >= b ? '+' : '−'}${Math.abs(Math.round(((a - b) / b) * 100))}%`);
+    const planned = (rs: InwardRow[]) => sumBy(rs, (r) => n(r.inward_qty));
+    const received = (rs: InwardRow[]) => sumBy(rs, (r) => n(r.actual_inward_qty));
+    const value = (rs: InwardRow[]) => sumBy(rs, (r) => n(r.inward_qty) * n(r.cost_per_piece));
+    const measures: [string, number, number, (v: number) => string][] = [
+      ['Lines', mine.length, before.length, (v) => String(v)],
+      ['Vendors', new Set(mine.map((r) => r.vendor_name).filter(Boolean)).size, new Set(before.map((r) => r.vendor_name).filter(Boolean)).size, (v) => String(v)],
+      ['Pcs planned', planned(mine), planned(before), num],
+      ['Planned value', value(mine), value(before), inrShort],
+      ['Pcs received', received(mine), received(before), num],
+      ['Received %', pct(received(mine), planned(mine)), pct(received(before), planned(before)), (v) => `${v}%`],
+    ];
+    const vendorQty = (rs: InwardRow[]) => {
+      const out = new Map<string, number>();
+      for (const r of rs) out.set(r.vendor_name || 'No vendor', (out.get(r.vendor_name || 'No vendor') ?? 0) + n(r.inward_qty));
+      return out;
+    };
+    const a = vendorQty(mine);
+    const b = vendorQty(before);
+    const vendorRows = [...new Set([...a.keys(), ...b.keys()])]
+      .map((v) => {
+        const x = a.get(v) ?? 0;
+        const y = b.get(v) ?? 0;
+        return { d: Math.abs(x - y), tone: (y === 0 ? 'draft' : x === 0 ? 'back' : x >= y ? 'live' : 'pending') as Tone, cells: [v, num(y), num(x), `${x >= y ? '+' : '−'}${num(Math.abs(x - y))}`, change(x, y)] };
+      })
+      .filter((r) => r.d > 0)
+      .sort((p1, p2) => p2.d - p1.d)
+      .map(({ tone, cells }) => ({ tone, cells }));
+    return [
+      {
+        kind: 'table',
+        title,
+        columns: [{ label: 'Measure' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }],
+        rows: measures.map(([label, x, y, fmt]) => ({ cells: [label, fmt(y), fmt(x), label === 'Received %' ? `${x - y >= 0 ? '+' : '−'}${Math.abs(x - y)} pts` : change(x, y)] })),
+      },
+      {
+        kind: 'table',
+        title: `Vendor changes vs ${short(pm)}`,
+        hint: 'Pieces planned per vendor: added, dropped, raised or cut, biggest change first.',
+        columns: [{ label: 'Vendor' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }, { label: '%', num: true }],
+        rows: vendorRows,
+        filters: [
+          { label: 'New this month', tone: 'draft' },
+          { label: 'Raised', tone: 'live' },
+          { label: 'Cut', tone: 'pending' },
+          { label: 'Dropped', tone: 'back' },
+        ],
+        empty: 'Same vendors and quantities as last month.',
+      },
+    ];
+  };
+
   const months = [...new Set(rows.map((r) => r.plan_month))];
   const toneOf = (s: string | null): Tone => (s === 'Approved' ? 'live' : s === 'RE-WORK' || s === 'Rejected' ? 'back' : 'pending');
   const cards: MonthBoardCard[] = months.map((m) => {
@@ -711,6 +840,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
     const vendorRows = [...byVendor.entries()].sort((a, b) => b[1].planned - a[1].planned);
     const shortLines = mine.filter((r) => m < cur && n(r.actual_inward_qty) < n(r.inward_qty)).length;
     const sections: MonthDetailSection[] = [
+      inwardAttention(m, mine),
       {
         kind: 'bars',
         title: 'Lines by decision',
@@ -720,6 +850,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
           { label: 'Sent back or rejected', value: `${back} · ${pct(back, mine.length)}%`, pct: pct(back, mine.length), tone: 'back' as Tone },
         ],
       },
+      byPoType(mine),
       {
         kind: 'bars',
         title: 'Received against plan, top vendors',
@@ -773,6 +904,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
           { label: 'Sent back / rejected', tone: 'back' },
         ],
       },
+      ...inwardCompare(m, mine),
       {
         kind: 'timeline',
         title: 'Approval history',
@@ -820,8 +952,83 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
       },
     };
   });
+  // This month and next, when no line has been entered yet: what there is to start from — last
+  // month's short lines (likely to carry over) and arrivals already entered in the weekly plan.
+  for (const m of [cur, addMonths(cur, 1)]) {
+    if (months.includes(m)) continue;
+    const pm = addMonths(m, -1);
+    const before = rows.filter((r) => r.plan_month === pm);
+    const carry = before.filter((r) => n(r.inward_qty) > n(r.actual_inward_qty) && r.approval_status !== 'Rejected');
+    const end = addMonths(m, 1);
+    const expected = weekly.filter((w) => w.delivery_date_this_week && w.delivery_date_this_week >= m && w.delivery_date_this_week < end && n(w.qty_expected_this_week) > 0);
+    const carryPcs = sumBy(carry, (r) => n(r.inward_qty) - n(r.actual_inward_qty));
+    const expectedPcs = expected.reduce((t, w) => t + n(w.qty_expected_this_week), 0);
+    cards.push({
+      id: `ip-${m}`,
+      month: m,
+      label: short(m),
+      status: 'draft',
+      big: { value: '—', label: 'Planned value' },
+      sub: 'Not started',
+      facts: [m === cur ? 'No lines entered for this month yet' : `Opens 1 ${short(m).split(' ')[0]}`],
+      actions: [{ label: 'Start plan', href: `/receivable-plan?tab=monthly&month=${m}`, primary: true }],
+      list: ['0', '0', '0', '0', '—', '—', '—'],
+      detail: {
+        kicker: 'Inward Plan',
+        lede: `No inward plan has been entered for ${long(m)} yet. Here is what there is to start from.`,
+        tiles: [
+          { label: `${short(pm)} lines`, value: before.length ? String(before.length) : '—' },
+          { label: `${short(pm)} planned`, value: before.length ? `${num(sumBy(before, (r) => n(r.inward_qty)))} pcs` : '—' },
+          { label: `${short(pm)} received`, value: before.length ? `${num(sumBy(before, (r) => n(r.actual_inward_qty)))} pcs` : '—' },
+          { label: 'Still short from last month', value: carry.length ? `${num(carryPcs)} pcs · ${carry.length} lines` : 'None' },
+          { label: 'Expected in weekly plan', value: expected.length ? `${num(expectedPcs)} pcs` : 'None' },
+        ],
+        sections: [
+          {
+            kind: 'table',
+            title: `Short from ${short(pm)}`,
+            hint: 'Lines that had not fully arrived by the end of last month — the likeliest to carry over.',
+            columns: [{ label: 'PO' }, { label: 'Product' }, { label: 'Vendor' }, { label: 'Planned', num: true }, { label: 'Received', num: true }, { label: 'Short', num: true }],
+            rows: carry
+              .slice()
+              .sort((a, b) => n(b.inward_qty) - n(b.actual_inward_qty) - (n(a.inward_qty) - n(a.actual_inward_qty)))
+              .map((r) => ({
+                tone: (n(r.actual_inward_qty) > 0 ? 'pending' : 'draft') as Tone,
+                cells: [r.po_no ?? '—', r.product_code ?? '—', r.vendor_name ?? '—', num(n(r.inward_qty)), num(n(r.actual_inward_qty)), num(n(r.inward_qty) - n(r.actual_inward_qty))],
+              })),
+            filters: [
+              { label: 'Nothing received', tone: 'draft' },
+              { label: 'Part received', tone: 'pending' },
+            ],
+            empty: before.length ? 'Everything planned last month arrived.' : `There is no inward plan for ${long(pm)}.`,
+          },
+          {
+            kind: 'table',
+            title: 'Already expected in the weekly plan',
+            hint: 'Deliveries the team has entered in Input inward plan with a date in this month.',
+            columns: [{ label: 'PO' }, { label: 'Variant' }, { label: 'Expected on' }, { label: 'Qty', num: true }, { label: 'Status' }],
+            rows: expected
+              .slice()
+              .sort((a, b) => (a.delivery_date_this_week ?? '').localeCompare(b.delivery_date_this_week ?? ''))
+              .map((w) => ({
+                tone: (w.status === 'approved' ? 'live' : w.status === 'submitted' || w.status === 'pending_l2' ? 'pending' : 'draft') as Tone,
+                cells: [w.po_number ?? '—', w.product_variant ?? '—', dayYear(w.delivery_date_this_week), num(n(w.qty_expected_this_week)), w.status ? (STATUS_WORDS[w.status]?.[0] ?? w.status) : 'Draft'],
+              })),
+            filters: [
+              { label: 'Approved', tone: 'live' },
+              { label: 'Waiting for approval', tone: 'pending' },
+              { label: 'Not submitted', tone: 'draft' },
+            ],
+            empty: 'Nothing entered for this month in the weekly plan yet.',
+          },
+        ],
+      },
+    });
+  }
+
   return {
     columns: [
+      { key: 'draft', label: 'Not started', tone: 'draft', hint: 'No lines entered for the month yet' },
       { key: 'pending', label: 'Pending approval', tone: 'pending', hint: 'Lines waiting for the approver' },
       { key: 'back', label: 'Needs rework', tone: 'back', hint: 'Lines sent back or rejected' },
       { key: 'live', label: 'Approved', tone: 'live', hint: 'Counts as the month’s plan' },
@@ -892,6 +1099,142 @@ export async function loadVendorCapacityBoard(
   const months: string[] = [];
   for (let m = first; m <= addMonths(cur, 1); m = addMonths(m, 1)) months.push(m);
 
+  const nameOfVendor = (k: string) => active.get(k)?.name ?? k.toUpperCase();
+  const monthEnd = (m: string) => new Date(`${addMonths(m, 1)}T00:00:00+05:30`).getTime();
+  /** Each vendor's most recent update on or before a moment. */
+  const lastUpdateBy = (until: number) => {
+    const out = new Map<string, Ev>();
+    for (const e of events) {
+      if (new Date(e.at).getTime() >= until) continue;
+      const had = out.get(e.vendor);
+      if (!had || had.at < e.at) out.set(e.vendor, e);
+    }
+    return out;
+  };
+  const STALE_DAYS = 30;
+
+  /** Vendors to look at: no update in 30+ days, declared well under signed, or nothing declared. */
+  const vcAttention = (m: string): MonthDetailSection => {
+    const asOf = Math.min(Date.now(), monthEnd(m));
+    const known = lastUpdateBy(asOf);
+    const out: { tone: Tone; cells: string[] }[] = [];
+    for (const v of activeVendors) {
+      const e = known.get(v.code.toLowerCase());
+      if (!e) {
+        out.push({ tone: 'back', cells: [v.name, 'Never updated', 'No capacity on record'] });
+        continue;
+      }
+      const age = Math.floor((asOf - new Date(e.at).getTime()) / 86_400_000);
+      if (age >= STALE_DAYS) out.push({ tone: 'pending', cells: [v.name, `Not updated for ${age} days`, `Last update ${dayYear(e.at)}`] });
+      if (e.capacity <= 0) out.push({ tone: 'back', cells: [v.name, 'No capacity declared', `Latest update ${dayYear(e.at)} has 0 pcs / month`] });
+      else if (v.signed && e.capacity < v.signed * 0.5)
+        out.push({ tone: 'draft', cells: [v.name, 'Well under signed', `${num(e.capacity)} declared against ${num(v.signed)} signed (${pct(e.capacity, v.signed)}%)`] });
+    }
+    return {
+      kind: 'table',
+      title: 'Needs attention',
+      hint: `Active vendors as of ${m === cur ? 'today' : `the end of ${long(m)}`}: never updated, not updated for ${STALE_DAYS}+ days, nothing declared, or under half the signed capacity.`,
+      columns: [{ label: 'Vendor' }, { label: 'Issue' }, { label: 'Detail' }],
+      rows: out,
+      filters: [
+        { label: 'Missing', tone: 'back' },
+        { label: 'Out of date', tone: 'pending' },
+        { label: 'Under signed', tone: 'draft' },
+      ],
+      empty: 'Every active vendor is up to date.',
+    };
+  };
+
+  /** Declared capacity per vendor against the month before. */
+  const vcCompare = (m: string, latest: Map<string, Ev>): MonthDetailSection[] => {
+    const pm = addMonths(m, -1);
+    const before = new Map<string, Ev>();
+    for (const e of events.filter((x) => istMonth(x.at) === pm).sort((a, b) => a.at.localeCompare(b.at))) before.set(e.vendor, e);
+    const title = `Compared with ${short(pm)}`;
+    if (!before.size && !latest.size) return [{ kind: 'bars', title, bars: [], empty: `No updates in ${long(pm)} or ${long(m)} to compare.` }];
+    const sumCap = (mp: Map<string, Ev>) => [...mp.values()].reduce((t, e) => t + e.capacity, 0);
+    const change = (a: number, b: number) => (b === 0 ? (a === 0 ? '—' : 'new') : `${a >= b ? '+' : '−'}${Math.abs(Math.round(((a - b) / b) * 100))}%`);
+    const vendorRows = [...new Set([...before.keys(), ...latest.keys()])]
+      .map((k) => {
+        const a = latest.get(k)?.capacity;
+        const b = before.get(k)?.capacity;
+        const tone: Tone = b == null ? 'draft' : a == null ? 'closed' : a > b ? 'live' : a < b ? 'pending' : 'closed';
+        return {
+          d: Math.abs((a ?? 0) - (b ?? 0)),
+          tone,
+          cells: [nameOfVendor(k), b == null ? '—' : num(b), a == null ? 'not updated' : num(a), a == null || b == null ? '—' : `${a >= b ? '+' : '−'}${num(Math.abs(a - b))}`, a == null || b == null ? '—' : change(a, b)],
+        };
+      })
+      .sort((x, y) => y.d - x.d)
+      .map(({ tone, cells }) => ({ tone, cells }));
+    return [
+      {
+        kind: 'table',
+        title,
+        hint: `Vendors updated and capacity declared in ${long(pm)} against ${long(m)}.`,
+        columns: [{ label: 'Measure' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }],
+        rows: [
+          { cells: ['Vendors updated', String(before.size), String(latest.size), change(latest.size, before.size)] },
+          { cells: ['Pcs / month declared', num(sumCap(before)), num(sumCap(latest)), change(sumCap(latest), sumCap(before))] },
+          { cells: ['Updates made', String(events.filter((x) => istMonth(x.at) === pm).length), String(events.filter((x) => istMonth(x.at) === m).length), '—'] },
+        ],
+      },
+      {
+        kind: 'table',
+        title: `Capacity changes vs ${short(pm)}`,
+        hint: 'Each vendor’s latest declared pcs / month in each month.',
+        columns: [{ label: 'Vendor' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }, { label: '%', num: true }],
+        rows: vendorRows,
+        filters: [
+          { label: 'First update', tone: 'draft' },
+          { label: 'Raised', tone: 'live' },
+          { label: 'Cut', tone: 'pending' },
+          { label: 'Same / not updated', tone: 'closed' },
+        ],
+        empty: 'No capacity changes between the two months.',
+      },
+    ];
+  };
+
+  /** Next month's card: who to chase first, from each vendor's last update. */
+  const vcUpcoming = (m: string): NonNullable<MonthBoardCard['detail']> => {
+    const known = lastUpdateBy(Date.now());
+    const rowsUp = activeVendors
+      .map((v) => {
+        const e = known.get(v.code.toLowerCase());
+        const age = e ? Math.floor((Date.now() - new Date(e.at).getTime()) / 86_400_000) : null;
+        return { age: age ?? 1e9, tone: (e == null ? 'back' : age! >= STALE_DAYS ? 'pending' : 'live') as Tone, cells: [v.name, e ? dayYear(e.at) : 'Never', age == null ? '—' : `${age} d`, e ? num(e.capacity) : '—', v.signed ? num(v.signed) : '—'] };
+      })
+      .sort((a, b) => b.age - a.age)
+      .map(({ tone, cells }) => ({ tone, cells }));
+    const lastTotal = [...known.entries()].filter(([k]) => active.has(k)).reduce((t, [, e]) => t + e.capacity, 0);
+    const stale = rowsUp.filter((r) => r.tone !== 'live').length;
+    return {
+      kicker: 'Vendor Capacity',
+      lede: `${long(m)} has not started. Every active vendor will need a fresh update; the ones with the oldest figures are first.`,
+      tiles: [
+        { label: 'Active vendors', value: String(total) },
+        { label: 'Last known pcs / month', value: num(lastTotal) },
+        { label: `Not updated for ${STALE_DAYS}+ days`, value: String(stale) },
+        { label: 'Signed capacity', value: num(activeVendors.reduce((t, v) => t + n(v.signed), 0)) },
+      ],
+      sections: [
+        {
+          kind: 'table',
+          title: 'Who to update first',
+          hint: 'Active vendors, oldest update first.',
+          columns: [{ label: 'Vendor' }, { label: 'Last update' }, { label: 'Age', num: true }, { label: 'Last pcs / month', num: true }, { label: 'Signed', num: true }],
+          rows: rowsUp,
+          filters: [
+            { label: 'Never updated', tone: 'back' },
+            { label: `${STALE_DAYS}+ days old`, tone: 'pending' },
+            { label: 'Recent', tone: 'live' },
+          ],
+        },
+      ],
+    };
+  };
+
   const cards: MonthBoardCard[] = months.map((m) => {
     const mine = events.filter((e) => istMonth(e.at) === m).sort((a, b) => a.at.localeCompare(b.at));
     const latest = new Map<string, Ev>();
@@ -936,6 +1279,7 @@ export async function loadVendorCapacityBoard(
         : []),
     ];
     const sections: MonthDetailSection[] = [
+      vcAttention(m),
       {
         kind: 'bars',
         title: 'Largest declared capacity',
@@ -963,6 +1307,7 @@ export async function loadVendorCapacityBoard(
         filters: m <= cur ? [{ label: 'Updated', tone: 'live' }, { label: 'Not updated', tone: 'pending' }] : undefined,
         empty: 'Nothing to show for this month.',
       },
+      ...vcCompare(m, latest),
     ];
 
     return {
@@ -978,7 +1323,7 @@ export async function loadVendorCapacityBoard(
       list: [`${updated} / ${total}`, updated ? num(capacity) : '—'],
       detail:
         m > cur
-          ? undefined
+          ? vcUpcoming(m)
           : {
               kicker: 'Vendor Capacity',
               lede: `Capacity updates made in ${long(m)}.${m < '2026-10-01' ? ' Before October 2026 only each vendor’s latest update was kept.' : ''}`,
