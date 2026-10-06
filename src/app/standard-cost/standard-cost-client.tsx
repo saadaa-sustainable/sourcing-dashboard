@@ -733,10 +733,13 @@ export function CostRow({
   track,
   temp,
   name,
+  canRemove = true,
 }: {
   cost: StandardCost;
   role: SdRole;
   track: 'fg' | 'material';
+  /** Offer "Remove from list" here (off for a product not in EasyEcom: it has Delete product). */
+  canRemove?: boolean;
   /** Product name shown beside the code. */
   name?: string;
   /** Set when this product is a temporary (not-yet-in-EasyEcom) product. */
@@ -761,7 +764,7 @@ export function CostRow({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const canManageList = canEdit(role, 'draft');
+  const canManageList = canEdit(role, 'draft') && canRemove;
   const isTemp = temp?.status === 'active';
 
   // Soft-delete: remove from the list but keep every field + the history; re-adding
@@ -838,12 +841,11 @@ export function CostRow({
           ) : (
             <button
               type="button"
-              className="wf-icon-btn sc-entry-remove"
-              aria-label="Remove from list (data kept — search and add again to restore)"
-              title="Remove from list — data & history kept; add it again to restore"
+              className="wf-btn wf-btn-ghost wf-btn-sm sc-entry-remove"
+              title="Hide it from the Standard Cost list — data & history kept; add it again to restore"
               onClick={() => setConfirmRemove(true)}
             >
-              <Trash2 size={13} />
+              Remove from list
             </button>
           )
         )}

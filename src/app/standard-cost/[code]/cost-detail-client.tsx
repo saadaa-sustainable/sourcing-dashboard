@@ -209,7 +209,7 @@ export function StandardCostDetailClient({
 
       {/* The approver decides here, without opening the editor. Renders nothing when the
           signed-in role has no decision to make at this stage. */}
-      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} />
+      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} noTarget />
 
       {editing && (
         <section className="sc-page-edit" aria-label="Change the cost">
@@ -221,7 +221,15 @@ export function StandardCostDetailClient({
               vendor rate, and sign-off makes it the standard the Buying Plan values from.
             </p>
           </div>
-          <CostRow cost={cost} role={role} track={track} temp={temp} name={productName || undefined} />
+          <CostRow
+            cost={cost}
+            role={role}
+            track={track}
+            temp={temp}
+            name={productName || undefined}
+            // A product not in EasyEcom is deleted from the panel at the top; one delete, not two.
+            canRemove={isMat || catalog.some((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase())}
+          />
         </section>
       )}
 
