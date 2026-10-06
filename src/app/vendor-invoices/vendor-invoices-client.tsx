@@ -1,12 +1,17 @@
 'use client';
 
 import { useState, useSyncExternalStore, useTransition } from 'react';
-import { Check, Copy, ExternalLink, MessageCircle, Trash2 } from 'lucide-react';
+import { Check, Copy, ExternalLink, Link2, MessageCircle, Trash2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { Notice } from '@/components/forms/form-layout';
-import { deleteVendorInvoice, signVendorInvoiceFile } from '@/lib/forms/actions';
+import {
+  createVendorViewLink,
+  deleteVendorInvoice,
+  revokeVendorViewLink,
+  signVendorInvoiceFile,
+} from '@/lib/forms/actions';
 import { reloadWithToast } from '@/lib/toast';
-import type { VendorInvoice } from '@/lib/vendor-invoice';
+import { VI_VENDOR_CODES, type VendorInvoice, type VendorViewLink } from '@/lib/vendor-invoice';
 
 const fmtDate = (s: string | null) => (s ? s.slice(0, 10) : '—');
 const fmtStamp = (s: string) =>
@@ -17,10 +22,14 @@ const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 export function VendorInvoicesClient({
   entries,
   vendorNames,
+  links,
+  canManageLinks,
   isAdmin,
 }: {
   entries: VendorInvoice[];
   vendorNames: Record<string, string>;
+  links: VendorViewLink[];
+  canManageLinks: boolean;
   isAdmin: boolean;
 }) {
   const columns: Column<VendorInvoice>[] = [
@@ -85,6 +94,7 @@ export function VendorInvoicesClient({
   return (
     <>
       <LinkPanel />
+      <VendorLinksPanel links={links} vendorNames={vendorNames} canManage={canManageLinks} />
       <div>
         <div className="wf-card-title wf-table-head">Entries</div>
         <FilterTable
@@ -187,5 +197,131 @@ function DeleteCell({ id }: { id: number }) {
     >
       {busy ? 'Deleting…' : 'Confirm delete'}
     </button>
+  );
+}
+
+/**
+ * Private per-vendor links to the vendor's own "pending and filled invoices" page. Long-lived
+ * until revoked here; each vendor sees only its own entries.
+ */
+function VendorLinksPanel({
+  links,
+  vendorNames,
+  canManage,
+}: {
+  links: VendorViewLink[];
+  vendorNames: Record<string, string>;
+  canManage: boolean;
+}) {
+  const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => '');
+  const [code, setCode] = useState('');
+  const [busy, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  // The form's codes first, then every other code in the EasyEcom vendor master.
+  const codes = [...VI_VENDOR_CODES, ...Object.keys(vendorNames).filter((c) => !(VI_VENDOR_CODES as readonly string[]).includes(c)).sort()];
+  const urlOf = (l: VendorViewLink) => `${origin}/vendor-invoice/view/${l.token}`;
+  const label = (c: string) => (vendorNames[c] ? `${c} — ${vendorNames[c]}` : c);
+  const active = links.filter((l) => !l.revoked_at);
+
+  function create() {
+    setErr(null);
+    start(async () => {
+      const res = await createVendorViewLink(code);
+      if (res.ok) reloadWithToast(`Link created for ${code}.`);
+      else setErr(res.error);
+    });
+  }
+  function revoke(id: number) {
+    start(async () => {
+      const res = await revokeVendorViewLink(id);
+      if (res.ok) reloadWithToast(res.message ?? 'Revoked.');
+      else setErr(res.error);
+    });
+  }
+  function copy(l: VendorViewLink) {
+    void navigator.clipboard?.writeText(urlOf(l));
+    setCopiedId(l.id);
+  }
+
+  return (
+    <div className="wf-form-panel wf-card">
+      <h3 className="wf-card-title">Vendor views — pending and filled invoices</h3>
+      <p className="wf-subtle">
+        A private link per vendor. The vendor sees only their own uploads, and the POs received on or after 6 Oct 2026
+        whose invoiced qty is still below the received qty. Revoke a link to switch it off.
+      </p>
+      {err && <Notice tone="error">{err}</Notice>}
+      {canManage && (
+        <div className="wf-issue-row wf-issue-row-wrap">
+          <select className="wf-add-select" value={code} onChange={(e) => setCode(e.target.value)}>
+            <option value="">Choose vendor code</option>
+            {codes.map((c) => (
+              <option key={c} value={c}>{label(c)}</option>
+            ))}
+          </select>
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy || !code} onClick={create}>
+            <Link2 size={13} /> {busy ? 'Working…' : 'Create link'}
+          </button>
+        </div>
+      )}
+      <div className="table-scroll">
+        <table className="wf-grid">
+          <thead>
+            <tr>
+              <th>Vendor</th>
+              <th>Created</th>
+              <th>Last opened</th>
+              <th>Status</th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {links.map((l) => {
+              const wa = `https://wa.me/?text=${encodeURIComponent(`Your SAADAA invoices page (pending and filled): ${urlOf(l)}`)}`;
+              return (
+                <tr key={l.id}>
+                  <td>{label(l.vendor_code)}</td>
+                  <td className="wf-subtle">
+                    {fmtDate(l.created_at)} · {l.created_by}
+                  </td>
+                  <td>{l.last_seen_at ? fmtStamp(l.last_seen_at) : 'Never'}</td>
+                  <td>
+                    <span className="wf-status">{l.revoked_at ? 'revoked' : 'active'}</span>
+                  </td>
+                  <td>
+                    {!l.revoked_at && (
+                      <div className="wf-issue-row">
+                        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => copy(l)}>
+                          {copiedId === l.id ? <Check size={13} /> : <Copy size={13} />} {copiedId === l.id ? 'Copied' : 'Copy'}
+                        </button>
+                        <a className="wf-btn wf-btn-ghost wf-btn-sm" href={wa} target="_blank" rel="noopener noreferrer">
+                          <MessageCircle size={13} /> WhatsApp
+                        </a>
+                        <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/vendor-invoice/view/${l.token}`} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink size={13} /> Open
+                        </a>
+                        {canManage && (
+                          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => revoke(l.id)}>
+                            <Trash2 size={13} /> Revoke
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!links.length && (
+              <tr>
+                <td colSpan={5} className="wf-empty-cell">No vendor links yet.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {active.length > 0 && <p className="wf-subtle wf-pad-sm">{active.length} active link(s).</p>}
+    </div>
   );
 }

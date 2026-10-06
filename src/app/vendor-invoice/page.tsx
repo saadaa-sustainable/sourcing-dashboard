@@ -32,8 +32,11 @@ async function vendorNames(): Promise<Record<string, string>> {
   }
 }
 
-export default async function VendorInvoicePage() {
-  const names = await vendorNames();
+export default async function VendorInvoicePage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
+  const [names, { code }] = await Promise.all([vendorNames(), searchParams]);
+  // A vendor arriving from their own invoices page lands with their code chosen.
+  const upper = String(code ?? '').trim().toUpperCase();
+  const initialCode = /^[A-Z0-9_-]{1,20}$/.test(upper) ? upper : '';
   return (
     <main className="fill-shell">
       <div className="fill-card vi-card">
@@ -53,7 +56,7 @@ export default async function VendorInvoicePage() {
             </strong>
           </p>
         </div>
-        <VendorInvoiceForm vendorNames={names} />
+        <VendorInvoiceForm vendorNames={names} initialCode={initialCode} />
       </div>
     </main>
   );

@@ -1218,6 +1218,28 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .vi-hint { font-weight: 400; color: #8a857a; font-size: 11.5px; }
 .vi-again { margin-top: 14px; padding: 10px 16px; }
 .vi-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+/* ---- Vendor's own invoices page (/vendor-invoice/view/<token>) ---- */
+.vi-view-shell { place-items: start center; }
+.vi-view-card { max-width: 980px; }
+.vi-upload-btn { display: block; text-align: center; text-decoration: none; margin: 4px 0 8px; }
+.vi-view-section { margin-top: 22px; }
+.vi-view-section h2 { margin: 0 0 4px; font-size: 15px; }
+.vi-view-section .vi-hint { display: block; margin: 0 0 10px; }
+.vi-table-wrap { overflow-x: auto; border: 1px solid #ece7d9; border-radius: 10px; }
+.vi-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vi-table th, .vi-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #f1ede2; white-space: nowrap; }
+.vi-table th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #6e695e; background: #faf7ef; }
+.vi-table tr:last-child td { border-bottom: none; }
+.vi-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.vi-table .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.vi-sub { color: #8a857a; font-size: 12px; }
+.vi-due { font-weight: 700; color: #a1483a; }
+.vi-empty { margin: 0; padding: 14px; border: 1px dashed #e2dccb; border-radius: 10px; color: #6e695e; font-size: 13px; text-align: center; }
+.vi-link-btn {
+  padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 600; border-radius: 7px; cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.14); background: #fff; color: #33302b;
+}
+.vi-link-btn:disabled { opacity: 0.6; cursor: wait; }
 @media (max-width: 480px) {
   .fill-shell { padding: 12px; }
   .fill-card { padding: 20px 16px; }
@@ -1243,11 +1265,13 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 /* The cost heads tile instead of stacking in one 560px column, so a wide screen shows
    several heads at once rather than a long scroll beside an empty right half. */
 .wf-cmtp-heads {
+  /* Column count is set inline from the panel width; each column stacks its cards. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 10px;
   align-items: start;
 }
+.wf-cmtp-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .wf-cmtp > p.wf-subtle,
 .wf-cmtp-newhead,
 .wf-cmtp-total { max-width: 760px; }

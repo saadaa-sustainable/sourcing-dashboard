@@ -66,6 +66,17 @@ export type VendorInvoice = {
   submitted_by_email: string | null;
 };
 
+/** A vendor's private link to their own pending + filled invoices page. */
+export type VendorViewLink = {
+  id: number;
+  token: string;
+  vendor_code: string;
+  created_by: string;
+  created_at: string;
+  revoked_at: string | null;
+  last_seen_at: string | null;
+};
+
 /** What the page sends; every value is a raw string as typed. */
 export type ViDraft = {
   email: string;

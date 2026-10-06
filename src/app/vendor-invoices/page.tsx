@@ -1,6 +1,13 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadVendorInvoices, loadVendorNames, NotConfiguredError } from '@/lib/forms/queries';
+import { canEdit } from '@/lib/forms/approval';
+import {
+  currentUser,
+  loadVendorInvoices,
+  loadVendorNames,
+  loadVendorViewLinks,
+  NotConfiguredError,
+} from '@/lib/forms/queries';
 import { VendorInvoicesClient } from './vendor-invoices-client';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +28,7 @@ export default async function VendorInvoicesPage() {
   }
   if (!user) redirect('/login');
 
-  const [entries, names] = await Promise.all([loadVendorInvoices(), loadVendorNames()]);
+  const [entries, names, links] = await Promise.all([loadVendorInvoices(), loadVendorNames(), loadVendorViewLinks()]);
 
   return (
     <FormLayout
@@ -33,7 +40,13 @@ export default async function VendorInvoicesPage() {
       allowedPages={user.allowed_pages ?? null}
       accent="orange"
     >
-      <VendorInvoicesClient entries={entries} vendorNames={names} isAdmin={user.role === 'admin'} />
+      <VendorInvoicesClient
+        entries={entries}
+        vendorNames={names}
+        links={links}
+        canManageLinks={canEdit(user.role, 'draft')}
+        isAdmin={user.role === 'admin'}
+      />
     </FormLayout>
   );
 }

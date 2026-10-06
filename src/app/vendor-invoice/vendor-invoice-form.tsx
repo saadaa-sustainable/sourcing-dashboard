@@ -24,9 +24,18 @@ const OTHER = '__other__';
  *   association -> (vendor code + PO type, unless a dyeing / fabric-supply partner)
  *   -> type of document -> that document's fields + its PDF.
  */
-export function VendorInvoiceForm({ vendorNames }: { vendorNames: Record<string, string> }) {
-  const [d, setD] = useState<ViDraft>(emptyViDraft);
-  const [codeChoice, setCodeChoice] = useState('');
+export function VendorInvoiceForm({
+  vendorNames,
+  initialCode = '',
+}: {
+  vendorNames: Record<string, string>;
+  initialCode?: string;
+}) {
+  const [d, setD] = useState<ViDraft>(() => ({ ...emptyViDraft(), vendor_code: initialCode }));
+  // A code outside the form's list (a newer vendor) opens on "Other" with the code filled in.
+  const [codeChoice, setCodeChoice] = useState(() =>
+    !initialCode ? '' : (VI_VENDOR_CODES as readonly string[]).includes(initialCode) ? initialCode : OTHER,
+  );
   const [file, setFile] = useState<File | null>(null);
   const [honeypot, setHoneypot] = useState('');
   const [busy, start] = useTransition();

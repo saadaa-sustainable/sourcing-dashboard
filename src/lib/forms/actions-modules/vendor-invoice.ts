@@ -1,10 +1,12 @@
 'use server';
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { currentUser } from '../queries';
+import { canEdit } from '../approval';
 import { done, fail, supa, type ActionResult } from './_shared';
+import { resolveViewToken } from '@/lib/vendor-invoice-view';
 import { VI_BUCKET, VI_MAX_BYTES, validateViDraft, type ViDraft } from '@/lib/vendor-invoice';
 
 /*
@@ -105,4 +107,67 @@ export async function deleteVendorInvoice(id: number): Promise<ActionResult> {
   await admin.storage.from(VI_BUCKET).remove([path]);
   revalidatePath('/vendor-invoices');
   return done('Entry deleted.');
+}
+
+/* ---- Per-vendor view links (the vendor's "pending and filled invoices" page) ---- */
+
+export async function createVendorViewLink(
+  vendorCode: string,
+): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  if (!canEdit(user.role, 'draft')) return { ok: false, error: 'You do not have permission to create vendor links.' };
+  if (!hasSupabaseAdminEnv()) return { ok: false, error: 'Storage not configured.' };
+  const code = String(vendorCode ?? '').trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{1,20}$/.test(code)) return { ok: false, error: 'Choose a vendor code.' };
+  const token = randomBytes(24).toString('base64url');
+  const { error } = await createAdminClient()
+    .from('sd_vendor_view_link')
+    .insert({ token, vendor_code: code, created_by: user.email });
+  if (error) return { ok: false, error: `Could not create the link: ${error.message}` };
+  revalidatePath('/vendor-invoices');
+  return { ok: true, token };
+}
+
+export async function revokeVendorViewLink(id: number): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to revoke vendor links.');
+  if (!hasSupabaseAdminEnv()) return fail('Storage not configured.');
+  const { error } = await createAdminClient()
+    .from('sd_vendor_view_link')
+    .update({ revoked_at: new Date().toISOString(), revoked_by: user.email })
+    .eq('id', id)
+    .is('revoked_at', null);
+  if (error) return fail(`Could not revoke: ${error.message}`);
+  revalidatePath('/vendor-invoices');
+  return done('Link revoked. The vendor can no longer open it.');
+}
+
+/** A vendor opening one of their own PDFs from their link. The entry must be theirs. */
+export async function signVendorViewFile(token: string, id: number): Promise<{ url: string } | { error: string }> {
+  const link = await resolveViewToken(String(token ?? ''));
+  if (!link) return { error: 'This link is no longer active.' };
+  const admin = createAdminClient();
+  const code = link.vendor_code.toUpperCase();
+  const { data } = await admin.from('sd_vendor_invoice').select('file_path, vendor_code, po_ref_num').eq('id', id).maybeSingle();
+  const entry = data as { file_path: string; vendor_code: string | null; po_ref_num: string } | null;
+  if (!entry) return { error: 'Entry not found.' };
+  let mine = entry.vendor_code?.toUpperCase() === code;
+  if (!mine && entry.vendor_code == null) {
+    // A code-less entry is theirs when the PO is one of their POs.
+    const po = entry.po_ref_num.trim();
+    // paging-ok: existence check, one row
+    const { data: hit } = await admin
+      .from('sd_po_master_raw')
+      .select('po_id')
+      .eq('vendor_code', code)
+      .or(`po_ref_num.ilike.${po.replace(/[,()*%]/g, '')},po_number.eq.${po.replace(/[,()*%]/g, '')}`)
+      .limit(1);
+    mine = !!hit?.length;
+  }
+  if (!mine) return { error: 'Entry not found.' };
+  const { data: signed, error } = await admin.storage.from(VI_BUCKET).createSignedUrl(entry.file_path, 600);
+  if (error || !signed) return { error: 'Could not open the file.' };
+  return { url: signed.signedUrl };
 }
