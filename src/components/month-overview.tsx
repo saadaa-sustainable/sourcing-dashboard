@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Search, X } from 'lucide-react';
 import type { MonthBoardCard, MonthBoardColumn, MonthDetailSection } from '@/lib/month-board';
+import { downloadOverviewCsv, downloadOverviewPdf } from '@/lib/month-overview-export';
 
 /**
  * A month's overview, opened from its board card: status and headline ring, key facts as tiles,
@@ -43,6 +44,15 @@ export function MonthOverview({
   }, [onClose, onNavigate, prev, next]);
 
   const d = card.detail;
+  const [saving, setSaving] = useState(false);
+  const savePdf = async () => {
+    setSaving(true);
+    try {
+      await downloadOverviewPdf(card, col);
+    } finally {
+      setSaving(false);
+    }
+  };
   return createPortal(
     <div className="mo-layer" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="mo" role="dialog" aria-modal="true" aria-label={`${d?.kicker ?? ''} ${card.label}`}>
@@ -56,6 +66,17 @@ export function MonthOverview({
             {d?.lede && <p>{d.lede}</p>}
           </div>
           <div className="mo-head-actions">
+            {d && (
+              <div className="mo-download" role="group" aria-label="Download this overview">
+                <Download size={14} aria-hidden="true" />
+                <button type="button" onClick={savePdf} disabled={saving}>
+                  {saving ? 'Preparing…' : 'PDF'}
+                </button>
+                <button type="button" onClick={() => downloadOverviewCsv(card, col)}>
+                  CSV
+                </button>
+              </div>
+            )}
             {card.actions.map((a) => (
               <Link key={a.label} href={a.href} className={`wf-btn wf-btn-sm ${a.primary ? 'wf-btn-primary' : 'wf-btn-ghost'}`}>
                 {a.label}

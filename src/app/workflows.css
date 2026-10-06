@@ -2489,3 +2489,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   .mo-barrow .mb-bar { grid-column: 1 / -1; grid-row: 2; }
 }
 .mo-sec .mb-col-n { background: #f1f2f3; }
+.mo-download { display: inline-flex; align-items: center; height: 32px; padding-left: 9px; border: 1px solid #e1e3e5; border-radius: 9px; background: #fff; color: #4a4f54; overflow: hidden; }
+.mo-download button { height: 100%; padding: 0 10px; border: 0; border-left: 1px solid #e1e3e5; background: transparent; color: #303030; font-size: 12px; font-weight: 700; cursor: pointer; }
+.mo-download button:first-of-type { border-left: 0; }
+.mo-download button:hover:not(:disabled) { background: #f1f2f3; }
+.mo-download button:disabled { color: #8c9196; cursor: progress; }
