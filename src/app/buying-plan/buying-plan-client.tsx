@@ -950,6 +950,24 @@ export function BuyingPlanClient({
         </div>
       )}
 
+      {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
+      {canApprove(role, status) && plan && (
+        <div className="bp-card bp-cardbody bp-approval-card">
+          <div className="bp-approval-head">
+            <b>Your decision</b>
+            <span>Approve as submitted, or Edit &amp; approve to change quantities first.</span>
+          </div>
+          <ApprovalBar
+            entityType="buying_plan"
+            entityId={String(plan.id)}
+            entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+            onDone={(result) => {
+              if (result.ok) reloadWithToast(result.message ?? 'Saved.');
+            }}
+          />
+        </div>
+      )}
+
       {mode === 'view' && (
         <div className="bp-layout">
           <div className="bp-stack">
@@ -1200,18 +1218,6 @@ export function BuyingPlanClient({
             </aside>
           </div>
 
-          {canApprove(role, status) && plan && (
-            <div className="bp-card bp-cardbody">
-              <ApprovalBar
-                entityType="buying_plan"
-                entityId={String(plan.id)}
-                entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
-                onDone={(result) => {
-                  if (result.ok) reloadWithToast(result.message ?? 'Saved.');
-                }}
-              />
-            </div>
-          )}
         </>
       )}
       {productPickerOpen && <BuyingPlanProductDrawer items={restrictPicker ? pickerItems : catalog} exclude={used} allowFreeText={!restrictPicker} onAdd={addRows} onAddAll={addAll} canAddAll={available.length > 0} onClose={() => setProductPickerOpen(false)} />}

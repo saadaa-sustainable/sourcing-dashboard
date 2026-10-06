@@ -476,6 +476,24 @@ export function MaterialPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
+      {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
+      {canApprove(role, status) && plan && (
+        <div className="bp-card bp-cardbody bp-approval-card">
+          <div className="bp-approval-head">
+            <b>Your decision</b>
+            <span>Approve as submitted, or Edit &amp; approve to change quantities first.</span>
+          </div>
+          <ApprovalBar
+            entityType="buying_plan"
+            entityId={String(plan.id)}
+            entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+            onDone={(result) => {
+              if (result.ok) reloadWithToast(result.message ?? 'Saved.');
+            }}
+          />
+        </div>
+      )}
+
       {mode === 'view' && (
         <MaterialView view={view} />
       )}
@@ -589,16 +607,6 @@ export function MaterialPlanClient({
                 <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id}>
                   <Send size={15} /> Submit for approval
                 </button>
-              )}
-              {canApprove(role, status) && plan && (
-                <ApprovalBar
-                  entityType="buying_plan"
-                  entityId={String(plan.id)}
-                  entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
-                  onDone={(result) => {
-                    if (result.ok) reloadWithToast(result.message ?? 'Saved.');
-                  }}
-                />
               )}
             </div>
           </div>
