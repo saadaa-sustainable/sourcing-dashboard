@@ -1,15 +1,18 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
   currentUser,
   loadArrivalPlan,
   loadInwardPlanSheet,
+  loadInwardPlanBoard,
   inwardPlanMonthOptions,
   loadReceivablePlan,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { canEdit, weekStart } from '@/lib/forms/approval';
 import { ReceivablePlanClient } from './receivable-plan-client';
+import { MonthBoard } from '@/components/month-board';
 
 // The current receiving week (Mon–Sun), computed server-side so the client's
 // "arriving this week" filter needs no clock of its own.
@@ -44,6 +47,33 @@ export default async function ReceivablePlanPage({
 
   if (!user) redirect('/login');
 
+  // Landing view: one card per plan month, by where its lines stand.
+  if (!params.tab && !params.month) {
+    const board = await loadInwardPlanBoard();
+    return (
+      <FormLayout
+        title="Inward Plan"
+        subtitle="Every month's inward plan by where its lines stand: waiting for approval, sent back, approved or closed. Open a month to see its lines."
+        active="/receivable-plan"
+        role={user.role}
+        userEmail={user.email}
+        allowedPages={user.allowed_pages ?? null}
+      >
+        <MonthBoard
+          data={board}
+          pageBar={
+            <>
+              <Link className="wf-btn wf-btn-ghost wf-btn-sm" href="/receivable-plan?tab=arrivals">Arrivals</Link>
+              {canEdit(user.role, 'draft') && (
+                <Link className="wf-btn wf-btn-primary wf-btn-sm" href="/receivable-plan?tab=input">Input inward plan</Link>
+              )}
+            </>
+          }
+        />
+      </FormLayout>
+    );
+  }
+
   // Both tabs load together: the page is one screen with two views, not two pages.
   const [rows, arrivals, sheet] = await Promise.all([loadReceivablePlan(), loadArrivalPlan(), loadInwardPlanSheet()]);
   const week = weekRange();
@@ -59,6 +89,7 @@ export default async function ReceivablePlanPage({
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
+      <Link className="mb-back" href="/receivable-plan">← All months</Link>
       <ReceivablePlanClient
         rows={rows}
         arrivals={arrivals.rows}

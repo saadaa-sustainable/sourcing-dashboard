@@ -32,3 +32,4 @@ export * from './queries-modules/vendor-deboarding';
 export * from './queries-modules/po-amendment';
 export * from './queries-modules/misc';
 export * from './queries-modules/vendor-invoice';
+export * from './queries-modules/month-boards';

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
@@ -6,18 +7,25 @@ import {
   loadInProcessByVendor,
   loadProductCatalog,
   loadVendorCapacity,
+  loadVendorCapacityBoard,
   loadVendorProductAllocations,
   loadDeboardedVendors,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { capacityRulesFrom, eeVendorActive } from '@/lib/business-logic';
 import { VendorCapacityClient } from './vendor-capacity-client';
+import { MonthBoard } from '@/components/month-board';
 
 export const dynamic = 'force-dynamic';
 
 const key = (value: string | null | undefined) => (value ?? '').trim().toLowerCase();
 
-export default async function VendorCapacityPage() {
+export default async function VendorCapacityPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const params = await searchParams;
   let user;
   try {
     user = await currentUser();
@@ -87,6 +95,23 @@ export default async function VendorCapacityPage() {
     })
     .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name));
 
+  // Landing view: one card per month showing how many active vendors updated capacity in it.
+  if (!params.view) {
+    const board = await loadVendorCapacityBoard(vendors.length);
+    return (
+      <FormLayout
+        title="Vendor Capacity"
+        subtitle="Month by month: how many active vendors updated their capacity, and the capacity they declared. Open a month to update vendors."
+        active="/vendor-capacity"
+        role={user.role}
+        userEmail={user.email}
+        allowedPages={user.allowed_pages ?? null}
+      >
+        <MonthBoard data={board} />
+      </FormLayout>
+    );
+  }
+
   return (
     <FormLayout
       title="Vendor Capacity"
@@ -96,6 +121,7 @@ export default async function VendorCapacityPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
+      <Link className="mb-back" href="/vendor-capacity">← All months</Link>
       <VendorCapacityClient
         vendors={vendors}
         role={user.role}

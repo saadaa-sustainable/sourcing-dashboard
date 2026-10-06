@@ -464,7 +464,7 @@ async function decideReceivablePlanBulk(
   await tellBatch(
     ((submitters ?? []) as { submitted_by: string | null; updated_by: string | null }[]).map((r) => r.submitted_by ?? r.updated_by),
     label || 'Receivable plan',
-    '/receivable-plan',
+    '/receivable-plan?tab=input',
     `receivable_${decision}`,
     decision,
     email,
@@ -522,7 +522,7 @@ async function decideInwardPlanBulk(
   await tellBatch(
     ((enteredBy ?? []) as { created_by: string | null; updated_by: string | null }[]).map((r) => r.created_by ?? r.updated_by),
     label || `Inward plan — ${month.slice(0, 7)}`,
-    '/receivable-plan',
+    `/receivable-plan?tab=monthly&month=${month}`,
     `inward_${decision}`,
     decision,
     email,

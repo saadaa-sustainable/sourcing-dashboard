@@ -5,5 +5,5 @@ import { redirect } from 'next/navigation';
  * was one place too many. Old links land on the page that owns it.
  */
 export default function ArrivalsRedirect() {
-  redirect('/receivable-plan');
+  redirect('/receivable-plan?tab=arrivals');
 }

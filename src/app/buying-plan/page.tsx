@@ -1,12 +1,14 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { monthLabel, monthStart } from '@/lib/forms/approval';
+import { addMonths, monthLabel, monthStart } from '@/lib/forms/approval';
 import {
   currentUser,
   loadActualsByProduct,
   loadAnalyticsRules,
   loadBuyingPlan,
   loadBuyingPlanAnalysis,
+  loadBuyingPlanBoard,
   loadMaterialPlan,
   loadPlanFirstActionAt,
   loadNpdBudget,
@@ -19,6 +21,7 @@ import { BuyingPlanAnalysisClient } from './buying-plan-analysis-client';
 import { MaterialPlanClient } from './material-plan-client';
 import { NpdBudgetCard } from './npd-budget-card';
 import { PlanTypeTabs, type PlanType } from './plan-type-tabs';
+import { MonthBoard } from '@/components/month-board';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +58,35 @@ export default async function BuyingPlanPage({
     redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
 
+  // No month or track asked for: the landing view is the month board, one card per plan.
+  if (!params.month && !requested) {
+    const rules = await loadAnalyticsRules();
+    const board = await loadBuyingPlanBoard(Math.min(28, Math.max(1, Math.round(rules.plan_approval_deadline_day ?? 7))));
+    const next = addMonths(monthStart(), 1);
+    return (
+      <FormLayout
+        title="Buying Plan"
+        subtitle="Every month's plan, FG and fabric / material, by where it stands. Open a card to fill, review or analyse that month."
+        active="/buying-plan"
+        role={user.role}
+        userEmail={user.email}
+        allowedPages={user.allowed_pages ?? null}
+      >
+        <MonthBoard
+          data={board}
+          searchPlaceholder="Search month or track…"
+          pageBar={
+            user.role !== 'viewer' ? (
+              <Link className="wf-btn wf-btn-primary wf-btn-sm" href={`/buying-plan?month=${next}&type=fg`}>
+                + Plan {monthLabel(next)}
+              </Link>
+            ) : null
+          }
+        />
+      </FormLayout>
+    );
+  }
+
   const subtitle =
     planType === 'analysis'
       ? `Buying Plan Analysis — ${monthLabel(planMonth)}. Approved plan vs POs actually issued: quantity, value and PO-count variance, excess / short, and the exceptions (issued but not budgeted; issued above approved).`
@@ -71,6 +103,7 @@ export default async function BuyingPlanPage({
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
+      <Link className="mb-back" href="/buying-plan">← All months</Link>
       <PlanTypeTabs planMonth={planMonth} planType={planType} />
       {planType === 'analysis' ? (
         <AnalysisTrack planMonth={planMonth} isAdmin={user.role === 'admin'} />
