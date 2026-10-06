@@ -1858,113 +1858,97 @@ function CmtpBreakdown({
     <div className="wf-cmtp">
       {err && <Notice tone="error">{err}</Notice>}
       <p className="wf-subtle">
-        CMTP cost is built from these heads — the total is the product&rsquo;s FINAL CMTP. Every
-        sub-item is listed: fill the amounts that apply and leave the rest blank (blank rows are not
-        saved). Remove a row you do not need, or add a sub-item or a whole head the product needs
-        (e.g. buttoning under Product Trims for shirts).
+        CMTP cost is built from these heads — the total below is the product&rsquo;s FINAL CMTP.
+        Every sub-item is listed under its head: fill the amounts that apply and leave the rest
+        blank (blank lines are not saved). Remove a line you do not need, or add a sub-item or a
+        whole head the product needs (e.g. buttoning under Product Trims for shirts).
       </p>
 
-      <div className="table-scroll">
-        <table className="wf-grid wf-cmtp-table">
-          <thead>
-            <tr>
-              <th>Sub-item</th>
-              <th className="num">Amount (₹)</th>
-              {editable && <th aria-label="Remove" />}
-            </tr>
-          </thead>
-          {heads.map((cat) => {
-            const head = CMTP_HEADS.find((h) => h.key === cat);
-            const mandatory = CMTP_MANDATORY.includes(cat);
-            const all = rows.filter((r) => r.category === cat);
-            // Read-only shows the cost lines only; editing shows every row to fill.
-            const catRows = editable ? all : all.filter((r) => r.amount.trim() !== '');
-            const sub = all.reduce((sum, r) => sum + (numv(r.amount) || 0), 0);
-            return (
-              <tbody key={cat} className="wf-cmtp-section">
-                <tr className="wf-cmtp-section-head">
-                  <th scope="rowgroup">
-                    {head?.label ?? cat}
-                    {mandatory && <small className="wf-subtle"> · required</small>}
-                  </th>
-                  <td className="num wf-cell-calc">{sub ? fmtAmt(sub) : '—'}</td>
-                  {editable && <td />}
-                </tr>
-                {catRows.map((r) => (
-                  <tr key={r.uid} className={r.amount.trim() !== '' ? 'is-filled' : undefined}>
-                    <td className="wf-cmtp-item">{r.label || <span className="wf-subtle">(no sub-item)</span>}</td>
-                    <td className="num input-col">
-                      {editable ? (
-                        <input
-                          type="number"
-                          min={0}
-                          placeholder="—"
-                          aria-label={`${head?.label ?? cat}: ${r.label || 'amount'}`}
-                          value={r.amount}
-                          onChange={(e) => patchAmount(r.uid, e.target.value)}
-                        />
-                      ) : (
-                        fmtAmt(numv(r.amount) || 0)
-                      )}
-                    </td>
-                    {editable && (
-                      <td className="wf-cmtp-remove">
-                        <button type="button" className="wf-icon-btn" aria-label={`Remove ${r.label || 'row'}`} title="Remove this row" onClick={() => removeRow(r.uid)}>
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-                {!catRows.length && (
-                  <tr>
-                    <td colSpan={editable ? 3 : 2} className="wf-subtle wf-cmtp-none">
-                      {editable ? 'No sub-items listed — add one below.' : 'Nothing recorded.'}
-                    </td>
-                  </tr>
-                )}
-                {editable && (
-                  <tr className="wf-cmtp-addrow">
-                    <td colSpan={3}>
-                      {addingFor === cat ? (
-                        <span className="wf-cmtp-newsub">
-                          <input
-                            placeholder="Sub-item name (joins the master)"
-                            value={newSub}
-                            disabled={subBusy}
-                            autoFocus
-                            onChange={(e) => setNewSub(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') { e.preventDefault(); addSubitem(cat); }
-                              if (e.key === 'Escape') { setAddingFor(null); setNewSub(''); }
-                            }}
-                          />
-                          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={subBusy || !newSub.trim()} onClick={() => addSubitem(cat)}>
-                            {subBusy ? 'Adding…' : 'Add'}
-                          </button>
-                          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={subBusy} onClick={() => { setAddingFor(null); setNewSub(''); }}>
-                            Cancel
-                          </button>
-                        </span>
-                      ) : (
-                        <button type="button" className="wf-chip-btn" onClick={() => { setAddingFor(cat); setNewSub(''); }}>
-                          <Plus size={12} /> Add sub-item
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            );
-          })}
-          <tfoot>
-            <tr className="wf-cmtp-total-row">
-              <th>FINAL CMTP cost</th>
-              <td className="num wf-cell-calc">{total ? fmtAmt(total) : '—'}</td>
-              {editable && <td />}
-            </tr>
-          </tfoot>
-        </table>
+      {/* Heads tile across the full panel width, one card each. Every sub-item the master
+          holds for a head is already a line in its card: type the amount straight in. */}
+      <div className="wf-cmtp-heads">
+        {heads.map((cat) => {
+          const head = CMTP_HEADS.find((h) => h.key === cat);
+          const mandatory = CMTP_MANDATORY.includes(cat);
+          const all = rows.filter((r) => r.category === cat);
+          // Read-only shows the cost lines only; editing shows every line to fill.
+          const catRows = editable ? all : all.filter((r) => r.amount.trim() !== '');
+          const sub = all.reduce((sum, r) => sum + (numv(r.amount) || 0), 0);
+          return (
+            <div key={cat} className="wf-cmtp-head">
+              <div className="wf-cmtp-head-row">
+                <span className="wf-cmtp-head-name">
+                  {head?.label ?? cat}
+                  {mandatory && <small className="wf-subtle"> · required</small>}
+                </span>
+                <span className="wf-cmtp-sub wf-cell-calc">{sub ? fmtAmt(sub) : '—'}</span>
+              </div>
+              {catRows.map((r) => (
+                <div key={r.uid} className={`wf-cmtp-line${r.amount.trim() !== '' ? ' is-filled' : ''}`}>
+                  <span className="wf-cmtp-label wf-cmtp-label-text" title={r.label}>
+                    {r.label || <span className="wf-subtle">(no sub-item)</span>}
+                  </span>
+                  {editable ? (
+                    <input
+                      className="wf-cmtp-amt"
+                      type="number"
+                      min={0}
+                      placeholder="amount"
+                      aria-label={`${head?.label ?? cat}: ${r.label || 'amount'}`}
+                      value={r.amount}
+                      onChange={(e) => patchAmount(r.uid, e.target.value)}
+                    />
+                  ) : (
+                    <span className="wf-cmtp-amt wf-cmtp-amt-text">{fmtAmt(numv(r.amount) || 0)}</span>
+                  )}
+                  {editable && (
+                    <button
+                      type="button"
+                      className="wf-icon-btn"
+                      aria-label={`Remove ${r.label || 'line'}`}
+                      title="Remove this line"
+                      onClick={() => removeRow(r.uid)}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {!catRows.length && (
+                <small className="wf-subtle">{editable ? 'No sub-items listed — add one below.' : 'Nothing recorded.'}</small>
+              )}
+              {editable && (
+                <div className="wf-cmtp-add">
+                  {addingFor === cat ? (
+                    <span className="wf-cmtp-newsub">
+                      <input
+                        placeholder="Sub-item name"
+                        value={newSub}
+                        disabled={subBusy}
+                        autoFocus
+                        onChange={(e) => setNewSub(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); addSubitem(cat); }
+                          if (e.key === 'Escape') { setAddingFor(null); setNewSub(''); }
+                        }}
+                      />
+                      <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={subBusy || !newSub.trim()} onClick={() => addSubitem(cat)}>
+                        {subBusy ? 'Adding…' : 'Add'}
+                      </button>
+                      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={subBusy} onClick={() => { setAddingFor(null); setNewSub(''); }}>
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button type="button" className="wf-chip-btn" onClick={() => { setAddingFor(cat); setNewSub(''); }}>
+                      <Plus size={12} /> Add sub-item
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {editable && (
@@ -1975,6 +1959,11 @@ function CmtpBreakdown({
           </button>
         </div>
       )}
+
+      <div className="wf-cmtp-total">
+        <span>FINAL CMTP cost</span>
+        <strong className="wf-cell-calc">{total ? fmtAmt(total) : '—'}</strong>
+      </div>
 
       {editable && isRevision && (
         <label className="field wf-field wf-cmtp-reason">
