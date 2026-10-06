@@ -4073,7 +4073,7 @@ export function DashboardShell({
               <CircleHelp size={17} /> What do these mean?
             </button>
             {role === 'admin' && <FeedbackBell />}
-            {role === 'admin' && <ApprovalsBell />}
+            {role !== 'viewer' && <ApprovalsBell />}
             {userEmail && (
               <div className="account">
                 <span className="account-email" title={userEmail}>

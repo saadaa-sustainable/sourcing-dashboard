@@ -1,6 +1,7 @@
 'use server';
 
 import { notifyCostTargetSlack } from '@/lib/slack';
+import { createNotification } from '@/lib/notifications.server';
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
@@ -43,6 +44,18 @@ const COST_HISTORY_TABLE: Record<'fg' | 'material', string> = {
 };
 
 /** Clear the FG two-step confirmation stamps (fabric → CM) for a new round. */
+/** Tell the team, in the bell, what happened to a cost (links to the product's page). */
+async function tellTeam(track: 'fg' | 'material', code: string, kind: string, title: string, body: string | null, by: string) {
+  await createNotification({
+    kind,
+    title,
+    body,
+    link: `/standard-cost/${encodeURIComponent(code)}${track === 'material' ? '?track=material' : ''}`,
+    audienceRole: 'team',
+    createdBy: by,
+  });
+}
+
 function resetConfirmations() {
   return { fabric_confirmed_at: null, fabric_confirmed_by: null, cm_confirmed_at: null, cm_confirmed_by: null };
 }
@@ -209,6 +222,7 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   if (error) return fail(error.message);
   const summary = targetSummary(merged, track) ?? '';
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target ${summary}`);
+  await tellTeam(track, row.product_code, 'cost_target', `Target set: ${row.product_code}`, `${summary}. Come back with the vendor rate.`, user.email);
   // Best-effort: a Slack hiccup never undoes the target.
   try {
     await notifyCostTargetSlack({ code: row.product_code, summary, track });
@@ -251,6 +265,7 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
     user.email, 'Proposal accepted as-is',
   );
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Proposal accepted as-is — standard cost');
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Signed off: ${row.product_code}`, 'Your proposal was accepted as the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   return done('Proposal accepted. This is now the standard cost.');
@@ -318,6 +333,7 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
     user.email, 'Signed off — standard cost',
   );
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Signed off — standard cost');
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Signed off: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   return done('Signed off. This is now the standard cost.');
@@ -342,6 +358,7 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
     .eq('id', id);
   if (error) return fail(error.message);
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Renegotiate: ${note}`);
+  await tellTeam(track, row.product_code, 'cost_renegotiate', `Renegotiate: ${row.product_code}`, note, user.email);
   revalidatePath('/standard-cost');
   return done('Sent back to renegotiate.');
 }
@@ -365,6 +382,7 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
     .eq('id', id);
   if (error) return fail(error.message);
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected: ${note}`);
+  await tellTeam(track, row.product_code, 'cost_rejected', `Cost rejected: ${row.product_code}`, note, user.email);
   revalidatePath('/standard-cost');
   return done('Cost rejected.');
 }
@@ -557,6 +575,7 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
     user.email, 'Signed off — CM confirmed',
   );
   await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — signed off');
+  await tellTeam('fg', row.product_code, 'cost_signed_off', `Signed off: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   return done('Signed off. This is now the standard cost.');

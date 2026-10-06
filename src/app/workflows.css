@@ -2283,3 +2283,15 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .sc-entry-grid .sc-entry-target th, .sc-entry-grid .sc-entry-target td { background: #fffaf0; }
 .sc-entry-grid td small { font-size: 11px; font-weight: 500; }
 .sc-entry-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Bell: the "For you" notices above the approvals list. */
+.wf-bell-section {
+  padding: 8px 14px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: #8a8478;
+}
+.wf-bell-notices { max-height: 260px; }
+.wf-bell-item.is-unread { background: #fff8ea; }
+.wf-bell-item.is-unread .wf-bell-item-label::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px;
+  border-radius: 50%; background: #d97706; vertical-align: middle;
+}

@@ -34,6 +34,7 @@ import {
 import type { ApprovalEntity, PoApproval, PoCategory, PoType, SdRole, SdStatus } from '../types';
 import { INWARD_PLAN_STATUSES } from '../types';
 import { notifyReworkSlack } from '@/lib/slack';
+import { createNotification } from '@/lib/notifications.server';
 import {
   type ActionResult,
   type LinkResult,
@@ -75,6 +76,50 @@ const LINE_TABLE: Partial<Record<ApprovalEntity, string>> = {
   buying_plan: 'sd_buying_plan_line',
   po_approval: 'sd_po_approval_line',
 };
+
+/** Where each kind of item is worked on — the link in its bell notice. */
+const ITEM_LINK: Partial<Record<ApprovalEntity, (id: number) => string>> = {
+  po_approval: (id) => `/po-approval/${id}`,
+  po_delete: () => '/po-approval',
+  buying_plan: () => '/buying-plan',
+  discontinue: () => '/discontinue',
+  standard_cost: () => '/standard-cost',
+  material_cost: () => '/standard-cost?track=material',
+  vendor_deboarding: () => '/vendor-deboarding',
+  po_amendment: () => '/po-amendment',
+};
+
+/** Who raised an item: the first person-field the row has. */
+function raisedBy(row: Record<string, unknown> | null): string | null {
+  for (const k of ['submitted_by', 'created_by', 'requested_by', 'raised_by']) {
+    const v = row?.[k];
+    if (typeof v === 'string' && v.includes('@')) return v;
+  }
+  return null;
+}
+
+/** Tell the person who raised an item, in the bell, what the approver decided. */
+async function tellRaiser(
+  entityType: ApprovalEntity,
+  entityId: number,
+  label: string,
+  row: Record<string, unknown> | null,
+  decision: 'approve' | 'reject' | 'rework',
+  by: string,
+  notes: string,
+) {
+  const to = raisedBy(row);
+  if (!to || to.toLowerCase() === by.toLowerCase()) return;
+  const what = label || `${entityType.replace(/_/g, ' ')} #${entityId}`;
+  await createNotification({
+    kind: `approval_${decision}`,
+    title: decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Sent back for rework: ${what}` : `Rejected: ${what}`,
+    body: notes || null,
+    link: ITEM_LINK[entityType]?.(entityId) ?? '/my-dashboard',
+    recipientEmail: to,
+    createdBy: by,
+  });
+}
 
 export async function decideApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
@@ -216,6 +261,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   }
 
   await writeLog(entityType, String(entityId), label, from, to, user.email, notes || undefined);
+  await tellRaiser(entityType, entityId, label, row, decision, user.email, notes);
 
   if (decision === 'rework') {
     await notifyReworkSlack({ what: label || `${entityType} #${entityId}`, by: user.email, reason: notes });
@@ -290,6 +336,11 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   if (!updated?.length) return fail('Already processed by another approver.');
 
   await writeLog(entityType, String(entityId), label, from, 'rework', user.email, summary);
+  {
+    // paging-ok: one record by id
+    const { data: full } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+    await tellRaiser(entityType, entityId, label, full as unknown as Record<string, unknown> | null, 'rework', user.email, summary);
+  }
   await notifyReworkSlack({
     what: label || `${entityType} #${entityId}`,
     by: user.email,

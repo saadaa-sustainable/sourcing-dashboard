@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { Bell, Inbox } from 'lucide-react';
 import type { ApprovalNotification } from '@/lib/forms/types';
 
+/** A notice for this user or their role ("Target set", "Sent back for rework", …). */
+type Notice = { id: number; kind: string; title: string; body: string | null; link: string | null; createdAt: string; unread: boolean };
+
 const when = (v: string | null) => {
   if (!v) return '';
   const d = new Date(v);
@@ -32,6 +35,9 @@ const PANEL_GAP = 8;
 // context entirely (the same technique the toast host uses).
 export function ApprovalsBell() {
   const [count, setCount] = useState<number | null>(null);
+  // Notices for this user (For you): unread count for the badge, list for the panel.
+  const [unread, setUnread] = useState(0);
+  const [notices, setNotices] = useState<Notice[] | null>(null);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ApprovalNotification[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,11 +46,16 @@ export function ApprovalsBell() {
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const loadCount = () =>
+  const loadCount = () => {
     fetch('/api/approvals/count')
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d && typeof d.count === 'number') setCount(d.count); })
       .catch(() => {});
+    fetch('/api/notifications')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && typeof d.unread === 'number') setUnread(d.unread); })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     loadCount();
@@ -65,6 +76,23 @@ export function ApprovalsBell() {
       })
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
+    // Notices: shown with their unread highlight, then marked read now that they are seen.
+    fetch('/api/notifications')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const list = (d?.items ?? []) as Notice[];
+        setNotices(list);
+        const ids = list.filter((n) => n.unread).map((n) => n.id);
+        setUnread(0);
+        if (ids.length) {
+          fetch('/api/notifications/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          }).catch(() => {});
+        }
+      })
+      .catch(() => setNotices([]));
   };
 
   // Anchor the fixed panel to the bell button: just below it, right edges aligned.
@@ -105,6 +133,7 @@ export function ApprovalsBell() {
   }, [open]);
 
   const n = count ?? 0;
+  const badge = n + unread;
 
   const panel = open && pos && (
     <div
@@ -119,6 +148,34 @@ export function ApprovalsBell() {
         <strong>Notifications</strong>
         {n > 0 && <span className="wf-subtle">{n} awaiting approval</span>}
       </div>
+
+      {notices && notices.length > 0 && (
+        <>
+          <div className="wf-bell-section">For you</div>
+          <div className="wf-bell-list wf-bell-notices">
+            {notices.map((nt) => {
+              const body = (
+                <>
+                  <span className="wf-bell-item-label">{nt.title}</span>
+                  {nt.body && <span className="wf-bell-item-sub">{nt.body}</span>}
+                  <span className="wf-bell-item-meta">{when(nt.createdAt)}</span>
+                </>
+              );
+              const cls = `wf-bell-item${nt.unread ? ' is-unread' : ''}`;
+              return nt.link ? (
+                <Link key={nt.id} href={nt.link} className={cls} role="menuitem" onClick={() => setOpen(false)}>
+                  {body}
+                </Link>
+              ) : (
+                <div key={nt.id} className={cls}>
+                  {body}
+                </div>
+              );
+            })}
+          </div>
+          <div className="wf-bell-section">Awaiting approval</div>
+        </>
+      )}
 
       <div className="wf-bell-list">
         {loading && !items ? (
@@ -161,13 +218,13 @@ export function ApprovalsBell() {
         type="button"
         className="wf-bell-btn"
         onClick={toggle}
-        title={n > 0 ? `${n} awaiting approval` : 'Approvals'}
-        aria-label={`${n} items awaiting approval`}
+        title={badge > 0 ? [unread > 0 ? `${unread} new for you` : '', n > 0 ? `${n} awaiting approval` : ''].filter(Boolean).join(' · ') : 'Notifications'}
+        aria-label={`${unread} new notices, ${n} items awaiting approval`}
         aria-haspopup="true"
         aria-expanded={open}
       >
         <Bell size={18} />
-        {n > 0 && <span className="wf-bell-badge">{n > 99 ? '99+' : n}</span>}
+        {badge > 0 && <span className="wf-bell-badge">{badge > 99 ? '99+' : badge}</span>}
       </button>
 
       {/* `open` only ever becomes true from a click, so document exists whenever this renders. */}
