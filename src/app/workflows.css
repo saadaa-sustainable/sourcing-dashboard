@@ -2258,3 +2258,22 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-target-cell { white-space: nowrap; }
 .sc-page-targets { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .sc-page-targets strong small { font-size: 11px; font-weight: 600; color: #8a8478; margin-right: 2px; }
+
+/* Product page price: rate types as columns, a Proposed row and a Target row. */
+.sc-price { display: flex; flex-direction: column; gap: 6px; }
+.sc-price-grid {
+  width: 100%; max-width: 720px; border-collapse: separate; border-spacing: 0;
+  background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; overflow: hidden;
+}
+.sc-price-grid th, .sc-price-grid td { padding: 10px 14px; border-bottom: 1px solid #f1f1ef; text-align: left; }
+.sc-price-grid tr:last-child th, .sc-price-grid tr:last-child td { border-bottom: 0; }
+.sc-price-grid thead th {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #6e695e; background: #fafafa;
+}
+.sc-price-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sc-price-grid tbody th { width: 150px; font-size: 12.5px; font-weight: 700; color: #33302b; }
+.sc-price-grid tbody th small { display: block; font-weight: 500; color: #8a8478; }
+.sc-price-grid tbody td { font-size: 16px; font-weight: 700; }
+.sc-price-grid .sc-price-target th, .sc-price-grid .sc-price-target td { background: #fffaf0; }
+.sc-price-grid td.input-col input { width: 100px; text-align: right; font-size: 14px; }
+.sc-price-grid td small { font-size: 11px; font-weight: 500; }

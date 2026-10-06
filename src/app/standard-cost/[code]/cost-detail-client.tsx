@@ -6,9 +6,10 @@ import { HeaderInfo } from '@/components/header-info';
 import Link from 'next/link';
 import { ArrowLeft, Link2, Lock, Pencil, Trash2, X } from 'lucide-react';
 import { ProductPicker } from '@/components/forms/product-picker';
-import { deleteUnlinkedProduct, linkProductToEasyEcom } from '@/lib/forms/actions';
-import { emitToast, toastError } from '@/lib/toast';
-import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor, targetParts } from '@/lib/forms/cost';
+import { deleteUnlinkedProduct, linkProductToEasyEcom, setTargetCost } from '@/lib/forms/actions';
+import { emitToast, reloadWithToast, toastError } from '@/lib/toast';
+import { COST_STAGE_LABEL, COST_STAGE_TONE, RATE_LABELS, canSetTarget, nextActor, type RateKey as PriceKey } from '@/lib/forms/cost';
+import { targetFields } from '@/components/forms/target-inputs';
 import { canEdit } from '@/lib/forms/approval';
 import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
 import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
@@ -172,45 +173,11 @@ export function StandardCostDetailClient({
         />
       ) : null}
 
-      <section className="sc-page-rates" aria-label="Current rates">
-        {[
-          ...(isMat
-            ? [
-                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
-                { label: `${rateLabels.job} rate`, value: cost.job_cost },
-              ]
-            : [
-                { label: `${rateLabels.job} rate`, value: cost.job_cost },
-                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
-              ]),
-          { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
-          { label: 'Proposed', value: cost.proposed_cost },
-        ].map((r) => (
-          <div className="sc-page-rate" key={r.label}>
-            <span>{r.label}</span>
-            <strong>{money(r.value)}</strong>
-          </div>
-        ))}
-        {/* The target names the rate it is aimed at (Job / FOB / E-FOB), not one bare figure. */}
-        <div className="sc-page-rate">
-          <span>Target</span>
-          {targetParts(cost, isMat ? 'material' : 'fg').length ? (
-            <div className="sc-page-targets">
-              {targetParts(cost, isMat ? 'material' : 'fg').map((t) => (
-                <strong key={t.label}>
-                  <small>{t.label}</small> {money(t.value)}
-                </strong>
-              ))}
-            </div>
-          ) : (
-            <strong>—</strong>
-          )}
-        </div>
-      </section>
+      <PriceGrid cost={cost} role={role} track={isMat ? 'material' : 'fg'} money={money} />
 
       {/* The approver decides here, without opening the editor. Renders nothing when the
           signed-in role has no decision to make at this stage. */}
-      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} />
+      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} targetInGrid />
 
       {editing && (
         <section className="sc-page-edit" aria-label="Change the cost">
@@ -562,6 +529,118 @@ function LinkPanel({
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * The price, as two rows under the rate types (Job / FOB / E-FOB, or the material names):
+ * what the team proposed (or submitted, or what was signed off) and the approver's target.
+ * When it is the approver's turn, the target row is where the target is typed, one box per
+ * rate type, with a single Set target.
+ */
+function PriceGrid({
+  cost,
+  role,
+  track,
+  money,
+}: {
+  cost: StandardCost;
+  role: SdRole;
+  track: 'fg' | 'material';
+  money: (v: number | null) => string;
+}) {
+  const labels = RATE_LABELS[track];
+  // Material lists Billing first, as its sheet does.
+  const keys: PriceKey[] = track === 'material' ? ['fob', 'job', 'efob'] : ['job', 'fob', 'efob'];
+  const stage = cost.neg_stage ?? null;
+  const rateRow =
+    stage === 'rate_submitted' ? 'Vendor rate' : stage === 'signed_off' ? 'Standard' : 'Proposed';
+  const typed = keys.some((k) => cost[`target_${k}` as const] != null);
+  const legacy = !typed && cost.target_cost != null;
+  const canSet = canSetTarget(role, stage) && !cost.frozen;
+  const [targets, setTargets] = useState<Partial<Record<PriceKey, string>>>({});
+  const [busy, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const fields = targetFields(targets);
+
+  function setTarget() {
+    setErr(null);
+    const fd = new FormData();
+    fd.set('track', track);
+    fd.set('id', String(cost.id));
+    Object.entries(fields).forEach(([k, v]) => fd.set(k, v));
+    start(async () => {
+      const res = await setTargetCost(fd);
+      if (res.ok) {
+        setTargets({});
+        reloadWithToast(res.message ?? 'Target set.');
+      } else setErr(toastError(res.error));
+    });
+  }
+
+  return (
+    <section className="sc-price" aria-label="Price">
+      <div className="table-scroll">
+        <table className="sc-price-grid">
+          <thead>
+            <tr>
+              <th aria-label="Row" />
+              {keys.map((k) => (
+                <th key={k} className="num">{labels[k]}</th>
+              ))}
+              {canSet && <th aria-label="Action" />}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">
+                {rateRow}
+                {cost.proposed_cost != null && <small>expected {money(cost.proposed_cost)}</small>}
+              </th>
+              {keys.map((k) => (
+                <td key={k} className="num">{money(cost[`${k}_cost` as const])}</td>
+              ))}
+              {canSet && <td />}
+            </tr>
+            <tr className="sc-price-target">
+              <th scope="row">Target</th>
+              {canSet ? (
+                <>
+                  {keys.map((k) => (
+                    <td key={k} className="num input-col">
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder={cost[`target_${k}` as const] != null ? String(cost[`target_${k}` as const]) : '₹'}
+                        aria-label={`${labels[k]} target`}
+                        disabled={busy}
+                        value={targets[k] ?? ''}
+                        onChange={(e) => setTargets((t) => ({ ...t, [k]: e.target.value }))}
+                      />
+                    </td>
+                  ))}
+                  <td>
+                    <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy || !Object.keys(fields).length} onClick={setTarget}>
+                      {busy ? 'Setting…' : 'Set target'}
+                    </button>
+                  </td>
+                </>
+              ) : legacy ? (
+                // Set before targets were per type: which rate it was for was never recorded.
+                <td className="num" colSpan={keys.length}>
+                  {money(cost.target_cost)} <small className="wf-subtle">overall (rate type not recorded)</small>
+                </td>
+              ) : (
+                keys.map((k) => (
+                  <td key={k} className="num">{money(cost[`target_${k}` as const] ?? null)}</td>
+                ))
+              )}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {err && <small className="wf-line-error">{err}</small>}
     </section>
   );
 }
