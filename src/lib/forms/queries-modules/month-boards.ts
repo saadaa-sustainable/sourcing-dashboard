@@ -1,5 +1,6 @@
 import 'server-only';
 import { client, pageAll } from './_shared';
+import { loadApprovedStandardCosts } from './standard-cost';
 import { addMonths, isPlanFrozen, monthStart } from '../approval';
 import { inrShort, num, type MonthBoardCard, type MonthBoardData } from '@/lib/month-board';
 
@@ -24,7 +25,7 @@ const daysSince = (ts: string) => Math.max(0, Math.floor((Date.now() - new Date(
 
 export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardData> {
   const supabase = await client();
-  const [plans, lines, actuals] = await Promise.all([
+  const [plans, lines, actuals, costs] = await Promise.all([
     pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null }>(() =>
       supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes').order('id'),
     ),
@@ -34,7 +35,17 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     pageAll<{ plan_month: string; issued_qty: number | null }>(() =>
       supabase.from('sd_po_actuals_by_product_month').select('plan_month, issued_qty').order('plan_month').order('product_code'),
     ),
+    loadApprovedStandardCosts(),
   ]);
+  // Same value rule as the plan screen: once submitted, a line's value frozen at submission;
+  // while being edited (or when nothing was frozen), its quantities at today's approved cost.
+  const editing = new Set(plans.filter((p) => !['submitted', 'pending_l2', 'approved'].includes(p.status)).map((p) => p.id));
+  const lineValue = (l: (typeof lines)[number]) => {
+    const stored = Number(l.standard_value) || 0;
+    const c = l.product_code ? costs[l.product_code] : undefined;
+    if (stored > 0 && (!editing.has(l.plan_id) || !c)) return stored;
+    return c ? (Number(l.job_work_qty) || 0) * c.job + (Number(l.fob_qty) || 0) * c.fob + (Number(l.efob_qty) || 0) * c.efob : 0;
+  };
   const issuedByMonth = new Map<string, number>();
   for (const a of actuals) issuedByMonth.set(a.plan_month, (issuedByMonth.get(a.plan_month) ?? 0) + (Number(a.issued_qty) || 0));
 
@@ -43,8 +54,11 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     const track = p.plan_type === 'material' ? 'material' : 'fg';
     const mine = lines.filter((l) => l.plan_id === p.id);
     const qty = mine.reduce((s, l) => s + (Number(l.job_work_qty) || 0) + (Number(l.fob_qty) || 0) + (Number(l.efob_qty) || 0), 0);
-    const valued = mine.filter((l) => Number(l.standard_value) > 0);
-    const value = valued.length ? valued.reduce((s, l) => s + Number(l.standard_value), 0) : null;
+    const withQty = mine.filter((l) => (Number(l.job_work_qty) || 0) + (Number(l.fob_qty) || 0) + (Number(l.efob_qty) || 0) > 0);
+    const values = withQty.map(lineValue);
+    const unvalued = values.filter((v) => v <= 0).length;
+    const total = values.reduce((s, v) => s + v, 0);
+    const value = total > 0 ? total : null;
     const products = new Set(mine.map((l) => l.product_code).filter(Boolean)).size;
     const frozen = isPlanFrozen(p.plan_month);
     const status =
@@ -63,7 +77,8 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     let warn: MonthBoardCard['warn'];
     if (p.status === 'rework') warn = { text: `Sent back for rework${p.rework_notes ? `: ${p.rework_notes}` : ''}`, tone: 'back' };
     else if (p.status === 'rejected') warn = { text: `Rejected${p.rejection_notes ? `: ${p.rejection_notes}` : ''}`, tone: 'back' };
-    else if (mine.length && value == null) warn = { text: 'Standard values are missing on this plan, so its value cannot be shown.', tone: 'pending' };
+    else if (withQty.length && value == null) warn = { text: 'No line on this plan has a standard value or an approved cost, so its value cannot be shown.', tone: 'pending' };
+    else if (unvalued) warn = { text: `${unvalued} line${unvalued === 1 ? ' has' : 's have'} no standard value or approved cost, so the value is understated.`, tone: 'pending' };
 
     const issued = track === 'fg' ? issuedByMonth.get(p.plan_month) ?? 0 : null;
     const href = `/buying-plan?month=${p.plan_month}&type=${track}`;
@@ -115,7 +130,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
 
   const started = cards.filter((c) => !c.id.startsWith('bp-new-'));
   const totalQty = plans.reduce((s, p) => s + lines.filter((l) => l.plan_id === p.id).reduce((t, l) => t + (Number(l.job_work_qty) || 0) + (Number(l.fob_qty) || 0) + (Number(l.efob_qty) || 0), 0), 0);
-  const totalValue = lines.reduce((s, l) => s + (Number(l.standard_value) || 0), 0);
+  const totalValue = lines.reduce((s, l) => s + lineValue(l), 0);
   return {
     columns: [
       { key: 'draft', label: 'Draft', tone: 'draft', hint: 'Being filled · not submitted yet' },
