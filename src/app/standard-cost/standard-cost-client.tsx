@@ -967,9 +967,11 @@ export function CostRow({
             >
               Set target
             </button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
-              Reject
-            </button>
+            {canRejectCost(role, stage) && stage === 'proposed' && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
+                Reject
+              </button>
+            )}
           </>
         )}
 

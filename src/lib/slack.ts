@@ -85,6 +85,22 @@ export async function notifyFabricRateSlack(n: {
   await postSlack(opsWebhook(), text);
 }
 
+// ── Standard Cost target set by the approver ─────────────────────────────────
+export async function notifyCostTargetSlack(n: {
+  code: string;
+  name?: string | null;
+  summary: string; // "Job ₹100 · FOB ₹90"
+  track: 'fg' | 'material';
+}): Promise<void> {
+  const path = `/standard-cost/${encodeURIComponent(n.code)}${n.track === 'material' ? '?track=material' : ''}`;
+  const text = [
+    `🎯 *Target set:* ${n.code}${n.name ? ` · ${n.name}` : ''}`,
+    `${n.summary} — the team to come back with the vendor rate.`,
+    link(path, 'Open the cost →'),
+  ].join('\n');
+  await postSlack(opsWebhook(), text);
+}
+
 // ── Rework sent back to a submitter ──────────────────────────────────────────
 export async function notifyReworkSlack(n: {
   what: string; // e.g. "Buying plan 2026-09" or a PO ref

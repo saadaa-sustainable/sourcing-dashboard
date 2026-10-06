@@ -65,8 +65,9 @@ export function nextActor(stage: string | null): string {
 // current accepted rate stays live (from history) until the new one is accepted.
 export const canPropose = (role: SdRole, stage: string | null) =>
   isTeam(role) && (!stage || stage === 'rejected' || stage === 'signed_off');
-export const canSetTarget = (role: SdRole, stage: string | null) =>
-  isAdmin(role) && stage === 'proposed';
+/** The approver may set or change a target, for any rate type, at any stage (a frozen cost
+ *  is refused by the action). The team is notified and owes a vendor rate against it. */
+export const canSetTarget = (role: SdRole, _stage?: string | null) => isAdmin(role);
 /** Admin may also accept a proposal as-is — the proposed rates become the standard. */
 export const canAcceptProposal = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'proposed';
@@ -157,8 +158,7 @@ export function targetSummary(c: TargetFields, track: 'fg' | 'material', money =
   return parts.length ? parts.map((p) => `${p.label} ${money(p.value)}`).join(' · ') : null;
 }
 
-/** The rate types a target can be set for: the ones the proposal named, else all three. */
-export function targetKeysFor(c: { job_cost: number | null; fob_cost: number | null; efob_cost: number | null }): RateKey[] {
-  const named = RATE_KEYS.filter((k) => c[`${k}_cost` as const] != null);
-  return named.length ? named : RATE_KEYS;
+/** The rate types a target can be set for: all three, any time (the approver decides). */
+export function targetKeysFor(_c?: { job_cost: number | null; fob_cost: number | null; efob_cost: number | null }): RateKey[] {
+  return RATE_KEYS;
 }

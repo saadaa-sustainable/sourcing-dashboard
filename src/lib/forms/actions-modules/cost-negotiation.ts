@@ -1,5 +1,6 @@
 'use server';
 
+import { notifyCostTargetSlack } from '@/lib/slack';
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
@@ -163,7 +164,12 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   return done('Proposed for costing.');
 }
 
-/** The approver (admin) reviews a proposal and states the target cost. */
+/**
+ * The approver (admin) sets or changes the target, per rate type, at any stage. Types left
+ * blank keep their current target. The team owes a vendor rate against it (stage target_set),
+ * so a submitted rate goes back to them and a signed-off cost starts a new round (its accepted
+ * rate stays the standard until the new one is signed off). The team is told on Slack.
+ */
 export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -172,30 +178,45 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
-  if (!canSetTarget(user.role, row.neg_stage)) return fail('This is not awaiting a target cost.');
-  // One target per rate type, so the team knows which rate each figure is aimed at.
-  const tJob = numOrNull(formData.get('target_job'));
-  const tFob = numOrNull(formData.get('target_fob'));
-  const tEfob = numOrNull(formData.get('target_efob'));
-  if (tJob == null && tFob == null && tEfob == null) return fail('Enter a target for at least one rate type.');
+  if (!canSetTarget(user.role, row.neg_stage)) return fail('Only the approver can set a target.');
+  if (row.frozen) return fail('This cost is frozen by an issued PO; its target can no longer change.');
 
-  const { error } = await supabase
+  // One target per rate type, so the team knows which rate each figure is aimed at.
+  const patch: Record<string, unknown> = {};
+  for (const k of ['job', 'fob', 'efob'] as const) {
+    const v = numOrNull(formData.get(`target_${k}`));
+    if (v != null) patch[`target_${k}`] = v;
+  }
+  if (!Object.keys(patch).length) return fail('Enter a target for at least one rate type.');
+
+  const { data: current } = await supabase
     .from(table)
-    .update({
-      neg_stage: 'target_set',
-      target_job: tJob,
-      target_fob: tFob,
-      target_efob: tEfob,
-      // The old single target had no type; a new target replaces it.
-      target_cost: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
+    .select('target_job, target_fob, target_efob')
+    .eq('id', id)
+    .maybeSingle();
+  const merged = { ...(current ?? {}), ...patch } as { target_job?: number | null; target_fob?: number | null; target_efob?: number | null };
+
+  Object.assign(patch, {
+    neg_stage: 'target_set',
+    // The old single target had no type; a typed target replaces it.
+    target_cost: null,
+    updated_at: new Date().toISOString(),
+  });
+  // A vendor rate already submitted must be confirmed afresh against the new target.
+  if (track === 'fg' && row.neg_stage === 'rate_submitted') Object.assign(patch, resetConfirmations());
+
+  const { error } = await supabase.from(table).update(patch).eq('id', id);
   if (error) return fail(error.message);
-  const summary = targetSummary({ target_job: tJob, target_fob: tFob, target_efob: tEfob }, track) ?? '';
+  const summary = targetSummary(merged, track) ?? '';
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target ${summary}`);
+  // Best-effort: a Slack hiccup never undoes the target.
+  try {
+    await notifyCostTargetSlack({ code: row.product_code, summary, track });
+  } catch {
+    /* ignore */
+  }
   revalidatePath('/standard-cost');
-  return done(`Target set: ${summary}.`);
+  return done(`Target set: ${summary}. The team has been notified.`);
 }
 
 /** Admin accepts the proposal as-is — the proposed rates become the Standard Cost. */

@@ -91,12 +91,12 @@ describe('cost negotiation — stage transitions (happy path)', () => {
     assert.equal(canPropose('team', 'rate_submitted'), false);
     assert.equal(canPropose('team', 'renegotiate'), false);
   });
-  it('admin sets target OR accepts only a proposal', () => {
-    assert.equal(canSetTarget('admin', 'proposed'), true);
+  it('admin sets a target at any stage; accepts only a proposal', () => {
     assert.equal(canAcceptProposal('admin', 'proposed'), true);
+    assert.equal(canSetTarget('admin', null), true);
     for (const stage of STAGES) {
+      assert.equal(canSetTarget('admin', stage), true, `setTarget@${stage}`);
       if (stage === 'proposed') continue;
-      assert.equal(canSetTarget('admin', stage), false, `setTarget@${stage}`);
       assert.equal(canAcceptProposal('admin', stage), false, `accept@${stage}`);
     }
   });

@@ -184,7 +184,13 @@ export function CostDecisionBar({
           <p className="wf-subtle">
             {stage === 'proposed'
               ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target and the team comes back with the actual vendor rate; or reject it with a reason.`
-              : `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it.`}
+              : stage === 'rate_submitted'
+                ? `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it. A new target sends it back to the team.`
+                : stage === 'target_set' || stage === 'renegotiate'
+                  ? `Waiting for the team's vendor rate${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. You can change the target for any rate type; the team is notified.`
+                  : stage === 'signed_off'
+                    ? 'Signed off. Setting a new target starts a new round: the team comes back with a new vendor rate, and the current standard stays in use until that is signed off.'
+                    : 'No proposal yet. You can set a target for any rate type now; the team is notified and comes back with the vendor rate.'}
           </p>
         </div>
         <span className={`wf-status tone-${COST_STAGE_TONE[stage ?? ''] ?? 'purple'}`}>{COST_STAGE_LABEL[stage ?? ''] ?? '—'}</span>
