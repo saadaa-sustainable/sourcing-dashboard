@@ -43,15 +43,12 @@ export function CostDecisionBar({
   role,
   track,
   compact = false,
-  targetInGrid = false,
 }: {
   cost: CostDecisionRecord;
   role: SdRole;
   track: 'fg' | 'material';
   /** On a queue card: no heading, the card already says what it is. */
   compact?: boolean;
-  /** The product page sets the target in its price grid, so the bar leaves it out. */
-  targetInGrid?: boolean;
 }) {
   const isMat = track === 'material';
   const stage = cost.neg_stage ?? null;
@@ -129,7 +126,7 @@ export function CostDecisionBar({
           <Check size={15} /> {busy ? 'Working…' : 'Accept proposal'}
         </button>
       )}
-      {canSetTarget(role, stage) && !targetInGrid && (
+      {canSetTarget(role, stage) && (
         <span className="wf-inline-actions">
           <TargetInputs cost={cost} track={track} value={targets} onChange={setTargets} disabled={busy} />
           <button
@@ -186,7 +183,7 @@ export function CostDecisionBar({
           <h3>Your decision</h3>
           <p className="wf-subtle">
             {stage === 'proposed'
-              ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target${targetInGrid ? ' (in the Target row above)' : ''} and the team comes back with the actual vendor rate; or reject it with a reason.`
+              ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target and the team comes back with the actual vendor rate; or reject it with a reason.`
               : `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it.`}
           </p>
         </div>

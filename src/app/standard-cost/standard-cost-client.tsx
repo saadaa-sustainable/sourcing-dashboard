@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { ChevronDown, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import { Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { downloadCsv } from '@/lib/download';
 import {
@@ -46,9 +46,10 @@ import {
   isTeamTurn,
   nextActor,
   targetSummary,
+  RATE_LABELS,
   type RateKey,
 } from '@/lib/forms/cost';
-import { TargetInputs, targetFields } from '@/components/forms/target-inputs';
+import { targetFields } from '@/components/forms/target-inputs';
 import { canEdit } from '@/lib/forms/approval';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
@@ -730,31 +731,29 @@ export function CostRow({
   cost,
   role,
   track,
-  expanded,
-  onToggle,
   temp,
   name,
 }: {
   cost: StandardCost;
   role: SdRole;
   track: 'fg' | 'material';
-  expanded?: boolean;
-  onToggle?: () => void;
-  /** Product name shown under the code (Finished Goods grid). */
+  /** Product name shown beside the code. */
   name?: string;
   /** Set when this product is a temporary (not-yet-in-EasyEcom) product. */
   temp?: TempProductInfo;
 }) {
   const isMat = track === 'material';
-  const jobLabel = isMat ? 'FOB Fabric' : 'Job';
-  const fobLabel = isMat ? 'Billing' : 'FOB';
-  const efobLabel = isMat ? 'Standard Fabric' : 'E-FOB';
+  const labels = RATE_LABELS[track];
+  // Material lists Billing first, as its sheet does.
+  const keys: RateKey[] = isMat ? ['fob', 'job', 'efob'] : ['job', 'fob', 'efob'];
   const stage = cost.neg_stage;
   const stageKey = stage ?? '';
 
-  const [job, setJob] = useState(cost.job_cost?.toString() ?? '');
-  const [fob, setFob] = useState(cost.fob_cost?.toString() ?? '');
-  const [efob, setEfob] = useState(cost.efob_cost?.toString() ?? '');
+  const [rates, setRates] = useState<Record<RateKey, string>>({
+    job: cost.job_cost?.toString() ?? '',
+    fob: cost.fob_cost?.toString() ?? '',
+    efob: cost.efob_cost?.toString() ?? '',
+  });
   const [proposed, setProposed] = useState('');
   const [targets, setTargets] = useState<Partial<Record<RateKey, string>>>({});
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
@@ -786,6 +785,12 @@ export function CostRow({
   // Rates are fillable both when the team proposes (so a proposal can name its PO
   // type) and when it later submits the actual vendor rate.
   const rateEditable = (canPropose(role, stage) || canSubmitRate(role, stage)) && !cost.frozen;
+  const targetEditable = canSetTarget(role, stage) && !cost.frozen;
+  const showExpected = (canPropose(role, stage) && !cost.frozen) || cost.proposed_cost != null;
+  const rateRow = stage === 'rate_submitted' ? 'Vendor rate' : stage === 'signed_off' ? 'Standard' : 'Proposed';
+  const typedTarget = keys.some((k) => cost[`target_${k}` as const] != null);
+  const legacyTarget = !typedTarget && cost.target_cost != null;
+  const rateFields = { job_cost: rates.job, fob_cost: rates.fob, efob_cost: rates.efob };
 
   function act(action: (fd: FormData) => Promise<ActionResult>, extra: Record<string, string>) {
     setErr(null);
@@ -800,20 +805,13 @@ export function CostRow({
     });
   }
 
-  const rateCell = (value: string, set: (v: string) => void) =>
-    rateEditable ? (
-      <input type="number" min={0} value={value} onChange={(e) => set(e.target.value)} />
-    ) : (
-      <span>{value === '' ? '—' : value}</span>
-    );
-
   return (
-    <tr className={expanded ? 'wf-cost-row-open' : undefined}>
-      <td className="mono">
-        <span className="wf-cost-code">
+    <div className="sc-entry">
+      <div className="sc-entry-head">
+        <span className="wf-cost-code mono">
           {cost.product_code}
           {isTemp && (
-            <span className="wf-temp-badge" title={temp?.name ? `Temporary product — ${temp.name}` : 'Temporary product — merge when it exists in EasyEcom'}>
+            <span className="wf-temp-badge" title={temp?.name ? `Temporary product — ${temp.name}` : 'Temporary product — link it when it exists in EasyEcom'}>
               TEMP{temp?.name ? ` · ${temp.name}` : ''}
             </span>
           )}
@@ -824,233 +822,215 @@ export function CostRow({
           )}
         </span>
         {name && <small className="wf-cost-name" title={name}>{name}</small>}
-        {/* Keep the four-tab detail trigger directly beneath the product name. */}
-        {onToggle && (
+        <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{COST_STAGE_LABEL[stageKey]}</span>
+        <small className="wf-subtle">{nextActor(stage)}</small>
+        {canManageList && (
+          confirmRemove ? (
+            <span className="wf-issue-row sc-entry-remove">
+              <small className="wf-subtle">Remove from list? Data &amp; history are kept.</small>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove}>
+                {busy ? 'Removing…' : 'Remove'}
+              </button>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setConfirmRemove(false)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="wf-icon-btn sc-entry-remove"
+              aria-label="Remove from list (data kept — search and add again to restore)"
+              title="Remove from list — data & history kept; add it again to restore"
+              onClick={() => setConfirmRemove(true)}
+            >
+              <Trash2 size={13} />
+            </button>
+          )
+        )}
+      </div>
+      {stage === 'rejected' && cost.rejection_notes && <p className="wf-subtle sc-entry-note">Rejected: {cost.rejection_notes}</p>}
+      {stage === 'renegotiate' && cost.negotiation_notes && <p className="wf-subtle sc-entry-note">Renegotiate: {cost.negotiation_notes}</p>}
+
+      {/* One row for the rates, one for the target, under the same rate-type columns. */}
+      <div className="table-scroll">
+        <table className="sc-entry-grid">
+          <thead>
+            <tr>
+              <th aria-label="Row" />
+              {keys.map((k) => (
+                <th key={k} className="num">{labels[k]}</th>
+              ))}
+              {showExpected && <th className="num">Expected <small>(optional)</small></th>}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">{rateRow}</th>
+              {keys.map((k) => (
+                <td key={k} className="num input-col">
+                  {rateEditable ? (
+                    <input
+                      type="number"
+                      min={0}
+                      aria-label={`${labels[k]} rate`}
+                      value={rates[k]}
+                      onChange={(e) => setRates((r) => ({ ...r, [k]: e.target.value }))}
+                    />
+                  ) : (
+                    disp(cost[`${k}_cost` as const])
+                  )}
+                </td>
+              ))}
+              {showExpected && (
+                <td className="num input-col">
+                  {canPropose(role, stage) && !cost.frozen ? (
+                    <input
+                      type="number"
+                      min={0}
+                      aria-label="Expected cost (optional)"
+                      placeholder={cost.proposed_cost != null ? String(cost.proposed_cost) : ''}
+                      value={proposed}
+                      onChange={(e) => setProposed(e.target.value)}
+                    />
+                  ) : (
+                    disp(cost.proposed_cost)
+                  )}
+                </td>
+              )}
+            </tr>
+            <tr className="sc-entry-target">
+              <th scope="row">Target</th>
+              {targetEditable ? (
+                keys.map((k) => (
+                  <td key={k} className="num input-col">
+                    <input
+                      type="number"
+                      min={0}
+                      aria-label={`${labels[k]} target`}
+                      placeholder={cost[`target_${k}` as const] != null ? String(cost[`target_${k}` as const]) : '₹'}
+                      disabled={busy}
+                      value={targets[k] ?? ''}
+                      onChange={(e) => setTargets((t) => ({ ...t, [k]: e.target.value }))}
+                    />
+                  </td>
+                ))
+              ) : legacyTarget ? (
+                // Set before targets were per type: which rate it was for was never recorded.
+                <td className="num" colSpan={keys.length}>
+                  {disp(cost.target_cost)} <small className="wf-subtle">overall (rate type not recorded)</small>
+                </td>
+              ) : (
+                keys.map((k) => (
+                  <td key={k} className="num">{disp(cost[`target_${k}` as const] ?? null)}</td>
+                ))
+              )}
+              {showExpected && <td />}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="sc-entry-actions">
+        {err && <small className="wf-line-error">{err}</small>}
+
+        {canPropose(role, stage) && !cost.frozen && (
           <button
             type="button"
-            className="wf-cost-base-btn"
-            aria-expanded={!!expanded}
-            onClick={onToggle}
+            className="wf-btn wf-btn-primary wf-btn-sm"
+            disabled={busy}
+            title={`Fill the ${labels.job} / ${labels.fob} / ${labels.efob} rate(s) that apply, then Propose. The expected figure is optional.`}
+            onClick={() => act(proposeCost, { proposed_cost: proposed, ...rateFields })}
           >
-            <svg className="wf-cost-base-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7h16M4 12h11M4 17h6" />
-            </svg>
-            <span>Cost Details</span>
-            <ChevronDown className="wf-cost-base-chevron" size={14} aria-hidden="true" />
+            Propose
           </button>
         )}
-        {!isMat && !cost.documented && stage == null && (
-          <span className="wf-gap-tag">Undocumented — data gap</span>
-        )}
-      </td>
-      <td className="num">{disp(cost.proposed_cost)}</td>
-      <td className="num wf-target-cell">{targetSummary(cost, track) ?? '—'}</td>
-      {isMat ? (
-        <>
-          {/* Billing (fob_cost) · FOB Fabric (job_cost) · Standard Fabric (efob_cost) */}
-          <td className="num input-col">{rateCell(fob, setFob)}</td>
-          <td className="num input-col">{rateCell(job, setJob)}</td>
-          <td className="num input-col">{rateCell(efob, setEfob)}</td>
-        </>
-      ) : (
-        <>
-          <td className="num input-col">{rateCell(job, setJob)}</td>
-          <td className="num input-col">{rateCell(fob, setFob)}</td>
-          <td className="num input-col">{rateCell(efob, setEfob)}</td>
-        </>
-      )}
-      <td>
-        <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>
-          {COST_STAGE_LABEL[stageKey]}
-        </span>
-        <small className="wf-subtle">{nextActor(stage)}</small>
-        {stage === 'rejected' && cost.rejection_notes && (
-          <small className="wf-subtle">{cost.rejection_notes}</small>
-        )}
-        {stage === 'renegotiate' && cost.negotiation_notes && (
-          <small className="wf-subtle">{cost.negotiation_notes}</small>
-        )}
-      </td>
-      <td>
-        <div className="wf-cost-actions">
-          {err && <small className="wf-line-error">{err}</small>}
 
-          {/* Linking a temporary product to EasyEcom (and merging with an existing cost) lives in
-              the panel at the top of the product page, which offers the rate choice. */}
-          {canManageList && (
-            confirmRemove ? (
-              <span className="wf-issue-row">
-                <small className="wf-subtle">Remove from list? Data &amp; history are kept.</small>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove}>
-                  {busy ? 'Removing…' : 'Remove'}
-                </button>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setConfirmRemove(false)}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="wf-icon-btn"
-                aria-label="Remove from list (data kept — search and add again to restore)"
-                title="Remove from list — data & history kept; add it again to restore"
-                onClick={() => setConfirmRemove(true)}
-              >
-                <Trash2 size={13} />
-              </button>
-            )
-          )}
-
-          {canPropose(role, stage) && !cost.frozen && (
-            <div className="wf-issue-row wf-issue-row-wrap">
-              <input
-                className="wf-mini-input"
-                type="number"
-                min={0}
-                placeholder="expected (optional)"
-                value={proposed}
-                onChange={(e) => setProposed(e.target.value)}
-              />
+        {canSetTarget(role, stage) && (
+          <>
+            {canAcceptProposal(role, stage) && (
               <button
                 type="button"
                 className="wf-btn wf-btn-primary wf-btn-sm"
                 disabled={busy}
-                title={`Fill the ${jobLabel} / ${fobLabel} / ${efobLabel} rate(s) that apply on this row, then Propose. The expected figure is optional.`}
-                onClick={() =>
-                  act(proposeCost, {
-                    proposed_cost: proposed,
-                    job_cost: job,
-                    fob_cost: fob,
-                    efob_cost: efob,
-                  })
-                }
+                title="Approve the proposed rates as-is — they become the standard cost"
+                onClick={() => act(acceptProposedCost, {})}
               >
-                Propose
+                Accept proposal
               </button>
-            </div>
-          )}
+            )}
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost wf-btn-sm"
+              disabled={busy || !Object.keys(targetFields(targets)).length}
+              title="Fill the target under each rate type in the Target row"
+              onClick={() => act(setTargetCost, targetFields(targets))}
+            >
+              Set target
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
+              Reject
+            </button>
+          </>
+        )}
 
-          {canSetTarget(role, stage) && (
-            <div className="wf-issue-row wf-issue-row-wrap">
-              {canAcceptProposal(role, stage) && (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary wf-btn-sm"
-                  disabled={busy}
-                  title="Approve the proposed rates as-is — they become the standard cost"
-                  onClick={() => act(acceptProposedCost, {})}
-                >
-                  Accept proposal
-                </button>
-              )}
-              <TargetInputs cost={cost} track={track} value={targets} onChange={setTargets} disabled={busy} />
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost wf-btn-sm"
-                disabled={busy || !Object.keys(targetFields(targets)).length}
-                onClick={() => act(setTargetCost, targetFields(targets))}
-              >
-                Set target
+        {canSubmitRate(role, stage) && (
+          <button
+            type="button"
+            className="wf-btn wf-btn-primary wf-btn-sm"
+            disabled={busy}
+            onClick={() => act(submitActualRate, rateFields)}
+          >
+            <Save size={13} /> Submit rate
+          </button>
+        )}
+
+        {canSignOff(role, stage) && (
+          <>
+            {isMat ? (
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(signOffCost, {})}>
+                Sign off
               </button>
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost wf-btn-sm"
-                onClick={() => setNoteMode('reject')}
-              >
+            ) : canConfirmFabric(role, stage, !!cost.fabric_confirmed_at) ? (
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmFabricRate, {})}>
+                1 · Confirm fabric rate
+              </button>
+            ) : canConfirmCm(role, stage, !!cost.fabric_confirmed_at, !!cost.cm_confirmed_at) ? (
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmCmRate, {})}>
+                2 · Confirm CMTP → sign off
+              </button>
+            ) : null}
+            {!isMat && cost.fabric_confirmed_at && !cost.cm_confirmed_at && <span className="wf-tag-approved">fabric ✓</span>}
+            {canRenegotiate(role, stage) && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('renegotiate')}>
+                Renegotiate
+              </button>
+            )}
+            {canRejectCost(role, stage) && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
                 Reject
               </button>
-            </div>
-          )}
+            )}
+          </>
+        )}
 
-          {canSubmitRate(role, stage) && (
+        {noteMode && (
+          <span className="wf-issue-row">
+            <input className="wf-mini-input" placeholder={`${noteMode} reason`} value={note} onChange={(e) => setNote(e.target.value)} />
             <button
               type="button"
               className="wf-btn wf-btn-primary wf-btn-sm"
-              disabled={busy}
-              onClick={() =>
-                act(submitActualRate, {
-                  job_cost: job,
-                  fob_cost: fob,
-                  efob_cost: efob,
-                })
-              }
+              disabled={busy || !note.trim()}
+              onClick={() => act(noteMode === 'reject' ? rejectCost : renegotiateCost, { note })}
             >
-              <Save size={13} /> Submit rate
+              Confirm
             </button>
-          )}
-
-          {canSignOff(role, stage) && (
-            <div className="wf-issue-row">
-              {isMat ? (
-                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(signOffCost, {})}>
-                  Sign off
-                </button>
-              ) : canConfirmFabric(role, stage, !!cost.fabric_confirmed_at) ? (
-                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmFabricRate, {})}>
-                  1 · Confirm fabric rate
-                </button>
-              ) : canConfirmCm(role, stage, !!cost.fabric_confirmed_at, !!cost.cm_confirmed_at) ? (
-                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmCmRate, {})}>
-                  2 · Confirm CMTP → sign off
-                </button>
-              ) : null}
-              {!isMat && cost.fabric_confirmed_at && !cost.cm_confirmed_at && (
-                <span className="wf-tag-approved">fabric ✓</span>
-              )}
-              {canRenegotiate(role, stage) && (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => setNoteMode('renegotiate')}
-                >
-                  Renegotiate
-                </button>
-              )}
-              {canRejectCost(role, stage) && (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => setNoteMode('reject')}
-                >
-                  Reject
-                </button>
-              )}
-            </div>
-          )}
-
-          {noteMode && (
-            <div className="wf-issue-row">
-              <input
-                className="wf-mini-input"
-                placeholder={`${noteMode} reason`}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <button
-                type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                disabled={busy || !note.trim()}
-                onClick={() =>
-                  act(noteMode === 'reject' ? rejectCost : renegotiateCost, { note })
-                }
-              >
-                Confirm
-              </button>
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost wf-btn-sm"
-                onClick={() => {
-                  setNoteMode(null);
-                  setNote('');
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
-      </td>
-    </tr>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setNoteMode(null); setNote(''); }}>
+              Cancel
+            </button>
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

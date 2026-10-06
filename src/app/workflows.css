@@ -2259,21 +2259,27 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .sc-page-targets { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .sc-page-targets strong small { font-size: 11px; font-weight: 600; color: #8a8478; margin-right: 2px; }
 
-/* Product page price: rate types as columns, a Proposed row and a Target row. */
-.sc-price { display: flex; flex-direction: column; gap: 6px; }
-.sc-price-grid {
-  width: 100%; max-width: 720px; border-collapse: separate; border-spacing: 0;
-  background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; overflow: hidden;
+/* Change the cost: a heading line, then one row for the rates and one for the target under the
+   same rate-type columns, then the actions. */
+.sc-entry { display: flex; flex-direction: column; gap: 10px; }
+.sc-entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.sc-entry-head .wf-cost-name { color: #6e695e; }
+.sc-entry-remove { margin-left: auto; }
+.sc-entry-note { margin: 0; font-size: 12.5px; }
+.sc-entry-grid {
+  width: 100%; max-width: 760px; border-collapse: separate; border-spacing: 0;
+  border: 1px solid #e1e3e5; border-radius: 12px; overflow: hidden; background: #fff;
 }
-.sc-price-grid th, .sc-price-grid td { padding: 10px 14px; border-bottom: 1px solid #f1f1ef; text-align: left; }
-.sc-price-grid tr:last-child th, .sc-price-grid tr:last-child td { border-bottom: 0; }
-.sc-price-grid thead th {
+.sc-entry-grid th, .sc-entry-grid td { padding: 9px 12px; border-bottom: 1px solid #f1f1ef; text-align: left; }
+.sc-entry-grid tbody tr:last-child th, .sc-entry-grid tbody tr:last-child td { border-bottom: 0; }
+.sc-entry-grid thead th {
   font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #6e695e; background: #fafafa;
 }
-.sc-price-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
-.sc-price-grid tbody th { width: 150px; font-size: 12.5px; font-weight: 700; color: #33302b; }
-.sc-price-grid tbody th small { display: block; font-weight: 500; color: #8a8478; }
-.sc-price-grid tbody td { font-size: 16px; font-weight: 700; }
-.sc-price-grid .sc-price-target th, .sc-price-grid .sc-price-target td { background: #fffaf0; }
-.sc-price-grid td.input-col input { width: 100px; text-align: right; font-size: 14px; }
-.sc-price-grid td small { font-size: 11px; font-weight: 500; }
+.sc-entry-grid thead th small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.sc-entry-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sc-entry-grid tbody th { width: 120px; font-size: 12.5px; font-weight: 700; color: #33302b; }
+.sc-entry-grid tbody td { font-size: 14px; font-weight: 600; }
+.sc-entry-grid td.input-col input { width: 100%; max-width: 130px; text-align: right; }
+.sc-entry-grid .sc-entry-target th, .sc-entry-grid .sc-entry-target td { background: #fffaf0; }
+.sc-entry-grid td small { font-size: 11px; font-weight: 500; }
+.sc-entry-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
