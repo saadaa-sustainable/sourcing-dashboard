@@ -29,4 +29,5 @@ export * from './actions-modules/users-roles';
 export * from './actions-modules/oos';
 export * from './actions-modules/manual-adjustment';
 export * from './actions-modules/plan-lifecycle';
+export * from './actions-modules/vendor-invoice';
 export type { ActionResult, LinkResult } from './actions-modules/_shared';

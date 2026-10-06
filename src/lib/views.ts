@@ -53,6 +53,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/po-details', label: 'PO Details (Form)', group: 'PO Workflow' },
   { path: '/cutting-register', label: 'Cutting Register', group: 'PO Workflow' },
   { path: '/po-closure', label: 'PO Closure', group: 'PO Workflow' },
+  { path: '/vendor-invoices', label: 'Vendor Invoices', group: 'PO Workflow' },
   { path: '/po-manual-adjustment', label: 'Manual Data Ingestion', group: 'Governance & Data' },
   { path: '/receivable-plan', label: 'Inward Plan', group: 'Planning' },
   { path: '/cash-flow', label: 'Cash Flow', group: 'PO Workflow', adminOnly: true },

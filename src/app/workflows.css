@@ -1196,6 +1196,33 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .fill-done h2 { margin: 0 0 6px; color: #2f6b3a; }
 .fill-done p { margin: 0; color: #6e695e; font-size: 13px; }
 
+/* ---- Public /vendor-invoice page (the Vendor Invoices - Accounts form) ---- */
+.vi-card { max-width: 620px; }
+.vi-intro { margin: 8px 0 18px; font-size: 13px; line-height: 1.5; color: #4d4940; }
+.vi-intro p { margin: 0 0 6px; }
+.fill-field select {
+  padding: 9px 11px; font: inherit; font-size: 14px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, 0.16);
+  background: #fff;
+}
+.fill-field input[type='file'] { padding: 7px; background: #faf7ef; }
+.vi-section {
+  margin: 0; padding: 12px 14px 14px; border: 1px solid #ece7d9; border-radius: 12px;
+  display: flex; flex-direction: column; gap: 12px; min-width: 0;
+}
+.vi-section legend {
+  padding: 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #8a6d24;
+}
+.vi-radio { display: flex; align-items: flex-start; gap: 8px; font-weight: 400; font-size: 13.5px; cursor: pointer; }
+.vi-radio input { margin-top: 3px; }
+.vi-note { margin: 0; padding: 8px 10px; border-radius: 8px; background: #faf7ef; font-size: 13px; color: #4d4940; }
+.vi-hint { font-weight: 400; color: #8a857a; font-size: 11.5px; }
+.vi-again { margin-top: 14px; padding: 10px 16px; }
+.vi-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+@media (max-width: 480px) {
+  .fill-shell { padding: 12px; }
+  .fill-card { padding: 20px 16px; }
+}
+
 /* ---- PO approval: timeline-extension flag (delivered past approved date) ---- */
 .wf-timeline-flag {
   display: inline-block; margin-top: 2px; padding: 1px 7px; border-radius: 999px;
