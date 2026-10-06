@@ -1045,6 +1045,70 @@ const numv = (s: string) => Number(s) || 0;
 type ExtraFabricDraft = { key: number; fabricCode: string; uom: FabricUom; cons: Record<string, string> };
 
 /** The unit picker shared by every fabric block: metres (the master's own unit) or kilograms. */
+/**
+ * A size run as three rows under one set of size columns: the sizes, the consumption the team
+ * fills, and the fabric cost computed from it (finished-fabric rate × consumption).
+ */
+function SizeRunTable({
+  label,
+  sizes,
+  uom,
+  cons,
+  onCons,
+  cost,
+  costLabel,
+  editable,
+}: {
+  label: string;
+  sizes: string[];
+  uom: string;
+  cons: Record<string, string>;
+  onCons: (size: string, value: string) => void;
+  cost: (size: string) => number | null;
+  costLabel: string;
+  editable: boolean;
+}) {
+  return (
+    <div className="table-scroll">
+      <table className="wf-sizerun" aria-label={label}>
+        <tbody>
+          <tr className="wf-sizerun-sizes">
+            <th scope="row">Size</th>
+            {sizes.map((size) => <th key={size} scope="col">{size}</th>)}
+          </tr>
+          <tr className="wf-sizerun-input">
+            <th scope="row">
+              Consumption <small>({uom}) · team fills</small>
+            </th>
+            {sizes.map((size) => (
+              <td key={size}>
+                <input
+                  className="wf-cell-input"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  aria-label={`${size} consumption`}
+                  value={cons[size] ?? ''}
+                  disabled={!editable}
+                  onChange={(e) => onCons(size, e.target.value)}
+                />
+              </td>
+            ))}
+          </tr>
+          <tr className="wf-sizerun-calc">
+            <th scope="row">
+              {costLabel} <small>calculated</small>
+            </th>
+            {sizes.map((size) => (
+              <td key={size} className="wf-cell-calc">{disp(cost(size))}</td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function UomSelect({ value, disabled, onChange }: { value: FabricUom; disabled: boolean; onChange: (v: FabricUom) => void }) {
   return (
     <label className="field wf-field">
@@ -1331,32 +1395,21 @@ export function CostDetail({
             <a className="wf-btn wf-btn-ghost wf-btn-sm" href="/fabric-cost">Edit on Fabric Cost →</a>
           </div>
 
-          {/* Three columns stretched across a wide panel left huge empty gaps between the
-              size and its consumption, and pushed nine sizes into a tall scroll. One tile per
-              size instead: the sizes sit side by side and the whole size run is visible. */}
-          <div className="wf-size-grid" role="group" aria-label="Consumption and fabric cost by size">
-            {rows.map((r) => (
-              <div className="wf-size-tile" key={r.size}>
-                <span className="wf-size-name">{r.size}</span>
-                <label className="wf-size-field">
-                  <span>Consumption ({fabricUom})</span>
-                  <input
-                    className="wf-cell-input"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={r.cons}
-                    disabled={!editable}
-                    onChange={(e) => setCons(r.size, e.target.value)}
-                  />
-                </label>
-                <div className="wf-size-calc">
-                  <span>{multiFabric ? 'Fabric 1 cost*' : 'Fabric cost*'}</span>
-                  <strong className="wf-cell-calc">{disp(multiFabric ? r.first : r.fabric)}</strong>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* The size run as three rows: the sizes, the consumption the team fills, and the
+              fabric cost computed from it. */}
+          <SizeRunTable
+            label="Consumption and fabric cost by size"
+            sizes={rows.map((r) => r.size)}
+            uom={fabricUom}
+            cons={Object.fromEntries(rows.map((r) => [r.size, r.cons]))}
+            onCons={setCons}
+            cost={(size) => {
+              const r = rows.find((x) => x.size === size);
+              return r ? (multiFabric ? r.first : r.fabric) : null;
+            }}
+            costLabel={multiFabric ? 'Fabric 1 cost' : 'Fabric cost'}
+            editable={editable}
+          />
           <p className="wf-subtle wf-legend">
             <span className="wf-legend-input">input</span>
             <span className="wf-legend-calc">computed</span>
@@ -1401,33 +1454,19 @@ export function CostDetail({
                       <div><dt>Processing</dt><dd className="wf-cell-input">{disp(efab?.processing ?? null)}</dd></div>
                       <div><dt>Finished fabric (INR/{e.uom})</dt><dd className="wf-cell-calc">{disp(erate)}</dd></div>
                     </dl>
-                    <div className="wf-size-grid" role="group" aria-label={`Consumption and cost by size — fabric ${idx + 2}`}>
-                      {SIZES.map((size) => {
+                    <SizeRunTable
+                      label={`Consumption and cost by size — fabric ${idx + 2}`}
+                      sizes={[...SIZES]}
+                      uom={e.uom}
+                      cons={e.cons}
+                      onCons={(size, v) => setExtraCons(e.key, size, v)}
+                      cost={(size) => {
                         const c = e.cons[size] ?? '';
-                        const cst = c !== '' && erate != null ? r2(erate * numv(c)) : null;
-                        return (
-                          <div className="wf-size-tile" key={size}>
-                            <span className="wf-size-name">{size}</span>
-                            <label className="wf-size-field">
-                              <span>Consumption ({e.uom})</span>
-                              <input
-                                className="wf-cell-input"
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={c}
-                                disabled={!editable}
-                                onChange={(ev) => setExtraCons(e.key, size, ev.target.value)}
-                              />
-                            </label>
-                            <div className="wf-size-calc">
-                              <span>Fabric {idx + 2} cost*</span>
-                              <strong className="wf-cell-calc">{disp(cst)}</strong>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                        return c !== '' && erate != null ? r2(erate * numv(c)) : null;
+                      }}
+                      costLabel={`Fabric ${idx + 2} cost`}
+                      editable={editable}
+                    />
                     {e.fabricCode && erate == null && (
                       <p className="wf-subtle wf-cost-param-note">
                         No finished rate on the Fabric Cost master for this fabric yet — its cost cannot be computed until the fabric team fills it there.
@@ -1446,22 +1485,32 @@ export function CostDetail({
               {multiFabric && filled.length > 0 && (
                 <div className="wf-cost-param">
                   <span className="wf-cost-param-head">Fabric cost by size — all fabrics together</span>
-                  <div className="wf-size-grid">
-                    {filled.map((r) => (
-                      <div className="wf-size-tile" key={r.size}>
-                        <span className="wf-size-name">{r.size}</span>
-                        <div className="wf-size-part"><span>Fabric 1</span><b>{disp(r.first)}</b></div>
-                        {r.parts.map((p, i) => (
-                          <div className="wf-size-part" key={p.key}>
-                            <span>Fabric {i + 2}</span><b>{disp(p.has ? p.cost : null)}</b>
-                          </div>
+                  <div className="table-scroll">
+                    <table className="wf-sizerun">
+                      <tbody>
+                        <tr className="wf-sizerun-sizes">
+                          <th scope="row">Size</th>
+                          {filled.map((r) => <th key={r.size} scope="col">{r.size}</th>)}
+                        </tr>
+                        <tr>
+                          <th scope="row">Fabric 1</th>
+                          {filled.map((r) => <td key={r.size}>{disp(r.first)}</td>)}
+                        </tr>
+                        {extras.map((e, i) => (
+                          <tr key={e.key}>
+                            <th scope="row">Fabric {i + 2}</th>
+                            {filled.map((r) => {
+                              const p = r.parts[i];
+                              return <td key={r.size}>{disp(p && p.has ? p.cost : null)}</td>;
+                            })}
+                          </tr>
                         ))}
-                        <div className="wf-size-calc">
-                          <span>Total fabric*</span>
-                          <strong className="wf-cell-calc">{disp(r.fabric)}</strong>
-                        </div>
-                      </div>
-                    ))}
+                        <tr className="wf-sizerun-calc">
+                          <th scope="row">Total fabric cost</th>
+                          {filled.map((r) => <td key={r.size} className="wf-cell-calc">{disp(r.fabric)}</td>)}
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}

@@ -2295,3 +2295,13 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px;
   border-radius: 50%; background: #d97706; vertical-align: middle;
 }
+
+/* Fabric Cost by size: Size / Consumption (team fills) / Fabric cost (calculated) as rows. */
+.wf-sizerun { border-collapse: separate; border-spacing: 0; background: #fff; border: 1px solid #e1e3e5; border-radius: 12px; overflow: hidden; }
+.wf-sizerun th, .wf-sizerun td { padding: 8px 10px; border-bottom: 1px solid #f1f1ef; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wf-sizerun tr:last-child th, .wf-sizerun tr:last-child td { border-bottom: 0; }
+.wf-sizerun tbody th[scope="row"] { text-align: left; min-width: 150px; font-size: 12.5px; font-weight: 700; color: #33302b; background: #fafafa; }
+.wf-sizerun tbody th[scope="row"] small { display: block; font-weight: 500; color: #8a8478; }
+.wf-sizerun .wf-sizerun-sizes th[scope="col"] { font-size: 12px; font-weight: 700; color: #4a463f; background: #fafafa; min-width: 84px; }
+.wf-sizerun td input { width: 76px; text-align: right; }
+.wf-sizerun .wf-sizerun-calc td { font-weight: 700; }
