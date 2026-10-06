@@ -353,6 +353,38 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   return done('Lines sent for rework.');
 }
 
+/**
+ * A batch decision (receivable plan, a month of the inward plan) tells each person who
+ * entered rows in it, once. A batch with nobody recorded goes to the team.
+ */
+async function tellBatch(
+  people: (string | null | undefined)[],
+  what: string,
+  link: string,
+  kind: string,
+  decision: string,
+  by: string,
+  notes: string,
+) {
+  const title =
+    decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Sent back for rework: ${what}` : `Rejected: ${what}`;
+  const recipients = [
+    ...new Set(
+      people
+        .filter((p): p is string => typeof p === 'string' && p.includes('@'))
+        .map((p) => p.toLowerCase())
+        .filter((p) => p !== by.toLowerCase()),
+    ),
+  ];
+  if (!recipients.length) {
+    await createNotification({ kind, title, body: notes || null, link, audienceRole: 'team', createdBy: by });
+    return;
+  }
+  for (const to of recipients) {
+    await createNotification({ kind, title, body: notes || null, link, recipientEmail: to, createdBy: by });
+  }
+}
+
 async function decideReceivablePlanBulk(
   role: SdRole,
   email: string,
@@ -378,6 +410,14 @@ async function decideReceivablePlanBulk(
           }
         : { status: to, rejection_notes: notes || null };
   const supabase = await supa();
+
+  // Who submitted this batch, read before the decision changes the rows.
+  // paging-ok: the people on one submitted batch; distinct-ed below
+  const { data: submitters } = await supabase
+    .from('sd_receivable_input')
+    .select('submitted_by, updated_by')
+    .eq('status', from)
+    .limit(1000);
 
   // Capture the month-granularity rows being approved so we can stamp the
   // approved month on them — that stamp is what lets the team later switch to any
@@ -421,6 +461,15 @@ async function decideReceivablePlanBulk(
     }
   }
   await writeLog('receivable_plan', 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
+  await tellBatch(
+    ((submitters ?? []) as { submitted_by: string | null; updated_by: string | null }[]).map((r) => r.submitted_by ?? r.updated_by),
+    label || 'Receivable plan',
+    '/receivable-plan',
+    `receivable_${decision}`,
+    decision,
+    email,
+    notes,
+  );
   revalidatePath('/approvals');
   revalidatePath('/receivable-plan');
   return done(
@@ -448,6 +497,14 @@ async function decideInwardPlanBulk(
   const sheetStatus = decision === 'approve' ? 'Approved' : decision === 'rework' ? 'RE-WORK' : 'Rejected';
   if (!INWARD_PLAN_STATUSES.includes(sheetStatus)) return fail('Invalid decision.');
   const supabase = await supa();
+  // Who entered the month's pending lines, read before the decision stamps updated_by.
+  // paging-ok: one month's pending lines; distinct-ed below
+  const { data: enteredBy } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('created_by, updated_by')
+    .eq('plan_month', month)
+    .eq('approval_status', 'Pending')
+    .limit(1000);
   const { data: updated, error } = await supabase
     .from('sd_inward_plan_entry')
     .update({
@@ -462,6 +519,15 @@ async function decideInwardPlanBulk(
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Nothing is pending for that month any more.');
   await writeLog('inward_plan', month, label || `Inward plan — ${month}`, from, to, email, notes || undefined);
+  await tellBatch(
+    ((enteredBy ?? []) as { created_by: string | null; updated_by: string | null }[]).map((r) => r.created_by ?? r.updated_by),
+    label || `Inward plan — ${month.slice(0, 7)}`,
+    '/receivable-plan',
+    `inward_${decision}`,
+    decision,
+    email,
+    notes,
+  );
   revalidatePath('/approvals');
   revalidatePath('/receivable-plan');
   revalidatePath('/ppm-prep');
