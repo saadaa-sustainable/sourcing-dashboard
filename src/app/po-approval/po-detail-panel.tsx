@@ -3,7 +3,7 @@
 import { FileDown } from 'lucide-react';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import { addTnaDays, tnaBaseFor } from '@/lib/business-logic';
-import { STATUS_LABEL } from '@/lib/forms/approval';
+import { STATUS_LABEL, statusText } from '@/lib/forms/approval';
 import type { PoApproval, PoApprovalLine, PoCycleTime } from '@/lib/forms/types';
 
 const inr = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
@@ -93,7 +93,7 @@ export function PoDetailPanel({
     <div className="wf-po-detail-body wf-po-readonly">
       <div className="wf-po-readonly-head">
         <strong>{po.request_id}</strong>
-        <span className="wf-status">{STATUS_LABEL[po.status]}</span>
+        <span className="wf-status">{statusText(po.status, { approverEdited: po.approver_edited })}</span>
         <span className="wf-subtle">Read-only — use Edit to change a request before it is submitted.</span>
         {po.status === 'approved' && (
           <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/api/po/${po.id}/pdf`}>
@@ -192,7 +192,7 @@ export function PoDetailPanel({
         </Block>
 
         <Block title="Decision">
-          <Row label="Status">{STATUS_LABEL[po.status]}</Row>
+          <Row label="Status">{statusText(po.status, { approverEdited: po.approver_edited })}</Row>
           <Row label="Approved by">{text(po.approved_by)}</Row>
           <Row label="Rejection notes">{text(po.rejection_notes)}</Row>
           <Row label="Rework notes">{text(po.rework_notes)}</Row>
@@ -200,6 +200,7 @@ export function PoDetailPanel({
             {po.reworked_at ? `${text(po.reworked_by)} · ${stamp(po.reworked_at)}` : '—'}
           </Row>
           <Row label="Edited before approval">{yesNo(po.edited_before_approval)}</Row>
+          <Row label="Edited by the approver">{yesNo(po.approver_edited)}</Row>
         </Block>
 
         <Block title="Issuance & signing">

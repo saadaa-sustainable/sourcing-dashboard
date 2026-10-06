@@ -326,7 +326,7 @@ export function PoAmendmentClient({
                     )}
                   </td>
                   <td>
-                    <StatusBadge status={a.status} edited={a.edited_before_approval} />
+                    <StatusBadge status={a.status} edited={a.edited_before_approval} approverEdited={a.approver_edited} />
                     {a.status === 'rejected' && a.rejection_notes && <small className="wf-subtle">{a.rejection_notes}</small>}
                     {a.status === 'rework' && a.rework_notes && <small className="wf-subtle">{a.rework_notes}</small>}
                   </td>

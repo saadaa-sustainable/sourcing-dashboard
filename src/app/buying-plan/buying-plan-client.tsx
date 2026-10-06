@@ -32,6 +32,7 @@ import {
   isPlanWindowOpen,
   monthLabel,
   planComplianceStatus,
+  statusText,
   type PlanCompliance,
 } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
@@ -59,6 +60,7 @@ type Draft = {
   fob_efob_rate: string; // FG per-unit FOB/EFOB rate (sheet value)
   job_rate: string; // FG per-unit JOB rate (sheet value)
   line_status: string; // read-only snapshot; drives the Pending/Approved pivot split
+  approver_edited?: boolean; // the approver changed this line when approving
   remark: string; // optional note, shared import contract with the material track
 };
 
@@ -84,6 +86,7 @@ function toDraft(line: BuyingPlanLine): Draft {
     fob_efob_rate: line.fob_efob_rate?.toString() ?? '',
     job_rate: line.job_rate?.toString() ?? '',
     line_status: line.line_status ?? '',
+    approver_edited: Boolean(line.approver_edited),
     remark: line.remark ?? '',
   };
 }
@@ -325,7 +328,7 @@ export function BuyingPlanClient({
     // Quantity actually ordered on real EasyEcom POs for this product in the plan month
     // (status issued or completed, by PO date). Ordered, not received.
     { key: 'actual', label: 'Actual qty', kind: 'num', source: 'easyecom', accessor: (v) => v.actualQty },
-    { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase', accessor: (v) => v.row.line_status || '—' },
+    { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase', accessor: (v) => (v.row.line_status ? statusText(v.row.line_status as SdStatus, { approverEdited: v.row.approver_edited }) : '—') },
   ];
 
   // View module works over products that actually have a planned quantity. REJECTED lines
@@ -807,7 +810,7 @@ export function BuyingPlanClient({
               })}
             </select>
           </Field>
-          <StatusBadge status={status} edited={plan?.edited_before_approval} />
+          <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
           <DeadlineChip
             c={compliance}
             status={status}

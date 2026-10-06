@@ -5,7 +5,7 @@ import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
-import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
+import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL, statusText } from '@/lib/forms/approval';
 import { approveBuyingPlanLines, reworkLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -20,11 +20,15 @@ import { FilterTable, type Column } from '@/components/filter-table';
 import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
 import { utilisationLabel } from '@/lib/utilisation';
 
+// An approval made through Edit & approve records its changes in the notes; say so in the log.
+const logTo = (r: ApprovalLogRow) =>
+  statusText(r.to_status, { approverEdited: r.to_status === 'approved' && (r.notes ?? '').startsWith('Edited by the approver') });
+
 // Columns for the approval-history log (read-only decision list) → shared FilterTable.
 const LOG_COLS: Column<ApprovalLogRow>[] = [
   { key: 'created_at', label: 'When', accessor: (r) => r.created_at, render: (r) => <span className="wf-subtle">{new Date(r.created_at).toLocaleString('en-IN')}</span> },
   { key: 'record', label: 'Record', accessor: (r) => r.entity_label ?? `${r.entity_type} #${r.entity_id}`, render: (r) => r.entity_label ?? `${r.entity_type} #${r.entity_id}` },
-  { key: 'change', label: 'Change', accessor: (r) => STATUS_LABEL[r.to_status], render: (r) => (<>{r.from_status ? STATUS_LABEL[r.from_status] : '—'} → <strong>{STATUS_LABEL[r.to_status]}</strong></>) },
+  { key: 'change', label: 'Change', accessor: (r) => logTo(r), render: (r) => (<>{r.from_status ? STATUS_LABEL[r.from_status] : '—'} → <strong>{logTo(r)}</strong></>) },
   { key: 'actor_email', label: 'Actor', render: (r) => <span className="wf-subtle">{r.actor_email}</span> },
   { key: 'notes', label: 'Notes', render: (r) => r.notes ?? '—' },
 ];

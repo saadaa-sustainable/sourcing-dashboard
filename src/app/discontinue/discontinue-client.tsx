@@ -210,7 +210,7 @@ export function DiscontinueClient({
                   </td>
                   <td>{request.reason ?? '—'}</td>
                   <td>
-                    <StatusBadge status={request.status} />
+                    <StatusBadge status={request.status} edited={request.edited_before_approval} approverEdited={request.approver_edited} />
                     {request.status === 'rejected' && request.rejection_notes && (
                       <small className="wf-subtle">{request.rejection_notes}</small>
                     )}

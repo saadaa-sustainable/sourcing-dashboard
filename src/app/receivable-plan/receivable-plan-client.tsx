@@ -5,7 +5,7 @@ import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
-import { STATUS_LABEL, canApprove } from '@/lib/forms/approval';
+import { STATUS_LABEL, canApprove, statusText } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { reloadWithToast } from '@/lib/toast';
@@ -675,7 +675,7 @@ function ReceivableRow({
         <small className="wf-subtle wf-qty-meta">
           {row.input_status && (
             <span className={`badge ${approvalTone(row.input_status)}`}>
-              {STATUS_LABEL[row.input_status]}
+              {statusText(row.input_status, { approverEdited: row.input_approver_edited })}
             </span>
           )}
           {approvedMonthLabel && <span>weeks free in {approvedMonthLabel}</span>}

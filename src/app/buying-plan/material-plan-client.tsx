@@ -350,7 +350,7 @@ export function MaterialPlanClient({
               })}
             </select>
           </Field>
-          <StatusBadge status={status} edited={plan?.edited_before_approval} />
+          <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
           <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View

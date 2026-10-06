@@ -194,11 +194,27 @@ export function canDeletePo(
 export const STATUS_LABEL: Record<SdStatus, string> = {
   draft: 'Draft',
   submitted: 'Approval Pending',
-  pending_l2: 'Approval Pending',
+  pending_l2: 'Pending Second Approval',
   rework: 'Rework-and-Reassign',
   approved: 'Approved',
   rejected: 'Rejected',
 };
+
+/**
+ * A record's status worded by the stage it is at and the action taken on it — the one place
+ * every badge and list reads from. Approved splits by how it got there: with the approver's
+ * own edits (Edit & approve), after a rework round, or first time.
+ */
+export function statusText(
+  status: SdStatus,
+  opts: { approverEdited?: boolean | null; edited?: boolean | null } = {},
+): string {
+  if (status === 'approved') {
+    if (opts.approverEdited) return 'Approved with Approver’s Edits';
+    if (opts.edited != null) return opts.edited ? 'Edited-and-Approved' : 'First-Time Approved';
+  }
+  return STATUS_LABEL[status];
+}
 
 /** Maps onto the existing .tone-* classes in globals.css. */
 export const STATUS_TONE: Record<SdStatus, string> = {

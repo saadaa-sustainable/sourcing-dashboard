@@ -23,8 +23,9 @@ const dateLabel = (v: string | null) =>
 const STATUS_TONE: Record<string, string> = { Approved: 'success', Rejected: 'danger', 'RE-WORK': 'warn', Pending: 'info' };
 const STATUSES = ['Pending', 'Approved', 'RE-WORK', 'Rejected'] as const;
 
-function StatusPill({ status }: { status: string }) {
-  return <span className={`badge ${STATUS_TONE[status] ?? ''}`}>{status}</span>;
+function StatusPill({ status, approverEdited }: { status: string; approverEdited?: boolean }) {
+  const text = status === 'RE-WORK' ? 'Sent back for rework' : status === 'Approved' && approverEdited ? 'Approved with Approver’s Edits' : status;
+  return <span className={`badge ${STATUS_TONE[status] ?? ''}`}>{text}</span>;
 }
 
 /**
@@ -93,7 +94,7 @@ export function InwardPlanSheet({
       info: 'GRN pieces for the PO reference on any date — the PO may have started arriving in an earlier month.' },
     { key: 'last_received_on', label: 'Last GRN', kind: 'text', source: 'easyecom', accessor: (r) => r.last_received_on ?? '', render: (r) => dateLabel(r.last_received_on),
       info: 'The date of the latest goods receipt on this PO.' },
-    { key: 'approval_status', label: 'Status', kind: 'text', filter: 'select', source: 'supabase', accessor: (r) => r.approval_status, render: (r) => <StatusPill status={r.approval_status} />,
+    { key: 'approval_status', label: 'Status', kind: 'text', filter: 'select', source: 'supabase', accessor: (r) => r.approval_status, render: (r) => <StatusPill status={r.approval_status} approverEdited={r.approver_edited} />,
       info: 'Pending (waiting for the admin), Approved, RE-WORK (sent back) or Rejected. The month is decided in one go on Approvals; a single line can be decided here by an admin.' },
     { key: 'mt_comments', label: 'Management comment', kind: 'text', source: 'supabase', accessor: (r) => r.mt_comments ?? '', render: (r) => r.mt_comments ?? '—',
       info: 'The note recorded with the approval, rework or rejection.' },

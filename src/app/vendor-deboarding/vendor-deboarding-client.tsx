@@ -355,7 +355,7 @@ export function VendorDeboardingClient({
                   <td>{r.resolvable ? 'Yes' : 'No'}</td>
                   <td>{r.remarks}</td>
                   <td>
-                    <StatusBadge status={r.status} />
+                    <StatusBadge status={r.status} edited={r.edited_before_approval} approverEdited={r.approver_edited} />
                     {r.status === 'rejected' && r.rejection_notes && (
                       <small className="wf-subtle">{r.rejection_notes}</small>
                     )}

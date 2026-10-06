@@ -775,6 +775,8 @@ export type BuyingPlan = {
   // True once an approver edited/reworked the plan before approving — drives the
   // "First-Time Approved" vs "Edited-and-Approved" distinction on the badge.
   edited_before_approval: boolean;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
   created_at: string;
 };
 
@@ -791,6 +793,8 @@ export type BuyingPlanLine = {
   standard_value: number | null;
   uom: string | null; // material track only
   line_status: SdStatus | null; // per-line approval state (line-item granularity)
+  /** This line's values were changed by the approver (Edit & approve). */
+  approver_edited?: boolean | null;
   rework_notes: string | null;
   remark: string | null; // free note, e.g. carried from a CSV import
   material_type: string | null; // material track: raw | dyed | trim
@@ -867,6 +871,9 @@ export type DiscontinueRequest = {
   approved_by: string | null;
   approved_at: string | null;
   rejection_notes: string | null;
+  edited_before_approval?: boolean | null;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -909,6 +916,8 @@ export type VendorDeboardingRequest = {
   reworked_by: string | null;
   reworked_at: string | null;
   edited_before_approval: boolean;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
 };
 
 /**
@@ -969,6 +978,8 @@ export type PoApprovalLine = {
   size: string | null;
   qty: number;
   line_status: SdStatus | null;
+  /** This line's values were changed by the approver (Edit & approve). */
+  approver_edited?: boolean | null;
   rework_notes: string | null;
 };
 
@@ -1018,6 +1029,8 @@ export type PoAmendment = {
   reworked_by: string | null;
   reworked_at: string | null;
   edited_before_approval: boolean;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
   created_at: string;
 };
 
@@ -1412,6 +1425,8 @@ export type ReceivablePlanRow = {
   input_updated_at: string | null;
   // Approval status of this row's weekly input (draft/submitted/approved/…).
   input_status: SdStatus | null;
+  /** The approver changed this row's expected qty / date when approving. */
+  input_approver_edited?: boolean;
   // The month (1st) approved at month-granularity, if any. While set, the team may
   // switch to any week within it without re-approval.
   approved_month: string | null;
@@ -1521,6 +1536,8 @@ export type PoApproval = {
   // Present on the table and returned by select('*'); read by the read-only detail panel.
   benchmark_cost?: boolean | null;
   edited_before_approval?: boolean | null;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
   rework_notes?: string | null;
   reworked_by?: string | null;
   reworked_at?: string | null;

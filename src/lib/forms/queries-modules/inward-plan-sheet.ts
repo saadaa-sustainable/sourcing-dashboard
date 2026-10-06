@@ -23,6 +23,8 @@ export type InwardPlanSheetRow = {
   remarks: string | null;
   mt_comments: string | null;
   approval_status: string; // Pending / Approved / RE-WORK / Rejected
+  /** The approver changed this line when approving (Edit & approve). */
+  approver_edited: boolean;
   /** GRN pieces for this PO ref dated inside the plan month. */
   received_in_month: number;
   /** GRN pieces for this PO ref, any date. */
@@ -52,7 +54,7 @@ export async function loadInwardPlanSheet(): Promise<InwardPlanSheetRow[]> {
   const rows = await pageAll<Record<string, unknown>>(() =>
     supabase
       .from('sd_inward_plan_entry')
-      .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, cost_per_piece, remarks, mt_comments, approval_status, created_by, created_at, updated_by, updated_at')
+      .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, cost_per_piece, remarks, mt_comments, approval_status, approver_edited, created_by, created_at, updated_by, updated_at')
       .order('plan_month', { ascending: false })
       .order('id'),
   );
@@ -111,6 +113,7 @@ export async function loadInwardPlanSheet(): Promise<InwardPlanSheetRow[]> {
       remarks: (r.remarks as string | null) ?? null,
       mt_comments: (r.mt_comments as string | null) ?? null,
       approval_status: String(r.approval_status ?? 'Pending'),
+      approver_edited: Boolean(r.approver_edited),
       received_in_month: inMonth,
       received_total: g?.total ?? 0,
       last_received_on: g?.last ?? null,

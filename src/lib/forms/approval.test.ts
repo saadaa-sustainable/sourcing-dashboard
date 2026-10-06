@@ -29,7 +29,7 @@ describe('approval workflow v2', () => {
   it('labels the new/merged statuses', () => {
     assert.equal(STATUS_LABEL.rework, 'Rework-and-Reassign');
     assert.equal(STATUS_LABEL.submitted, 'Approval Pending');
-    assert.equal(STATUS_LABEL.pending_l2, 'Approval Pending');
+    assert.equal(STATUS_LABEL.pending_l2, 'Pending Second Approval');
     assert.ok(STATUS_TONE.rework);
   });
   it('lets the raiser delete their own request until it is approved', () => {
