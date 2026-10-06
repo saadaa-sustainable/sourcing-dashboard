@@ -2249,3 +2249,12 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-cmtp-line .wf-cmtp-label-text { flex: 1 1 auto; min-width: 0; }
 .wf-cmtp-line input.wf-cmtp-amt,
 .wf-cmtp-line .wf-cmtp-amt-text { flex: 0 0 84px; width: 84px; min-width: 0; text-align: right; }
+
+/* Targets per rate type: a labelled box per type, and the target tile lists each type. */
+.wf-target-inputs { display: inline-flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.wf-target-input { display: inline-flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; color: #4a463f; }
+.wf-target-input small { font-weight: 500; color: #8a8478; }
+.wf-target-input .wf-mini-input { width: 96px; }
+.wf-target-cell { white-space: nowrap; }
+.sc-page-targets { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.sc-page-targets strong small { font-size: 11px; font-weight: 600; color: #8a8478; margin-right: 2px; }

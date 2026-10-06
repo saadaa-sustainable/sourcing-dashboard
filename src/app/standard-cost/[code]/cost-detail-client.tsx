@@ -8,7 +8,7 @@ import { ArrowLeft, Link2, Lock, Pencil, Trash2, X } from 'lucide-react';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { deleteUnlinkedProduct, linkProductToEasyEcom } from '@/lib/forms/actions';
 import { emitToast, toastError } from '@/lib/toast';
-import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor } from '@/lib/forms/cost';
+import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor, targetParts } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
 import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
 import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
@@ -185,13 +185,27 @@ export function StandardCostDetailClient({
               ]),
           { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
           { label: 'Proposed', value: cost.proposed_cost },
-          { label: 'Target', value: cost.target_cost },
         ].map((r) => (
           <div className="sc-page-rate" key={r.label}>
             <span>{r.label}</span>
             <strong>{money(r.value)}</strong>
           </div>
         ))}
+        {/* The target names the rate it is aimed at (Job / FOB / E-FOB), not one bare figure. */}
+        <div className="sc-page-rate">
+          <span>Target</span>
+          {targetParts(cost, isMat ? 'material' : 'fg').length ? (
+            <div className="sc-page-targets">
+              {targetParts(cost, isMat ? 'material' : 'fg').map((t) => (
+                <strong key={t.label}>
+                  <small>{t.label}</small> {money(t.value)}
+                </strong>
+              ))}
+            </div>
+          ) : (
+            <strong>—</strong>
+          )}
+        </div>
       </section>
 
       {/* The approver decides here, without opening the editor. Renders nothing when the

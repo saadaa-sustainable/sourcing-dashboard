@@ -23,7 +23,10 @@ import {
   canRenegotiate,
   canSetTarget,
   canSignOff,
+  targetSummary,
+  type RateKey,
 } from '@/lib/forms/cost';
+import { TargetInputs, targetFields } from '@/components/forms/target-inputs';
 import type { CostDecisionRecord, SdRole } from '@/lib/forms/types';
 
 const disp = (v: number | null | undefined) => (v == null ? '—' : String(v));
@@ -49,7 +52,7 @@ export function CostDecisionBar({
 }) {
   const isMat = track === 'material';
   const stage = cost.neg_stage ?? null;
-  const [target, setTarget] = useState('');
+  const [targets, setTargets] = useState<Partial<Record<RateKey, string>>>({});
   const [noteMode, setNoteMode] = useState<null | 'reject' | 'renegotiate'>(null);
   const [note, setNote] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -125,16 +128,13 @@ export function CostDecisionBar({
       )}
       {canSetTarget(role, stage) && (
         <span className="wf-inline-actions">
-          <input
-            className="wf-mini-input"
-            type="number"
-            min={0}
-            placeholder="target rate"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            style={{ width: 120 }}
-          />
-          <button type="button" className="wf-btn wf-btn-ghost" disabled={busy || !target.trim()} onClick={() => act(setTargetCost, { target_cost: target })}>
+          <TargetInputs cost={cost} track={track} value={targets} onChange={setTargets} disabled={busy} />
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost"
+            disabled={busy || !Object.keys(targetFields(targets)).length}
+            onClick={() => act(setTargetCost, targetFields(targets))}
+          >
             Set target
           </button>
         </span>
@@ -184,7 +184,7 @@ export function CostDecisionBar({
           <p className="wf-subtle">
             {stage === 'proposed'
               ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target and the team comes back with the actual vendor rate; or reject it with a reason.`
-              : `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${cost.target_cost != null ? ` against your target of ${disp(cost.target_cost)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it.`}
+              : `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it.`}
           </p>
         </div>
         <span className={`wf-status tone-${COST_STAGE_TONE[stage ?? ''] ?? 'purple'}`}>{COST_STAGE_LABEL[stage ?? ''] ?? '—'}</span>

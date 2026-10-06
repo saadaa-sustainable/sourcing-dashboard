@@ -1108,7 +1108,11 @@ export type StandardCost = {
   // Cost-negotiation lifecycle (its own process): propose → target → actual → sign-off.
   neg_stage: string | null;
   proposed_cost: number | null;
+  /** Legacy single target (type not recorded); new targets are per rate type below. */
   target_cost: number | null;
+  target_job?: number | null;
+  target_fob?: number | null;
+  target_efob?: number | null;
   negotiation_notes: string | null;
   // Sequential sign-off (FG): fabric rate confirmed first, then CM/other second.
   fabric_confirmed_at: string | null;
@@ -1673,7 +1677,7 @@ export type ApprovalQueueItem = {
 /** The slice of a cost row the decision bar reads — enough to accept, set a target, sign off or reject. */
 export type CostDecisionRecord = Pick<
   StandardCost,
-  'id' | 'product_code' | 'neg_stage' | 'job_cost' | 'fob_cost' | 'efob_cost' | 'proposed_cost' | 'target_cost' | 'fabric_confirmed_at' | 'cm_confirmed_at'
+  'id' | 'product_code' | 'neg_stage' | 'job_cost' | 'fob_cost' | 'efob_cost' | 'proposed_cost' | 'target_cost' | 'target_job' | 'target_fob' | 'target_efob' | 'fabric_confirmed_at' | 'cm_confirmed_at'
 >;
 
 /**

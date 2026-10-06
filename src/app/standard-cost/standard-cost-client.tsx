@@ -45,7 +45,10 @@ import {
   isAdminTurn,
   isTeamTurn,
   nextActor,
+  targetSummary,
+  type RateKey,
 } from '@/lib/forms/cost';
+import { TargetInputs, targetFields } from '@/components/forms/target-inputs';
 import { canEdit } from '@/lib/forms/approval';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
@@ -197,7 +200,7 @@ export function StandardCostClient({
         productNames.get(c.product_code.toUpperCase()) ?? '',
         COST_STAGE_LABEL[c.neg_stage ?? ''] ?? c.neg_stage ?? 'Not started',
         c.proposed_cost,
-        c.target_cost,
+        targetSummary(c, isMat ? 'material' : 'fg') ?? '',
         c.job_cost,
         c.fob_cost,
         c.efob_cost,
@@ -753,7 +756,7 @@ export function CostRow({
   const [fob, setFob] = useState(cost.fob_cost?.toString() ?? '');
   const [efob, setEfob] = useState(cost.efob_cost?.toString() ?? '');
   const [proposed, setProposed] = useState('');
-  const [target, setTarget] = useState('');
+  const [targets, setTargets] = useState<Partial<Record<RateKey, string>>>({});
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
   const [note, setNote] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -841,7 +844,7 @@ export function CostRow({
         )}
       </td>
       <td className="num">{disp(cost.proposed_cost)}</td>
-      <td className="num">{disp(cost.target_cost)}</td>
+      <td className="num wf-target-cell">{targetSummary(cost, track) ?? '—'}</td>
       {isMat ? (
         <>
           {/* Billing (fob_cost) · FOB Fabric (job_cost) · Standard Fabric (efob_cost) */}
@@ -940,19 +943,12 @@ export function CostRow({
                   Accept proposal
                 </button>
               )}
-              <input
-                className="wf-mini-input"
-                type="number"
-                min={0}
-                placeholder="target"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-              />
+              <TargetInputs cost={cost} track={track} value={targets} onChange={setTargets} disabled={busy} />
               <button
                 type="button"
                 className="wf-btn wf-btn-ghost wf-btn-sm"
-                disabled={busy}
-                onClick={() => act(setTargetCost, { target_cost: target })}
+                disabled={busy || !Object.keys(targetFields(targets)).length}
+                onClick={() => act(setTargetCost, targetFields(targets))}
               >
                 Set target
               </button>

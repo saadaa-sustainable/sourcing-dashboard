@@ -9,7 +9,7 @@ import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
-import {
+import { targetSummary,
   canAcceptProposal,
   canConfirmCm,
   canConfirmFabric,
@@ -173,17 +173,29 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (!canSetTarget(user.role, row.neg_stage)) return fail('This is not awaiting a target cost.');
-  const target = numOrNull(formData.get('target_cost'));
-  if (target == null) return fail('Enter a target cost.');
+  // One target per rate type, so the team knows which rate each figure is aimed at.
+  const tJob = numOrNull(formData.get('target_job'));
+  const tFob = numOrNull(formData.get('target_fob'));
+  const tEfob = numOrNull(formData.get('target_efob'));
+  if (tJob == null && tFob == null && tEfob == null) return fail('Enter a target for at least one rate type.');
 
   const { error } = await supabase
     .from(table)
-    .update({ neg_stage: 'target_set', target_cost: target, updated_at: new Date().toISOString() })
+    .update({
+      neg_stage: 'target_set',
+      target_job: tJob,
+      target_fob: tFob,
+      target_efob: tEfob,
+      // The old single target had no type; a new target replaces it.
+      target_cost: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', id);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target cost ${target}`);
+  const summary = targetSummary({ target_job: tJob, target_fob: tFob, target_efob: tEfob }, track) ?? '';
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target ${summary}`);
   revalidatePath('/standard-cost');
-  return done('Target cost set.');
+  return done(`Target set: ${summary}.`);
 }
 
 /** Admin accepts the proposal as-is — the proposed rates become the Standard Cost. */

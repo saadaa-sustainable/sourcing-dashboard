@@ -116,3 +116,49 @@ export const CMTP_HEADS: { key: string; label: string; suggest?: string[] }[] = 
 ];
 
 export const CMTP_MANDATORY = CMTP_HEADS.map((h) => h.key);
+
+/* ------------------------------------------------------------------ */
+/* Targets per rate type                                               */
+/* ------------------------------------------------------------------ */
+
+export type RateKey = 'job' | 'fob' | 'efob';
+export const RATE_KEYS: RateKey[] = ['job', 'fob', 'efob'];
+
+/** What each rate slot is called on each track. */
+export const RATE_LABELS: Record<'fg' | 'material', Record<RateKey, string>> = {
+  fg: { job: 'Job', fob: 'FOB', efob: 'E-FOB' },
+  material: { job: 'FOB Fabric', fob: 'Billing', efob: 'Standard Fabric' },
+};
+
+export type TargetFields = {
+  target_cost?: number | null;
+  target_job?: number | null;
+  target_fob?: number | null;
+  target_efob?: number | null;
+};
+
+/**
+ * The approver's target(s), labelled by rate type. A target set before targets were per type
+ * (only target_cost) reads as "Overall", because its type was never recorded.
+ */
+export function targetParts(c: TargetFields, track: 'fg' | 'material'): { label: string; value: number }[] {
+  const labels = RATE_LABELS[track];
+  const parts = RATE_KEYS.flatMap((k) => {
+    const v = c[`target_${k}` as const];
+    return v == null ? [] : [{ label: labels[k], value: Number(v) }];
+  });
+  if (parts.length) return parts;
+  return c.target_cost == null ? [] : [{ label: 'Overall', value: Number(c.target_cost) }];
+}
+
+/** "Job ₹100 · FOB ₹90", or null when no target is set. */
+export function targetSummary(c: TargetFields, track: 'fg' | 'material', money = (v: number) => `₹${v}`): string | null {
+  const parts = targetParts(c, track);
+  return parts.length ? parts.map((p) => `${p.label} ${money(p.value)}`).join(' · ') : null;
+}
+
+/** The rate types a target can be set for: the ones the proposal named, else all three. */
+export function targetKeysFor(c: { job_cost: number | null; fob_cost: number | null; efob_cost: number | null }): RateKey[] {
+  const named = RATE_KEYS.filter((k) => c[`${k}_cost` as const] != null);
+  return named.length ? named : RATE_KEYS;
+}
