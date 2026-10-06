@@ -2305,3 +2305,30 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-sizerun .wf-sizerun-sizes th[scope="col"] { font-size: 12px; font-weight: 700; color: #4a463f; background: #fafafa; min-width: 84px; }
 .wf-sizerun td input { width: 76px; text-align: right; }
 .wf-sizerun .wf-sizerun-calc td { font-weight: 700; }
+
+/* Change the cost, laid out across the card: the rates grid on the left, the stage and the
+   actions in a side panel on the right; stacked on narrow screens. */
+.sc-page-edit .sc-entry {
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px 28px; align-items: start;
+  padding: 6px 20px 20px;
+}
+.sc-entry-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sc-entry-head { gap: 8px 12px; }
+.sc-entry-head .wf-cost-code { font-size: 13px; }
+.sc-page-edit .sc-entry-grid { max-width: none; }
+.sc-page-edit .sc-entry-grid th, .sc-page-edit .sc-entry-grid td { padding: 12px 16px; }
+.sc-page-edit .sc-entry-grid tbody th { width: 140px; font-size: 13px; }
+.sc-page-edit .sc-entry-grid td.input-col input { max-width: 160px; height: 38px; font-size: 14px; }
+.sc-entry-side {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  border: 1px solid #ecebe6; border-radius: 12px; background: #fafaf8;
+}
+.sc-entry-stage { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sc-entry-side .sc-entry-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+.sc-entry-side .sc-entry-actions .wf-btn { justify-content: center; width: 100%; }
+.sc-entry-side .sc-entry-actions .wf-issue-row { flex-wrap: wrap; }
+.sc-entry-side .sc-entry-remove { margin-left: 0; align-self: flex-start; }
+.sc-entry-side .sc-entry-note { padding: 8px 10px; border-radius: 8px; background: #fff; border: 1px solid #ecebe6; }
+@media (max-width: 1100px) {
+  .sc-page-edit .sc-entry { grid-template-columns: 1fr; }
+}

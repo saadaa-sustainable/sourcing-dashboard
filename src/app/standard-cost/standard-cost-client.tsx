@@ -810,6 +810,7 @@ export function CostRow({
 
   return (
     <div className="sc-entry">
+      <div className="sc-entry-main">
       <div className="sc-entry-head">
         <span className="wf-cost-code mono">
           {cost.product_code}
@@ -825,33 +826,7 @@ export function CostRow({
           )}
         </span>
         {name && <small className="wf-cost-name" title={name}>{name}</small>}
-        <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{COST_STAGE_LABEL[stageKey]}</span>
-        <small className="wf-subtle">{nextActor(stage)}</small>
-        {canManageList && (
-          confirmRemove ? (
-            <span className="wf-issue-row sc-entry-remove">
-              <small className="wf-subtle">Remove from list? Data &amp; history are kept.</small>
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove}>
-                {busy ? 'Removing…' : 'Remove'}
-              </button>
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setConfirmRemove(false)}>
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm sc-entry-remove"
-              title="Hide it from the Standard Cost list — data & history kept; add it again to restore"
-              onClick={() => setConfirmRemove(true)}
-            >
-              Remove from list
-            </button>
-          )
-        )}
       </div>
-      {stage === 'rejected' && cost.rejection_notes && <p className="wf-subtle sc-entry-note">Rejected: {cost.rejection_notes}</p>}
-      {stage === 'renegotiate' && cost.negotiation_notes && <p className="wf-subtle sc-entry-note">Renegotiate: {cost.negotiation_notes}</p>}
 
       {/* One row for the rates, one for the target, under the same rate-type columns. */}
       <div className="table-scroll">
@@ -931,8 +906,16 @@ export function CostRow({
           </tbody>
         </table>
       </div>
+      </div>
 
-      <div className="sc-entry-actions">
+      <aside className="sc-entry-side" aria-label="Stage and actions">
+        <div className="sc-entry-stage">
+          <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{COST_STAGE_LABEL[stageKey]}</span>
+          <small className="wf-subtle">{nextActor(stage)}</small>
+        </div>
+        {stage === 'rejected' && cost.rejection_notes && <p className="wf-subtle sc-entry-note">Rejected: {cost.rejection_notes}</p>}
+      {stage === 'renegotiate' && cost.negotiation_notes && <p className="wf-subtle sc-entry-note">Renegotiate: {cost.negotiation_notes}</p>}
+        <div className="sc-entry-actions">
         {err && <small className="wf-line-error">{err}</small>}
 
         {canPropose(role, stage) && !cost.frozen && (
@@ -1034,6 +1017,29 @@ export function CostRow({
           </span>
         )}
       </div>
+        {canManageList && (
+          confirmRemove ? (
+            <span className="wf-issue-row sc-entry-remove">
+              <small className="wf-subtle">Remove from list? Data &amp; history are kept.</small>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove}>
+                {busy ? 'Removing…' : 'Remove'}
+              </button>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setConfirmRemove(false)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="wf-btn wf-btn-ghost wf-btn-sm sc-entry-remove"
+              title="Hide it from the Standard Cost list — data & history kept; add it again to restore"
+              onClick={() => setConfirmRemove(true)}
+            >
+              Remove from list
+            </button>
+          )
+        )}
+      </aside>
     </div>
   );
 }
