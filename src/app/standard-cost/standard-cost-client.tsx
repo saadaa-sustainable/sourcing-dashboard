@@ -1854,6 +1854,35 @@ function CmtpBreakdown({
 
   const fmtAmt = (v: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(v);
 
+  // Pack the head cards into columns, each going under the shortest column so far, in head
+  // order. A plain grid made every row as tall as its tallest card, leaving big gaps under the
+  // one-line heads (Cutting, Packaging, Brand Trims). Column count follows the panel width.
+  const headsRef = useRef<HTMLDivElement>(null);
+  const [colCount, setColCount] = useState(4);
+  useEffect(() => {
+    const el = headsRef.current;
+    if (!el) return;
+    const measure = () => setColCount(Math.max(1, Math.floor((el.clientWidth + 10) / (300 + 10))));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const packed = useMemo(() => {
+    const n = Math.min(colCount, Math.max(1, heads.length));
+    const cols: string[][] = Array.from({ length: n }, () => []);
+    const height = Array(n).fill(0);
+    for (const cat of heads) {
+      const lines = rows.filter((r) => r.category === cat && (editable || r.amount.trim() !== '')).length;
+      // Header + "Add sub-item" weigh about two lines.
+      const h = Math.max(lines, 1) + 2;
+      const i = height.indexOf(Math.min(...height));
+      cols[i].push(cat);
+      height[i] += h;
+    }
+    return cols;
+  }, [heads, rows, editable, colCount]);
+
   return (
     <div className="wf-cmtp">
       {err && <Notice tone="error">{err}</Notice>}
@@ -1866,8 +1895,10 @@ function CmtpBreakdown({
 
       {/* Heads tile across the full panel width, one card each. Every sub-item the master
           holds for a head is already a line in its card: type the amount straight in. */}
-      <div className="wf-cmtp-heads">
-        {heads.map((cat) => {
+      <div className="wf-cmtp-heads" ref={headsRef} style={{ gridTemplateColumns: `repeat(${packed.length}, minmax(0, 1fr))` }}>
+        {packed.map((column, ci) => (
+          <div key={ci} className="wf-cmtp-col">
+        {column.map((cat) => {
           const head = CMTP_HEADS.find((h) => h.key === cat);
           const mandatory = CMTP_MANDATORY.includes(cat);
           const all = rows.filter((r) => r.category === cat);
@@ -1949,6 +1980,8 @@ function CmtpBreakdown({
             </div>
           );
         })}
+          </div>
+        ))}
       </div>
 
       {editable && (
