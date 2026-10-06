@@ -105,7 +105,7 @@ async function buildForm(db: Db, entity: ApprovalEntity, idText: string): Promis
       {
         ref: 'header',
         label: `${text(po.product_code)} · ${text(po.vendor_name)}`,
-        sub: text(po.po_ref_num) || undefined,
+        sub: text(po.po_ref_num || po.request_id) || undefined,
         fields: [
           f('rate', 'Rate (₹ / pc)', 'money', po.rate),
           f('po_closing_date', 'PO closing date', 'date', po.po_closing_date),
@@ -120,7 +120,7 @@ async function buildForm(db: Db, entity: ApprovalEntity, idText: string): Promis
       targets.set(ref, { ref, table: 'sd_po_approval_line', keyCol: 'id', key: l.id });
     }
     return {
-      form: { title: `PO ${text(po.po_ref_num) || `#${id}`}`, note: (lines ?? []).length ? 'PO qty is the total of the size lines and follows any change to them.' : undefined, rows },
+      form: { title: po.po_ref_num ? `PO ${text(po.po_ref_num)}` : `PO request ${text(po.request_id) || `#${id}`}`, note: (lines ?? []).length ? 'PO qty is the total of the size lines and follows any change to them.' : undefined, rows },
       targets,
       status: po.status as SdStatus,
       header: { table: 'sd_po_approval', id },
