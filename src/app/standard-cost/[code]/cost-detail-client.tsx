@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -320,7 +321,7 @@ function LinkPanel({
 }) {
   const router = useRouter();
   const code = cost.product_code;
-  const [step, setStep] = useState<'idle' | 'pick' | 'merge' | 'delete'>('idle');
+  const [step, setStep] = useState<'idle' | 'pick' | 'merge'>('idle');
   const [target, setTarget] = useState<string | null>(null);
   const [rates, setRates] = useState<Record<RateKey, string>>({ job_cost: '', fob_cost: '', efob_cost: '' });
   const [sheet, setSheet] = useState<'to' | 'from'>('to');
@@ -371,10 +372,7 @@ function LinkPanel({
     fd.set('product_code', code);
     start(async () => {
       const res = await deleteUnlinkedProduct(fd);
-      if (!res.ok) {
-        setStep('idle');
-        return setErr(toastError(res.error));
-      }
+      if (!res.ok) return setErr(toastError(res.error));
       emitToast(res.message ?? 'Deleted.');
       router.replace('/standard-cost');
       router.refresh();
@@ -421,16 +419,6 @@ function LinkPanel({
                 Cancel
               </button>
             </div>
-          ) : step === 'delete' ? (
-            <div className="sc-unlinked-confirm">
-              <span>Delete {code} and its cost sheet?</span>
-              <button type="button" className="wf-btn wf-btn-danger wf-btn-sm" disabled={busy} onClick={remove}>
-                {busy ? 'Deleting…' : 'Delete'}
-              </button>
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setStep('idle')}>
-                Cancel
-              </button>
-            </div>
           ) : step === 'idle' ? (
             <>
               {isAdmin && (
@@ -439,8 +427,20 @@ function LinkPanel({
                 </button>
               )}
               {canDelete && (
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setStep('delete')}>
-                  <Trash2 size={14} /> Delete product
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    const ok = await confirmDelete({
+                      title: `Delete ${code}${tempName ? ` (${tempName})` : ''}?`,
+                      body: 'The product and its cost sheet (CMTP, fabric, rate history) are deleted. It is refused while a PO or buying-plan line uses it. This cannot be undone from the screen.',
+                      confirmLabel: 'Delete product',
+                    });
+                    if (ok) remove();
+                  }}
+                >
+                  <Trash2 size={14} /> {busy ? 'Deleting…' : 'Delete product'}
                 </button>
               )}
             </>

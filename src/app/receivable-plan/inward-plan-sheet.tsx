@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { Upload, Trash2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
@@ -208,7 +209,12 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
       else reloadWithToast(res.message ?? 'Saved.');
     });
   }
-  function remove() {
+  async function remove() {
+    const ok = await confirmDelete({
+      title: 'Delete this inward plan line?',
+      body: 'The line is removed from the month\'s inward plan. This cannot be undone from the screen.',
+    });
+    if (!ok) return;
     const fd = new FormData();
     fd.set('id', String(row.id));
     start(async () => {

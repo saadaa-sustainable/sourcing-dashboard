@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { toastError } from '@/lib/toast';
 import { HeaderInfo } from '@/components/header-info';
@@ -811,7 +812,13 @@ function AllocationRow({ row, editable, productName }: { row: VendorProductAlloc
       setMsg(r.ok ? 'Saved' : r.error);
     });
   }
-  function remove() {
+  async function remove() {
+    const ok = await confirmDelete({
+      title: `Remove ${productName || row.product_code} from this vendor?`,
+      body: 'Its allocated quantity is deleted from the vendor\'s capacity. This cannot be undone from the screen.',
+      confirmLabel: 'Remove',
+    });
+    if (!ok) return;
     const fd = new FormData();
     fd.set('id', String(row.id));
     start(async () => {

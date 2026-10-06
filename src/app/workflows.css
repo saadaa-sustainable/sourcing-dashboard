@@ -2332,3 +2332,22 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 @media (max-width: 1100px) {
   .sc-page-edit .sc-entry { grid-template-columns: 1fr; }
 }
+
+/* Delete confirmation (ConfirmHost): a full-screen overlay and a centred card. */
+.sd-confirm-layer {
+  position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(20, 22, 26, 0.55); backdrop-filter: blur(2px);
+  animation: sd-confirm-fade 120ms ease-out;
+}
+.sd-confirm {
+  width: min(440px, 100%); padding: 22px 22px 18px; border-radius: 14px; background: #fff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28); text-align: left;
+}
+.sd-confirm-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border-radius: 50%; background: #fdecea; color: #b3261e; margin-bottom: 10px;
+}
+.sd-confirm h2 { margin: 0 0 6px; font-size: 16px; color: #1f1d1a; }
+.sd-confirm p { margin: 0 0 18px; font-size: 13px; line-height: 1.5; color: #4a463f; }
+.sd-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@keyframes sd-confirm-fade { from { opacity: 0; } }

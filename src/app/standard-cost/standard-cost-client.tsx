@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
@@ -761,7 +762,6 @@ export function CostRow({
   const [targets, setTargets] = useState<Partial<Record<RateKey, string>>>({});
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
   const [note, setNote] = useState('');
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const canManageList = canEdit(role, 'draft') && canRemove;
@@ -778,10 +778,7 @@ export function CostRow({
     start(async () => {
       const res = await setStandardCostHidden(fd);
       if (res.ok) reloadWithToast(res.message ?? 'Saved.');
-      else {
-        setErr(res.error);
-        setConfirmRemove(false);
-      }
+      else setErr(res.error);
     });
   }
 
@@ -1018,26 +1015,22 @@ export function CostRow({
         )}
       </div>
         {canManageList && (
-          confirmRemove ? (
-            <span className="wf-issue-row sc-entry-remove">
-              <small className="wf-subtle">Remove from list? Data &amp; history are kept.</small>
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove}>
-                {busy ? 'Removing…' : 'Remove'}
-              </button>
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={() => setConfirmRemove(false)}>
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm sc-entry-remove"
-              title="Hide it from the Standard Cost list — data & history kept; add it again to restore"
-              onClick={() => setConfirmRemove(true)}
-            >
-              Remove from list
-            </button>
-          )
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm sc-entry-remove"
+            disabled={busy}
+            title="Hide it from the Standard Cost list — data & history kept; add it again to restore"
+            onClick={async () => {
+              const ok = await confirmDelete({
+                title: `Remove ${cost.product_code} from the Standard Cost list?`,
+                body: 'It is hidden from the list; its cost, cost sheet and history are kept. Add it again from Add product to restore it.',
+                confirmLabel: 'Remove from list',
+              });
+              if (ok) remove();
+            }}
+          >
+            {busy ? 'Removing…' : 'Remove from list'}
+          </button>
         )}
       </aside>
     </div>

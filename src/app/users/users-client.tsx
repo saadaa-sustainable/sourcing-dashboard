@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
@@ -674,7 +675,6 @@ function RolesTab({
   const [editing, setEditing] = useState<number | null>(null);
   // Role id awaiting a friendly inline "are you sure?" before delete (replaces the
   // jarring native browser confirm dialog).
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   return (
     <>
@@ -744,44 +744,23 @@ function RolesTab({
               >
                 <Pencil size={14} /> Tune views
               </button>
-              {confirmDeleteId === role.id ? (
-                <span className="wf-inline-confirm">
-                  <span>
-                    Delete this role?
-                    {role.members?.length ? ` ${role.members.length} assignment(s) removed.` : ''}
-                  </span>
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-danger wf-btn-sm"
-                    onClick={() => {
-                      const fd = new FormData();
-                      fd.set('id', String(role.id));
-                      submit(fd, deleteCustomRole);
-                      setConfirmDeleteId(null);
-                    }}
-                    disabled={pending}
-                  >
-                    Yes, delete
-                  </button>
-                  <button
-                    type="button"
-                    className="wf-btn wf-btn-ghost wf-btn-sm"
-                    onClick={() => setConfirmDeleteId(null)}
-                    disabled={pending}
-                  >
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  onClick={() => setConfirmDeleteId(role.id)}
-                  disabled={pending}
-                >
-                  <Trash2 size={14} /> Delete
-                </button>
-              )}
+              <button
+                type="button"
+                className="wf-btn wf-btn-ghost wf-btn-sm"
+                onClick={async () => {
+                  const ok = await confirmDelete({
+                    title: `Delete the role “${role.name}”?`,
+                    body: `${role.members?.length ? `${role.members.length} person(s) lose the pages this role gave them. ` : ''}The role is deleted. This cannot be undone from the screen.`,
+                  });
+                  if (!ok) return;
+                  const fd = new FormData();
+                  fd.set('id', String(role.id));
+                  submit(fd, deleteCustomRole);
+                }}
+                disabled={pending}
+              >
+                <Trash2 size={14} /> Delete
+              </button>
             </div>
           </article>
         ))}

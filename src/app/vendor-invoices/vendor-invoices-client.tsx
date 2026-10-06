@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { useState, useSyncExternalStore, useTransition } from 'react';
 import { Check, Copy, ExternalLink, Link2, MessageCircle, Trash2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
@@ -174,28 +175,21 @@ function FileCell({ entry }: { entry: VendorInvoice }) {
 }
 
 function DeleteCell({ id }: { id: number }) {
-  const [armed, setArmed] = useState(false);
   const [busy, start] = useTransition();
-  if (!armed)
-    return (
-      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setArmed(true)} aria-label="Delete entry">
-        <Trash2 size={12} />
-      </button>
-    );
+  async function remove() {
+    const ok = await confirmDelete({
+      title: 'Delete this invoice entry?',
+      body: 'The entry and its attached file are deleted. This cannot be undone from the screen.',
+    });
+    if (!ok) return;
+    start(async () => {
+      const res = await deleteVendorInvoice(id);
+      if (res.ok) reloadWithToast(res.message ?? 'Deleted.');
+    });
+  }
   return (
-    <button
-      type="button"
-      className="wf-btn wf-btn-danger wf-btn-sm"
-      disabled={busy}
-      onClick={() =>
-        start(async () => {
-          const res = await deleteVendorInvoice(id);
-          if (res.ok) reloadWithToast(res.message ?? 'Deleted.');
-          else setArmed(false);
-        })
-      }
-    >
-      {busy ? 'Deleting…' : 'Confirm delete'}
+    <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={busy} onClick={remove} aria-label="Delete entry">
+      {busy ? 'Deleting…' : <Trash2 size={12} />}
     </button>
   );
 }
