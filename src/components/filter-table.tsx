@@ -442,8 +442,8 @@ export function FilterTable<T>({
 
       <p className="wf-table-hint">
         Type in <strong>Search</strong> to find a word anywhere. Click a column heading to
-        sort. To narrow one column, use <strong>Filter columns</strong>.
-        <strong> Download</strong> saves the rows you&rsquo;re seeing.
+        sort. To narrow one column, use <strong>Filter columns</strong>.{' '}
+        <strong>Download</strong>{' '}saves the rows you&rsquo;re seeing.
         {legendSources.length > 0 && ' Each column heading carries a source-coloured bar — see the legend.'}
       </p>
 

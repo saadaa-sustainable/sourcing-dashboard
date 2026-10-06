@@ -361,3 +361,22 @@
 .bp-approval-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
 .bp-approval-head b { font-size: 14px; color: #202223; }
 .bp-approval-head span { font-size: 12.5px; color: #6d7175; }
+
+/* Plan detail: the table runs edge to edge, but its toolbar, hint and legend keep the card's
+   padding, with even control heights and room between the rows. */
+.bp-cardbody-flush > .wf-toolbar { padding: 16px 20px 0; gap: 12px 16px; align-items: flex-end; }
+.bp-cardbody-flush > .wf-toolbar .wf-toolbar-left { gap: 10px; align-items: flex-end; }
+.bp-cardbody-flush > .wf-toolbar .field { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.bp-cardbody-flush > .wf-toolbar .field span { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3, #6d7175); }
+.bp-cardbody-flush > .wf-toolbar .field input { height: 36px; min-width: 240px; padding: 0 12px; }
+.bp-cardbody-flush > .wf-toolbar .wf-btn,
+.bp-cardbody-flush > .wf-toolbar .download-button { height: 36px; min-height: 36px; padding: 0 14px; font-size: 12.5px; border-radius: 9px; }
+.bp-cardbody-flush > .wf-toolbar .wf-chip { margin-bottom: 2px; }
+.bp-cardbody-flush > .wf-table-hint { margin: 12px 20px 12px; font-size: 12px; line-height: 1.55; max-width: 980px; }
+.bp-cardbody-flush > .src-legend { margin: 0 20px 16px; }
+.bp-cardbody-flush > .table-panel { border-top: 1px solid var(--line, #e7e2d2); }
+@media (max-width: 640px) {
+  .bp-cardbody-flush > .wf-toolbar { padding: 14px 14px 0; }
+  .bp-cardbody-flush > .wf-table-hint, .bp-cardbody-flush > .src-legend { margin-left: 14px; margin-right: 14px; }
+  .bp-cardbody-flush > .wf-toolbar .field input { min-width: 0; width: 100%; }
+}
