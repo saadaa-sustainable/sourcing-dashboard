@@ -1278,6 +1278,7 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 }
 .wf-icon-btn:hover { background: #fbeeeb; }
 .wf-chip-btn {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
   cursor: pointer; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
   border: 1px dashed #cfc9b8; background: #fff; color: #6e695e;
 }
@@ -1977,7 +1978,8 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .sc-unlinked-text p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.5; }
 .sc-unlinked-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .sc-unlinked-link { display: flex; align-items: center; gap: 8px; min-width: min(380px, 100%); }
-.sc-unlinked-link .wf-picker { flex: 1 1 auto; }
+.sc-unlinked-link .wf-picker { flex: 1 1 auto; min-width: min(340px, 70vw); }
+.sc-unlinked-actions:has(.sc-unlinked-link) { flex: 1 1 420px; justify-content: flex-end; }
 .sc-unlinked-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .sc-page-rates {
   display: grid;

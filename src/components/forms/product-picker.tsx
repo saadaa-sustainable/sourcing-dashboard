@@ -135,7 +135,8 @@ export function ProductPicker({
         <div
           ref={listRef}
           className="wf-picker-list"
-          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
+          // Never narrower than a readable name, even under a small input.
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: Math.max(pos.width, 320) }}
         >
           {matches.map((i) => (
             <button
