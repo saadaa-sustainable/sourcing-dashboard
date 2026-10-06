@@ -125,6 +125,7 @@ export function BuyingPlanClient({
   deadlineDay = 7,
   firstActionAt = null,
   role,
+  startInInput = false,
 }: {
   planMonth: string;
   plan: BuyingPlan | null;
@@ -147,6 +148,8 @@ export function BuyingPlanClient({
   /** First admin decision (approve / reject / rework) on this plan, from the approval log. */
   firstActionAt?: string | null;
   role: SdRole;
+  /** Open on the Input view (and scroll to it) - set by ?mode=input. */
+  startInInput?: boolean;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
@@ -173,7 +176,12 @@ export function BuyingPlanClient({
 
   // Input module (fill the plan) vs View module (running read-only view). Default
   // to View — "एक view चलता रहे"; supply chain switches to Input to fill it.
-  const [mode, setMode] = useState<'view' | 'input'>('view');
+  const [mode, setMode] = useState<'view' | 'input'>(startInInput ? 'input' : 'view');
+  // Opened from the month board's Start / Edit plan (?mode=input): bring the input area into view.
+  const modeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (startInInput) modeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [startInInput]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   // Input-table filters (Woven/Knitted, product state, PO type, code search).
   const [inputFabric, setInputFabric] = useState('');
@@ -821,7 +829,7 @@ export function BuyingPlanClient({
               {lineCounts.rejected ? ` · ${lineCounts.rejected} rejected` : ''}
             </span>
           )}
-          <div className="segment wf-segment">
+          <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
             </button>

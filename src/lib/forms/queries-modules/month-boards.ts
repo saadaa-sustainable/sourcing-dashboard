@@ -166,7 +166,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     const issued = track === 'fg' ? issuedByMonth.get(p.plan_month) ?? 0 : null;
     const href = `/buying-plan?month=${p.plan_month}&type=${track}`;
     const actions: MonthBoardCard['actions'] = [
-      { label: status === 'draft' ? 'Edit plan' : 'Open', href, primary: true },
+      { label: status === 'draft' ? 'Edit plan' : 'Open', href: status === 'draft' ? `${href}&mode=input` : href, primary: true },
       ...(track === 'fg' && (status === 'live' || status === 'closed')
         ? [{ label: 'Analysis', href: `/buying-plan?month=${p.plan_month}&type=analysis` }]
         : []),
@@ -397,7 +397,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       big: { value: '—', label: 'Plan value' },
       sub: 'Not started',
       facts: [`Submit by ${deadlineDay} ${short(m).split(' ')[0]}`],
-      actions: [{ label: 'Start plan', href: `/buying-plan?month=${m}&type=fg`, primary: true }],
+      actions: [{ label: 'Start plan', href: `/buying-plan?month=${m}&type=fg&mode=input`, primary: true }],
       list: ['0', '—', '—', '—'],
     });
   }

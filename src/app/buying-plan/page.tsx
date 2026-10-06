@@ -28,7 +28,7 @@ export const dynamic = 'force-dynamic';
 export default async function BuyingPlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; type?: string; track?: string }>;
+  searchParams: Promise<{ month?: string; type?: string; track?: string; mode?: string }>;
 }) {
   const params = await searchParams;
   const planMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '')
@@ -77,7 +77,7 @@ export default async function BuyingPlanPage({
           searchPlaceholder="Search month or track…"
           pageBar={
             user.role !== 'viewer' ? (
-              <Link className="wf-btn wf-btn-primary wf-btn-sm" href={`/buying-plan?month=${next}&type=fg`}>
+              <Link className="wf-btn wf-btn-primary wf-btn-sm" href={`/buying-plan?month=${next}&type=fg&mode=input`}>
                 + Plan {monthLabel(next)}
               </Link>
             ) : null
@@ -108,15 +108,15 @@ export default async function BuyingPlanPage({
       {planType === 'analysis' ? (
         <AnalysisTrack planMonth={planMonth} isAdmin={user.role === 'admin'} />
       ) : planType === 'material' ? (
-        <MaterialTrack planMonth={planMonth} role={user.role} />
+        <MaterialTrack planMonth={planMonth} role={user.role} startInInput={params.mode === 'input'} />
       ) : (
-        <FgTrack planMonth={planMonth} role={user.role} />
+        <FgTrack planMonth={planMonth} role={user.role} startInInput={params.mode === 'input'} />
       )}
     </FormLayout>
   );
 }
 
-async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+async function FgTrack({ planMonth, role, startInInput }: { planMonth: string; role: 'viewer' | 'team' | 'admin'; startInInput: boolean }) {
   const [
     { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
     actualsMap,
@@ -141,6 +141,7 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
     <NpdBudgetCard budget={npdBudget} role={role} />
     <BuyingPlanClient
       planMonth={planMonth}
+      startInInput={startInInput}
       plan={plan}
       lines={lines}
       productCodes={productCodes}
@@ -161,11 +162,12 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
   );
 }
 
-async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+async function MaterialTrack({ planMonth, role, startInInput }: { planMonth: string; role: 'viewer' | 'team' | 'admin'; startInInput: boolean }) {
   const { plan, lines, materialCodes, colours, materialCosts } = await loadMaterialPlan(planMonth);
   return (
     <MaterialPlanClient
       planMonth={planMonth}
+      startInInput={startInInput}
       plan={plan}
       lines={lines}
       materialCodes={materialCodes}

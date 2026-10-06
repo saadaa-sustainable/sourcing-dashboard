@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
@@ -93,6 +93,7 @@ export function MaterialPlanClient({
   colours,
   materialCosts,
   role,
+  startInInput = false,
 }: {
   planMonth: string;
   plan: BuyingPlan | null;
@@ -101,6 +102,8 @@ export function MaterialPlanClient({
   colours: string[];
   materialCosts: Record<string, { job: number; fob: number }>;
   role: SdRole;
+  /** Open on the Input view (and scroll to it) - set by ?mode=input. */
+  startInInput?: boolean;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
@@ -110,7 +113,12 @@ export function MaterialPlanClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [mode, setMode] = useState<'view' | 'input'>('view');
+  const [mode, setMode] = useState<'view' | 'input'>(startInInput ? 'input' : 'view');
+  // Opened from the month board's Start / Edit plan (?mode=input): bring the input area into view.
+  const modeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (startInInput) modeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [startInInput]);
   const [type, setType] = useState<MaterialType>('raw');
   const [addBase, setAddBase] = useState(''); // base-fabric filter in the add-material cascade
   const [addCode, setAddCode] = useState('');
@@ -343,7 +351,7 @@ export function MaterialPlanClient({
             </select>
           </Field>
           <StatusBadge status={status} edited={plan?.edited_before_approval} />
-          <div className="segment wf-segment">
+          <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
             <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
               <Eye size={14} /> View
             </button>
