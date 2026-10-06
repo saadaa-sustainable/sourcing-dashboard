@@ -1112,6 +1112,9 @@ export async function loadVendorCapacityBoard(
     return out;
   };
   const STALE_DAYS = 30;
+  // The change trail starts 5 Oct 2026; before it only each vendor's latest update survives, so a
+  // vendor with no record then may simply have been updated again later.
+  const TRAIL_FROM = '2026-10-01';
 
   /** Vendors to look at: no update in 30+ days, declared well under signed, or nothing declared. */
   const vcAttention = (m: string): MonthDetailSection => {
@@ -1121,7 +1124,7 @@ export async function loadVendorCapacityBoard(
     for (const v of activeVendors) {
       const e = known.get(v.code.toLowerCase());
       if (!e) {
-        out.push({ tone: 'back', cells: [v.name, 'Never updated', 'No capacity on record'] });
+        if (m >= TRAIL_FROM) out.push({ tone: 'back', cells: [v.name, 'Never updated', 'No capacity on record'] });
         continue;
       }
       const age = Math.floor((asOf - new Date(e.at).getTime()) / 86_400_000);
@@ -1133,7 +1136,9 @@ export async function loadVendorCapacityBoard(
     return {
       kind: 'table',
       title: 'Needs attention',
-      hint: `Active vendors as of ${m === cur ? 'today' : `the end of ${long(m)}`}: never updated, not updated for ${STALE_DAYS}+ days, nothing declared, or under half the signed capacity.`,
+      hint: `Active vendors as of ${m === cur ? 'today' : `the end of ${long(m)}`}: never updated, not updated for ${STALE_DAYS}+ days, nothing declared, or under half the signed capacity.${
+        m < TRAIL_FROM ? ' Before October 2026 only each vendor’s latest update was kept, so vendors updated again later do not show here.' : ''
+      }`,
       columns: [{ label: 'Vendor' }, { label: 'Issue' }, { label: 'Detail' }],
       rows: out,
       filters: [
@@ -1171,7 +1176,9 @@ export async function loadVendorCapacityBoard(
       {
         kind: 'table',
         title,
-        hint: `Vendors updated and capacity declared in ${long(pm)} against ${long(m)}.`,
+        hint: `Vendors updated and capacity declared in ${long(pm)} against ${long(m)}.${
+          pm < TRAIL_FROM ? ` Incomplete: before October 2026 only each vendor’s latest update was kept, so ${long(pm)} is missing updates that were later replaced.` : ''
+        }`,
         columns: [{ label: 'Measure' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }],
         rows: [
           { cells: ['Vendors updated', String(before.size), String(latest.size), change(latest.size, before.size)] },
