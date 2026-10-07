@@ -442,13 +442,17 @@ const BqSync_ = (function () {
       // 2. one conditional-aggregation query -> per-SKU window figures
       const cond = (k) => `date_day BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
       // Main Warehouse only (decided 2026-10-07). Out of stock on a day = no SELLABLE stock at
-      // Main Warehouse, the DOQ sheet's rule (Inventory report "Sellable qty" <= 0). Sellable =
-      // available − 3 (EasyEcom's buffer), so OOS ⇔ Main stock <= 3. Verified SKU by SKU on
-      // 6 Oct 2026: reproduces the sheet's 1,026 OOS exactly; has_inventory_today disagreed on 138.
+      // Main Warehouse, the DOQ sheet's rule (Inventory report "Sellable qty" <= 0).
+      //  * Anchor day: sellable = available − 3 (EasyEcom's buffer), so OOS ⇔ Main stock <= 3.
+      //    Verified SKU by SKU on 6 Oct 2026: reproduces the sheet's 1,026 OOS exactly.
+      //  * Earlier days: the feed's current_stock is TODAY's stock repeated on every past day, so
+      //    it cannot say what was on hand then; that day's has_inventory_today flag can (stock
+      //    as the fallback where the flag is missing).
+      const sellable = `IF(date_day = '${latest}', stk > 3, IF(hit IS NULL, stk > 3, hit > 0))`;
       const per = (k) =>
         `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
-        `COUNTIF(${cond(k)} AND stk > 3) ${k}_avail, ` +
-        `COUNTIF(${cond(k)} AND stk <= 3) ${k}_oos`;
+        `COUNTIF(${cond(k)} AND ${sellable}) ${k}_avail, ` +
+        `COUNTIF(${cond(k)} AND NOT ${sellable}) ${k}_oos`;
       const sql =
         `WITH day AS ( ` +
         `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk, ` +

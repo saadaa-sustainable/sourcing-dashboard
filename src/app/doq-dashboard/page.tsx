@@ -178,16 +178,27 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
   // Two breakdowns per the sheet: By Product Status + By COM Status (detail).
   const tables = {} as Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   const comTables = {} as Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
+  // Last 45 days = the DOQ sheet's 45-day table: each SKU's own 45-day figures (OOS days = the
+  // feed's oos_days_45, available = 45 − OOS, qty = 45-day qty sold), not a day-by-day count —
+  // the feed's per-day stock is today's stock repeated, so it cannot see past stock-outs.
+  for (const m of oosMeta) {
+    const w = (windows[m.sku] ??= { sku: m.sku } as (typeof windows)[string]);
+    w.f45_qty = Number(m.total_qty_sold) || 0;
+    w.f45_avail = Number(m.total_available_days) || 0;
+    w.f45_oos = Number(m.total_oos_days) || 0;
+  }
   for (const key of DOQ_WINDOW_KEYS) {
     tables[key] = {} as Record<DoqWeave, DoqCategoryRow[]>;
     comTables[key] = {} as Record<DoqWeave, DoqCategoryRow[]>;
-    const ndays = meta?.windows?.[key]?.ndays ?? 1;
+    const ndays = key === 'f45' ? 45 : meta?.windows?.[key]?.ndays ?? 1;
+    const totalDoh = key === 'f45' ? ('rows' as const) : ('skus' as const);
     for (const weave of DOQ_WEAVES) {
-      tables[key][weave] = aggregateDoqWindow(windows, oosMeta, excluded, key, weave, ndays, { priceFactor });
+      tables[key][weave] = aggregateDoqWindow(windows, oosMeta, excluded, key, weave, ndays, { priceFactor, totalDoh });
       comTables[key][weave] = aggregateDoqWindow(windows, oosMeta, excluded, key, weave, ndays, {
         categoryOf: (m) => comStatusOf(m.product_status, classBySku[m.sku] ?? 'D'),
         order: 'com',
         priceFactor,
+        totalDoh,
       });
     }
   }

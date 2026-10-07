@@ -180,6 +180,9 @@ export function aggregateDoqWindow(
     order?: 'state' | 'com';
     /** Sales leakage values a lost piece at selling price × this (Rules Master leakage_price_factor). */
     priceFactor?: number;
+    /** TOTAL-row DOH: 'skus' = averaged over every SKU (the window tables); 'rows' = the plain
+     *  average of the category rows above it (the DOQ sheet's 45-day table). */
+    totalDoh?: 'skus' | 'rows';
   },
 ): DoqCategoryRow[] {
   const categoryOf = opts?.categoryOf ?? ((m) => m.product_status?.trim() || 'Unknown');
@@ -280,14 +283,16 @@ export function aggregateDoqWindow(
   }
 
   const totOosPct = tot.skuDays > 0 ? tot.oosDays / tot.skuDays : 0;
+  const meanOf = (k: 'dohStock' | 'dohInProcess') => (rows.length ? Math.round(rows.reduce((s, r) => s + r[k], 0) / rows.length) : 0);
+  const byRows = opts?.totalDoh === 'rows';
   rows.push({
     category: 'TOTAL',
     skuCount: tot.cnt,
     pctSku: totalSku > 0 ? tot.cnt / totalSku : 0,
     doq: Math.round(tot.doq * 10) / 10,
     pctDoq: tableTotalDoq > 0 ? tot.doq / tableTotalDoq : 0,
-    dohStock: tot.cnt > 0 ? Math.round(tot.dohStockSum / tot.cnt) : 0,
-    dohInProcess: tot.cnt > 0 ? Math.round(tot.dohIpSum / tot.cnt) : 0,
+    dohStock: byRows ? meanOf('dohStock') : tot.cnt > 0 ? Math.round(tot.dohStockSum / tot.cnt) : 0,
+    dohInProcess: byRows ? meanOf('dohInProcess') : tot.cnt > 0 ? Math.round(tot.dohIpSum / tot.cnt) : 0,
     oosSkuCount: tot.oosCount,
     oosSkuPct: tot.cnt > 0 ? tot.oosCount / tot.cnt : 0,
     salesLeakage: Math.round(tot.leak),
