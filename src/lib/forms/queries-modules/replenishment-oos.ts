@@ -67,11 +67,12 @@ export async function loadVendorRecommendation(): Promise<VendorRecommendationRo
 /**
  * The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000).
  * In process is NOT the synced BigQuery figure (it ran ~10x the open POs): it is the pending qty
- * on approved POs from sd_sku_in_process, and DOH with in-process is recomputed from it.
+ * on approved POs from sd_sku_in_process. Current stock is the Main Warehouse row only (the sync
+ * adds every warehouse — FBA, store, Holisol). DOH and DOH with in-process are recomputed.
  */
 export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
   const supabase = await client();
-  const [rows, ip] = await Promise.all([
+  const [rows, ip, main] = await Promise.all([
     pageAll<OosCalculationRow>(() => supabase.from('sd_oos_calculation').select('*').order('sku')).catch((e: Error) => {
       throw new Error(`sd_oos_calculation: ${e.message}`);
     }),
@@ -80,15 +81,27 @@ export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
     ).catch((e: Error) => {
       throw new Error(`sd_sku_in_process: ${e.message}`);
     }),
+    pageAll<{ sku: string; current_stock: number | null }>(() =>
+      supabase.from('sd_inventory_planning').select('sku, current_stock').eq('warehouse', 'Main Warehouse').order('row_key'),
+    ).catch((e: Error) => {
+      throw new Error(`sd_inventory_planning: ${e.message}`);
+    }),
   ]);
+  const key = (sku: string) => sku.trim().toUpperCase().replace(/_/g, '');
   const ipBySku = new Map(ip.map((r) => [r.sku_key, Number(r.in_process_qty) || 0]));
+  const mainStock = new Map<string, number>();
+  for (const r of main) mainStock.set(key(r.sku), (mainStock.get(key(r.sku)) ?? 0) + (Number(r.current_stock) || 0));
   return rows.map((r) => {
-    const inprocess = ipBySku.get(r.sku.trim().toUpperCase().replace(/_/g, '')) ?? 0;
+    const inprocess = ipBySku.get(key(r.sku)) ?? 0;
+    const stock = mainStock.get(key(r.sku)) ?? 0;
     const doq = Number(r.doq_45) || 0;
+    const days = (v: number) => (doq ? Math.round((v / doq) * 10) / 10 : null);
     return {
       ...r,
+      current_stock: stock,
+      doh: days(stock),
       inprocess_stock: inprocess,
-      doh_with_inprocess: doq ? Math.round((((Number(r.current_stock) || 0) + inprocess) / doq) * 10) / 10 : null,
+      doh_with_inprocess: days(stock + inprocess),
     };
   });
 }

@@ -34,7 +34,7 @@ const COLS: Column<OosCalculationRow>[] = [
   { key: 'doq_45', label: '45 Days DOQ', kind: 'num', info: "WHAT: DOQ 45 — pieces a day this SKU sells.\n\nHOW: pieces sold in the last 45 days ÷ days in stock. Example: 60 sold over 20 stocked days → 3 a day, not 60 ÷ 45.\n\nUSE: the rate ordering is built on; empty days do not drag it down." },
   { key: 'launch_date', label: 'Launch Date', kind: 'text', info: "WHAT: the product's launch date.\n\nHOW: from the inventory feed when it has one, otherwise from the EasyEcom Product Master.\n\nUSE: a SKU launched inside the window has fewer days of history — read its DOQ with caution." },
   { key: 'product_class', label: 'Product Class', kind: 'text', filter: 'select', source: 'computed', info: "WHAT: the sales class — how fast this SKU sells.\n\nHOW: from IPDOQ: A above 10 a day, B 7 or more, C 3 or more, else D. Thresholds in Rules Master.\n\nMIND: this is speed only. It is independent of the product state — an NPD or To-Be-Discontinued product still has a class, and D does NOT mean discontinued. A is the first to keep in stock." },
-  { key: 'current_stock', label: 'Current Stock', kind: 'num' },
+  { key: 'current_stock', label: 'Current Stock', kind: 'num', info: 'WHAT: pieces in stock for this SKU now. HOW: the Main Warehouse only, from the latest inventory snapshot (FBA, store and Holisol stock is not counted). USE: DOH is this ÷ DOQ 45.' },
   { key: 'doh', label: 'DOH', kind: 'num', info: "WHAT: DOH — how many days the stock lasts.\n\nHOW: current stock ÷ DOQ 45. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against the lead time (Job 30, E-FOB 45, FOB 75 days in Rules Master). Under the lead time = order now." },
   {
     key: 'sales_value',
