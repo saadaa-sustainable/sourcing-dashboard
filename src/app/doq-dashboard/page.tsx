@@ -30,6 +30,8 @@ import {
   normaliseProductState,
 } from '@/lib/doq-dashboard';
 import { DoqDashboardClient } from './doq-dashboard-client';
+import type { IncludedSku } from './included-sku-panel';
+import { packRows } from '@/lib/packed-rows';
 
 export const dynamic = 'force-dynamic';
 
@@ -153,6 +155,32 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
     }
   }
 
+  // The SKUs every table above counts: the feed minus the exclusion list (same filter as
+  // aggregateDoqWindow), listed for the Included SKUs panel. Packed — ~4,000 rows.
+  const included = packRows<IncludedSku>(
+    oosMeta
+      .filter((m) => !excluded.has(skuKey(m.sku)))
+      .map((m) => {
+        const cls = classBySku[m.sku] ?? 'D';
+        return {
+          sku: m.sku,
+          product_code: m.product_code,
+          product_name: m.product_name,
+          color: m.color,
+          size: m.size,
+          weave: m.weave_type?.trim() || 'Unknown',
+          product_status: m.product_status?.trim() || 'Unknown',
+          product_class: cls,
+          com_status: comStatusOf(m.product_status, cls),
+          current_stock: m.current_stock,
+          inprocess_stock: m.inprocess_stock,
+          doq_45: m.doq_45,
+          oos_days_45: m.total_oos_days,
+        };
+      })
+      .sort((a, b) => a.sku.localeCompare(b.sku)),
+  );
+
   return (
     <FormLayout
       title="OOS Dashboard"
@@ -173,6 +201,7 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
         comTables={comTables}
         meta={meta}
         exclusions={exclusions}
+        included={included}
         editable={user.role !== 'viewer'}
         summary={summary}
         snapshots={snapshots}

@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
 import { OosExclusionPanel } from '@/components/forms/oos-exclusion-panel';
+import { IncludedSkuPanel, type IncludedSku } from './included-sku-panel';
+import type { PackedRows } from '@/lib/packed-rows';
 import { downloadCsv } from '@/lib/download';
 import {
   DOQ_WEAVES,
@@ -157,6 +159,7 @@ export function DoqDashboardClient({
   comTables,
   meta,
   exclusions,
+  included,
   editable,
   summary = null,
   snapshots = [],
@@ -167,6 +170,8 @@ export function DoqDashboardClient({
   comTables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   meta: DoqWindowMeta | null;
   exclusions: OosSkuExclusion[];
+  /** The SKUs the tables count (feed minus exclusions), for the Included SKUs panel. */
+  included: PackedRows<IncludedSku>;
   editable: boolean;
   /** The one-pager (KPI numbers only) and its daily history. */
   summary?: OosSummaryData | null;
@@ -238,9 +243,14 @@ export function DoqDashboardClient({
             <InfoDot text={"WHAT: how many SKUs are being left out of the tables below.\n\nHOW: the shared exclusion list, managed in the Excluded SKUs panel on this page; DOQ Calculation uses the same list.\n\nUSE: if a number looks too good, check nothing real is on this list."} />
           </span>
         )}
+        <span className="wf-chip">
+          {included.rows.length.toLocaleString('en-IN')} SKUs included
+          <InfoDot text="WHAT: how many SKUs the tables below count. HOW: the SKUs on the OOS feed minus the excluded ones; the full list is in the Included SKUs panel. USE: the category SKU counts in each table add up to this." />
+        </span>
       </div>
 
       <OosExclusionPanel exclusions={exclusions} editable={editable} collapsible />
+      <IncludedSkuPanel packed={included} />
 
       {/* window pills */}
       <div className="role-tabs" role="tablist" aria-label="DOQ windows">
