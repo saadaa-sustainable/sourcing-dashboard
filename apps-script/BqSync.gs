@@ -449,20 +449,38 @@ const BqSync_ = (function () {
       //    it cannot say what was on hand then; that day's has_inventory_today flag can (stock
       //    as the fallback where the flag is missing).
       const sellable = `IF(date_day = '${latest}', stk > 3, IF(hit IS NULL, stk > 3, hit > 0))`;
-      const per = (k) =>
-        `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
+      // Sales (the _qty columns) come from the EasyEcom order lines, not the inventory feed's
+      // daily_quantity: the DOQ sheet's RAW SALES is EasyEcom's order report — every line of the
+      // day whatever its status, cancelled included — minus B2B stock transfers (stock moved to
+      // EBO001 / Marketing / studio, not a sale). Amazon FBA is left out too: the report carries
+      // only a fraction of it. Reconciled 7 Oct 2026 over 23 Aug–6 Oct: 114,259 vs the sheet's
+      // 115,474 (the feed's t45 ran ~16% under); 2,704 SKUs exact, 3,080 within one piece.
+      const dcond = (k) => `d BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
+      const keys = ['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'f45', 'at'];
+      const perStock = (k) =>
         `COUNTIF(${cond(k)} AND ${sellable}) ${k}_avail, ` +
         `COUNTIF(${cond(k)} AND NOT ${sellable}) ${k}_oos`;
+      const perSales = (k) => `SUM(IF(${dcond(k)}, q, 0)) ${k}_qty`;
       const sql =
         `WITH day AS ( ` +
-        `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk, ` +
-        `    MAX(has_inventory_today) hit ` +
+        `  SELECT sku, date_day, SUM(COALESCE(current_stock, 0)) stk, MAX(has_inventory_today) hit ` +
         `  FROM ${DATASET}saadaa_inventory_planning\` ` +
         `  WHERE sku IS NOT NULL AND warehouse = 'Main Warehouse' AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
         `    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$') ` +
         `  GROUP BY sku, date_day ` +
-        `) SELECT sku, ${['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'f45', 'at'].map(per).join(', ')} ` +
-        `FROM day GROUP BY sku`;
+        `), stockw AS ( ` +
+        `  SELECT sku, REGEXP_REPLACE(UPPER(sku), r'[^A-Z0-9]', '') k, ${keys.map(perStock).join(', ')} ` +
+        `  FROM day GROUP BY sku ` +
+        `), sales AS ( ` +
+        `  SELECT REGEXP_REPLACE(UPPER(sku), r'[^A-Z0-9]', '') k, DATE(ORDER_Date) d, SUM(suborder_quantity) q ` +
+        `  FROM ${DATASET}SAADAA_EasyEcom_FACT_ITEMS\` ` +
+        `  WHERE COALESCE(Order_Type, '') != 'Stock Transfer Order' AND UPPER(COALESCE(marketplace, '')) != 'AMAZON_FBA' ` +
+        `    AND DATE(ORDER_Date) BETWEEN '${earliest}' AND '${latest}' ` +
+        `  GROUP BY 1, 2 ` +
+        `), salesw AS ( ` +
+        `  SELECT k, ${keys.map(perSales).join(', ')} FROM sales GROUP BY k ` +
+        `) SELECT s.sku, ${keys.map((k) => `COALESCE(w.${k}_qty, 0) ${k}_qty, s.${k}_avail, s.${k}_oos`).join(', ')} ` +
+        `FROM stockw s LEFT JOIN salesw w ON w.k = s.k`;
       const raw = runQuery(sql);
 
       const synced_at = new Date().toISOString();
