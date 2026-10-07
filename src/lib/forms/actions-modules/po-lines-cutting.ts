@@ -1,5 +1,6 @@
 'use server';
 
+import { SAADAA_PO_WAREHOUSE } from '@/lib/po-scope';
 import { randomBytes } from 'crypto';
 import { loadPoLineContext, loadPoPlanSuggestion, loadVendorPoHistory } from '../queries';
 import type { PoLineContext, PoPlanSuggestion } from '../queries-modules/po-lines-context';
@@ -248,7 +249,7 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
 const PICK_LIMIT = 100;
 // Cutting is done for production POs raised at the manufacturing entity; other warehouses
 // (EBO, Amazon FBA, defective goods, etc.) are not relevant to the cutting register.
-const CUTTING_WAREHOUSE = 'SAADAA SUSTAINABLE DESIGNS AND TECHNOLOGIES PRIVATE LIMITED';
+const CUTTING_WAREHOUSE = SAADAA_PO_WAREHOUSE;
 
 /** Search POs at the SAADAA manufacturing location by PO reference / vendor (newest first). */
 /** Reads every row of a query, a page at a time. A single response stops at 1,000. */

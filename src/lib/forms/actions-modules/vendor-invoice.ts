@@ -1,5 +1,6 @@
 'use server';
 
+import { SAADAA_PO_WAREHOUSE } from '@/lib/po-scope';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
@@ -162,6 +163,7 @@ export async function signVendorViewFile(token: string, id: number): Promise<{ u
       .from('sd_po_master_raw')
       .select('po_id')
       .eq('vendor_code', code)
+      .eq('warehouse', SAADAA_PO_WAREHOUSE)
       .or(`po_ref_num.ilike.${po.replace(/[,()*%]/g, '')},po_number.eq.${po.replace(/[,()*%]/g, '')}`)
       .limit(1);
     mine = !!hit?.length;

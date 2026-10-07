@@ -37,7 +37,7 @@ const cols: Column<IncludedSku>[] = [
   { key: 'product_class', label: 'Class', kind: 'text', filter: 'select', source: 'computed', accessor: (r) => r.product_class },
   { key: 'com_status', label: 'COM Status', kind: 'text', filter: 'select', source: 'computed', accessor: (r) => r.com_status },
   { key: 'current_stock', label: 'Current stock', kind: 'num', source: 'bigquery', accessor: (r) => r.current_stock ?? 0 },
-  { key: 'inprocess_stock', label: 'In process', kind: 'num', source: 'bigquery', accessor: (r) => r.inprocess_stock ?? 0 },
+  { key: 'inprocess_stock', label: 'In process', kind: 'num', source: 'easyecom', accessor: (r) => r.inprocess_stock ?? 0 },
   { key: 'doq_45', label: 'DOQ (45d)', kind: 'num', source: 'bigquery', accessor: (r) => r.doq_45 ?? 0 },
   { key: 'oos_days_45', label: 'OOS days (45d)', kind: 'num', source: 'bigquery', accessor: (r) => r.oos_days_45 ?? 0 },
 ];

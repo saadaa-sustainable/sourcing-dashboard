@@ -103,7 +103,7 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     ),
     pageAll<{ received_quantity: number | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('received_quantity')
         .gte('grn_created_at', planMonth)
         .lt('grn_created_at', monthEnd)

@@ -1,4 +1,5 @@
 import 'server-only';
+import { SAADAA_PO_WAREHOUSE } from '@/lib/po-scope';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { pageAll } from '@/lib/forms/queries-modules/_shared';
 import type { VendorInvoice } from '@/lib/vendor-invoice';
@@ -66,7 +67,7 @@ export async function loadVendorView(token: string): Promise<VendorView | null> 
     // paging-ok: one vendor code, a single master row
     admin.from('sd_ee_vendor_master').select('vendor_name, vendor_c_id').eq('vendor_code', code).limit(1),
     pageAll<{ po_id: number; po_number: string | null; po_ref_num: string | null }>(() =>
-      admin.from('sd_po_master_raw').select('po_id, po_number, po_ref_num').eq('vendor_code', code).order('po_detail_id'),
+      admin.from('sd_po_master_raw').select('po_id, po_number, po_ref_num').eq('vendor_code', code).eq('warehouse', SAADAA_PO_WAREHOUSE).order('po_detail_id'),
     ),
     pageAll<VendorInvoice>(() =>
       admin.from('sd_vendor_invoice').select('*').eq('vendor_code', code).order('id', { ascending: false }),
@@ -96,7 +97,7 @@ export async function loadVendorView(token: string): Promise<VendorView | null> 
     vendor?.vendor_c_id != null
       ? await pageAll<{ grn_detail_id: number; grn_id: number; po_id: number; grn_created_at: string; received_quantity: number | null }>(() =>
           admin
-            .from('sd_ee_grn')
+            .from('sd_ee_grn_saadaa')
             .select('grn_detail_id, grn_id, po_id, grn_created_at, received_quantity')
             .eq('vendor_c_id', Number(vendor.vendor_c_id))
             .gte('grn_created_at', VI_PENDING_FROM)

@@ -98,7 +98,7 @@ export async function loadGrnDetail(): Promise<PackedRows<GrnDetail>> {
   const supabase = await client();
   const rows = await pageAll<GrnDetail>(() =>
     supabase
-      .from('sd_ee_grn')
+      .from('sd_ee_grn_saadaa')
       .select('*')
       .order('grn_created_at', { ascending: false, nullsFirst: false })
       .order('grn_detail_id', { ascending: false }),

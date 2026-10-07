@@ -97,7 +97,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
     // page, so page the response too or receipts silently go missing.
     const data = await pageAll<{ po_number: string; sku: string | null; received_quantity: number | null; grn_created_at: string | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('po_number, sku, received_quantity, grn_created_at')
         .in('po_number', chunk)
         .order('po_number')
@@ -195,7 +195,7 @@ async function loadHistoricalArrivalRows(
     if (!chunk.length) continue;
     const data = await pageAll<{ po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('po_ref_num, received_quantity, grn_created_at')
         .in('po_ref_num', chunk)
         .order('po_ref_num')

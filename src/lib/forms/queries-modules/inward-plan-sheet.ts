@@ -70,7 +70,7 @@ export async function loadInwardPlanSheet(): Promise<InwardPlanSheetRow[]> {
     const chunk = refs.slice(i, i + 200);
     const data = await pageAll<{ po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('po_ref_num, received_quantity, grn_created_at')
         .in('po_ref_num', chunk)
         .order('po_ref_num')

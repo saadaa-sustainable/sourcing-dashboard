@@ -33,7 +33,7 @@ const buildCols = (
   },
   { key: 'product_state', label: 'Product State', kind: 'text', accessor: (r) => r.product_state, info: "WHAT: the product's lifecycle state.\n\nHOW: from the product master, rolled up to the colour — Ongoing, NPD, NPD Not Launched, To Be Discontinued, Discontinued.\n\nUSE: only Ongoing and launched NPD should be reordered; the rest are here for completeness." },
   { key: 'current_stock', label: 'Stock', kind: 'num', info: "WHAT: pieces in stock as of the snapshot.\n\nHOW: sellable stock summed across sizes for this colour.\n\nUSE: what the reorder quantities net off." },
-  { key: 'in_progress', label: 'In process', kind: 'num', info: "WHAT: pieces on order that have not arrived.\n\nHOW: pending quantity on approved POs for this colour.\n\nUSE: counts as cover — the reorder quantity nets it off too." },
+  { key: 'in_progress', label: 'In process', kind: 'num', info: "WHAT: pieces on order that have not arrived.\n\nHOW: pending quantity on approved POs for this colour (SAADAA warehouse, PO date after 1 Aug 2025, our own and internal vendor accounts left out).\n\nUSE: counts as cover — the reorder quantity nets it off too." },
   { key: 'doq_45', label: 'DOQ 45', kind: 'num', info: "WHAT: DOQ 45 — pieces a day this colour sells.\n\nHOW: pieces sold in the last 45 days ÷ days in stock. Example: 60 sold over 20 stocked days → 3 a day.\n\nUSE: the recent demand rate; feeds IPDOQ." },
   { key: 'doq_365', label: 'DOQ 365', kind: 'num', info: "WHAT: DOQ 365 — the same rate over a full year.\n\nHOW: pieces sold in the last 365 days ÷ days in stock.\n\nUSE: the steady signal. IPDOQ falls back to it when the 45-day window had too many empty days to trust." },
   {

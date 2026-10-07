@@ -306,7 +306,7 @@ export async function loadAnalyticsExtras(
       ),
       pageAll<{ received_quantity: number | null }>(() =>
         supabase
-          .from('sd_ee_grn')
+          .from('sd_ee_grn_saadaa')
           .select('received_quantity, grn_created_at')
           .gte('grn_created_at', weekAgoDate)
           // Date first, then id: a stable page order the (grn_created_at, grn_detail_id) index serves.
@@ -352,7 +352,7 @@ export async function loadAnalyticsExtras(
       ),
       pageAll<{ received_quantity: number | null; po_number: string | null }>(() =>
         supabase
-          .from('sd_ee_grn')
+          .from('sd_ee_grn_saadaa')
           .select('received_quantity, po_number')
           .gte('grn_created_at', monthStartDate)
           .lt('grn_created_at', nextMonth)

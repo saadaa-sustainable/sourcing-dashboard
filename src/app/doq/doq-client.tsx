@@ -44,7 +44,7 @@ const COLS: Column<DoqInventoryRow>[] = [
   { key: 'cost', label: 'Cost', kind: 'num' },
   { key: 'shopify_sp', label: 'Shopify SP', kind: 'num' },
   { key: 'current_stock', label: 'Current Stock', kind: 'num', info: "WHAT: pieces of this SKU in this warehouse as of the snapshot.\n\nHOW: sellable stock from the nightly inventory feed.\n\nUSE: zero here on the Main Warehouse row is what 'out of stock yesterday' means on the OOS pages." },
-  { key: 'total_inprogress', label: 'In-process', kind: 'num', info: "WHAT: pieces on order for this SKU that have not arrived.\n\nHOW: pending quantity on approved POs.\n\nUSE: stock + this is what the reorder rule counts as cover." },
+  { key: 'total_inprogress', label: 'In-process', kind: 'num', info: "WHAT: pieces on order for this SKU that have not arrived.\n\nHOW: pending quantity on approved POs (SAADAA warehouse, PO date after 1 Aug 2025, our own and internal vendor accounts left out).\n\nUSE: stock + this is what the reorder rule counts as cover." },
   { key: 'has_inventory_today', label: 'Has Inv. Today', kind: 'num', info: "WHAT: was this SKU in stock on the snapshot day.\n\nHOW: 1 when sellable stock is above zero, else 0.\n\nUSE: the flag the OOS-days counts are built from, one day at a time." },
   { key: 'daily_quantity', label: 'Daily Qty', kind: 'num', info: "WHAT: how many pieces a day this SKU sells.\n\nHOW: pieces sold ÷ days in stock, over the source's window.\n\nUSE: the demand rate behind every DOQ column." },
   { key: 'lead_time', label: 'Lead Time', kind: 'num', info: "WHAT: how long a reorder takes to land.\n\nHOW: lead time in days as held in the source, by PO type.\n\nUSE: stock must cover at least this many days or the SKU will run out before the next order arrives." },

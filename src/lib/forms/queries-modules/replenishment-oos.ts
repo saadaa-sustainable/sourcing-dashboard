@@ -64,11 +64,32 @@ export async function loadVendorRecommendation(): Promise<VendorRecommendationRo
   return (data ?? []) as VendorRecommendationRow[];
 }
 
-/** The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000). */
+/**
+ * The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000).
+ * In process is NOT the synced BigQuery figure (it ran ~10x the open POs): it is the pending qty
+ * on approved POs from sd_sku_in_process, and DOH with in-process is recomputed from it.
+ */
 export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
   const supabase = await client();
-  return pageAll<OosCalculationRow>(() => supabase.from('sd_oos_calculation').select('*').order('sku')).catch((e: Error) => {
-    throw new Error(`sd_oos_calculation: ${e.message}`);
+  const [rows, ip] = await Promise.all([
+    pageAll<OosCalculationRow>(() => supabase.from('sd_oos_calculation').select('*').order('sku')).catch((e: Error) => {
+      throw new Error(`sd_oos_calculation: ${e.message}`);
+    }),
+    pageAll<{ sku_key: string; in_process_qty: number | null }>(() =>
+      supabase.from('sd_sku_in_process').select('sku_key, in_process_qty').order('sku_key'),
+    ).catch((e: Error) => {
+      throw new Error(`sd_sku_in_process: ${e.message}`);
+    }),
+  ]);
+  const ipBySku = new Map(ip.map((r) => [r.sku_key, Number(r.in_process_qty) || 0]));
+  return rows.map((r) => {
+    const inprocess = ipBySku.get(r.sku.trim().toUpperCase().replace(/_/g, '')) ?? 0;
+    const doq = Number(r.doq_45) || 0;
+    return {
+      ...r,
+      inprocess_stock: inprocess,
+      doh_with_inprocess: doq ? Math.round((((Number(r.current_stock) || 0) + inprocess) / doq) * 10) / 10 : null,
+    };
   });
 }
 
