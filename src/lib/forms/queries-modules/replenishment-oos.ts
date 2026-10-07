@@ -176,14 +176,31 @@ export async function loadDoqWindowMeta(): Promise<DoqWindowMeta | null> {
 }
 
 /** sku → launch date + MRP from the EasyEcom product master, for OOS fallbacks. */
-export async function loadPmLaunchPrice(): Promise<
-  Record<string, { launch: string | null; mrp: number | null; state: string | null }>
-> {
+export type PmSkuInfo = {
+  /** The master's own spelling (SDCPBL_S). */
+  sku: string;
+  launch: string | null;
+  mrp: number | null;
+  state: string | null;
+  weave: string | null;
+  name: string | null;
+  colour: string | null;
+  size: string | null;
+  variant: string | null;
+};
+
+export async function loadPmLaunchPrice(): Promise<Record<string, PmSkuInfo>> {
   const supabase = await client();
   // Keyed by skuKey: the master spells SDCPBL_S, the feed SDCPBLS — look up with skuKey too.
-  const map: Record<string, { launch: string | null; mrp: number | null; state: string | null }> = {};
-  const rows = await pageAll<{ sku: string; product_launch_date: string | null; mrp: string | null; product_state: string | null }>(() =>
-    supabase.from('sd_ee_product_master').select('sku, product_launch_date, mrp, product_state').order('sku'),
+  const map: Record<string, PmSkuInfo> = {};
+  const rows = await pageAll<{
+    sku: string; product_launch_date: string | null; mrp: string | null; product_state: string | null;
+    weave_type: string | null; product_name: string | null; colour: string | null; size: string | null; product_variant: string | null;
+  }>(() =>
+    supabase
+      .from('sd_ee_product_master')
+      .select('sku, product_launch_date, mrp, product_state, weave_type, product_name, colour, size, product_variant')
+      .order('sku'),
   ).catch((e: Error) => {
     throw new Error(`sd_ee_product_master: ${e.message}`);
   });
@@ -195,9 +212,15 @@ export async function loadPmLaunchPrice(): Promise<
     // (plain CODE_SIZE) wins, a placeholder never overwrites it.
     if (map[k] && !/^[A-Za-z0-9_]+$/.test(r.sku)) continue;
     map[k] = {
+      sku: r.sku,
       launch: r.product_launch_date || null,
       mrp: Number.isFinite(mrp) && mrp > 0 ? mrp : null,
       state: r.product_state?.trim() || null,
+      weave: r.weave_type?.trim() || null,
+      name: r.product_name?.trim() || null,
+      colour: r.colour?.trim() || null,
+      size: r.size?.trim() || null,
+      variant: r.product_variant?.trim() || null,
     };
   }
   return map;

@@ -11,10 +11,8 @@ import { unpackRows, type PackedRows } from '@/lib/packed-rows';
 const money = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
 /** Sales Leakage = Selling Price × DOQ × OOS Days (spec item 4). */
-const leakage = (r: OosCalculationRow): number | null =>
-  r.sales_value != null && r.doq_45 != null && r.total_oos_days != null
-    ? Math.round(r.sales_value * r.doq_45 * r.total_oos_days)
-    : null;
+// Computed on the server (selling price × DOQ 45 × OOS days × the Rules Master leakage price factor).
+const leakage = (r: OosCalculationRow): number | null => (r.sales_leakage != null ? Math.round(r.sales_leakage) : null);
 
 // The full sheet, column-for-column. Per-column filters + click-to-sort come from FilterTable.
 const COLS: Column<OosCalculationRow>[] = [
@@ -52,7 +50,7 @@ const COLS: Column<OosCalculationRow>[] = [
       const v = leakage(r);
       return v == null ? '' : <strong>{money.format(v)}</strong>;
     },
-    info: "WHAT: the sales lost while this SKU was empty, in rupees.\n\nHOW: selling price × DOQ 45 × days out of stock. Example: ₹899 × 3 a day × 10 days → ₹26,970.\n\nUSE: the cost of the stock-out; sort by it to find the expensive gaps.",
+    info: "WHAT: the sales lost while this SKU was empty, in rupees.\n\nHOW: selling price × 0.85 (the leakage price factor in Rules Master, the DOQ sheet's rule) × DOQ 45 × days out of stock. Example: ₹899 × 0.85 × 3 a day × 10 days → ₹22,925.\n\nUSE: the cost of the stock-out; sort by it to find the expensive gaps.",
   },
   { key: 'inprocess_stock', label: 'Inprocess Stock', kind: 'num', info: "WHAT: pieces on order that have not arrived.\n\nHOW: pending quantity on approved POs.\n\nUSE: counts as cover in the next column." },
   { key: 'doh_with_inprocess', label: 'DOH (+ Inprocess)', kind: 'num', info: "WHAT: days of cover including what is on order.\n\nHOW: (current stock + in-process) ÷ DOQ 45.\n\nUSE: if this is still under the lead time, the pieces on order are not enough — order more." },

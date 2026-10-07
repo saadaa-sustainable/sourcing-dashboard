@@ -432,6 +432,8 @@ const BqSync_ = (function () {
         const start = addD(end, -6);
         windows['w' + w] = { start: iso(start), end: iso(end), label: iso(start) + ' → ' + iso(end) };
       }
+      // f45: the 45 days ending on the anchor day — the DOQ sheet's 45-day DOQ / OOS days window.
+      windows.f45 = { start: iso(addD(latestD, -44)), end: latest, label: iso(addD(latestD, -44)) + ' → ' + latest };
       windows.at = { start: earliest, end: latest, label: earliest + ' → ' + latest };
       for (const k in windows) {
         windows[k].ndays = dates.filter((d) => d >= windows[k].start && d <= windows[k].end).length;
@@ -439,14 +441,14 @@ const BqSync_ = (function () {
 
       // 2. one conditional-aggregation query -> per-SKU window figures
       const cond = (k) => `date_day BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
-      // Main Warehouse only (decided 2026-10-07): sales, stock and the OOS flag all come from the
-      // Main Warehouse row. Out of stock on a day = no SELLABLE stock there (has_inventory_today
-      // = 0), the rule the team's DOQ sheet applies; its physical stock is the fallback for days
-      // without the flag.
+      // Main Warehouse only (decided 2026-10-07). Out of stock on a day = no SELLABLE stock at
+      // Main Warehouse, the DOQ sheet's rule (Inventory report "Sellable qty" <= 0). Sellable =
+      // available − 3 (EasyEcom's buffer), so OOS ⇔ Main stock <= 3. Verified SKU by SKU on
+      // 6 Oct 2026: reproduces the sheet's 1,026 OOS exactly; has_inventory_today disagreed on 138.
       const per = (k) =>
         `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
-        `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk > 0, hit > 0)) ${k}_avail, ` +
-        `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk <= 0, hit = 0)) ${k}_oos`;
+        `COUNTIF(${cond(k)} AND stk > 3) ${k}_avail, ` +
+        `COUNTIF(${cond(k)} AND stk <= 3) ${k}_oos`;
       const sql =
         `WITH day AS ( ` +
         `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk, ` +
@@ -455,7 +457,7 @@ const BqSync_ = (function () {
         `  WHERE sku IS NOT NULL AND warehouse = 'Main Warehouse' AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
         `    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$') ` +
         `  GROUP BY sku, date_day ` +
-        `) SELECT sku, ${['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'at'].map(per).join(', ')} ` +
+        `) SELECT sku, ${['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'f45', 'at'].map(per).join(', ')} ` +
         `FROM day GROUP BY sku`;
       const raw = runQuery(sql);
 

@@ -64,10 +64,17 @@ export default async function OosCalculationPage() {
       rules.oos_day_threshold ?? 30,
       rules.ipdoq_floor ?? 0.25,
     );
+    const price = r.sales_value ?? m?.mrp ?? null;
     return {
       ...r,
       launch_date: r.launch_date ?? m?.launch ?? null,
-      sales_value: r.sales_value ?? m?.mrp ?? null,
+      sales_value: price,
+      // Selling price × DOQ 45 × OOS days × the leakage price factor (Rules Master, 0.85 — the
+      // DOQ sheet's "Sales Value of SKU" is SP × 0.85), so it reconciles with the sheet.
+      sales_leakage:
+        price != null && r.doq_45 != null && r.total_oos_days != null
+          ? Math.round(price * r.doq_45 * r.total_oos_days * (rules.leakage_price_factor ?? 0.85))
+          : null,
       // Class is how fast it sells; the product's state lives in its own column. An NPD or
       // to-be-discontinued SKU still has a sales class and must keep it.
       product_class: productClassOf(ipdoq, classRules),
