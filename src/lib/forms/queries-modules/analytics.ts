@@ -1005,7 +1005,7 @@ export async function loadAnalyticsExtras(
     const [total, zero, day] = await Promise.all([
       supabase.from('sd_oos_calculation').select('sku', { count: 'exact', head: true }),
       supabase
-        .from('sd_oos_calculation')
+        .from('sd_oos_calculation_main')
         .select('sku', { count: 'exact', head: true })
         .lte('current_stock', 0),
       supabase

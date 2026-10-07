@@ -1,4 +1,5 @@
 import 'server-only';
+import { MAIN_WAREHOUSE } from '@/lib/po-scope';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
   computeInternalStatus,
@@ -353,6 +354,7 @@ async function loadStockByVariantSize(
       supabase
         .from('sd_inventory_planning')
         .select('sku, product_variant, current_stock, warehouse, date_day')
+        .eq('warehouse', MAIN_WAREHOUSE)
         .in('product_variant', chunk)
         .order('sku'),
     );

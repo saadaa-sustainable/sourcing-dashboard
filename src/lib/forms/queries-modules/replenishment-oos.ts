@@ -1,4 +1,5 @@
 import 'server-only';
+import { MAIN_WAREHOUSE } from '@/lib/po-scope';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import { skuKey } from '@/lib/sku-key';
 import type {
@@ -66,43 +67,13 @@ export async function loadVendorRecommendation(): Promise<VendorRecommendationRo
 
 /**
  * The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000).
- * In process is NOT the synced BigQuery figure (it ran ~10x the open POs): it is the pending qty
- * on approved POs from sd_sku_in_process. Current stock is the Main Warehouse row only (the sync
- * adds every warehouse — FBA, store, Holisol). DOH and DOH with in-process are recomputed.
+ * Read through sd_oos_calculation_main: current stock is the Main Warehouse only and in process
+ * is the pending qty on approved POs (not the synced BigQuery figure); DOH columns recomputed.
  */
 export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
   const supabase = await client();
-  const [rows, ip, main] = await Promise.all([
-    pageAll<OosCalculationRow>(() => supabase.from('sd_oos_calculation').select('*').order('sku')).catch((e: Error) => {
-      throw new Error(`sd_oos_calculation: ${e.message}`);
-    }),
-    pageAll<{ sku_key: string; in_process_qty: number | null }>(() =>
-      supabase.from('sd_sku_in_process').select('sku_key, in_process_qty').order('sku_key'),
-    ).catch((e: Error) => {
-      throw new Error(`sd_sku_in_process: ${e.message}`);
-    }),
-    pageAll<{ sku: string; current_stock: number | null }>(() =>
-      supabase.from('sd_inventory_planning').select('sku, current_stock').eq('warehouse', 'Main Warehouse').order('row_key'),
-    ).catch((e: Error) => {
-      throw new Error(`sd_inventory_planning: ${e.message}`);
-    }),
-  ]);
-  const key = (sku: string) => sku.trim().toUpperCase().replace(/_/g, '');
-  const ipBySku = new Map(ip.map((r) => [r.sku_key, Number(r.in_process_qty) || 0]));
-  const mainStock = new Map<string, number>();
-  for (const r of main) mainStock.set(key(r.sku), (mainStock.get(key(r.sku)) ?? 0) + (Number(r.current_stock) || 0));
-  return rows.map((r) => {
-    const inprocess = ipBySku.get(key(r.sku)) ?? 0;
-    const stock = mainStock.get(key(r.sku)) ?? 0;
-    const doq = Number(r.doq_45) || 0;
-    const days = (v: number) => (doq ? Math.round((v / doq) * 10) / 10 : null);
-    return {
-      ...r,
-      current_stock: stock,
-      doh: days(stock),
-      inprocess_stock: inprocess,
-      doh_with_inprocess: days(stock + inprocess),
-    };
+  return pageAll<OosCalculationRow>(() => supabase.from('sd_oos_calculation_main').select('*').order('sku')).catch((e: Error) => {
+    throw new Error(`sd_oos_calculation_main: ${e.message}`);
   });
 }
 
@@ -179,7 +150,7 @@ export async function loadSkuClassInputs(): Promise<
   const map: Record<string, { doq45: number; doq365: number; oos45: number }> = {};
   // Ordered by the key: unordered pages are not guaranteed to be disjoint.
   const rows = await pageAll<{ sku: string | null; doq_45: number | null; doq_365: number | null; oos_days_45: number | null }>(() =>
-    supabase.from('sd_inventory_planning').select('sku, doq_45, doq_365, oos_days_45').order('row_key'),
+    supabase.from('sd_inventory_planning').select('sku, doq_45, doq_365, oos_days_45').eq('warehouse', MAIN_WAREHOUSE).order('row_key'),
   ).catch((e: Error) => {
     throw new Error(`sd_inventory_planning: ${e.message}`);
   });
@@ -232,11 +203,11 @@ export async function loadPmLaunchPrice(): Promise<
   return map;
 }
 
-/** Daily DOQ snapshot (sd_inventory_planning) — one row per SKU×warehouse. Paged (exceeds 1000). */
+/** Daily DOQ snapshot (sd_inventory_planning), Main Warehouse rows only — one row per SKU. Paged (exceeds 1000). */
 export async function loadDoqDataset(): Promise<DoqInventoryRow[]> {
   const supabase = await client();
   // sku + row_key: sku alone repeats (one row per warehouse), so pages could overlap.
-  return pageAll<DoqInventoryRow>(() => supabase.from('sd_inventory_planning').select('*').order('sku').order('row_key')).catch((e: Error) => {
+  return pageAll<DoqInventoryRow>(() => supabase.from('sd_inventory_planning').select('*').eq('warehouse', MAIN_WAREHOUSE).order('sku').order('row_key')).catch((e: Error) => {
     throw new Error(`sd_inventory_planning: ${e.message}`);
   });
 }

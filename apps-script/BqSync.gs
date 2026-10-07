@@ -309,6 +309,9 @@ const BqSync_ = (function () {
     const groups = new Map();
     for (const r of raw) {
       if (!r.sku) continue;
+      // Main Warehouse only (2026-10-07): FBA / STORE / Holisol rows would add stock and push
+      // MAX(OOS days) to 45 for SKUs that never sat there.
+      if (r.warehouse !== 'Main Warehouse') continue;
       if (String(r.size || '').toUpperCase() === 'IN METERS') continue;
       if (/^[^/]+\/[^/]+\/[^/]+$/.test(r.sku)) continue; // dyed-fabric/RM codes
       let g = groups.get(r.sku);
@@ -436,9 +439,10 @@ const BqSync_ = (function () {
 
       // 2. one conditional-aggregation query -> per-SKU window figures
       const cond = (k) => `date_day BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
-      // Out of stock on a day = no SELLABLE stock at Main Warehouse (has_inventory_today = 0),
-      // the rule the team's DOQ sheet applies to the EasyEcom inventory report (sellable qty
-      // <= 0). Physical stock summed over warehouses is the fallback for days without the flag.
+      // Main Warehouse only (decided 2026-10-07): sales, stock and the OOS flag all come from the
+      // Main Warehouse row. Out of stock on a day = no SELLABLE stock there (has_inventory_today
+      // = 0), the rule the team's DOQ sheet applies; its physical stock is the fallback for days
+      // without the flag.
       const per = (k) =>
         `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
         `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk > 0, hit > 0)) ${k}_avail, ` +
@@ -446,9 +450,9 @@ const BqSync_ = (function () {
       const sql =
         `WITH day AS ( ` +
         `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk, ` +
-        `    MAX(IF(warehouse = 'Main Warehouse', has_inventory_today, NULL)) hit ` +
+        `    MAX(has_inventory_today) hit ` +
         `  FROM ${DATASET}saadaa_inventory_planning\` ` +
-        `  WHERE sku IS NOT NULL AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
+        `  WHERE sku IS NOT NULL AND warehouse = 'Main Warehouse' AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
         `    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$') ` +
         `  GROUP BY sku, date_day ` +
         `) SELECT sku, ${['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'at'].map(per).join(', ')} ` +
