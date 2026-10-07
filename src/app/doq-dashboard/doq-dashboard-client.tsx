@@ -25,6 +25,7 @@ const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const WINDOW_TITLES: Record<DoqWindowKey, string> = {
   d1: 'Yesterday',
   l7: 'Last 7 days',
+  f45: 'Last 45 days',
   w1: 'Week −1',
   w2: 'Week −2',
   w3: 'Week −3',
@@ -198,7 +199,9 @@ export function DoqDashboardClient({
   const w = meta?.windows?.[win];
   const kicker = w
     ? `${w.label} · ${w.ndays} day${w.ndays > 1 ? 's' : ''}`
-    : 'awaiting first sync';
+    : win === 'f45'
+      ? 'not synced yet — run bqSyncDoqWindows once the 45-day columns exist'
+      : 'awaiting first sync';
 
   return (
     <>

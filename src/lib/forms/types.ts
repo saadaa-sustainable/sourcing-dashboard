@@ -667,6 +667,8 @@ export type DoqWindowRow = {
   w2_qty: number | null; w2_avail: number | null; w2_oos: number | null;
   w3_qty: number | null; w3_avail: number | null; w3_oos: number | null;
   w4_qty: number | null; w4_avail: number | null; w4_oos: number | null;
+  /** The 45 days ending on the anchor day (yesterday). */
+  f45_qty?: number | null; f45_avail?: number | null; f45_oos?: number | null;
   at_qty: number | null; at_avail: number | null; at_oos: number | null;
   synced_at: string | null;
 };

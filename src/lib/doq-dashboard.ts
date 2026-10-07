@@ -18,7 +18,8 @@ import type { DoqWindowRow, OosCalculationRow } from '@/lib/forms/types';
  * SKUs on the OOS exclusion list are left out entirely.
  */
 
-export const DOQ_WINDOW_KEYS = ['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'at'] as const;
+// f45 = the 45 days ending on the anchor day (yesterday, or the last complete day) — BqSync doqWindows.
+export const DOQ_WINDOW_KEYS = ['d1', 'l7', 'f45', 'w1', 'w2', 'w3', 'w4', 'at'] as const;
 export type DoqWindowKey = (typeof DOQ_WINDOW_KEYS)[number];
 
 export const DOQ_WEAVES = ['All', 'Woven', 'Knit'] as const;
