@@ -183,8 +183,11 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
   // the feed's per-day stock is today's stock repeated, so it cannot see past stock-outs.
   for (const m of oosMeta) {
     const w = (windows[m.sku] ??= { sku: m.sku } as (typeof windows)[string]);
-    w.f45_qty = Number(m.total_qty_sold) || 0;
-    w.f45_avail = Number(m.total_available_days) || 0;
+    // DOQ for the window = qty ÷ avail; feeding the SKU's own 45-day DOQ over 1 makes the column
+    // the sum of the sheet's "45 Days DOQ" (incl. the 0.25 floor for a SKU never sellable).
+    // avail is used for nothing else; OOS days / SKU-days come from f45_oos and the SKU count.
+    w.f45_qty = Number(m.doq_45) || 0;
+    w.f45_avail = 1;
     w.f45_oos = Number(m.total_oos_days) || 0;
   }
   for (const key of DOQ_WINDOW_KEYS) {
