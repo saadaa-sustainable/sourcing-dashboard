@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition, useEffect } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
@@ -125,6 +125,13 @@ export function ReceivablePlanClient({
   // An approver opens on the rows waiting for their decision; "All rows" shows the rest.
   const isApprover = canApprove(role, 'submitted');
   const [needsMine, setNeedsMine] = useState(() => isApprover && rows.some((r) => r.input_status === 'submitted'));
+  // PO lines come in pages so the table is not one long scroll.
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to page 1 whenever the filters change
+    setPage(0);
+  }, [search, vendor, state, risk, oosOnly, edd, needsMine]);
   const [submitting, startSubmit] = useTransition();
 
   const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
@@ -170,6 +177,10 @@ export function ReceivablePlanClient({
   }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd, needsMine]);
 
   const sort = useColumnSort<ReceivablePlanRow>();
+  const pageCount = Math.max(1, Math.ceil(shown.length / pageSize));
+  const pageNo = Math.min(page, pageCount - 1);
+  const pageFrom = pageNo * pageSize;
+  const pageTo = Math.min(shown.length, pageFrom + pageSize);
   const oosCount = rows.filter((r) => r.oos_flag).length;
   const submittedCount = rows.filter((r) => r.input_status === 'submitted').length;
 
@@ -359,7 +370,7 @@ export function ReceivablePlanClient({
                 </tr>
               </thead>
               <tbody>
-                {sort.apply(shown).map((row) => (
+                {sort.apply(shown).map((row, i) => (
                   <ReceivableRow
                     key={row.row_key}
                     row={row}
@@ -367,6 +378,7 @@ export function ReceivablePlanClient({
                     weekOptions={weekOptions}
                     monthOptions={monthOptions}
                     onSaved={() => setMessage('Saved.')}
+                    hidden={i < pageFrom || i >= pageTo}
                   />
                 ))}
                 {!shown.length && (
@@ -379,6 +391,21 @@ export function ReceivablePlanClient({
               </tbody>
             </table>
           </div>
+          {shown.length > 25 && (
+            <div className="pager rp-pager">
+              <label className="rp-pager-size">
+                Rows per page
+                <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }} aria-label="Rows per page">
+                  {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <span>{pageFrom + 1}–{pageTo} of {shown.length} rows · page {pageNo + 1} of {pageCount}</span>
+              <button type="button" disabled={pageNo <= 0} onClick={() => setPage(0)} aria-label="First page">«</button>
+              <button type="button" disabled={pageNo <= 0} onClick={() => setPage(pageNo - 1)}>Prev</button>
+              <button type="button" disabled={pageNo >= pageCount - 1} onClick={() => setPage(pageNo + 1)}>Next</button>
+              <button type="button" disabled={pageNo >= pageCount - 1} onClick={() => setPage(pageCount - 1)} aria-label="Last page">»</button>
+            </div>
+          )}
         </div>
       ) : (
         <GroupedView rows={shown} mode={view} />
@@ -542,12 +569,15 @@ function ReceivableRow({
   weekOptions,
   monthOptions,
   onSaved,
+  hidden = false,
 }: {
   row: ReceivablePlanRow;
   editable: boolean;
   weekOptions: { value: string; label: string }[];
   monthOptions: { value: string; label: string }[];
   onSaved: () => void;
+  /** Off the current page: kept mounted (unsaved typing survives a page change), not shown. */
+  hidden?: boolean;
 }) {
   // The picker holds a tagged value: `m<date>` = a whole month (1st stored),
   // `w<date>` = a specific week (Monday stored). Empty = unset.
@@ -626,7 +656,7 @@ function ReceivableRow({
   }
 
   return (
-    <tr className={row.oos_flag ? 'wf-row-over' : ''}>
+    <tr className={row.oos_flag ? 'wf-row-over' : ''} hidden={hidden}>
       <td className="mono wf-po-primary">
         <strong>{row.po_number}</strong>
         <small className="wf-subtle">{row.po_ref_num}</small>
