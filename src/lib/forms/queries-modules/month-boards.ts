@@ -1258,12 +1258,14 @@ export async function loadVendorCapacityBoard(
     const capacity = [...latest.values()].reduce((s, e) => s + e.capacity, 0);
     const signed = updatedActive.reduce((s, k) => s + n(active.get(k)?.signed), 0);
     const lastAt = mine.length ? mine[mine.length - 1].at : null;
-    const status = m > cur ? 'draft' : m === cur ? (updated === 0 ? 'draft' : updated >= total ? 'live' : 'pending') : 'closed';
+    // Weekly status: Submitted = every active vendor submitted in the week; Partial Submitted =
+    // some did; Not Submitted = none did (the running week reads Not Submitted until the first).
+    const status = updated >= total && total > 0 ? 'live' : updated > 0 ? 'pending' : 'back';
     const facts: string[] = [];
     facts.push(`Week ${isoWeekNo(m)} · Monday to Sunday`);
-    if (m > cur) facts.push(`Opens Monday ${dayMon(m)}`);
-    else if (lastAt) facts.push(`Last update ${day(lastAt)}`);
-    if (m === cur && updated < total) facts.push(`${total - updated} vendor${total - updated === 1 ? '' : 's'} still to update`);
+    if (m === cur) facts.push('Running week');
+    if (lastAt) facts.push(`Last submission ${day(lastAt)}`);
+    if (updated < total) facts.push(`${total - updated} vendor${total - updated === 1 ? '' : 's'} ${m === cur ? 'still to submit' : 'not submitted'}`);
     if (m < TRAIL_FROM) facts.push('Before Oct 2026 only each vendor’s latest update is known');
 
     /* ---- overview ---- */
@@ -1331,9 +1333,9 @@ export async function loadVendorCapacityBoard(
       label: weekShort(m),
       status,
       big: { value: updated ? num(capacity) : '—', label: 'Pcs / month declared' },
-      progress: m > cur ? undefined : { left: `${updated} / ${total} vendors updated`, right: `${pct(updated, total)}%`, pct: pct(updated, total) },
+      progress: m > cur ? undefined : { left: `${updated} / ${total} vendors submitted`, right: `${pct(updated, total)}%`, pct: pct(updated, total) },
       facts,
-      warn: m <= cur && updated === 0 ? { text: 'No vendor updated capacity in this week.', tone: 'pending' as const } : undefined,
+      warn: m < cur && updated === 0 ? { text: 'Capacity was not submitted for any vendor this week.', tone: 'back' as const } : undefined,
       actions: [m === cur ? { label: 'Update vendors', href: '/vendor-capacity?view=vendors', primary: true } : { label: 'Open', href: `/vendor-capacity?view=vendors&week=${m}`, primary: true }],
       list: [`${updated} / ${total}`, updated ? num(capacity) : '—'],
       detail:
@@ -1342,11 +1344,11 @@ export async function loadVendorCapacityBoard(
           : {
               kicker: 'Vendor Capacity',
               lede: `Capacity updates made in ${weekLong(m)}.${m < TRAIL_FROM ? ' Before October 2026 only each vendor’s latest update was kept.' : ''}`,
-              ring: { pct: pct(updated, total), label: 'updated', caption: 'Active vendors who updated', sub: `${updated} of ${total} vendors` },
+              ring: { pct: pct(updated, total), label: 'submitted', caption: 'Active vendors who submitted', sub: `${updated} of ${total} vendors` },
               tiles: [
                 { label: 'Declared pcs / month', value: updated ? num(capacity) : '—' },
                 { label: 'Signed (same vendors)', value: signed ? num(signed) : '—' },
-                { label: 'Still to update', value: m <= cur ? String(total - updated) : '—' },
+                { label: m === cur ? 'Still to submit' : 'Not submitted', value: String(total - updated) },
                 { label: 'Updates made', value: String(mine.length) },
                 { label: 'Last update', value: lastAt ? dayYear(lastAt) : '—' },
               ],
@@ -1354,23 +1356,18 @@ export async function loadVendorCapacityBoard(
             },
     };
   });
-  const now = cards.find((c) => c.month === cur);
   return {
     columns: [
-      { key: 'draft', label: 'Not started', tone: 'draft', hint: 'No vendor updated yet' },
-      { key: 'pending', label: 'In progress', tone: 'pending', hint: 'Some vendors updated' },
-      { key: 'live', label: 'Complete', tone: 'live', hint: 'Every active vendor updated' },
-      { key: 'closed', label: 'Past weeks', tone: 'closed', hint: 'Kept for history' },
+      { key: 'back', label: 'Not Submitted', tone: 'back', hint: 'Capacity not submitted for any vendor' },
+      { key: 'pending', label: 'Partial Submitted', tone: 'pending', hint: 'Submitted for some vendors, not for others' },
+      { key: 'live', label: 'Submitted', tone: 'live', hint: 'Submitted for every active vendor' },
     ],
     cards,
-    totals: [
-      { value: now?.list[0] ?? `0 / ${total}`, label: 'Updated this week' },
-      { value: now?.list[1] ?? '—', label: 'Pcs / month declared' },
-    ],
+    totals: [],
     unit: 'weeks',
     noun: 'week',
     cardClick: 'open',
-    listColumns: [{ label: 'Vendors updated', num: true }, { label: 'Pcs / month', num: true }],
+    listColumns: [{ label: 'Vendors submitted', num: true }, { label: 'Pcs / month', num: true }],
   };
 }
 

@@ -84,7 +84,7 @@ export function MonthBoard({
             </button>
           ))}
         </div>
-        <div className="mb-totals">
+        {(data.totals.length > 0 || pageBar) && <div className="mb-totals">
           {data.totals.map((t) => (
             <div key={t.label}>
               <b>{t.value}</b>
@@ -92,7 +92,7 @@ export function MonthBoard({
             </div>
           ))}
           {pageBar}
-        </div>
+        </div>}
       </div>
 
       <div className="mb-toolbar">
