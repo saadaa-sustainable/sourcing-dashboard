@@ -63,13 +63,9 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
     .maybeSingle();
 
   const status = (existing?.status ?? 'draft') as SdStatus;
-  // Month-end freeze (spec item 5): once the month has ended the plan takes no direct
-  // edits. The only way in is an amendment routed through approval — the plan must
-  // already be in 'rework' (requestPlanAmendment, or an approver sending it back).
-  if (isPlanFrozen(planMonth) && status !== 'rework') {
-    return fail(
-      `The ${planMonth.slice(0, 7)} plan is closed — it froze at month-end. To change it, request an amendment; it goes through approval.`,
-    );
+  // A month that is over is view only (user rule, 2026-10-08): no edits at all, rework or not.
+  if (isPlanFrozen(planMonth)) {
+    return fail(`The ${String(planMonth).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   }
   if (!canEdit(user.role, status)) {
     return fail(
@@ -219,6 +215,7 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
     .eq('id', planId)
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   if (!canSubmit(user.role, plan.status as SdStatus)) {
     return fail('This plan cannot be submitted from its current state.');
   }
@@ -297,6 +294,7 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
     .eq('id', planId)
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   const from = plan.status as SdStatus;
   if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
 

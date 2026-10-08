@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { currentUser, loadApprovedMaterialCosts, loadApprovedStandardCosts } from '../queries';
-import { canApprove } from '../approval';
+import { canApprove, isPlanFrozen } from '../approval';
 import type { ApprovalEntity, SdStatus } from '../types';
 import type { ApprovalEditChange, ApprovalEditField, ApprovalEditForm, ApprovalEditKind, ApprovalEditRow } from '../approval-edit-types';
 import { decideApproval } from './approval';
@@ -59,6 +59,8 @@ async function buildForm(db: Db, entity: ApprovalEntity, idText: string): Promis
   if (entity === 'buying_plan') {
     const plan = await header('sd_buying_plan');
     if (!plan) return { error: 'Plan not found.' };
+    // A buying plan whose month is over is view only (user rule, 2026-10-08).
+    if (isPlanFrozen(String(plan.plan_month))) return { error: `The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over.` };
     const material = plan.plan_type === 'material';
     // paging-ok: the lines of one plan, a few dozen at most
     const { data: lines } = await db

@@ -15,6 +15,7 @@ import {
   canEdit,
   canSubmit,
   isEscalated,
+  isPlanFrozen,
   levelForStatus,
   statusOnSubmit,
   LEVEL_LABEL,
@@ -162,6 +163,10 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (!row) return fail('Record not found.');
 
   const from = row.status as SdStatus;
+  // A buying plan whose month is over is view only (user rule, 2026-10-08): no decision on it.
+  if (entityType === 'buying_plan' && typeof row.plan_month === 'string' && isPlanFrozen(row.plan_month)) {
+    return fail(`The ${row.plan_month.slice(0, 7)} plan is view only — its month is over.`);
+  }
   // Spec 7.5 — the escalation matrix decides who may act, falling back to the role ladder
   // wherever a level has nobody named. Past the escalation window the level above can act
   // too, so one person being away never parks a PO.
@@ -303,8 +308,13 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   if (!decisions.length) return fail('Flag at least one line and give each a reason.');
 
   const supabase = await supa();
-  const { data: row } = await supabase.from(table).select('id, status').eq('id', entityId).maybeSingle();
+  const { data: rowRaw } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+  const row = rowRaw as unknown as Record<string, unknown> | null;
   if (!row) return fail('Record not found.');
+  // A buying plan whose month is over is view only (user rule, 2026-10-08).
+  if (entityType === 'buying_plan' && typeof row.plan_month === 'string' && isPlanFrozen(row.plan_month)) {
+    return fail(`The ${row.plan_month.slice(0, 7)} plan is view only — its month is over.`);
+  }
   const from = row.status as SdStatus;
   if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
 

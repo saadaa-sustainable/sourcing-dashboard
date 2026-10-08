@@ -157,10 +157,12 @@ export function BuyingPlanClient({
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
   const planLocked = status === 'submitted' || status === 'pending_l2' || status === 'approved';
-  // Month-end freeze (spec item 5): a closed month takes no direct edits; only a plan
-  // already sent to rework (an amendment, or approver rework) can be edited and re-approved.
+  // A month that is over is VIEW ONLY (user rule, 2026-10-08): the data as it was entered, no
+  // input, no submit, no amendment, no approval — input happens only on the current / upcoming
+  // months' plans. The server refuses the same writes (saveBuyingPlan, submitBuyingPlan,
+  // requestPlanAmendment, line + plan approvals).
   const frozen = isPlanFrozen(planMonth);
-  const editable = canEdit(role, status) && (!frozen || status === 'rework');
+  const editable = canEdit(role, status) && !frozen;
 
   // Spec: every active product is listed; you zero out what you won't make.
   // A saved plan shows its stored lines; a fresh editable plan pre-lists all
@@ -179,7 +181,7 @@ export function BuyingPlanClient({
 
   // Input module (fill the plan) vs View module (running read-only view). Default
   // to View — "एक view चलता रहे"; supply chain switches to Input to fill it.
-  const [mode, setMode] = useState<'view' | 'input'>(startInInput ? 'input' : 'view');
+  const [mode, setMode] = useState<'view' | 'input'>(startInInput && !frozen ? 'input' : 'view');
   // Opened from the month board's Start / Edit plan (?mode=input): bring the input area into view.
   const modeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -694,7 +696,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
   );
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendNote, setAmendNote] = useState('');
-  const canAmend = status === 'approved' && role !== 'viewer' && Boolean(plan?.id);
+  const canAmend = status === 'approved' && role !== 'viewer' && Boolean(plan?.id) && !frozen;
   function requestAmendment() {
     if (!plan?.id) return;
     setError(null);
@@ -850,14 +852,20 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
               {lineCounts.rejected ? ` · ${lineCounts.rejected} rejected` : ''}
             </span>
           )}
-          <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
-            <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
-              <Eye size={14} /> View
-            </button>
-            <button type="button" className={mode === 'input' ? 'active' : ''} onClick={() => setMode('input')}>
-              <ClipboardList size={14} /> Input
-            </button>
-          </div>
+          {frozen ? (
+            <span className="bp-badge gray" ref={modeRef} title="The month is over — this plan is shown as it was entered">
+              <Eye size={13} aria-hidden="true" /> View only
+            </span>
+          ) : (
+            <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
+              <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
+                <Eye size={14} /> View
+              </button>
+              <button type="button" className={mode === 'input' ? 'active' : ''} onClick={() => setMode('input')}>
+                <ClipboardList size={14} /> Input
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="bp-pagebar-right">
@@ -901,7 +909,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
               <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
             </button>
           )}
-          {canSubmit(role, status) && (
+          {canSubmit(role, status) && !frozen && (
             <button
               type="button"
               className="wf-btn wf-btn-primary"
@@ -929,8 +937,8 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       {error && <Notice tone="error">{error}</Notice>}
 
       {frozen && (
-        <Notice tone={status === 'rework' ? 'warn' : 'info'}>
-          <strong>{monthLabel(planMonth)} is closed.</strong> The plan froze at month-end: no direct edits and no POs can be linked to it. {status === 'rework' ? 'It is open for an approved amendment — make the change and resubmit for approval.' : status === 'approved' ? 'A missed product can still be added through Request amendment; the change must be approved again.' : 'It cannot be edited any more.'}
+        <Notice tone="info">
+          <strong>{monthLabel(planMonth)} is over — this plan is view only.</strong> It shows the data as it was entered; nothing on it can be changed, submitted or approved any more. Plans are filled in on the current and upcoming months.
         </Notice>
       )}
 
@@ -969,7 +977,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       )}
 
       {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
-      {canApprove(role, status) && plan && (
+      {canApprove(role, status) && plan && !frozen && (
         <div className="bp-card bp-cardbody bp-approval-card">
           <div className="bp-approval-head">
             <b>Your decision</b>
@@ -1220,7 +1228,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                       <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
                     </button>
                   )}
-                  {canSubmit(role, status) && (
+                  {canSubmit(role, status) && !frozen && (
                     <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
                       <Send size={15} /> Submit for approval
                     </button>

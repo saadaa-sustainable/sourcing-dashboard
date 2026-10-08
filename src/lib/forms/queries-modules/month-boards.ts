@@ -301,7 +301,8 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     const issued = track === 'fg' ? issuedByMonth.get(p.plan_month) ?? 0 : null;
     const href = `/buying-plan?month=${p.plan_month}&type=${track}`;
     const actions: MonthBoardCard['actions'] = [
-      { label: status === 'draft' ? 'Edit plan' : 'Open', href: status === 'draft' ? `${href}&mode=input` : href, primary: true },
+      // A month that is over is view only: its card just opens the plan.
+      { label: status === 'draft' && !frozen ? 'Edit plan' : 'Open', href: status === 'draft' && !frozen ? `${href}&mode=input` : href, primary: true },
       // Analysis (approved plan vs POs issued) reads for any FG month: lines not yet approved
       // show as such, and POs issued against them as not budgeted.
       ...(track === 'fg' ? [{ label: 'Analysis', href: `/buying-plan?month=${p.plan_month}&type=analysis` }] : []),

@@ -36,6 +36,7 @@ export async function requestPlanAmendment(formData: FormData): Promise<ActionRe
     .eq('id', planId)
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   if (plan.status !== 'approved') {
     return fail(
       plan.status === 'rework'

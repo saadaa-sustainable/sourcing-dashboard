@@ -10,6 +10,7 @@ import {
   canApprove,
   canEdit,
   canSubmit,
+  isPlanFrozen,
   isPlanWindowOpen,
   monthLabel,
 } from '@/lib/forms/approval';
@@ -108,12 +109,14 @@ export function MaterialPlanClient({
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
   const planLocked = status === 'submitted' || status === 'pending_l2' || status === 'approved';
-  const editable = canEdit(role, status);
+  // A month that is over is VIEW ONLY (user rule, 2026-10-08) — same as the FG track.
+  const frozen = isPlanFrozen(planMonth);
+  const editable = canEdit(role, status) && !frozen;
   const [rows, setRows] = useState<Row[]>(() => lines.map(toRow));
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const [mode, setMode] = useState<'view' | 'input'>(startInInput ? 'input' : 'view');
+  const [mode, setMode] = useState<'view' | 'input'>(startInInput && !frozen ? 'input' : 'view');
   // Opened from the month board's Start / Edit plan (?mode=input): bring the input area into view.
   const modeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -351,14 +354,20 @@ export function MaterialPlanClient({
             </select>
           </Field>
           <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
-          <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
-            <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
-              <Eye size={14} /> View
-            </button>
-            <button type="button" className={mode === 'input' ? 'active' : ''} onClick={() => setMode('input')}>
-              <ClipboardList size={14} /> Input
-            </button>
-          </div>
+          {frozen ? (
+            <span className="bp-badge gray" ref={modeRef} title="The month is over — this plan is shown as it was entered">
+              <Eye size={13} aria-hidden="true" /> View only
+            </span>
+          ) : (
+            <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
+              <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
+                <Eye size={14} /> View
+              </button>
+              <button type="button" className={mode === 'input' ? 'active' : ''} onClick={() => setMode('input')}>
+                <ClipboardList size={14} /> Input
+              </button>
+            </div>
+          )}
         </div>
         {editable && mode === 'input' && (
           <div className="wf-toolbar-right">
@@ -461,7 +470,13 @@ export function MaterialPlanClient({
         value computes automatically.
       </Notice>
 
-      {!editable && mode === 'input' && (
+      {frozen && (
+        <Notice tone="info">
+          <strong>{monthLabel(planMonth)} is over — this plan is view only.</strong> It shows the data as it was entered; nothing on it can be changed, submitted or approved any more.
+        </Notice>
+      )}
+
+      {!editable && !frozen && mode === 'input' && (
         <Notice tone="warn">
           This month’s plan is {status === 'approved' ? 'approved and locked' : 'read-only'}. Pick
           another month above to draft a new plan.
@@ -477,7 +492,7 @@ export function MaterialPlanClient({
       {error && <Notice tone="error">{error}</Notice>}
 
       {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
-      {canApprove(role, status) && plan && (
+      {canApprove(role, status) && plan && !frozen && (
         <div className="bp-card bp-cardbody bp-approval-card">
           <div className="bp-approval-head">
             <b>Your decision</b>
@@ -603,7 +618,7 @@ export function MaterialPlanClient({
                   <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
                 </button>
               )}
-              {canSubmit(role, status) && (
+              {canSubmit(role, status) && !frozen && (
                 <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id}>
                   <Send size={15} /> Submit for approval
                 </button>
