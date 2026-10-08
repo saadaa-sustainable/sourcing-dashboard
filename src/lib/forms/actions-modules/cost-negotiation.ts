@@ -265,7 +265,7 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
     user.email, 'Proposal accepted as-is',
   );
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Proposal accepted as-is — standard cost');
-  await tellTeam(track, row.product_code, 'cost_signed_off', `Signed off: ${row.product_code}`, 'Your proposal was accepted as the standard cost.', user.email);
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'Your proposal was accepted as the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   return done('Proposal accepted. This is now the standard cost.');
@@ -300,7 +300,7 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
   if (error) return fail(error.message);
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, 'Actual rate submitted');
   revalidatePath('/standard-cost');
-  return done('Actual rate submitted for sign-off.');
+  return done('Actual rate submitted for approval.');
 }
 
 /** The approver (admin) signs off — the actual rate becomes the approved Standard Cost. */
@@ -313,7 +313,7 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
-  if (!canSignOff(user.role, row.neg_stage)) return fail('This is not awaiting sign-off.');
+  if (!canSignOff(user.role, row.neg_stage)) return fail('This is not awaiting approval.');
 
   const patch: Record<string, unknown> = {
     neg_stage: 'signed_off',
@@ -330,13 +330,13 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   await recordAcceptedRate(
     supabase, track, row.product_code,
     { job: row.job_cost, fob: row.fob_cost, efob: row.efob_cost ?? null },
-    user.email, 'Signed off — standard cost',
+    user.email, 'Approved — standard cost',
   );
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Signed off — standard cost');
-  await tellTeam(track, row.product_code, 'cost_signed_off', `Signed off: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Approved — standard cost');
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
-  return done('Signed off. This is now the standard cost.');
+  return done('Approved. This is now the standard cost.');
 }
 
 /** The approver (admin) sends the rate back for renegotiation. */
@@ -572,13 +572,13 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
   await recordAcceptedRate(
     supabase, 'fg', row.product_code as string,
     { job: row.job_cost as number | null, fob: row.fob_cost as number | null, efob: row.efob_cost as number | null },
-    user.email, 'Signed off — CM confirmed',
+    user.email, 'Approved — CM confirmed',
   );
-  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — signed off');
-  await tellTeam('fg', row.product_code, 'cost_signed_off', `Signed off: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
+  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — approved');
+  await tellTeam('fg', row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
-  return done('Signed off. This is now the standard cost.');
+  return done('Approved. This is now the standard cost.');
 }
 
 /* ================================================================== */

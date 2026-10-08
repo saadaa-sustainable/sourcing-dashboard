@@ -215,7 +215,7 @@ export function StandardCostClient({
   function exportFinishedGoods() {
     downloadCsv(
       'standard-cost-finished-goods',
-      ['Product code', 'Product name', 'Stage', 'Proposed', 'Target', 'Job', 'FOB', 'E-FOB', 'Next step'],
+      ['Product code', 'Product name', 'Status', 'Proposed', 'Target', 'Job', 'FOB', 'E-FOB', 'Next step'],
       (isMat ? sort.apply(shown) : sortCards(shown)).map((c) => [
         c.product_code,
         productNames.get(c.product_code.toUpperCase()) ?? '',
@@ -415,7 +415,7 @@ export function StandardCostClient({
               <tr>
                 <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
                 <th {...sort.th('name', (c) => nameOf(c) ?? '')}>{isMat ? 'Material' : 'Product'} {sort.ind('name')}</th>
-                <th {...sort.th('stage', (c) => COST_STAGE_LABEL[c.neg_stage ?? ''] ?? '')}>Stage {sort.ind('stage')}</th>
+                <th {...sort.th('stage', (c) => COST_STAGE_LABEL[c.neg_stage ?? ''] ?? '')}>Status {sort.ind('stage')}</th>
                 {rateCols.map((r) => (
                   <th key={r.label} className="num" {...sort.th(`rate-${r.label}`, (c) => (r.get(c) == null ? null : Number(r.get(c))))}>{r.label} {sort.ind(`rate-${r.label}`)}</th>
                 ))}
@@ -535,8 +535,8 @@ export function StandardCostClient({
         <strong>proposes</strong> (fill the {jobLabel} / {fobLabel} / {efobLabel} rate that
         applies) → the approver <strong>accepts the proposal as-is</strong>, <strong>rejects</strong> it, or
         sets a <strong>target</strong> → team returns with the <strong>actual vendor rate</strong> →
-        the approver <strong>signs off</strong>, and that becomes the Standard Cost the Buying Plan values
-        from. {signedOff} of {costs.length} {isMat ? 'materials' : 'products'} are signed off.
+        the approver <strong>approves</strong> it, and that becomes the Standard Cost the Buying Plan values
+        from. {signedOff} of {costs.length} {isMat ? 'materials' : 'products'} are approved.
       </Notice>
 
       {message && <Notice tone="ok">{message}</Notice>}
@@ -551,8 +551,6 @@ export function StandardCostClient({
           editable={editable}
         />
       )}
-
-      {isMat && addForm}
 
       {isMat ? (
         <>
@@ -581,6 +579,11 @@ export function StandardCostClient({
         </div>
         {viewSwitch}
         <span className="wf-subtle">{shown.length} shown</span>
+        {editable && (
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={() => setAddOpen(true)}>
+            <Plus size={14} /> Add Material to Input Standard Cost
+          </button>
+        )}
       </div>
 
       {/* Material codes get the same three views as Finished Goods. Rate entry happens on the
@@ -593,30 +596,30 @@ export function StandardCostClient({
         <div className="sc-fg">
           <div className="sc-fg-metrics" aria-label="Finished Goods cost overview">
             <div className="sc-fg-metric"><span>Products tracked</span><strong>{costs.length}</strong><small>Finished Goods cost records</small></div>
-            <div className="sc-fg-metric"><span>Signed off</span><strong>{signedOff}</strong><small>Accepted standard rates</small></div>
+            <div className="sc-fg-metric"><span>Approved</span><strong>{signedOff}</strong><small>Accepted standard rates</small></div>
             <div className="sc-fg-metric"><span>Needs my action</span><strong>{awaitingCount}</strong><small>{role === 'admin' ? 'Proposals and submitted rates' : 'Targets and revisions'}</small></div>
             <div className="sc-fg-metric"><span>Not documented</span><strong>{undocumented}</strong><small>Cost sheet to complete</small></div>
           </div>
 
           <section className="sc-fg-sheet" aria-label="Finished Goods cost sheet">
             <div className="sc-fg-sheet-head">
-              <div><h2>Finished Goods cost sheet</h2><p>Every product as cards, by stage (Kanban) or as a table. Open Cost Details to see the full record and change a rate.</p></div>
+              <div><h2>Finished Goods cost sheet</h2><p>Every product as cards, by status (Kanban) or as a table. Open Cost Details to see the full record and change a rate.</p></div>
               <div className="sc-fg-head-actions">
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportFinishedGoods}>
                   <Download size={14} /> Export CSV
                 </button>
-                {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={() => setAddOpen(true)}><Plus size={14} /> Add product</button>}
+                {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={() => setAddOpen(true)}><Plus size={14} /> Add Product to Input Standard Cost</button>}
               </div>
             </div>
             <div className="sc-fg-toolbar">
               <label className="sc-fg-search"><Search size={15} aria-hidden="true" /><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search product code or name" aria-label="Search product code or name" /></label>
-              <select aria-label="Filter by stage" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
-                <option value="all">All stages</option>
+              <select aria-label="Filter by status" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
+                <option value="all">All statuses</option>
                 <option value="not_started">Not started</option>
                 <option value="proposed">Proposed</option>
                 <option value="target_set">Target set</option>
                 <option value="rate_submitted">Rate submitted</option>
-                <option value="signed_off">Signed off</option>
+                <option value="signed_off">Approved</option>
                 <option value="renegotiate">Renegotiate</option>
                 <option value="rejected">Rejected</option>
                 <option value="not_in_easyecom">Not in EasyEcom</option>
@@ -628,7 +631,7 @@ export function StandardCostClient({
               >
                 <option value="code">Sort: Product code</option>
                 <option value="updated">Sort: Recently updated</option>
-                <option value="stage">Sort: Stage</option>
+                <option value="stage">Sort: Status</option>
                 <option value="job">Sort: Job rate (high first)</option>
                 <option value="fob">Sort: FOB rate (high first)</option>
                 <option value="efob">Sort: E-FOB rate (high first)</option>
@@ -648,20 +651,29 @@ export function StandardCostClient({
 
           <div className="sc-fg-context">
             <div><h3>Two cost owners, one finished price</h3><p>Fabric Cost comes from the Fabric Cost master, owned by the fabric team. CMTP is built by the costing team. Final Cost combines both with the Rules Master margin.</p></div>
-            <div><h3>After sign-off</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
+            <div><h3>After approval</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
           </div>
           {standards && <StandardFieldsPanel standards={standards} editable={editable} />}
 
-          {addOpen && editable && (
-            <div className="sc-fg-add-layer" role="presentation" onKeyDown={(e) => { if (e.key === 'Escape') setAddOpen(false); }}>
-              <button type="button" className="sc-fg-scrim" onClick={() => setAddOpen(false)} aria-label="Close add product" />
-              <div className="sc-fg-add-dialog" role="dialog" aria-modal="true" aria-labelledby="sc-fg-add-title">
-                <div className="sc-fg-card-head"><h2 id="sc-fg-add-title">Add a product</h2><button type="button" className="sc-fg-close" ref={addCloseRef} onClick={() => setAddOpen(false)} aria-label="Close add product"><X size={18} /></button></div>
-                <p>Choose an existing Product Master code or create a temporary product for an item not yet in EasyEcom.</p>
-                {addForm}
-              </div>
+        </div>
+      )}
+
+      {/* Add popup, both tracks. */}
+      {addOpen && editable && (
+        <div className="sc-fg-add-layer" role="presentation" onKeyDown={(e) => { if (e.key === 'Escape') setAddOpen(false); }}>
+          <button type="button" className="sc-fg-scrim" onClick={() => setAddOpen(false)} aria-label="Close" />
+          <div className="sc-fg-add-dialog" role="dialog" aria-modal="true" aria-labelledby="sc-fg-add-title">
+            <div className="sc-fg-card-head">
+              <h2 id="sc-fg-add-title">{isMat ? 'Add Material to Input Standard Cost' : 'Add Product to Input Standard Cost'}</h2>
+              <button type="button" className="sc-fg-close" ref={addCloseRef} onClick={() => setAddOpen(false)} aria-label="Close"><X size={18} /></button>
             </div>
-          )}
+            <p>
+              {isMat
+                ? 'Enter the material code. It opens on its own page, where its rates are filled in.'
+                : 'Choose an existing Product Master code or create a temporary product for an item not yet in EasyEcom. It opens on its own page, where the cost is filled in.'}
+            </p>
+            {addForm}
+          </div>
         </div>
       )}
     </>
@@ -990,7 +1002,7 @@ export function CostRow({
       </div>
       </div>
 
-      <aside className="sc-entry-side" aria-label="Stage and actions">
+      <aside className="sc-entry-side" aria-label="Status and actions">
         <div className="sc-entry-stage">
           <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{COST_STAGE_LABEL[stageKey]}</span>
           <small className="wf-subtle">{nextActor(stage)}</small>
@@ -1057,7 +1069,7 @@ export function CostRow({
           <>
             {isMat ? (
               <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(signOffCost, {})}>
-                Sign off
+                Approve
               </button>
             ) : canConfirmFabric(role, stage, !!cost.fabric_confirmed_at) ? (
               <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmFabricRate, {})}>
@@ -1065,7 +1077,7 @@ export function CostRow({
               </button>
             ) : canConfirmCm(role, stage, !!cost.fabric_confirmed_at, !!cost.cm_confirmed_at) ? (
               <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(confirmCmRate, {})}>
-                2 · Confirm CMTP → sign off
+                2 · Confirm CMTP → approve
               </button>
             ) : null}
             {!isMat && cost.fabric_confirmed_at && !cost.cm_confirmed_at && <span className="wf-tag-approved">fabric ✓</span>}
@@ -1108,7 +1120,7 @@ export function CostRow({
             onClick={async () => {
               const ok = await confirmDelete({
                 title: `Remove ${cost.product_code} from the Standard Cost list?`,
-                body: 'It is hidden from the list; its cost, cost sheet and history are kept. Add it again from Add product to restore it.',
+                body: 'It is hidden from the list; its cost, cost sheet and history are kept. Add it again from Add Product to Input Standard Cost to restore it.',
                 confirmLabel: 'Remove from list',
               });
               if (ok) remove();
@@ -1744,7 +1756,7 @@ export function RateHistoryPanel({
                 </tr>
               ))}
               {!history.length && (
-                <tr><td colSpan={6} className="wf-empty-cell">No accepted rate yet — this product has not been signed off.</td></tr>
+                <tr><td colSpan={6} className="wf-empty-cell">No accepted rate yet — this product has not been approved.</td></tr>
               )}
             </tbody>
           </table>
@@ -2184,13 +2196,13 @@ function ListBulkDecide({
         <div>
           <h3>
             {candidates.length} proposal(s) waiting for your decision
-            {signOffs ? ` · ${signOffs} actual rate(s) waiting for sign-off` : ''}
+            {signOffs ? ` · ${signOffs} actual rate(s) waiting for approval` : ''}
           </h3>
           <p className="wf-subtle">
             Tick the cards you want to decide together — a bar appears at the bottom to accept them as-is (the
             proposed rate becomes the standard cost) or reject them with one reason. Open Cost Details to set a target or decide one on its own.
             {noRate ? ` ${noRate} proposal(s) name no rate and need a target, not an acceptance.` : ''}
-            {signOffs ? ' Sign-offs are done on the product page (fabric rate first, then CMTP).' : ''}
+            {signOffs ? ' Those are approved on the product page (fabric rate first, then CMTP).' : ''}
           </p>
         </div>
         {candidates.length > 0 && (

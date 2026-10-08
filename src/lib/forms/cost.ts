@@ -25,7 +25,7 @@ export const COST_STAGE_LABEL: Record<string, string> = {
   proposed: 'Proposed',
   target_set: 'Target set',
   rate_submitted: 'Rate submitted',
-  signed_off: 'Signed off',
+  signed_off: 'Approved',
   renegotiate: 'Renegotiate',
   rejected: 'Rejected',
 };
@@ -51,7 +51,7 @@ export function nextActor(stage: string | null): string {
     case 'target_set':
       return 'Team — enter actual rate';
     case 'rate_submitted':
-      return 'Admin — sign off';
+      return 'Admin — approve';
     case 'renegotiate':
       return 'Team — re-enter rate';
     case 'signed_off':

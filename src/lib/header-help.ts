@@ -484,9 +484,9 @@ const PAGE: Record<string, Record<string, string>> = {
     'note': 'The sheet\'s own unlabelled last column, kept as written (usually the month it took effect).',
   },
   '/standard-cost': {
-    'status': 'Where the cost stands in negotiation: proposed → target set → rate submitted → signed off.',
+    'status': 'Where the cost stands in negotiation: proposed → target set → rate submitted → approved.',
     'size': 'The size the cost applies to, where costs differ by size.',
-    'stage': 'Where the cost is in the negotiation: propose (team) → set target (admin) → submit rate (team) → sign off (admin).',
+    'stage': 'Where the cost is in the negotiation: propose (team) → set target (admin) → submit rate (team) → approve (admin).',
   },
   '/buying-plan': {
     'status': 'Whether the issued POs match the plan: on plan, over approved, or not budgeted.',

@@ -149,7 +149,7 @@ export function CostDecisionBar({
       {canSignOff(role, stage) &&
         (isMat ? (
           <button type="button" className="wf-btn wf-btn-primary" disabled={busy} onClick={() => act(signOffCost, {})}>
-            <Check size={15} /> {busy ? 'Working…' : 'Sign off'}
+            <Check size={15} /> {busy ? 'Working…' : 'Approve'}
           </button>
         ) : canConfirmFabric(role, stage, fabricDone) ? (
           <button type="button" className="wf-btn wf-btn-primary" disabled={busy} onClick={() => act(confirmFabricRate, {})}>
@@ -157,7 +157,7 @@ export function CostDecisionBar({
           </button>
         ) : canConfirmCm(role, stage, fabricDone, cmDone) ? (
           <button type="button" className="wf-btn wf-btn-primary" disabled={busy} onClick={() => act(confirmCmRate, {})}>
-            <Check size={15} /> {busy ? 'Working…' : '2 · Confirm CMTP → sign off'}
+            <Check size={15} /> {busy ? 'Working…' : '2 · Confirm CMTP → approve'}
           </button>
         ) : null)}
       {!isMat && fabricDone && !cmDone && <span className="wf-tag-approved">fabric ✓</span>}
@@ -192,11 +192,11 @@ export function CostDecisionBar({
             {stage === 'proposed'
               ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target${noTarget ? ' (press Edit cost, then fill the Target row)' : ''} and the team comes back with the actual vendor rate; or reject it with a reason.`
               : stage === 'rate_submitted'
-                ? `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it. A new target${noTarget ? ' (under Edit cost)' : ''} sends it back to the team.`
+                ? `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Approve to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it. A new target${noTarget ? ' (under Edit cost)' : ''} sends it back to the team.`
                 : stage === 'target_set' || stage === 'renegotiate'
                   ? `Waiting for the team's vendor rate${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. You can change the target for any rate type; the team is notified.`
                   : stage === 'signed_off'
-                    ? 'Signed off. Setting a new target starts a new round: the team comes back with a new vendor rate, and the current standard stays in use until that is signed off.'
+                    ? 'Approved. Setting a new target starts a new round: the team comes back with a new vendor rate, and the current standard stays in use until that is approved.'
                     : 'No proposal yet. You can set a target for any rate type now; the team is notified and comes back with the vendor rate.'}
           </p>
         </div>

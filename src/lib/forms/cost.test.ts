@@ -37,7 +37,7 @@ describe('cost negotiation — nextActor hints', () => {
     assert.equal(nextActor(''), 'Team — propose');
     assert.equal(nextActor('proposed'), 'Admin — accept, reject or set target');
     assert.equal(nextActor('target_set'), 'Team — enter actual rate');
-    assert.equal(nextActor('rate_submitted'), 'Admin — sign off');
+    assert.equal(nextActor('rate_submitted'), 'Admin — approve');
     assert.equal(nextActor('renegotiate'), 'Team — re-enter rate');
     assert.equal(nextActor('signed_off'), 'Accepted — team may re-propose to revise');
   });
