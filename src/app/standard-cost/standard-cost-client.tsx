@@ -4,7 +4,7 @@ import { confirmDelete } from '@/lib/confirm';
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import { Check, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { downloadCsv } from '@/lib/download';
 import {
@@ -457,7 +457,7 @@ export function StandardCostClient({
         {list.map((cost) => {
           const updated = updatedOf(cost);
           return (
-            <article className="sc-card" key={cost.product_code}>
+            <article className={`sc-card${picked.has(cost.id) ? ' picked' : ''}`} key={cost.product_code}>
               <div className="sc-card-head">
                 <span className="mono sc-card-code">{pickBox(cost)}{cost.product_code}</span>
                 {stageBadge(cost)}
@@ -2187,45 +2187,62 @@ function ListBulkDecide({
             {signOffs ? ` · ${signOffs} actual rate(s) waiting for sign-off` : ''}
           </h3>
           <p className="wf-subtle">
-            Tick the cards you want to decide together, then accept them as-is (the proposed rate becomes the
-            standard cost) or reject them with one reason. Open Cost Details to set a target or decide one on its own.
+            Tick the cards you want to decide together — a bar appears at the bottom to accept them as-is (the
+            proposed rate becomes the standard cost) or reject them with one reason. Open Cost Details to set a target or decide one on its own.
             {noRate ? ` ${noRate} proposal(s) name no rate and need a target, not an acceptance.` : ''}
             {signOffs ? ' Sign-offs are done on the product page (fabric rate first, then CMTP).' : ''}
           </p>
         </div>
         {candidates.length > 0 && (
-          <label className="wf-subtle" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={allPicked}
-              onChange={() => setPicked(allPicked ? new Set() : new Set(candidates.map((c) => c.id)))}
-              aria-label="Select every proposal in view"
-            />
-            Select all in view
-          </label>
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm"
+            onClick={() => setPicked(allPicked ? new Set() : new Set(candidates.map((c) => c.id)))}
+          >
+            {allPicked ? 'Untick all' : `Tick all to decide (${candidates.length})`}
+          </button>
         )}
       </div>
-      {candidates.length > 0 && (mode === 'reject' ? (
-        <div className="wf-approval-bar">
-          <textarea className="wf-textarea" rows={2} placeholder="Reason for rejection — recorded on every selected proposal" value={note} onChange={(e) => setNote(e.target.value)} />
-          <div className="wf-approval-actions">
-            <button type="button" className="wf-btn wf-btn-danger" disabled={pending || !note.trim() || !chosen.length} onClick={() => decide('reject')}>
-              {pending ? 'Working…' : `Reject ${chosen.length} selected`}
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
-          </div>
+      {chosen.length > 0 && (
+        <div className="bp-bulk-bar" role="region" aria-label="Decide the ticked proposals">
+          <span className="bp-bulk-count">
+            <b>{chosen.length}</b> proposal{chosen.length === 1 ? '' : 's'} ticked
+          </span>
+          {mode === 'reject' ? (
+            <>
+              <input
+                autoFocus
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Reason for rejection — recorded on every ticked proposal"
+                aria-label="Reason to reject the ticked proposals"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && note.trim()) decide('reject');
+                  if (e.key === 'Escape') setMode('');
+                }}
+              />
+              <button type="button" className="bp-bulk-btn strong" disabled={pending || !note.trim()} onClick={() => decide('reject')}>
+                {pending ? 'Working…' : `Reject ${chosen.length}`}
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setMode(''); setNote(''); }}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => decide('accept')}>
+                <Check size={13} /> {pending ? 'Working…' : `Accept ${chosen.length}`}
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setMode('reject')}>
+                <X size={13} /> Reject
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setPicked(new Set())}>
+                Clear
+              </button>
+            </>
+          )}
         </div>
-      ) : (
-        <div className="wf-approval-actions">
-          <button type="button" className="wf-btn wf-btn-primary" disabled={pending || !chosen.length} onClick={() => decide('accept')}>
-            {pending ? 'Working…' : `Accept ${chosen.length} selected proposal(s)`}
-          </button>
-          <button type="button" className="wf-btn wf-btn-ghost" disabled={!chosen.length} onClick={() => setMode('reject')}>
-            Reject selected…
-          </button>
-          <span className="wf-subtle">{chosen.length} of {candidates.length} selected</span>
-        </div>
-      ))}
+      )}
     </div>
   );
 }

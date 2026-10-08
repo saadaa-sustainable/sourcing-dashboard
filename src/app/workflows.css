@@ -2577,3 +2577,6 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .mo-foot svg { vertical-align: -2px; }
 .mo-tracks { align-self: flex-start; margin: 6px 0 0; }
 .mo-tracks button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Standard Cost: a ticked proposal card (group decision). */
+.sc-card.picked { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
