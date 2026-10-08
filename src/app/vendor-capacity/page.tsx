@@ -143,20 +143,55 @@ export default async function VendorCapacityPage({
     asOf = { week, label: `Mon ${day(week)} – Sun ${day(end)}`, inProcessKept: inProcessThen != null };
   }
 
+  // Week bar: the week shown, with ‹ › to the weeks either side (back to the first week any
+  // vendor has an update in; forward up to the running week, which is the editable sheet).
+  const curWeek = capacityWeekStart();
+  const shownWeek = asOf?.week ?? curWeek;
+  const shift = (w: string, days: number) => new Date(Date.parse(`${w}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+  const weekHref = (w: string) => (w >= curWeek ? '/vendor-capacity?view=vendors' : `/vendor-capacity?view=vendors&week=${w}`);
+  const firstUpdate = vendors.map((v) => v.current?.entry_date).filter((d): d is string => !!d).sort()[0];
+  const firstWeek = firstUpdate ? capacityWeekStart(new Date(firstUpdate)) : curWeek;
+  const prevWeek = shownWeek > firstWeek ? shift(shownWeek, -7) : null;
+  const nextWeek = shownWeek < curWeek ? shift(shownWeek, 7) : null;
+  const shortDay = (iso: string, year = false) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}), timeZone: 'UTC' });
+  const weekText = `${shortDay(shownWeek)} – ${shortDay(shift(shownWeek, 6), true)}`;
+  const thu = Date.parse(`${shift(shownWeek, 3)}T00:00:00Z`);
+  const weekNo = Math.floor((thu - Date.UTC(new Date(thu).getUTCFullYear(), 0, 1)) / 86_400_000 / 7) + 1;
+
   return (
     <FormLayout
       title="Vendor Capacity"
       subtitle={
         asOf
           ? `What each active vendor had entered by the end of the week ${asOf.label}. View only.`
-          : 'Per-vendor capacity for active vendors — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only.'
+          : 'Update machines and karigars for each active vendor, any day of the week. No approval; every save is stamped so stale vendors stand out.'
       }
       active="/vendor-capacity"
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <Link className="mb-back" href="/vendor-capacity">← All weeks</Link>
+      <div className="vc2-weekbar">
+        <div className="vc2-weekbar-left">
+          <Link className="vc2-back" href="/vendor-capacity" aria-label="All weeks" title="All weeks">‹</Link>
+          <div>
+            <div className="vc2-weekbar-title">
+              <strong>Week of {weekText}</strong>
+              {asOf ? <span className="vc2-badge">View only</span> : <span className="vc2-badge ok"><i />This week</span>}
+            </div>
+            <Link className="vc2-weekbar-sub" href="/vendor-capacity">All weeks</Link>
+          </div>
+        </div>
+        <div className="vc2-weekbar-right">
+          <nav className="vc2-stepper" aria-label="Week">
+            {prevWeek ? <Link href={weekHref(prevWeek)} aria-label="Previous week" title="Previous week">‹</Link> : <span aria-hidden="true">‹</span>}
+            <span className="vc2-stepper-label">Week {weekNo}</span>
+            {nextWeek ? <Link href={weekHref(nextWeek)} aria-label="Next week" title="Next week">›</Link> : <span aria-hidden="true">›</span>}
+          </nav>
+          {asOf && <Link className="vc2-btn vc2-btn-primary" href="/vendor-capacity?view=vendors">Open this week</Link>}
+        </div>
+      </div>
       <VendorCapacityClient
         vendors={shown}
         asOf={asOf}
