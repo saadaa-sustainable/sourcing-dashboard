@@ -1073,28 +1073,28 @@ const isoWeekNo = (w: string) => {
   return Math.floor((thu - Date.UTC(new Date(thu).getUTCFullYear(), 0, 1)) / 86_400_000 / 7) + 1;
 };
 
-/**
- * Vendor Capacity is updated weekly, so its board has one card per Monday-to-Sunday week (IST),
- * the same week the update screen locks a vendor for (capacityWeekStart).
- * Capacity keeps one live row per vendor (overwritten on update), so a week's updates are
- * read from the change trail (sd_audit_log, kept since 5 Oct 2026) plus each vendor's
- * last-update date. Weeks before the trail only show vendors whose LATEST update fell in them,
- * and only weeks that hold such an update are listed.
- */
-export async function loadVendorCapacityBoard(
-  activeVendors: { code: string; name: string; signed: number }[],
-): Promise<MonthBoardData> {
+type CapacityRowJson = {
+  vendor_code?: string | null;
+  capacity_per_month?: number | null;
+  machines_allocated?: number | null;
+  active_karigar?: number | null;
+  entry_date?: string | null;
+  submitted_at?: string | null;
+};
+type CapacityEvent = { at: string; vendor: string; capacity: number; machines: number | null; karigar: number | null };
+
+/** Every capacity update we know of: each vendor's live row plus the change trail. */
+async function loadCapacityEvents(): Promise<CapacityEvent[]> {
   const supabase = await client();
   const [logs, trail] = await Promise.all([
     pageAll<{ vendor_code: string | null; capacity_per_month: number | null; machines_allocated: number | null; active_karigar: number | null; entry_date: string | null; submitted_at: string | null }>(() =>
       supabase.from('sd_vendor_capacity_log').select('vendor_code, capacity_per_month, machines_allocated, active_karigar, entry_date, submitted_at').order('id'),
     ),
-    pageAll<{ changed_at: string; after: { vendor_code?: string | null; capacity_per_month?: number | null; machines_allocated?: number | null; active_karigar?: number | null } | null }>(() =>
-      supabase.from('sd_audit_log').select('changed_at, after').eq('table_name', 'sd_vendor_capacity_log').neq('op', 'DELETE').order('id'),
+    pageAll<{ changed_at: string; before: CapacityRowJson | null; after: CapacityRowJson | null }>(() =>
+      supabase.from('sd_audit_log').select('changed_at, before, after').eq('table_name', 'sd_vendor_capacity_log').neq('op', 'DELETE').order('id'),
     ),
   ]);
-  type Ev = { at: string; vendor: string; capacity: number; machines: number | null; karigar: number | null };
-  const events: Ev[] = [];
+  const events: CapacityEvent[] = [];
   for (const l of logs) {
     const at = l.entry_date ?? l.submitted_at;
     if (at && l.vendor_code)
@@ -1110,7 +1110,53 @@ export async function loadVendorCapacityBoard(
         machines: t.after?.machines_allocated ?? null,
         karigar: t.after?.active_karigar ?? null,
       });
+    // The row an update overwrote: the only record left of that earlier entry.
+    const b = t.before;
+    const bAt = b?.entry_date ?? b?.submitted_at;
+    if (b?.vendor_code && bAt)
+      events.push({ at: bAt, vendor: b.vendor_code.toLowerCase(), capacity: n(b.capacity_per_month), machines: b.machines_allocated ?? null, karigar: b.active_karigar ?? null });
   }
+  // The same entry can arrive twice (live row and an overwritten copy): keep one.
+  const seen = new Set<string>();
+  return events.filter((e) => {
+    const k = `${e.vendor}|${Date.parse(e.at)}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * Vendor capacity as it stood at the end of the week starting on Monday `week`: each vendor's
+ * last update made before the following Monday (IST). Keyed by lower-case vendor code.
+ */
+export async function loadVendorCapacityAsOfWeek(
+  week: string,
+): Promise<Map<string, { at: string; capacity: number; machines: number | null; karigar: number | null }>> {
+  const until = Date.parse(`${addDays(week, 7)}T00:00:00+05:30`);
+  const out = new Map<string, CapacityEvent>();
+  for (const e of await loadCapacityEvents()) {
+    const t = Date.parse(e.at);
+    if (!(t < until)) continue;
+    const had = out.get(e.vendor);
+    if (!had || Date.parse(had.at) < t) out.set(e.vendor, e);
+  }
+  return out;
+}
+
+/**
+ * Vendor Capacity is updated weekly, so its board has one card per Monday-to-Sunday week (IST),
+ * the same week the update screen locks a vendor for (capacityWeekStart).
+ * Capacity keeps one live row per vendor (overwritten on update), so a week's updates are
+ * read from the change trail (sd_audit_log, kept since 5 Oct 2026) plus each vendor's
+ * last-update date. Weeks before the trail only show vendors whose LATEST update fell in them,
+ * and only weeks that hold such an update are listed.
+ */
+export async function loadVendorCapacityBoard(
+  activeVendors: { code: string; name: string; signed: number }[],
+): Promise<MonthBoardData> {
+  const events = await loadCapacityEvents();
+  type Ev = CapacityEvent;
   const active = new Map(activeVendors.map((v) => [v.code.toLowerCase(), v]));
   const total = activeVendors.length;
   const cur = capacityWeekStart();
@@ -1350,7 +1396,7 @@ export async function loadVendorCapacityBoard(
       progress: m > cur ? undefined : { left: `${updated} / ${total} vendors updated`, right: `${pct(updated, total)}%`, pct: pct(updated, total) },
       facts,
       warn: m <= cur && updated === 0 ? { text: 'No vendor updated capacity in this week.', tone: 'pending' as const } : undefined,
-      actions: [{ label: m === cur ? 'Update vendors' : 'Open', href: '/vendor-capacity?view=vendors', primary: true }],
+      actions: [m === cur ? { label: 'Update vendors', href: '/vendor-capacity?view=vendors', primary: true } : { label: 'Open', href: `/vendor-capacity?view=vendors&week=${m}`, primary: true }],
       list: [`${updated} / ${total}`, updated ? num(capacity) : '—'],
       detail:
         m > cur
@@ -1385,6 +1431,7 @@ export async function loadVendorCapacityBoard(
     ],
     unit: 'weeks',
     noun: 'week',
+    cardClick: 'open',
     listColumns: [{ label: 'Vendors updated', num: true }, { label: 'Pcs / month', num: true }],
   };
 }

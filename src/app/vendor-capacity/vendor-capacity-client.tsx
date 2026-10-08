@@ -157,9 +157,12 @@ export function VendorCapacityClient({
   leadDays,
   multipliers = [],
   rules = DEFAULT_CAPACITY_RULES,
+  asOf = null,
 }: {
   vendors: Vendor[];
   role: SdRole;
+  /** A past week opened from the board: vendors carry that week's figures; read-only. */
+  asOf?: { week: string; label: string } | null;
   allocations?: VendorProductAllocation[];
   catalog?: ProductCatalogItem[];
   leadDays: { job: number; efob: number; fob: number };
@@ -175,7 +178,7 @@ export function VendorCapacityClient({
   return (
     <div className="vc-page">
       <div className="role-tabs vc-tabs" role="tablist" aria-label="Vendor Capacity sections">
-        {TABS.map(([id, label]) => (
+        {TABS.filter(([id]) => !asOf || id === 'entry' || id === 'reporting').map(([id, label]) => (
           <button
             key={id}
             role="tab"
@@ -191,6 +194,7 @@ export function VendorCapacityClient({
       {tab === 'entry' && (
         <EntryTab
           vendors={vendors}
+          asOf={asOf}
           role={role}
           initialSearch={focusVendor}
           allocations={allocations}
@@ -232,6 +236,7 @@ export function VendorCapacityClient({
 
 function EntryTab({
   vendors,
+  asOf = null,
   role,
   initialSearch,
   allocations = [],
@@ -239,6 +244,7 @@ function EntryTab({
   rules = DEFAULT_CAPACITY_RULES,
 }: {
   vendors: Vendor[];
+  asOf?: { week: string; label: string } | null;
   role: SdRole;
   initialSearch?: string;
   /** Product allocations, so the sheet can be narrowed to who makes a given product. */
@@ -246,7 +252,8 @@ function EntryTab({
   catalog?: ProductCatalogItem[];
   rules?: CapacityRules;
 }) {
-  const editable = canEdit(role, 'draft');
+  // A past week is a record of what was entered then: nothing to type.
+  const editable = !asOf && canEdit(role, 'draft');
   const [search, setSearch] = useState(initialSearch ?? '');
   const [staleOnly, setStaleOnly] = useState(false);
   const [merchant, setMerchant] = useState('');
@@ -286,15 +293,17 @@ function EntryTab({
     [vendors],
   );
 
+  // Staleness is judged at the end of the week shown (a past week) or right now.
+  const ref = asOf ? Date.parse(`${capacityWeekNext(new Date(`${asOf.week}T12:00:00+05:30`))}T00:00:00+05:30`) : now;
   const decorated = useMemo(
     () =>
       vendors.map((vendor) => {
         const lastUpdated = vendor.current?.entry_date ?? null;
         const isStale =
-          now != null && (!lastUpdated || now - new Date(lastUpdated).getTime() > STALE_MS);
+          ref != null && (!lastUpdated || ref - new Date(lastUpdated).getTime() > STALE_MS);
         return { vendor, lastUpdated, isStale };
       }),
-    [vendors, now],
+    [vendors, ref],
   );
 
   const overCount = decorated.filter(({ vendor }) => modelOf(vendor, rules).over).length;
@@ -365,7 +374,16 @@ function EntryTab({
         <CapacityMetric label="Over PO capacity" value={String(visibleOver)} detail="vendors with more on order than their PO capacity" tone="red" />
         <CapacityMetric label="Stale updates" value={String(visibleStale)} detail={`older than ${STALE_DAYS} days`} tone="amber" />
       </div>
-      {staleCount > 0 && staleCount >= Math.max(1, Math.round(decorated.length * 0.5)) && (
+      {asOf && (
+        <Notice tone="info">
+          <strong>Week {asOf.label}.</strong> Machines, karigars, capacity and Last updated are each
+          vendor&apos;s figures as entered by the end of this week (its last update on or before that
+          Sunday); a vendor with nothing entered by then reads Not entered. On order (in process),
+          Available and Capacity util use today&apos;s open POs — the past in-process position is not
+          kept. Read-only: to change figures, open the current week.
+        </Notice>
+      )}
+      {!asOf && staleCount > 0 && staleCount >= Math.max(1, Math.round(decorated.length * 0.5)) && (
         <Notice tone="warn">
           <strong>{staleCount} of {decorated.length} vendors have not been updated in over {STALE_DAYS} days</strong>
           {oldestUpdate ? ` — the most recent entry anywhere is ${new Date(oldestUpdate).toLocaleDateString('en-IN')}` : ''}.
@@ -465,8 +483,17 @@ function EntryTab({
 
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and submit that row. It locks for the week; next week opens on Monday.</p></div>
-          <span className="vc-pill vc-pill-blue">Weekly submission · locks until Monday</span>
+          {asOf ? (
+            <>
+              <div><h2>Capacity · week {asOf.label}</h2><p>What each vendor had entered by the end of this week.</p></div>
+              <span className="vc-pill">Past week · read-only</span>
+            </>
+          ) : (
+            <>
+              <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and submit that row. It locks for the week; next week opens on Monday.</p></div>
+              <span className="vc-pill vc-pill-blue">Weekly submission · locks until Monday</span>
+            </>
+          )}
         </div>
         <div className="table-scroll">
           <table className="wide-table wf-grid">
@@ -503,7 +530,7 @@ function EntryTab({
                   editable={editable}
                   lastUpdated={lastUpdated}
                   isStale={isStale}
-                  now={now}
+                  now={asOf ? null : now}
                   rules={rules}
                   isAdmin={role === 'admin'}
                 />
@@ -667,7 +694,7 @@ function CapacityRow({
       {editable && (
         <td>
           {locked && !isAdmin ? (
-            <span className="wf-subtle">Opens Sat</span>
+            <span className="wf-subtle">Opens Mon</span>
           ) : (
             <button
               type="button"

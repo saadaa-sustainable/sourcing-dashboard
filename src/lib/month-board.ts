@@ -84,6 +84,8 @@ export type MonthBoardData = {
   unit: string;
   /** What one card is, singular: "month" (default) or "week". */
   noun?: string;
+  /** What clicking a card does: open its overview (default) or follow its primary action. */
+  cardClick?: 'overview' | 'open';
   listColumns: { label: string; num?: boolean }[];
   /** Display names for card tracks, in switch order (e.g. FG → 'Finished Goods (FG)'). When a
    *  board has more than one track, the overview shows a switch between them for the same month. */

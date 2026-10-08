@@ -7,12 +7,14 @@ import {
   loadInProcessByVendor,
   loadProductCatalog,
   loadVendorCapacity,
+  loadVendorCapacityAsOfWeek,
   loadVendorCapacityBoard,
   loadVendorProductAllocations,
   loadDeboardedVendors,
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { capacityRulesFrom, eeVendorActive } from '@/lib/business-logic';
+import { capacityWeekStart } from '@/lib/forms/approval';
 import { VendorCapacityClient } from './vendor-capacity-client';
 import { MonthBoard } from '@/components/month-board';
 
@@ -23,7 +25,7 @@ const key = (value: string | null | undefined) => (value ?? '').trim().toLowerCa
 export default async function VendorCapacityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; week?: string }>;
 }) {
   const params = await searchParams;
   let user;
@@ -114,6 +116,30 @@ export default async function VendorCapacityPage({
     );
   }
 
+  // A past week (?week=<its Monday>, from a board card): each vendor's figures as they stood at
+  // the end of that week, read-only. The current week (or no week) is the live, editable sheet.
+  const week =
+    params.week && /^\d{4}-\d{2}-\d{2}$/.test(params.week) && params.week === capacityWeekStart(new Date(`${params.week}T12:00:00+05:30`))
+      ? params.week
+      : null;
+  let asOf: { week: string; label: string } | null = null;
+  let shown = vendors;
+  if (week && week < capacityWeekStart()) {
+    const snap = await loadVendorCapacityAsOfWeek(week);
+    shown = vendors.map((v) => {
+      const e = snap.get(key(v.vendor_code));
+      return {
+        ...v,
+        current: e
+          ? { ...(v.current ?? {}), vendor_code: v.vendor_code, machines_allocated: e.machines, active_karigar: e.karigar, capacity_per_month: e.capacity, entry_date: e.at, submitted_at: e.at } as NonNullable<typeof v.current>
+          : null,
+      };
+    });
+    const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const end = new Date(Date.parse(`${week}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
+    asOf = { week, label: `Mon ${day(week)} – Sun ${day(end)}` };
+  }
+
   return (
     <FormLayout
       title="Vendor Capacity"
@@ -125,7 +151,8 @@ export default async function VendorCapacityPage({
     >
       <Link className="mb-back" href="/vendor-capacity">← All weeks</Link>
       <VendorCapacityClient
-        vendors={vendors}
+        vendors={shown}
+        asOf={asOf}
         role={user.role}
         allocations={allocations}
         catalog={catalog}

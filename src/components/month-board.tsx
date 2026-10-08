@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import type { MonthBoardCard, MonthBoardColumn, MonthBoardData } from '@/lib/month-board';
 import { MonthOverview } from './month-overview';
@@ -129,7 +130,7 @@ export function MonthBoard({
                   <span className="mb-col-n">{items.length}</span>
                 </div>
                 <small>{col.hint}</small>
-                {items.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} />)}
+                {items.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} follow={data.cardClick === 'open'} />)}
                 {!items.length && <p className="mb-empty">Nothing here.</p>}
               </section>
             );
@@ -137,7 +138,7 @@ export function MonthBoard({
         </div>
       ) : view === 'cards' ? (
         <div className="mb-grid">
-          {shown.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} />)}
+          {shown.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} follow={data.cardClick === 'open'} />)}
           {!shown.length && <p className="mb-empty">No {noun}s match.</p>}
         </div>
       ) : (
@@ -194,15 +195,20 @@ export function MonthBoard({
   );
 }
 
-function Card({ card: c, col, onOpen }: { card: MonthBoardCard; col?: MonthBoardColumn; onOpen: (id: string) => void }) {
+function Card({ card: c, col, onOpen, follow = false }: { card: MonthBoardCard; col?: MonthBoardColumn; onOpen: (id: string) => void; follow?: boolean }) {
+  const router = useRouter();
   // Clicking anywhere on the card opens the month's overview (the Overview button is the
-  // keyboard route); its buttons and links keep their own job.
+  // keyboard route), or with `follow` goes to its primary action's screen; its buttons and
+  // links keep their own job.
+  const target = follow ? (c.actions.find((a) => a.primary) ?? c.actions[0])?.href : undefined;
+  const clickable = Boolean(target || c.detail);
   const open = (e: React.MouseEvent) => {
-    if (!c.detail || (e.target as HTMLElement).closest('a, button')) return;
-    onOpen(c.id);
+    if (!clickable || (e.target as HTMLElement).closest('a, button')) return;
+    if (target) router.push(target);
+    else onOpen(c.id);
   };
   return (
-    <article className={`mb-card${c.detail ? ' is-clickable' : ''}`} onClick={open}>
+    <article className={`mb-card${clickable ? ' is-clickable' : ''}`} onClick={open}>
       <div className="mb-card-top">
         <div className="mb-chips">
           {c.track && <span className="mb-chip">{c.track}</span>}
