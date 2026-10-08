@@ -111,6 +111,24 @@ const FG_KANBAN: KanbanOption[] = [
   { key: 'category', label: 'Category' },
   { key: 'weave', label: 'Woven / Knitted' },
 ];
+
+// Fill the plan kanban: entry checks first.
+const INPUT_KANBAN: KanbanOption[] = [
+  {
+    key: 'validation',
+    label: 'Check',
+    columns: [
+      { key: 'noqty', title: 'No quantity yet', tone: 'gray' },
+      { key: 'nocost', title: 'No approved cost', tone: 'red' },
+      { key: 'over', title: 'Over plan', tone: 'yellow' },
+      { key: 'ready', title: 'Ready', tone: 'green' },
+    ],
+  },
+  ...FG_KANBAN.filter((k) => k.key !== 'progress').map((k) =>
+    k.key === 'route' && k.columns ? { ...k, columns: [{ key: 'noqty', title: 'No quantity yet', tone: 'gray' as const }, ...k.columns] } : k,
+  ),
+  { key: 'state', label: 'Product state' },
+];
 const num = (value: string) => Number(value) || 0;
 
 function toDraft(line: BuyingPlanLine): Draft {
@@ -424,10 +442,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
   // Plan detail as cards / kanban: every line that carries quantity (rejected ones too, so
   // the Approval board can show them), after the toolbar filters.
   const cardsTotal = planned.reduce((s, v) => s + v.valueToBeBought, 0);
-  const planCards: PlanCard[] = view
-    .filter((v) => v.totalQty > 0)
-    .filter(matchesFilters)
-    .map((v) => {
+  const toCard = (v: ViewItem): PlanCard => {
       const ls = (v.row.line_status || '') as SdStatus | '';
       const tone: CardTone =
         ls === 'approved' ? 'green' : ls === 'rework' || ls === 'rejected' ? 'red' : ls ? 'yellow' : 'gray';
@@ -468,12 +483,43 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
         groups: {
           progress: v.overPlan ? 'over' : v.actualQty >= v.totalQty ? 'done' : v.actualQty > 0 ? 'part' : 'none',
           approval: ls || 'draft',
-          route: routes > 1 ? 'mixed' : Number(v.row.job_work_qty) > 0 ? 'job' : Number(v.row.efob_qty) > 0 ? 'efob' : 'fob',
+          route: v.totalQty <= 0 ? 'noqty' : routes > 1 ? 'mixed' : Number(v.row.job_work_qty) > 0 ? 'job' : Number(v.row.efob_qty) > 0 ? 'efob' : 'fob',
           category: v.category,
           weave: v.fabricType,
+          state: v.productStatus,
+          validation: v.missingCost && v.totalQty > 0 ? 'nocost' : v.overPlan ? 'over' : v.totalQty > 0 ? 'ready' : 'noqty',
         },
       };
-    });
+  };
+  const planCards: PlanCard[] = view.filter((v) => v.totalQty > 0).filter(matchesFilters).map(toCard);
+
+  // Fill the plan on a card: the three PO-type quantities and the remark, same fields and
+  // same handlers as the Input table (read-only when the plan cannot be edited).
+  const inputEditor = (key: string) => {
+    const row = rows.find((r) => r.key === key);
+    if (!row) return null;
+    return (
+      <>
+        {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => (
+          <label key={field}>
+            {field === 'job_work_qty' ? 'Job' : field === 'efob_qty' ? 'E-FOB' : 'FOB'}
+            <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(e) => patch(row.key, field, e.target.value)} />
+          </label>
+        ))}
+        <label className="wide">
+          Remark
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => patch(row.key, 'remark', e.target.value)} style={{ fontWeight: 400 }} />
+            {editable && (
+              <button type="button" className="pl-card-remove" aria-label={`Remove ${row.product_code}`} onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
+                <Trash2 size={14} />
+              </button>
+            )}
+          </span>
+        </label>
+      </>
+    );
+  };
   const groupKey = (item: ViewItem) =>
     groupBy === 'category'
       ? item.category
@@ -1237,114 +1283,128 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                   </h2>
                   <span className="wf-subtle">Enter quantities by PO type. Zero quantities stay out of the submitted plan.</span>
                 </div>
-                <Badge tone={status === 'draft' ? 'gray' : status === 'approved' ? 'green' : 'yellow'}>{status.replace('_', ' ')}</Badge>
+                <Badge tone={status === 'draft' ? 'gray' : status === 'approved' ? 'green' : 'yellow'}>{statusText(status)}</Badge>
               </div>
               <div className="bp-cardbody bp-cardbody-flush">
-                <div className="table-panel wf-grid-panel bp-input-panel">
-                  <div className="table-scroll">
-                    <table className="wide-table wf-grid">
-                      <thead>
-                        <tr>
-                          <th>Product code <HeaderInfo label="Product code" /></th>
-                          <th>Category <HeaderInfo label="Category" /></th>
-                          <th>Product State <HeaderInfo label="Product State" /></th>
-                          <th>Woven / Knitted <HeaderInfo label="Woven / Knitted" /></th>
-                          <th className="num wf-cell-calc">Pending qty <HeaderInfo label="Pending qty" /></th>
-                          <th className="num input-col wf-cell-input">Job work qty <HeaderInfo label="Job work qty" /></th>
-                          <th className="num input-col wf-cell-input">E-FOB qty <HeaderInfo label="E-FOB qty" /></th>
-                          <th className="num input-col wf-cell-input">FOB qty <HeaderInfo label="FOB qty" /></th>
-                          <th className="num wf-cell-calc">Total quantity <HeaderInfo label="Total quantity" /></th>
-                          <th className="num wf-cell-calc">
-                            Standard cost
-                            <small className="wf-subtle">Job · E-FOB · FOB</small>
-                           <HeaderInfo label="Standard cost Job · E-FOB · FOB" /></th>
-                          <th className="num wf-cell-calc">Value to be bought <HeaderInfo label="Value to be bought" /></th>
-                          <th className="num wf-cell-calc">Actual issued quantity <HeaderInfo label="Actual issued quantity" /></th>
-                          <th className="num wf-cell-calc">Actual issued value <HeaderInfo label="Actual issued value" /></th>
-                          <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
-                          <th>Validation <HeaderInfo label="Validation" /></th>
-                          {canDecideLines && <th>Your decision</th>}
-                          {editable && <th aria-label="Remove" />}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, category, actualQty, actualValue, overPlan }) => (
-                          <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
-                            <td className="mono">{row.product_code}</td>
-                            <td>{category}</td>
-                            <td>{productStatus}</td>
-                            <td>{fabricType}</td>
-                            <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : '—'}</td>
-                            {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => (
-                              <td key={field} className="num input-col wf-cell-input">
-                                <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(event) => patch(row.key, field, event.target.value)} />
-                              </td>
+                <PlanLineViews
+                  items={inputRows.map(toCard)}
+                  storageKey="buying-plan-input-view"
+                  noun="product"
+                  defaultView="table"
+                  kanban={INPUT_KANBAN}
+                  editor={inputEditor}
+                  decision={canDecideLines ? (key) => {
+                    const v = view.find((x) => x.row.key === key);
+                    return v && v.totalQty > 0 ? decisionCell(v.row) : null;
+                  } : undefined}
+                  table={
+                    <div className="table-panel wf-grid-panel bp-input-panel">
+                      <div className="table-scroll">
+                        <table className="wide-table wf-grid">
+                          <thead>
+                            <tr>
+                              <th>Product code <HeaderInfo label="Product code" /></th>
+                              <th>Category <HeaderInfo label="Category" /></th>
+                              <th>Product State <HeaderInfo label="Product State" /></th>
+                              <th>Woven / Knitted <HeaderInfo label="Woven / Knitted" /></th>
+                              <th className="num wf-cell-calc">Pending qty <HeaderInfo label="Pending qty" /></th>
+                              <th className="num input-col wf-cell-input">Job work qty <HeaderInfo label="Job work qty" /></th>
+                              <th className="num input-col wf-cell-input">E-FOB qty <HeaderInfo label="E-FOB qty" /></th>
+                              <th className="num input-col wf-cell-input">FOB qty <HeaderInfo label="FOB qty" /></th>
+                              <th className="num wf-cell-calc">Total quantity <HeaderInfo label="Total quantity" /></th>
+                              <th className="num wf-cell-calc">
+                                Standard cost
+                                <small className="wf-subtle">Job · E-FOB · FOB</small>
+                               <HeaderInfo label="Standard cost Job · E-FOB · FOB" /></th>
+                              <th className="num wf-cell-calc">Value to be bought <HeaderInfo label="Value to be bought" /></th>
+                              <th className="num wf-cell-calc">Actual issued quantity <HeaderInfo label="Actual issued quantity" /></th>
+                              <th className="num wf-cell-calc">Actual issued value <HeaderInfo label="Actual issued value" /></th>
+                              <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
+                              <th>Validation <HeaderInfo label="Validation" /></th>
+                              {canDecideLines && <th>Your decision</th>}
+                              {editable && <th aria-label="Remove" />}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {inputRows.map(({ row, totalQty, cost, missingCost, valueToBeBought, pending, productStatus, fabricType, category, actualQty, actualValue, overPlan }) => (
+                              <tr key={row.key} className={overPlan ? 'wf-row-over' : ''}>
+                                <td className="mono">{row.product_code}</td>
+                                <td>{category}</td>
+                                <td>{productStatus}</td>
+                                <td>{fabricType}</td>
+                                <td className="num wf-cell-calc">{pending != null ? fmt.format(pending) : '—'}</td>
+                                {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => (
+                                  <td key={field} className="num input-col wf-cell-input">
+                                    <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(event) => patch(row.key, field, event.target.value)} />
+                                  </td>
+                                ))}
+                                <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
+                                <td className="num wf-cell-calc">
+                                  {cost ? (
+                                    <div className="wf-cost-triple">
+                                      <span>
+                                        <b>Job</b> {fmt.format(cost.job)}
+                                      </span>
+                                      <span>
+                                        <b>E-FOB</b> {fmt.format(cost.efob)}
+                                      </span>
+                                      <span>
+                                        <b>FOB</b> {fmt.format(cost.fob)}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td className="num wf-cell-calc">{missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(valueToBeBought)}</td>
+                                <td className="num wf-cell-calc">
+                                  {fmt.format(actualQty)}
+                                  {overPlan && <span className="wf-over-tag">over plan</span>}
+                                </td>
+                                <td className="num wf-cell-calc">{money.format(actualValue)}</td>
+                                <td className="input-col">
+                                  <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(event) => patch(row.key, 'remark', event.target.value)} />
+                                </td>
+                                <td>{missingCost ? <Badge tone="red">No approved cost</Badge> : overPlan ? <Badge tone="red">Over plan</Badge> : totalQty > 0 ? <Badge tone="green">Ready</Badge> : <Badge tone="gray">No qty</Badge>}</td>
+                                {canDecideLines && <td>{totalQty > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
+                                {editable && (
+                                  <td>
+                                    <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.product_code}`} onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
                             ))}
-                            <td className="num strong wf-cell-calc">{fmt.format(totalQty)}</td>
-                            <td className="num wf-cell-calc">
-                              {cost ? (
-                                <div className="wf-cost-triple">
-                                  <span>
-                                    <b>Job</b> {fmt.format(cost.job)}
-                                  </span>
-                                  <span>
-                                    <b>E-FOB</b> {fmt.format(cost.efob)}
-                                  </span>
-                                  <span>
-                                    <b>FOB</b> {fmt.format(cost.fob)}
-                                  </span>
-                                </div>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td className="num wf-cell-calc">{missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(valueToBeBought)}</td>
-                            <td className="num wf-cell-calc">
-                              {fmt.format(actualQty)}
-                              {overPlan && <span className="wf-over-tag">over plan</span>}
-                            </td>
-                            <td className="num wf-cell-calc">{money.format(actualValue)}</td>
-                            <td className="input-col">
-                              <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(event) => patch(row.key, 'remark', event.target.value)} />
-                            </td>
-                            <td>{missingCost ? <Badge tone="red">No approved cost</Badge> : overPlan ? <Badge tone="red">Over plan</Badge> : totalQty > 0 ? <Badge tone="green">Ready</Badge> : <Badge tone="gray">No qty</Badge>}</td>
-                            {canDecideLines && <td>{totalQty > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
-                            {editable && (
-                              <td>
-                                <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.product_code}`} onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
+                            {!inputRows.length && (
+                              <tr>
+                                <td colSpan={15 + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
+                                  {view.length ? 'No products match the filters.' : 'No product codes added yet. Discontinued variants are excluded automatically.'}
+                                </td>
+                              </tr>
                             )}
-                          </tr>
-                        ))}
-                        {!inputRows.length && (
-                          <tr>
-                            <td colSpan={15 + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
-                              {view.length ? 'No products match the filters.' : 'No product codes added yet. Discontinued variants are excluded automatically.'}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                      {view.length > 0 && (
-                        <tfoot>
-                          <tr>
-                            <td colSpan={8}>Total</td>
-                            <td className="num strong">{fmt.format(totals.qty)}</td>
-                            <td />
-                            <td className="num strong">{money.format(totals.value)}</td>
-                            <td className="num strong">{fmt.format(totals.actualQty)}</td>
-                            <td className="num strong">{money.format(totals.actualValue)}</td>
-                            <td />
-                            <td />
-                            {canDecideLines && <td />}
-                            {editable && <td />}
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </div>
-                </div>
+                          </tbody>
+                          {view.length > 0 && (
+                            <tfoot>
+                              <tr>
+                                <td colSpan={8}>Total</td>
+                                <td className="num strong">{fmt.format(totals.qty)}</td>
+                                <td />
+                                <td className="num strong">{money.format(totals.value)}</td>
+                                <td className="num strong">{fmt.format(totals.actualQty)}</td>
+                                <td className="num strong">{money.format(totals.actualValue)}</td>
+                                <td />
+                                <td />
+                                {canDecideLines && <td />}
+                                {editable && <td />}
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  }
+                />
               </div>
               <div className="bp-input-footer">
                 <div>

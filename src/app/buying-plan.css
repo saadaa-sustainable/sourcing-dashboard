@@ -464,3 +464,15 @@
   .bp-card .bp-cardbody-flush > .table-panel.wf-grid-panel { margin: 0 14px 14px; }
   .bp-cardbody-flush > .wf-toolbar .field input { min-width: 0; width: 100%; }
 }
+
+/* Fill the plan on a card: quantity inputs in place of the figures. */
+.pl-card.editing { cursor: default; }
+.pl-card-link { cursor: pointer; font-family: inherit; }
+.pl-card-link:hover { background: var(--bg-tint, #f6f3f1); }
+.pl-card-edit { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; }
+.pl-card-edit label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; font-weight: 700; color: var(--ink-3, #6e695e); text-transform: uppercase; letter-spacing: .04em; min-width: 0; }
+.pl-card-edit input, .pl-card-edit select { width: 100%; min-width: 0; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 7px; padding: 6px 7px; font: inherit; font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink-1, #161513); background: #fff; font-variant-numeric: tabular-nums; }
+.pl-card-edit input:disabled, .pl-card-edit select:disabled { background: var(--bg-surface, #fbfbfb); color: var(--ink-3, #6e695e); }
+.pl-card-edit .wide { grid-column: 1 / -1; }
+.pl-card-remove { border: 0; background: transparent; color: var(--ink-3, #6e695e); cursor: pointer; padding: 2px; border-radius: 6px; display: inline-flex; }
+.pl-card-remove:hover { color: var(--danger-text, #c0392b); }

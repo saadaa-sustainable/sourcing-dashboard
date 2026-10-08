@@ -43,9 +43,59 @@ export type MaterialViewItem = {
   colour: string | null;
 };
 
+
+/** One material line as a card (Plan detail and Fill the plan). */
+export function toMaterialCard(
+  v: MaterialViewItem,
+  { codeMap, status, total }: { codeMap: Map<string, MaterialCode>; status: SdStatus; total: number },
+): PlanCard {
+  const ls = v.row.line_status;
+  const tone: CardTone = ls === 'approved' ? 'green' : ls === 'rework' || ls === 'rejected' ? 'red' : ls ? 'yellow' : 'gray';
+  const meta = codeMap.get(v.row.material_code);
+  const job = num(v.row.job_qty);
+  const buy = num(v.row.purchase_qty);
+  const unit = v.row.uom || 'units';
+  return {
+    key: v.row.key,
+    code: v.row.material_code,
+    status: { text: ls ? statusText(ls, { approverEdited: v.row.approver_edited }) : statusText(status), tone },
+    context: [TYPE_LABEL[v.row.material_type], meta?.fabric_name, v.colour].filter(Boolean).join(' · '),
+    figs: [
+      { label: 'Job Work', value: job ? `${fmt.format(job)} ${unit}` : null },
+      { label: 'Purchase', value: buy ? `${fmt.format(buy)} ${unit}` : null },
+    ],
+    value: v.missingCost ? null : v.value,
+    valueNote: !v.missingCost && total > 0 && ls !== 'rejected' ? `${((v.value / total) * 100).toFixed(1)}% of plan` : '',
+    rates: v.cost ? `Job ${fmt.format(v.cost.job)} · Purchase ${fmt.format(v.cost.fob)} / ${unit}` : 'no material cost',
+    tags: [
+      ...(v.missingCost ? [{ text: 'No approved cost', kind: 'nocost' as const }] : []),
+      ...(meta?.base_fabric_code ? [{ text: meta.base_fabric_code }] : []),
+    ],
+    details: [
+      ['Type', TYPE_LABEL[v.row.material_type]],
+      ['Fabric name', meta?.fabric_name ?? '—'],
+      ['Base fabric', meta?.base_fabric_code ?? '—'],
+      ['Colour', v.colour ?? '—'],
+      ['Unit', unit],
+      ['Job Work value', v.jobValue ? money.format(v.jobValue) : '—'],
+      ['Purchase value', v.purchaseValue ? money.format(v.purchaseValue) : '—'],
+      ['Plan value', v.missingCost ? 'No approved cost' : money.format(v.value)],
+      ...(v.row.remark ? [['Remark', v.row.remark] as [string, string]] : []),
+    ],
+    sort: { value: v.value, qty: job + buy, pct: 0 },
+    groups: {
+      approval: ls || 'draft',
+      type: v.row.material_type,
+      route: !job && !buy ? 'noqty' : job && buy ? 'both' : job ? 'job' : 'purchase',
+      validation: !job && !buy ? 'noqty' : v.missingCost ? 'nocost' : 'ready',
+      base: meta?.base_fabric_code || 'No base fabric',
+    },
+  };
+}
+
 type GroupBy = 'type' | 'base' | 'uom' | 'code';
 
-const MAT_KANBAN: KanbanOption[] = [
+export const MAT_KANBAN: KanbanOption[] = [
   {
     key: 'approval',
     label: 'Approval',
@@ -218,49 +268,7 @@ export function MaterialPlanView({
   const cards: PlanCard[] = view
     .filter((v) => num(v.row.job_qty) + num(v.row.purchase_qty) > 0)
     .filter(matches)
-    .map((v) => {
-      const ls = v.row.line_status;
-      const tone: CardTone = ls === 'approved' ? 'green' : ls === 'rework' || ls === 'rejected' ? 'red' : ls ? 'yellow' : 'gray';
-      const meta = codeMap.get(v.row.material_code);
-      const job = num(v.row.job_qty);
-      const buy = num(v.row.purchase_qty);
-      const unit = v.row.uom || 'units';
-      return {
-        key: v.row.key,
-        code: v.row.material_code,
-        status: { text: ls ? statusText(ls, { approverEdited: v.row.approver_edited }) : statusText(status), tone },
-        context: [TYPE_LABEL[v.row.material_type], meta?.fabric_name, v.colour].filter(Boolean).join(' · '),
-        figs: [
-          { label: 'Job Work', value: job ? `${fmt.format(job)} ${unit}` : null },
-          { label: 'Purchase', value: buy ? `${fmt.format(buy)} ${unit}` : null },
-        ],
-        value: v.missingCost ? null : v.value,
-        valueNote: !v.missingCost && total > 0 && ls !== 'rejected' ? `${((v.value / total) * 100).toFixed(1)}% of plan` : '',
-        rates: v.cost ? `Job ${fmt.format(v.cost.job)} · Purchase ${fmt.format(v.cost.fob)} / ${unit}` : 'no material cost',
-        tags: [
-          ...(v.missingCost ? [{ text: 'No approved cost', kind: 'nocost' as const }] : []),
-          ...(meta?.base_fabric_code ? [{ text: meta.base_fabric_code }] : []),
-        ],
-        details: [
-          ['Type', TYPE_LABEL[v.row.material_type]],
-          ['Fabric name', meta?.fabric_name ?? '—'],
-          ['Base fabric', meta?.base_fabric_code ?? '—'],
-          ['Colour', v.colour ?? '—'],
-          ['Unit', unit],
-          ['Job Work value', v.jobValue ? money.format(v.jobValue) : '—'],
-          ['Purchase value', v.purchaseValue ? money.format(v.purchaseValue) : '—'],
-          ['Plan value', v.missingCost ? 'No approved cost' : money.format(v.value)],
-          ...(v.row.remark ? [['Remark', v.row.remark] as [string, string]] : []),
-        ],
-        sort: { value: v.value, qty: job + buy, pct: 0 },
-        groups: {
-          approval: ls || 'draft',
-          type: v.row.material_type,
-          route: job && buy ? 'both' : job ? 'job' : 'purchase',
-          base: meta?.base_fabric_code || 'No base fabric',
-        },
-      };
-    });
+    .map((v) => toMaterialCard(v, { codeMap, status, total }));
 
   const attentionItems = closed
     ? [

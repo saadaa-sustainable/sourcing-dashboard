@@ -77,6 +77,7 @@ export function PlanLineViews({
   table,
   kanban,
   decision,
+  editor,
   storageKey,
   noun = 'line',
   qtyUnit = 'pcs',
@@ -86,6 +87,8 @@ export function PlanLineViews({
   table: ReactNode;
   kanban: KanbanOption[];
   decision?: (key: string) => ReactNode;
+  /** Fill the plan: quantity inputs shown on each card in place of the read-only figures. */
+  editor?: (key: string) => ReactNode;
   storageKey: string;
   noun?: string;
   /** Unit for kanban column totals; null when quantities are in mixed units. */
@@ -134,31 +137,28 @@ export function PlanLineViews({
   const card = (it: PlanCard, compact = false) => (
     <article
       key={it.key}
-      className={`pl-card${compact ? ' compact' : ''}`}
-      tabIndex={0}
-      role="button"
-      aria-label={`${it.code}, open line details`}
-      onClick={() => setOpen(it.key)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          setOpen(it.key);
-        }
-      }}
+      className={`pl-card${compact ? ' compact' : ''}${editor ? ' editing' : ''}`}
+      // Mouse convenience only: keyboard users open the panel with the Line details button.
+      // A card with inputs on it (Fill the plan) opens only from that button.
+      onClick={editor ? undefined : () => setOpen(it.key)}
     >
       <div className="pl-card-head">
         <span className="mono pl-card-code">{it.code}</span>
         <span className={`bp-badge ${it.status.tone}`}>{it.status.text}</span>
       </div>
       <div className="pl-card-ctx">{it.context}</div>
-      <div className="pl-card-figs" style={{ gridTemplateColumns: `repeat(${it.figs.length}, minmax(0, 1fr))` }}>
-        {it.figs.map((f) => (
-          <div key={f.label}>
-            <span>{f.label}</span>
-            <strong className={f.value ? '' : 'muted'}>{f.value ?? '—'}</strong>
-          </div>
-        ))}
-      </div>
+      {editor ? (
+        <div className="pl-card-edit">{editor(it.key)}</div>
+      ) : (
+        <div className="pl-card-figs" style={{ gridTemplateColumns: `repeat(${it.figs.length}, minmax(0, 1fr))` }}>
+          {it.figs.map((f) => (
+            <div key={f.label}>
+              <span>{f.label}</span>
+              <strong className={f.value ? '' : 'muted'}>{f.value ?? '—'}</strong>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="pl-card-money">
         <b>{it.value ? inr(it.value) : '—'}</b>
         <small>{it.valueNote}</small>
@@ -170,7 +170,17 @@ export function PlanLineViews({
         </div>
       )}
       <div className="pl-card-foot">
-        <span className="pl-card-link">Line details</span>
+        <button
+          type="button"
+          className="pl-card-link"
+          aria-label={`${it.code}: line details`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(it.key);
+          }}
+        >
+          Line details
+        </button>
         <span className="pl-card-rates" title="Approved standard cost, ₹ per unit">{it.rates}</span>
       </div>
       {it.tags.length > 0 && (

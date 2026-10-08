@@ -20,7 +20,8 @@ import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ClosedMonthHeader } from './closed-month-header';
-import { MaterialPlanView } from './material-plan-view';
+import { MAT_KANBAN, MaterialPlanView, toMaterialCard } from './material-plan-view';
+import { PlanLineViews, type KanbanOption } from './plan-line-views';
 import { LineDecision } from './line-decision';
 import type {
   BuyingPlan,
@@ -87,6 +88,22 @@ function toRow(l: BuyingPlanLine): Row {
     approver_edited: Boolean(l.approver_edited),
   };
 }
+
+// Fill the plan kanban: entry checks first, then the Plan detail options.
+const MAT_INPUT_KANBAN: KanbanOption[] = [
+  {
+    key: 'validation',
+    label: 'Check',
+    columns: [
+      { key: 'noqty', title: 'No quantity yet', tone: 'gray' },
+      { key: 'nocost', title: 'No approved cost', tone: 'red' },
+      { key: 'ready', title: 'Ready', tone: 'green' },
+    ],
+  },
+  ...MAT_KANBAN.filter((k) => k.key !== 'type').map((k) =>
+    k.key === 'route' && k.columns ? { ...k, columns: [{ key: 'noqty', title: 'No quantity yet', tone: 'gray' as const }, ...k.columns] } : k,
+  ),
+];
 
 function poTypeToField(value: string): 'job' | 'purchase' | null {
   const n = value.trim().toLowerCase().replace(/[^a-z]/g, '');
@@ -204,6 +221,56 @@ export function MaterialPlanClient({
     ? available.filter((c) => c.base_fabric_code === addBase)
     : available;
   const shownRows = view.filter((v) => v.row.material_type === type);
+
+  // Fill the plan on a card: the same fields and handlers as the Input table.
+  const inputEditor = (key: string) => {
+    const row = rows.find((r) => r.key === key);
+    if (!row) return null;
+    return (
+      <>
+        <label>
+          Job Work qty
+          <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
+        </label>
+        <label>
+          Purchase qty
+          <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
+        </label>
+        <label>
+          UOM
+          <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
+            {UOMS.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </label>
+        {row.material_type === 'dyed' && (
+          <label className="wide">
+            Colour
+            <select value={row.colour} disabled={!editable} onChange={(e) => set(row.key, 'colour', e.target.value)}>
+              <option value="">
+                {codeMap.get(row.material_code)?.colour ? `${codeMap.get(row.material_code)?.colour} (default)` : '— pick colour —'}
+              </option>
+              {colours.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label className="wide">
+          Remark
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} style={{ fontWeight: 400 }} />
+            {editable && (
+              <button type="button" className="pl-card-remove" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
+                <Trash2 size={14} />
+              </button>
+            )}
+          </span>
+        </label>
+      </>
+    );
+  };
 
   const set = (key: string, field: keyof Row, value: string) =>
     setRows((cur) => cur.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
@@ -577,98 +644,115 @@ export function MaterialPlanClient({
 
       {mode === 'input' && (
         <>
-          <div className="table-panel wf-grid-panel">
-            <div className="table-scroll">
-              <table className="wide-table wf-grid">
-                <thead>
-                  <tr>
-                    <th>
-                      {TYPE_LABEL[type]} code
-                      <InfoDot
-                        label="About material plan input"
-                        text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."}
-                      />
-                    </th>
-                    {type === 'dyed' && <th className="input-col wf-cell-input">Colour <HeaderInfo label="Colour" /></th>}
-                    <th className="num input-col wf-cell-input">Job Work qty <HeaderInfo label="Job Work qty" /></th>
-                    <th className="num wf-cell-calc">Job rate <HeaderInfo label="Job rate" /></th>
-                    <th className="num input-col wf-cell-input">Purchase qty <HeaderInfo label="Purchase qty" /></th>
-                    <th className="num wf-cell-calc">Purchase rate <HeaderInfo label="Purchase rate" /></th>
-                    <th className="input-col wf-cell-input">UOM <HeaderInfo label="UOM" /></th>
-                    <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
-                    <th className="num wf-cell-calc">Value <HeaderInfo label="Value" /></th>
-                    {canDecideLines && <th>Your decision</th>}
-                    {editable && <th aria-label="Remove" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shownRows.map(({ row, value, cost, missingCost }) => (
-                    <tr key={row.key}>
-                      <td className="mono">{row.material_code}</td>
-                      {type === 'dyed' && (
-                        <td className="input-col wf-cell-input">
-                          <select
-                            value={row.colour}
-                            disabled={!editable}
-                            onChange={(e) => set(row.key, 'colour', e.target.value)}
-                          >
-                            <option value="">
-                              {codeMap.get(row.material_code)?.colour
-                                ? `${codeMap.get(row.material_code)?.colour} (default)`
-                                : '— pick colour —'}
-                            </option>
-                            {colours.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+          <div className="bp-card" style={{ marginBottom: 14 }}>
+          <PlanLineViews
+            items={shownRows.map((v) => toMaterialCard(v, { codeMap, status, total: grandTotal }))}
+            storageKey="material-plan-input-view"
+            noun="material line"
+            qtyUnit={null}
+            defaultView="table"
+            kanban={MAT_INPUT_KANBAN}
+            editor={inputEditor}
+            decision={canDecideLines ? (key) => {
+              const r = rows.find((x) => x.key === key);
+              return r && num(r.job_qty) + num(r.purchase_qty) > 0 ? decisionCell(r) : null;
+            } : undefined}
+            table={
+              <div className="table-panel wf-grid-panel">
+                <div className="table-scroll">
+                  <table className="wide-table wf-grid">
+                    <thead>
+                      <tr>
+                        <th>
+                          {TYPE_LABEL[type]} code
+                          <InfoDot
+                            label="About material plan input"
+                            text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."}
+                          />
+                        </th>
+                        {type === 'dyed' && <th className="input-col wf-cell-input">Colour <HeaderInfo label="Colour" /></th>}
+                        <th className="num input-col wf-cell-input">Job Work qty <HeaderInfo label="Job Work qty" /></th>
+                        <th className="num wf-cell-calc">Job rate <HeaderInfo label="Job rate" /></th>
+                        <th className="num input-col wf-cell-input">Purchase qty <HeaderInfo label="Purchase qty" /></th>
+                        <th className="num wf-cell-calc">Purchase rate <HeaderInfo label="Purchase rate" /></th>
+                        <th className="input-col wf-cell-input">UOM <HeaderInfo label="UOM" /></th>
+                        <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
+                        <th className="num wf-cell-calc">Value <HeaderInfo label="Value" /></th>
+                        {canDecideLines && <th>Your decision</th>}
+                        {editable && <th aria-label="Remove" />}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownRows.map(({ row, value, cost, missingCost }) => (
+                        <tr key={row.key}>
+                          <td className="mono">{row.material_code}</td>
+                          {type === 'dyed' && (
+                            <td className="input-col wf-cell-input">
+                              <select
+                                value={row.colour}
+                                disabled={!editable}
+                                onChange={(e) => set(row.key, 'colour', e.target.value)}
+                              >
+                                <option value="">
+                                  {codeMap.get(row.material_code)?.colour
+                                    ? `${codeMap.get(row.material_code)?.colour} (default)`
+                                    : '— pick colour —'}
+                                </option>
+                                {colours.map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          )}
+                          <td className="num input-col wf-cell-input">
+                            <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
+                          </td>
+                          <td className="num wf-cell-calc">{cost ? fmt.format(cost.job) : '—'}</td>
+                          <td className="num input-col wf-cell-input">
+                            <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
+                          </td>
+                          <td className="num wf-cell-calc">{cost ? fmt.format(cost.fob) : '—'}</td>
+                          <td className="input-col wf-cell-input">
+                            <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
+                              {UOMS.map((u) => (
+                                <option key={u} value={u}>
+                                  {u}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="input-col wf-cell-input">
+                            <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
+                          </td>
+                          <td className="num strong wf-cell-calc">
+                            {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
+                          </td>
+                          {canDecideLines && <td>{num(row.job_qty) + num(row.purchase_qty) > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
+                          {editable && (
+                            <td>
+                              <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {!shownRows.length && (
+                        <tr>
+                          <td colSpan={(type === 'dyed' ? 9 : 8) + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
+                            No {TYPE_LABEL[type].toLowerCase()} lines yet
+                            {editable ? ' — add a code above or import a CSV.' : '.'}
+                          </td>
+                        </tr>
                       )}
-                      <td className="num input-col wf-cell-input">
-                        <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
-                      </td>
-                      <td className="num wf-cell-calc">{cost ? fmt.format(cost.job) : '—'}</td>
-                      <td className="num input-col wf-cell-input">
-                        <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
-                      </td>
-                      <td className="num wf-cell-calc">{cost ? fmt.format(cost.fob) : '—'}</td>
-                      <td className="input-col wf-cell-input">
-                        <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
-                          {UOMS.map((u) => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="input-col wf-cell-input">
-                        <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
-                      </td>
-                      <td className="num strong wf-cell-calc">
-                        {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
-                      </td>
-                      {canDecideLines && <td>{num(row.job_qty) + num(row.purchase_qty) > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
-                      {editable && (
-                        <td>
-                          <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {!shownRows.length && (
-                    <tr>
-                      <td colSpan={(type === 'dyed' ? 9 : 8) + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
-                        No {TYPE_LABEL[type].toLowerCase()} lines yet
-                        {editable ? ' — add a code above or import a CSV.' : '.'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
+          />
           </div>
 
           <div className="wf-footer-bar">
