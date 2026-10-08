@@ -211,13 +211,50 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     ];
   };
 
-  /** What needs a look before this plan goes through: missing costs, product states, sent-back lines, empty lines. */
-  const attention = (track: string, mine: PlanLine[], draft: boolean): MonthDetailSection => {
+  /**
+   * Needs attention — the SAME four signals as the plan page's Needs attention card, so the two
+   * read alike: no approved cost, awaiting approval (submitted, line not yet approved), nothing
+   * issued yet (FG), issued over plan (FG). Planned = a line with quantity, not rejected.
+   */
+  const attention = (
+    track: string,
+    mine: PlanLine[],
+    planStatus: string,
+    issuedOf: (code: string) => number,
+  ): MonthDetailSection => {
+    const rows: { tone: Tone; cells: string[] }[] = [];
+    const locked = ['submitted', 'pending_l2', 'approved'].includes(planStatus);
+    for (const l of mine) {
+      const q = qtyOf(l);
+      if (q <= 0 || l.line_status === 'rejected') continue;
+      const c = l.product_code ?? '—';
+      const got = issuedOf((l.product_code ?? '').trim().toUpperCase());
+      if (lineValue(l) <= 0) rows.push({ tone: 'back', cells: [c, 'No approved cost', `${num(q)} ${track === 'fg' ? 'pcs' : 'qty'} cannot be valued until a standard cost is approved`] });
+      if (locked && planStatus !== 'approved' && l.line_status !== 'approved') rows.push({ tone: 'pending', cells: [c, 'Approval pending', 'Line waiting for the approver'] });
+      if (track === 'fg' && got === 0) rows.push({ tone: 'draft', cells: [c, 'Not started', `${num(q)} pcs planned, nothing issued yet`] });
+      if (track === 'fg' && got > q) rows.push({ tone: 'back', cells: [c, 'Over plan', `${num(got)} issued against ${num(q)} planned`] });
+    }
+    return {
+      kind: 'table',
+      title: 'Needs attention',
+      hint: 'The same checks as the plan page: no approved cost, approval pending, not started, over plan.',
+      columns: [{ label: track === 'fg' ? 'Product' : 'Material' }, { label: 'Issue' }, { label: 'Detail' }],
+      rows,
+      filters: [
+        { label: 'Cost / over plan', tone: 'back' },
+        { label: 'Approval pending', tone: 'pending' },
+        { label: 'Not started', tone: 'draft' },
+      ],
+      empty: 'Nothing to flag on this plan.',
+    };
+  };
+
+  /** Other checks the plan page does not count: sent-back lines, product states, empty draft lines. */
+  const otherChecks = (track: string, mine: PlanLine[], draft: boolean): MonthDetailSection | null => {
     const rows: { tone: Tone; cells: string[] }[] = [];
     for (const l of mine) {
       const q = qtyOf(l);
       const c = l.product_code ?? '—';
-      if (q > 0 && lineValue(l) <= 0) rows.push({ tone: 'back', cells: [c, 'No approved cost', `${num(q)} ${track === 'fg' ? 'pcs' : 'qty'} cannot be valued until a standard cost is approved`] });
       if (l.line_status === 'rework' || l.line_status === 'rejected')
         rows.push({ tone: 'back', cells: [c, l.line_status === 'rework' ? 'Line sent back' : 'Line rejected', l.rework_notes ?? '—'] });
       const state = (l.product_status ?? '').toLowerCase();
@@ -226,18 +263,13 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
         rows.push({ tone: 'pending', cells: [c, l.product_status ?? '', 'Not launched yet — check it is meant to be bought this month'] });
       if (draft && q <= 0) rows.push({ tone: 'draft', cells: [c, 'No quantity', 'Added to the plan but nothing entered'] });
     }
+    if (!rows.length) return null;
     return {
       kind: 'table',
-      title: 'Needs attention',
-      hint: 'Lines to check before this plan goes through.',
-      columns: [{ label: track === 'fg' ? 'Product' : 'Material' }, { label: 'Issue' }, { label: 'Detail' }],
+      title: 'Other checks',
+      hint: 'Lines sent back or rejected, product states worth a second look, and empty draft lines.',
+      columns: [{ label: track === 'fg' ? 'Product' : 'Material' }, { label: 'Check' }, { label: 'Detail' }],
       rows,
-      filters: [
-        { label: 'Blocking', tone: 'back' },
-        { label: 'Check', tone: 'pending' },
-        { label: 'Empty', tone: 'draft' },
-      ],
-      empty: 'Nothing to flag on this plan.',
     };
   };
 
@@ -298,7 +330,12 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     else if (withQty.length && value == null) warn = { text: 'No line on this plan has a standard value or an approved cost, so its value cannot be shown.', tone: 'pending' };
     else if (unvalued) warn = { text: `${unvalued} line${unvalued === 1 ? ' has' : 's have'} no standard value or approved cost, so the value is understated.`, tone: 'pending' };
 
-    const issued = track === 'fg' ? issuedByMonth.get(p.plan_month) ?? 0 : null;
+    // Issued against the plan = POs for the PLANNED products only (the plan page's rule);
+    // POs for other products show under "Issued but not in the plan".
+    const monthIssued = new Map((actualsByMonth.get(p.plan_month) ?? []).map((a) => [a.product_code.trim().toUpperCase(), a]));
+    const plannedCodes = new Set(withQty.filter((l) => l.line_status !== 'rejected').map((l) => (l.product_code ?? '').trim().toUpperCase()));
+    const issuedOf = (code: string) => n(monthIssued.get(code)?.issued_qty);
+    const issued = track === 'fg' ? [...plannedCodes].reduce((t, c) => t + issuedOf(c), 0) : null;
     const href = `/buying-plan?month=${p.plan_month}&type=${track}`;
     const actions: MonthBoardCard['actions'] = [
       // A month that is over is view only: its card just opens the plan.
@@ -330,15 +367,18 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       },
     ];
     let ring: NonNullable<MonthBoardCard['detail']>['ring'];
-    sections.push(attention(track, mine, status === 'draft'));
+    sections.push(attention(track, mine, p.status, issuedOf));
+    const others = otherChecks(track, mine, status === 'draft');
+    if (others) sections.push(others);
     const decisions = lineDecisions(mine);
     if (decisions) sections.push(decisions);
 
     if (track === 'fg') {
       const monthActuals = actualsByMonth.get(p.plan_month) ?? [];
       const issuedByCode = new Map(monthActuals.map((a) => [a.product_code.trim().toUpperCase(), a]));
-      const issuedValue = monthActuals.reduce((s, a) => s + n(a.issued_value), 0);
-      const pos = monthActuals.reduce((s, a) => s + n(a.po_count), 0);
+      const plannedActuals = monthActuals.filter((a) => plannedCodes.has(a.product_code.trim().toUpperCase()));
+      const issuedValue = plannedActuals.reduce((s, a) => s + n(a.issued_value), 0);
+      const pos = plannedActuals.reduce((s, a) => s + n(a.po_count), 0);
       ring = qty
         ? {
             pct: pct(issued ?? 0, qty),
