@@ -567,7 +567,7 @@ function BuyingPlanApprovalLines({
                 autoFocus
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
-                placeholder="What needs to change on these lines? (sent to the submitter)"
+                placeholder="Remark for Rework / Reassign (required) — sent to the submitter"
                 aria-label="Rework remark for the ticked lines"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && remark.trim()) rework();
@@ -575,7 +575,7 @@ function BuyingPlanApprovalLines({
                 }}
               />
               <button type="button" className="bp-bulk-btn strong" onClick={rework} disabled={isBusy || !remark.trim()}>
-                <RotateCcw size={13} /> {isBusy ? 'Working…' : `Send ${actionable.length} back`}
+                <RotateCcw size={13} /> {isBusy ? 'Working…' : `Rework / Reassign ${actionable.length}`}
               </button>
               <button type="button" className="bp-bulk-btn" onClick={() => { setMode(null); setRemark(''); setError(null); }} disabled={isBusy}>
                 Cancel
@@ -587,7 +587,7 @@ function BuyingPlanApprovalLines({
                 <CheckCheck size={13} /> {isBusy ? 'Approving…' : `Approve ${actionable.length}`}
               </button>
               <button type="button" className="bp-bulk-btn" onClick={() => { setMode('rework'); setError(null); }} disabled={isBusy}>
-                <RotateCcw size={13} /> Rework
+                <RotateCcw size={13} /> Rework / Reassign
               </button>
               <button type="button" className="bp-bulk-btn" onClick={() => setSelected(new Set())} disabled={isBusy}>
                 Clear
@@ -712,7 +712,7 @@ function CostBulkBar({
                 autoFocus
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Reason for rejection — recorded on every ticked proposal"
+                placeholder="Remark for Reject / Discard (required) — recorded on every ticked proposal"
                 aria-label="Reason to reject the ticked proposals"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && note.trim()) decide('reject');
@@ -720,7 +720,7 @@ function CostBulkBar({
                 }}
               />
               <button type="button" className="bp-bulk-btn strong" disabled={pending || !note.trim()} onClick={() => decide('reject')}>
-                {pending ? 'Working…' : `Reject ${chosen.length}`}
+                {pending ? 'Working…' : `Reject / Discard ${chosen.length}`}
               </button>
               <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setMode(''); setNote(''); }}>
                 Cancel
@@ -729,10 +729,10 @@ function CostBulkBar({
           ) : (
             <>
               <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => decide('accept')}>
-                <CheckCheck size={13} /> {pending ? 'Working…' : `Accept ${chosen.length}`}
+                <CheckCheck size={13} /> {pending ? 'Working…' : `Approve ${chosen.length}`}
               </button>
               <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setMode('reject')}>
-                Reject
+                Reject / Discard
               </button>
               <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setPicked(new Set())}>
                 Clear

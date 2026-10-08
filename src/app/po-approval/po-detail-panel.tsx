@@ -196,7 +196,7 @@ export function PoDetailPanel({
           <Row label="Approved by">{text(po.approved_by)}</Row>
           <Row label="Rejection notes">{text(po.rejection_notes)}</Row>
           <Row label="Rework notes">{text(po.rework_notes)}</Row>
-          <Row label="Sent for rework by">
+          <Row label="Rework / Reassign by">
             {po.reworked_at ? `${text(po.reworked_by)} · ${stamp(po.reworked_at)}` : '—'}
           </Row>
           <Row label="Edited before approval">{yesNo(po.edited_before_approval)}</Row>

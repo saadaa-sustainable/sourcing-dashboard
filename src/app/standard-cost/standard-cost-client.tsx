@@ -33,6 +33,7 @@ import {
   CMTP_HEADS,
   CMTP_MANDATORY,
   COST_STAGE_LABEL,
+  costStageText,
   COST_STAGE_TONE,
   canAcceptProposal,
   canConfirmCm,
@@ -230,7 +231,7 @@ export function StandardCostClient({
       (isMat ? sort.apply(shown) : sortCards(shown)).map((c) => [
         c.product_code,
         productNames.get(c.product_code.toUpperCase()) ?? '',
-        COST_STAGE_LABEL[c.neg_stage ?? ''] ?? c.neg_stage ?? 'Not started',
+        costStageText(c.neg_stage, c),
         c.proposed_cost,
         targetSummary(c, isMat ? 'material' : 'fg') ?? '',
         c.job_cost,
@@ -347,7 +348,7 @@ export function StandardCostClient({
   const updatedOf = (cost: StandardCost) => shortDate(rateHistory[cost.product_code]?.[0]?.accepted_at ?? cost.updated_at);
   const stageBadge = (cost: StandardCost) => {
     const key = cost.neg_stage ?? '';
-    return <span className={`wf-status tone-${COST_STAGE_TONE[key] ?? 'purple'}`}>{COST_STAGE_LABEL[key] ?? 'Not started'}</span>;
+    return <span className={`wf-status tone-${COST_STAGE_TONE[key] ?? 'purple'}`}>{costStageText(key, cost)}</span>;
   };
   const pickBox = (cost: StandardCost) =>
     pickable(cost) ? (
@@ -426,7 +427,7 @@ export function StandardCostClient({
               <tr>
                 <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
                 <th {...sort.th('name', (c) => nameOf(c) ?? '')}>{isMat ? 'Material' : 'Product'} {sort.ind('name')}</th>
-                <th {...sort.th('stage', (c) => COST_STAGE_LABEL[c.neg_stage ?? ''] ?? '')}>Status {sort.ind('stage')}</th>
+                <th {...sort.th('stage', (c) => costStageText(c.neg_stage, c))}>Status {sort.ind('stage')}</th>
                 {rateCols.map((r) => (
                   <th key={r.label} className="num" {...sort.th(`rate-${r.label}`, (c) => (r.get(c) == null ? null : Number(r.get(c))))}>{r.label} {sort.ind(`rate-${r.label}`)}</th>
                 ))}
@@ -703,12 +704,12 @@ export function StandardCostClient({
               <select aria-label="Filter by status" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
                 <option value="all">All statuses</option>
                 <option value="not_started">Not started</option>
-                <option value="proposed">Proposed</option>
-                <option value="target_set">Target set</option>
-                <option value="rate_submitted">Rate submitted</option>
+                <option value="proposed">Approval Pending · Proposal</option>
+                <option value="target_set">Target set · with the team</option>
+                <option value="rate_submitted">Approval Pending · Vendor rate</option>
                 <option value="signed_off">Approved</option>
-                <option value="renegotiate">Renegotiate</option>
-                <option value="rejected">Rejected</option>
+                <option value="renegotiate">Rework / Reassign</option>
+                <option value="rejected">Rejected / Discarded</option>
                 <option value="not_in_easyecom">Not in EasyEcom</option>
               </select>
               <select
@@ -1086,11 +1087,11 @@ export function CostRow({
 
       <aside className="sc-entry-side" aria-label="Status and actions">
         <div className="sc-entry-stage">
-          <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{COST_STAGE_LABEL[stageKey]}</span>
+          <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{costStageText(stageKey, cost)}</span>
           <small className="wf-subtle">{nextActor(stage)}</small>
         </div>
-        {stage === 'rejected' && cost.rejection_notes && <p className="wf-subtle sc-entry-note">Rejected: {cost.rejection_notes}</p>}
-      {stage === 'renegotiate' && cost.negotiation_notes && <p className="wf-subtle sc-entry-note">Renegotiate: {cost.negotiation_notes}</p>}
+        {stage === 'rejected' && cost.rejection_notes && <p className="wf-subtle sc-entry-note">Rejected / Discarded: {cost.rejection_notes}</p>}
+      {stage === 'renegotiate' && cost.negotiation_notes && <p className="wf-subtle sc-entry-note">Rework / Reassign: {cost.negotiation_notes}</p>}
         <div className="sc-entry-actions">
         {err && <small className="wf-line-error">{err}</small>}
 
@@ -1116,7 +1117,7 @@ export function CostRow({
                 title="Approve the proposed rates as-is — they become the standard cost"
                 onClick={() => act(acceptProposedCost, {})}
               >
-                Accept proposal
+                Approve
               </button>
             )}
             <button
@@ -1130,7 +1131,7 @@ export function CostRow({
             </button>
             {canRejectCost(role, stage) && stage === 'proposed' && (
               <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
-                Reject
+                Reject / Discard
               </button>
             )}
           </>
@@ -1165,12 +1166,12 @@ export function CostRow({
             {!isMat && cost.fabric_confirmed_at && !cost.cm_confirmed_at && <span className="wf-tag-approved">fabric ✓</span>}
             {canRenegotiate(role, stage) && (
               <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('renegotiate')}>
-                Renegotiate
+                Rework / Reassign
               </button>
             )}
             {canRejectCost(role, stage) && (
               <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
-                Reject
+                Reject / Discard
               </button>
             )}
           </>
@@ -2308,7 +2309,7 @@ function ListBulkDecide({
                 autoFocus
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Reason for rejection — recorded on every ticked proposal"
+                placeholder="Remark for Reject / Discard (required) — recorded on every ticked proposal"
                 aria-label="Reason to reject the ticked proposals"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && note.trim()) decide('reject');
@@ -2316,7 +2317,7 @@ function ListBulkDecide({
                 }}
               />
               <button type="button" className="bp-bulk-btn strong" disabled={pending || !note.trim()} onClick={() => decide('reject')}>
-                {pending ? 'Working…' : `Reject ${chosen.length}`}
+                {pending ? 'Working…' : `Reject / Discard ${chosen.length}`}
               </button>
               <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setMode(''); setNote(''); }}>
                 Cancel
@@ -2325,10 +2326,10 @@ function ListBulkDecide({
           ) : (
             <>
               <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => decide('accept')}>
-                <Check size={13} /> {pending ? 'Working…' : `Accept ${chosen.length}`}
+                <Check size={13} /> {pending ? 'Working…' : `Approve ${chosen.length}`}
               </button>
               <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setMode('reject')}>
-                <X size={13} /> Reject
+                <X size={13} /> Reject / Discard
               </button>
               <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setPicked(new Set())}>
                 Clear

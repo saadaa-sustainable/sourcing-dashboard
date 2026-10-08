@@ -38,7 +38,7 @@ export function ApprovalBar({
   function decide(decision: 'approve' | 'reject' | 'rework') {
     setError(null);
     if ((decision === 'reject' || decision === 'rework') && !notes.trim()) {
-      setError('Give a reason so the submitter knows what to change.');
+      setError('A remark is mandatory for Rework / Reassign and Reject / Discard.');
       return;
     }
     const payload = new FormData();
@@ -66,9 +66,9 @@ export function ApprovalBar({
         rows={2}
         placeholder={
           mode === 'reject'
-            ? 'Reason for rejection — sent to the submitter'
+            ? 'Remark for Reject / Discard (required) — sent to the submitter'
             : mode === 'rework'
-              ? 'Reason for rework/reassign — sent to the submitter'
+              ? 'Remark for Rework / Reassign (required) — sent to the submitter'
               : 'Comment (optional) — recorded with your approval'
         }
         value={notes}
@@ -87,8 +87,8 @@ export function ApprovalBar({
               {pending
                 ? 'Working…'
                 : mode === 'reject'
-                  ? 'Confirm reject'
-                  : 'Confirm rework'}
+                  ? 'Confirm Reject / Discard'
+                  : 'Confirm Rework / Reassign'}
             </button>
             <button
               type="button"
@@ -121,14 +121,14 @@ export function ApprovalBar({
               className="wf-btn wf-btn-ghost"
               onClick={() => setMode('rework')}
             >
-              <RotateCcw size={15} /> Rework/Reassign
+              <RotateCcw size={15} /> Rework / Reassign
             </button>
             <button
               type="button"
               className="wf-btn wf-btn-ghost"
               onClick={() => setMode('reject')}
             >
-              <X size={15} /> Reject
+              <X size={15} /> Reject / Discard
             </button>
           </>
         )}

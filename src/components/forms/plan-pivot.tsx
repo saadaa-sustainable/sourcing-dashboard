@@ -72,7 +72,7 @@ export function PlanPivot({ rows, title }: { rows: PivotRow[]; title?: string })
             <thead>
               <tr>
                 <th rowSpan={2}>Fabric</th>
-                <th colSpan={2} className="num wf-pivot-pending">Pending approval <HeaderInfo label="Pending approval" /></th>
+                <th colSpan={2} className="num wf-pivot-pending">Approval Pending <HeaderInfo label="Approval Pending" /></th>
                 <th colSpan={2} className="num wf-pivot-approved">Approved <HeaderInfo label="Approved" /></th>
               </tr>
               <tr>

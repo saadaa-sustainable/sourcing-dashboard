@@ -2,7 +2,8 @@ import 'server-only';
 import { client, pageAll } from './_shared';
 import { loadApprovedMaterialCosts, loadApprovedStandardCosts } from './standard-cost';
 import { loadReplenishmentByProduct } from './replenishment-oos';
-import { addMonths, capacityWeekStart, isPlanFrozen, monthStart } from '../approval';
+import { addMonths, capacityWeekStart, isPlanFrozen, monthStart, sheetStatusText, statusText } from '../approval';
+import type { SdStatus } from '../types';
 import {
   inrShort,
   num,
@@ -40,11 +41,12 @@ type Tone = MonthBoardColumn['tone'];
 /** Approval-log rows read as a timeline (newest last). Actors are left out on purpose. */
 type LogRow = { entity_type: string; entity_id: string; from_status: string | null; to_status: string | null; notes: string | null; created_at: string };
 const STATUS_WORDS: Record<string, [string, Tone]> = {
-  submitted: ['Submitted for approval', 'pending'],
-  pending_l2: ['Passed to the second approver', 'pending'],
+  // Timeline events in the approval workflow's words (spec 2026-10-08).
+  submitted: ['Submitted · Approval Pending', 'pending'],
+  pending_l2: ['Approval Pending · second approval', 'pending'],
   approved: ['Approved', 'live'],
-  rework: ['Sent back for rework', 'back'],
-  rejected: ['Rejected', 'back'],
+  rework: ['Rework / Reassign', 'back'],
+  rejected: ['Rejected / Discarded', 'back'],
   draft: ['Reopened as draft', 'draft'],
 };
 function timeline(rows: LogRow[]) {
@@ -80,6 +82,7 @@ type PlanLine = {
   efob_qty: number | null;
   standard_value: number | null;
   line_status: string | null;
+  approver_edited: boolean | null;
   material_type: string | null;
   colour: string | null;
   uom: string | null;
@@ -91,13 +94,13 @@ const MATERIAL_TYPE_WORD: Record<string, string> = { raw: 'Raw material', dyed: 
 export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardData> {
   const supabase = await client();
   const [plans, lines, actuals, costs, catalog, log, matCosts, demand] = await Promise.all([
-    pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null }>(() =>
-      supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes').order('id'),
+    pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null; approver_edited: boolean | null }>(() =>
+      supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes, approver_edited').order('id'),
     ),
     pageAll<PlanLine>(() =>
       supabase
         .from('sd_buying_plan_line')
-        .select('plan_id, product_code, product_status, job_work_qty, fob_qty, efob_qty, standard_value, line_status, material_type, colour, uom, rework_notes')
+        .select('plan_id, product_code, product_status, job_work_qty, fob_qty, efob_qty, standard_value, line_status, approver_edited, material_type, colour, uom, rework_notes')
         .order('id'),
     ),
     pageAll<{ product_code: string; plan_month: string; issued_qty: number | null; issued_value: number | null; po_count: number | null }>(() =>
@@ -180,10 +183,11 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     if (!decided.length) return null;
     const count = (st: string[]) => decided.filter((l) => st.includes(l.line_status ?? '')).length;
     const parts: [string, number, Tone][] = [
-      ['Approved', count(['approved']), 'live'],
-      ['Awaiting review', count(['submitted', 'pending_l2']), 'pending'],
-      ['Sent back', count(['rework']), 'back'],
-      ['Rejected', count(['rejected']), 'closed'],
+      ['Edited & Approved', decided.filter((l) => l.line_status === 'approved' && l.approver_edited).length, 'live'],
+      ['First time Approved', decided.filter((l) => l.line_status === 'approved' && !l.approver_edited).length, 'live'],
+      ['Approval Pending', count(['submitted', 'pending_l2']), 'pending'],
+      ['Rework / Reassign', count(['rework']), 'back'],
+      ['Rejected / Discarded', count(['rejected']), 'closed'],
     ];
     return {
       kind: 'bars',
@@ -226,8 +230,8 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     if (frozen && status === 'pending') facts.push('Month is over · still not approved');
     if (frozen && status === 'closed') facts.push('Month over · plan frozen');
     let warn: MonthBoardCard['warn'];
-    if (p.status === 'rework') warn = { text: `Sent back for rework${p.rework_notes ? `: ${p.rework_notes}` : ''}`, tone: 'back' };
-    else if (p.status === 'rejected') warn = { text: `Rejected${p.rejection_notes ? `: ${p.rejection_notes}` : ''}`, tone: 'back' };
+    if (p.status === 'rework') warn = { text: `Rework / Reassign${p.rework_notes ? `: ${p.rework_notes}` : ''}`, tone: 'back' };
+    else if (p.status === 'rejected') warn = { text: `Rejected / Discarded${p.rejection_notes ? `: ${p.rejection_notes}` : ''}`, tone: 'back' };
     else if (withQty.length && value == null) warn = { text: 'No line on this plan has a standard value or an approved cost, so its value cannot be shown.', tone: 'pending' };
     else if (unvalued) warn = { text: `${unvalued} line${unvalued === 1 ? ' has' : 's have'} no standard value or approved cost, so the value is understated.`, tone: 'pending' };
 
@@ -396,7 +400,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
             num(n(l.fob_qty)),
             l.uom ?? '—',
             lineValue(l) > 0 ? inrShort(lineValue(l)) : '—',
-            l.line_status ? (STATUS_WORDS[l.line_status]?.[0] ?? l.line_status) : 'Draft',
+            l.line_status ? statusText(l.line_status as SdStatus, { approverEdited: l.approver_edited }) : 'Draft',
           ],
         })),
         empty: 'No materials on this plan yet.',
@@ -500,7 +504,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           {
             kind: 'table',
             title: `${short(prevMonth)} plan, as a starting point`,
-            hint: prev ? `What was planned last month (${STATUS_WORDS[prev.status]?.[0] ?? prev.status}).` : undefined,
+            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { approverEdited: prev.approver_edited })}).` : undefined,
             columns: [{ label: 'Product' }, { label: 'Category' }, { label: 'Job', num: true }, { label: 'E-FOB', num: true }, { label: 'FOB', num: true }, { label: 'Total', num: true }, { label: 'Value', num: true }],
             rows: prevLines
               .slice()
@@ -557,7 +561,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           {
             kind: 'table',
             title: `${short(prevMonth)} plan, as a starting point`,
-            hint: prev ? `What was planned last month (${STATUS_WORDS[prev.status]?.[0] ?? prev.status}).` : undefined,
+            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { approverEdited: prev.approver_edited })}).` : undefined,
             columns: [{ label: 'Material' }, { label: 'Type' }, { label: 'Colour' }, { label: 'Job work', num: true }, { label: 'Purchase', num: true }, { label: 'Unit' }, { label: 'Value', num: true }],
             rows: prevLines.map((l) => ({
               cells: [
@@ -584,7 +588,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
   return {
     columns: [
       { key: 'draft', label: 'Draft', tone: 'draft', hint: 'Being filled · not submitted yet' },
-      { key: 'pending', label: 'Pending approval', tone: 'pending', hint: 'Submitted · waiting for the approver' },
+      { key: 'pending', label: 'Approval Pending', tone: 'pending', hint: 'Submitted · waiting for the admin' },
       { key: 'live', label: 'Approved', tone: 'live', hint: 'Live for the month · POs issue against it' },
       { key: 'closed', label: 'Closed', tone: 'closed', hint: 'Month over · plan frozen' },
     ],
@@ -607,17 +611,17 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
 export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
   const supabase = await client();
   const [rows, log, weekly] = await Promise.all([
-    pageAll<{ plan_month: string; product_code: string | null; po_no: string | null; vendor_name: string | null; inward_qty: number | null; actual_inward_qty: number | null; cost_per_piece: number | null; approval_status: string | null; mt_comments: string | null }>(() =>
+    pageAll<{ plan_month: string; product_code: string | null; po_no: string | null; vendor_name: string | null; inward_qty: number | null; actual_inward_qty: number | null; cost_per_piece: number | null; approval_status: string | null; approver_edited: boolean | null; mt_comments: string | null }>(() =>
       supabase
         .from('sd_inward_plan_entry')
-        .select('plan_month, product_code, po_no, vendor_name, inward_qty, actual_inward_qty, cost_per_piece, approval_status, mt_comments')
+        .select('plan_month, product_code, po_no, vendor_name, inward_qty, actual_inward_qty, cost_per_piece, approval_status, approver_edited, mt_comments')
         .order('id'),
     ),
     loadLog(['inward_plan']),
-    pageAll<{ row_key: string; po_number: string | null; product_variant: string | null; delivery_date_this_week: string | null; qty_expected_this_week: number | null; status: string | null }>(() =>
+    pageAll<{ row_key: string; po_number: string | null; product_variant: string | null; delivery_date_this_week: string | null; qty_expected_this_week: number | null; status: string | null; approver_edited: boolean | null }>(() =>
       supabase
         .from('sd_receivable_input')
-        .select('row_key, po_number, product_variant, delivery_date_this_week, qty_expected_this_week, status')
+        .select('row_key, po_number, product_variant, delivery_date_this_week, qty_expected_this_week, status, approver_edited')
         .order('row_key'),
     ),
   ]);
@@ -638,7 +642,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
       const planned = n(r.inward_qty);
       const got = n(r.actual_inward_qty);
       if (r.approval_status === 'RE-WORK' || r.approval_status === 'Rejected')
-        out.push({ tone: 'back', cells: [who, r.approval_status === 'RE-WORK' ? 'Sent back' : 'Rejected', r.mt_comments ?? '—'] });
+        out.push({ tone: 'back', cells: [who, sheetStatusText(r.approval_status), r.mt_comments ?? '—'] });
       if (!r.po_no) out.push({ tone: 'back', cells: [who, 'No PO number', 'Receipts cannot be matched to this line'] });
       if (r.cost_per_piece == null || n(r.cost_per_piece) <= 0) out.push({ tone: 'pending', cells: [who, 'No cost per piece', 'The line is not counted in the planned value'] });
       if (!r.vendor_name) out.push({ tone: 'pending', cells: [who, 'No vendor', '—'] });
@@ -783,9 +787,9 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
         kind: 'bars',
         title: 'Lines by decision',
         bars: [
-          { label: 'Pending approval', value: `${pending} · ${pct(pending, mine.length)}%`, pct: pct(pending, mine.length), tone: 'pending' as Tone },
+          { label: 'Approval Pending', value: `${pending} · ${pct(pending, mine.length)}%`, pct: pct(pending, mine.length), tone: 'pending' as Tone },
           { label: 'Approved', value: `${approved} · ${pct(approved, mine.length)}%`, pct: pct(approved, mine.length), tone: 'live' as Tone },
-          { label: 'Sent back or rejected', value: `${back} · ${pct(back, mine.length)}%`, pct: pct(back, mine.length), tone: 'back' as Tone },
+          { label: 'Rework / Reassign or Rejected / Discarded', value: `${back} · ${pct(back, mine.length)}%`, pct: pct(back, mine.length), tone: 'back' as Tone },
         ],
       },
       byPoType(mine),
@@ -832,7 +836,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
               num(n(r.inward_qty)),
               num(n(r.actual_inward_qty)),
               r.cost_per_piece == null ? '—' : num(n(r.cost_per_piece)),
-              r.approval_status === 'RE-WORK' ? 'Sent back' : r.approval_status ?? 'Pending',
+              sheetStatusText(r.approval_status, { approverEdited: r.approver_edited }),
               r.mt_comments ?? '',
             ],
           })),
@@ -950,7 +954,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
               .sort((a, b) => (a.delivery_date_this_week ?? '').localeCompare(b.delivery_date_this_week ?? ''))
               .map((w) => ({
                 tone: (w.status === 'approved' ? 'live' : w.status === 'submitted' || w.status === 'pending_l2' ? 'pending' : 'draft') as Tone,
-                cells: [w.po_number ?? '—', w.product_variant ?? '—', dayYear(w.delivery_date_this_week), num(n(w.qty_expected_this_week)), w.status ? (STATUS_WORDS[w.status]?.[0] ?? w.status) : 'Draft'],
+                cells: [w.po_number ?? '—', w.product_variant ?? '—', dayYear(w.delivery_date_this_week), num(n(w.qty_expected_this_week)), w.status ? statusText(w.status as SdStatus, { approverEdited: w.approver_edited }) : 'Draft'],
               })),
             filters: [
               { label: 'Approved', tone: 'live' },
@@ -967,8 +971,8 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
   return {
     columns: [
       { key: 'draft', label: 'Not started', tone: 'draft', hint: 'No lines entered for the month yet' },
-      { key: 'pending', label: 'Pending approval', tone: 'pending', hint: 'Lines waiting for the approver' },
-      { key: 'back', label: 'Needs rework', tone: 'back', hint: 'Lines sent back or rejected' },
+      { key: 'pending', label: 'Approval Pending', tone: 'pending', hint: 'Lines waiting for the admin' },
+      { key: 'back', label: 'Rework / Reassign', tone: 'back', hint: 'Lines sent for Rework / Reassign or Rejected / Discarded' },
       { key: 'live', label: 'Approved', tone: 'live', hint: 'Counts as the month’s plan' },
       { key: 'closed', label: 'Closed', tone: 'closed', hint: 'Month over · received vs planned final' },
     ],
@@ -983,7 +987,7 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
       { label: 'Lines', num: true },
       { label: 'Pending', num: true },
       { label: 'Approved', num: true },
-      { label: 'Sent back', num: true },
+      { label: 'Rework / Rejected', num: true },
       { label: 'Planned', num: true },
       { label: 'Received', num: true },
       { label: 'Value', num: true },

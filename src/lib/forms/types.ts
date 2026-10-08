@@ -775,7 +775,7 @@ export type BuyingPlan = {
   approved_at: string | null;
   rejection_notes: string | null;
   // True once an approver edited/reworked the plan before approving — drives the
-  // "First-Time Approved" vs "Edited-and-Approved" distinction on the badge.
+  // "First time Approved" vs "Edited & Approved" sub status (approval workflow spec).
   edited_before_approval: boolean;
   /** The approver changed submitted values when approving (Edit & approve). */
   approver_edited?: boolean | null;

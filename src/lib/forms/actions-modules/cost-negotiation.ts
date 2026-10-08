@@ -153,6 +153,12 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
     status: 'draft',
     rejection_notes: null,
     negotiation_notes: null,
+    // A fresh round has no admin target yet — so its approval reads First time Approved
+    // unless the admin sets one (costStageText).
+    target_job: null,
+    target_fob: null,
+    target_efob: null,
+    target_cost: null,
     updated_at: new Date().toISOString(),
   };
   // A fresh round starts the FG two-step sign-off over — otherwise the previous
@@ -347,7 +353,7 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
-  if (!note) return fail('Give a reason to renegotiate.');
+  if (!note) return fail('A remark is mandatory for Rework / Reassign.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (!canRenegotiate(user.role, row.neg_stage)) return fail('This cannot be renegotiated right now.');
@@ -358,9 +364,9 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
     .eq('id', id);
   if (error) return fail(error.message);
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Renegotiate: ${note}`);
-  await tellTeam(track, row.product_code, 'cost_renegotiate', `Renegotiate: ${row.product_code}`, note, user.email);
+  await tellTeam(track, row.product_code, 'cost_renegotiate', `Rework / Reassign: ${row.product_code}`, note, user.email);
   revalidatePath('/standard-cost');
-  return done('Sent back to renegotiate.');
+  return done('Sent for Rework / Reassign (renegotiate).');
 }
 
 /** The approver (admin) rejects the cost proposal/rate. */
@@ -371,7 +377,7 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
-  if (!note) return fail('Give a reason to reject.');
+  if (!note) return fail('A remark is mandatory for Reject / Discard.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (!canRejectCost(user.role, row.neg_stage)) return fail('This cannot be rejected right now.');
@@ -381,8 +387,8 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
     .update({ neg_stage: 'rejected', status: 'rejected', rejection_notes: note, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected: ${note}`);
-  await tellTeam(track, row.product_code, 'cost_rejected', `Cost rejected: ${row.product_code}`, note, user.email);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected / Discarded: ${note}`);
+  await tellTeam(track, row.product_code, 'cost_rejected', `Rejected / Discarded: ${row.product_code}`, note, user.email);
   revalidatePath('/standard-cost');
   return done('Cost rejected.');
 }
@@ -399,7 +405,7 @@ export async function decideCostsBulk(formData: FormData): Promise<ActionResult>
   const decision = String(formData.get('decision') ?? '');
   if (decision !== 'accept' && decision !== 'reject') return fail('Invalid decision.');
   const note = String(formData.get('note') ?? '').trim();
-  if (decision === 'reject' && !note) return fail('Give a reason to reject.');
+  if (decision === 'reject' && !note) return fail('A remark is mandatory for Reject / Discard.');
   // Entries are "f<id>" (finished goods) or "m<id>" (material), the queue's own ids.
   const keys = String(formData.get('ids') ?? '')
     .split(',')
@@ -420,7 +426,7 @@ export async function decideCostsBulk(formData: FormData): Promise<ActionResult>
   }
   revalidatePath('/approvals');
   revalidatePath('/standard-cost');
-  const verb = decision === 'accept' ? 'Accepted' : 'Rejected';
+  const verb = decision === 'accept' ? 'Approved' : 'Rejected / Discarded';
   if (!ok) return fail(`${verb} none — ${failures.slice(0, 3).join('; ')}`);
   return done(
     `${verb} ${ok} of ${keys.length} proposal(s).` +

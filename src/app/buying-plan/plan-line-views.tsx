@@ -4,6 +4,14 @@ import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Columns3, LayoutGrid, Table2, X } from 'lucide-react';
 
+/** Kanban "Approval" column of a line, in the approval workflow's statuses. */
+export function approvalColumn(lineStatus: string | null | undefined, approverEdited?: boolean | null): string {
+  if (!lineStatus) return 'draft';
+  if (lineStatus === 'submitted' || lineStatus === 'pending_l2') return 'pending';
+  if (lineStatus === 'approved') return approverEdited ? 'edited' : 'first';
+  return lineStatus;
+}
+
 export type CardTone = 'green' | 'yellow' | 'red' | 'gray' | 'blue' | 'violet';
 
 /** One plan line, already worked out by the page, in the shape the card views need. */

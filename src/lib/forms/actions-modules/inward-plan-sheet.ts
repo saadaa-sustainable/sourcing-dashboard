@@ -107,7 +107,7 @@ export async function decideInwardPlanRow(formData: FormData): Promise<ActionRes
   const notes = String(formData.get('notes') ?? '').trim();
   if (!id) return fail('Invalid line.');
   if (!INWARD_PLAN_STATUSES.includes(status)) return fail('Invalid status.');
-  if ((status === 'Rejected' || status === 'RE-WORK') && !notes) return fail('Give a reason so the team knows what to change.');
+  if ((status === 'Rejected' || status === 'RE-WORK') && !notes) return fail('A remark is mandatory for Rework / Reassign and Reject / Discard.');
 
   const supabase = await supa();
   const { data: row } = await supabase

@@ -8,7 +8,7 @@ import { ArrowLeft, Link2, Lock, Pencil, Trash2, X } from 'lucide-react';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { deleteUnlinkedProduct, linkProductToEasyEcom } from '@/lib/forms/actions';
 import { emitToast, toastError } from '@/lib/toast';
-import { COST_STAGE_LABEL, COST_STAGE_TONE, nextActor, targetParts } from '@/lib/forms/cost';
+import { COST_STAGE_TONE, costStageText, nextActor, targetParts } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
 import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
 import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
@@ -113,7 +113,7 @@ export function StandardCostDetailClient({
           <ArrowLeft size={15} /> {isMat ? 'All materials' : 'All products'}
         </Link>
         <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
-          {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
+          {costStageText(stageKey, cost)}
         </span>
         {cost.frozen && (
           <span className="sc-page-frozen">

@@ -78,7 +78,7 @@ export function canApprove(role: SdRole, status: SdStatus) {
   return false;
 }
 
-/** Sending back for Rework/Reassign is an approver action — same gate as approve. */
+/** Sending back for Rework / Reassign is an approver action — same gate as approve. */
 export function canRework(role: SdRole, status: SdStatus) {
   return canApprove(role, status);
 }
@@ -191,29 +191,70 @@ export function canDeletePo(
 /* Display                                                             */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The approval workflow every module follows (team's spec, 2026-10-08):
+ *   STATUS              SUB STATUS                              REMARKS
+ *   Approval Pending
+ *   Approved            Edited & Approved / First time Approved
+ *   Rework / Reassign                                           mandatory
+ *   Rejected / Discarded                                        mandatory
+ * Every badge, list, filter and notice words a status through these — never by hand.
+ */
+/*
+ * The approval workflow every module follows (team's spec, 2026-10-08). Approval is the
+ * admin's action:
+ *   STATUS              SUB STATUS                              REMARKS
+ *   Approval Pending
+ *   Approved            Edited & Approved / First time Approved
+ *   Rework / Reassign                                           mandatory
+ *   Rejected / Discarded                                        mandatory
+ * Edited & Approved = the admin changed the submitted values before approving
+ * (approver_edited); First time Approved = approved as submitted.
+ * Every badge, list, filter and notice words a status through these — never by hand.
+ */
 export const STATUS_LABEL: Record<SdStatus, string> = {
   draft: 'Draft',
   submitted: 'Approval Pending',
-  pending_l2: 'Pending Second Approval',
-  rework: 'Rework-and-Reassign',
+  pending_l2: 'Approval Pending',
+  rework: 'Rework / Reassign',
   approved: 'Approved',
-  rejected: 'Rejected',
+  rejected: 'Rejected / Discarded',
 };
 
+/** The two sub statuses of Approved. */
+export const SUB_STATUS = {
+  edited: 'Edited & Approved',
+  firstTime: 'First time Approved',
+} as const;
+
+/** Approved's sub status: the admin edited the values before approving, or approved as submitted. */
+export function approvedSubStatus(opts: { approverEdited?: boolean | null }): string {
+  return opts.approverEdited ? SUB_STATUS.edited : SUB_STATUS.firstTime;
+}
+
 /**
- * A record's status worded by the stage it is at and the action taken on it — the one place
- * every badge and list reads from. Approved splits by how it got there: with the approver's
- * own edits (Edit & approve), after a rework round, or first time.
+ * A record's status in the workflow's words — the one place every badge and list reads from.
+ * Approved is always shown with its sub status; pass the record's approver_edited.
+ * (`edited` is accepted for older callers and ignored: a team rework round is not an edit.)
  */
 export function statusText(
   status: SdStatus,
   opts: { approverEdited?: boolean | null; edited?: boolean | null } = {},
 ): string {
-  if (status === 'approved') {
-    if (opts.approverEdited) return 'Approved with Approver’s Edits';
-    if (opts.edited != null) return opts.edited ? 'Edited-and-Approved' : 'First-Time Approved';
-  }
+  if (status === 'approved') return approvedSubStatus(opts);
   return STATUS_LABEL[status];
+}
+
+/**
+ * The inward-plan sheet keeps its own words in approval_status ('Pending', 'Approved',
+ * 'RE-WORK', 'Rejected'); this shows them the same way as every other module.
+ */
+export function sheetStatusText(raw: string | null | undefined, opts: { approverEdited?: boolean | null } = {}): string {
+  const s = (raw ?? '').trim().toUpperCase();
+  if (s === 'APPROVED') return approvedSubStatus(opts);
+  if (s === 'RE-WORK' || s === 'REWORK') return STATUS_LABEL.rework;
+  if (s === 'REJECTED') return STATUS_LABEL.rejected;
+  return STATUS_LABEL.submitted;
 }
 
 /** Maps onto the existing .tone-* classes in globals.css. */

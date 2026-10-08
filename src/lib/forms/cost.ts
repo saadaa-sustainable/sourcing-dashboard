@@ -20,15 +20,33 @@ const RANK: Record<SdRole, number> = { viewer: 0, team: 1, admin: 2 };
 const isTeam = (r: SdRole) => RANK[r] >= RANK.team;
 const isAdmin = (r: SdRole) => RANK[r] >= RANK.admin;
 
+// Cost stages in the approval workflow's words (spec 2026-10-08): the two stages waiting on the
+// admin read Approval Pending; renegotiate is Rework / Reassign; rejected is Rejected / Discarded.
 export const COST_STAGE_LABEL: Record<string, string> = {
   '': 'Not started',
-  proposed: 'Proposed',
-  target_set: 'Target set',
-  rate_submitted: 'Rate submitted',
+  proposed: 'Approval Pending · Proposal',
+  target_set: 'Target set · with the team',
+  rate_submitted: 'Approval Pending · Vendor rate',
   signed_off: 'Approved',
-  renegotiate: 'Renegotiate',
-  rejected: 'Rejected',
+  renegotiate: 'Rework / Reassign',
+  rejected: 'Rejected / Discarded',
 };
+
+/**
+ * A cost's stage as shown on badges. Approved carries its sub status: Edited & Approved when
+ * the admin set a target (changed the rate) in this round, First time Approved otherwise.
+ */
+export function costStageText(
+  stage: string | null | undefined,
+  row?: { target_job?: number | null; target_fob?: number | null; target_efob?: number | null; target_cost?: number | null } | null,
+): string {
+  const key = stage ?? '';
+  if (key === 'signed_off') {
+    const edited = Boolean(row && (row.target_job != null || row.target_fob != null || row.target_efob != null || row.target_cost != null));
+    return edited ? 'Edited & Approved' : 'First time Approved';
+  }
+  return COST_STAGE_LABEL[key] ?? 'Not started';
+}
 
 /** Maps onto the existing .tone-* badge classes. */
 export const COST_STAGE_TONE: Record<string, string> = {

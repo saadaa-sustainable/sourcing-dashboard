@@ -110,7 +110,7 @@ export async function notifyReworkSlack(n: {
   scope?: string | null; // e.g. "3 lines"
 }): Promise<void> {
   const text = [
-    `↩️ *Sent back for rework:* ${n.what}${n.scope ? ` (${n.scope})` : ''}`,
+    `↩️ *Rework / Reassign:* ${n.what}${n.scope ? ` (${n.scope})` : ''}`,
     n.submitter ? `👤 ${n.submitter} needs to revise${n.by ? ` — returned by ${n.by}` : ''}` : '',
     n.reason ? `>${n.reason.slice(0, 400)}` : '',
     link('/my-dashboard', 'Open your submissions →'),

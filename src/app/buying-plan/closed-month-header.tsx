@@ -15,11 +15,11 @@ function outcome(status: SdStatus): { text: string; tone: 'green' | 'red' | 'gra
       return { text: 'Approved', tone: 'green' };
     case 'submitted':
     case 'pending_l2':
-      return { text: 'Never approved', tone: 'red' };
+      return { text: 'Approval Pending at month end', tone: 'red' };
     case 'rework':
-      return { text: 'Left in rework', tone: 'red' };
+      return { text: 'Rework / Reassign at month end', tone: 'red' };
     case 'rejected':
-      return { text: 'Rejected', tone: 'red' };
+      return { text: 'Rejected / Discarded', tone: 'red' };
     default:
       return { text: 'Never submitted', tone: 'gray' };
   }

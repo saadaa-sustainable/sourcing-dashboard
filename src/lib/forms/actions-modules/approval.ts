@@ -114,7 +114,7 @@ async function tellRaiser(
   const what = label || `${entityType.replace(/_/g, ' ')} #${entityId}`;
   await createNotification({
     kind: `approval_${decision}`,
-    title: decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Sent back for rework: ${what}` : `Rejected: ${what}`,
+    title: decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Rework / Reassign: ${what}` : `Rejected / Discarded: ${what}`,
     body: notes || null,
     link: ITEM_LINK[entityType]?.(entityId) ?? '/my-dashboard',
     recipientEmail: to,
@@ -137,7 +137,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     return fail('Invalid decision.');
   }
   if ((decision === 'reject' || decision === 'rework') && !notes) {
-    return fail('A reason is required to reject or send for rework.');
+    return fail('A remark is mandatory for Rework / Reassign and Reject / Discard.');
   }
 
   // Receivable plan is a batch of row_key-keyed rows, not one id record — decide
@@ -242,7 +242,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
             rework_notes: notes,
             reworked_by: user.email,
             reworked_at: now,
-            // Mark so a later approval counts as Edited-and-Approved.
+            // Kept for history; the sub status follows approver_edited (an admin edit), not a rework round.
             edited_before_approval: true,
           }
         : { status: to, rejection_notes: notes || null };
@@ -280,7 +280,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
   return done(
-    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for Rework / Reassign.' : 'Rejected / Discarded.',
   );
 }
 
@@ -305,7 +305,7 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
     decisions = [];
   }
   decisions = decisions.filter((d) => d && d.lineId && String(d.note ?? '').trim());
-  if (!decisions.length) return fail('Flag at least one line and give each a reason.');
+  if (!decisions.length) return fail('A remark is mandatory for Rework / Reassign — flag at least one line and give it a remark.');
 
   const supabase = await supa();
   const { data: rowRaw } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
@@ -360,7 +360,7 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   revalidatePath('/po-approval');
-  return done('Lines sent for rework.');
+  return done('Lines sent for Rework / Reassign.');
 }
 
 /**
@@ -377,7 +377,7 @@ async function tellBatch(
   notes: string,
 ) {
   const title =
-    decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Sent back for rework: ${what}` : `Rejected: ${what}`;
+    decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Rework / Reassign: ${what}` : `Rejected / Discarded: ${what}`;
   const recipients = [
     ...new Set(
       people
@@ -483,7 +483,7 @@ async function decideReceivablePlanBulk(
   revalidatePath('/approvals');
   revalidatePath('/receivable-plan');
   return done(
-    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for Rework / Reassign.' : 'Rejected / Discarded.',
   );
 }
 
@@ -545,7 +545,7 @@ async function decideInwardPlanBulk(
     decision === 'approve'
       ? `Approved — ${updated.length} line(s) now count as the month's plan.`
       : decision === 'rework'
-        ? `Sent for rework (${updated.length} line(s)).`
+        ? `Sent for Rework / Reassign (${updated.length} line(s)).`
         : `Rejected (${updated.length} line(s)).`,
   );
 }

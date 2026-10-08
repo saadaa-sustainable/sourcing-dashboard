@@ -49,7 +49,7 @@ function LifecycleCard({ lifecycle: lc, planMonth }: { lifecycle: BuyingPlanAnal
   const dl = new Date(c.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
   const comp: Record<typeof c.status, { tone: 'green' | 'yellow' | 'red'; text: string }> = {
     on_time: { tone: 'green', text: 'Approved on time' },
-    pending: { tone: 'yellow', text: `Awaiting approval — due ${dl}` },
+    pending: { tone: 'yellow', text: `Approval Pending — due ${dl}` },
     breach_submission: { tone: 'red', text: `Compliance breach — submission side · ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} late` },
     breach_approval: { tone: 'red', text: `Compliance breach — approval side · ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} late` },
   };

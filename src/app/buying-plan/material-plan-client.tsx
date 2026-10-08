@@ -606,7 +606,7 @@ export function MaterialPlanClient({
 
       {plan?.rejection_notes && status === 'rejected' && (
         <Notice tone="error">
-          <strong>Rejected.</strong> {plan.rejection_notes}
+          <strong>Rejected / Discarded.</strong> {plan.rejection_notes}
         </Notice>
       )}
       {message && <Notice tone="ok">{message}</Notice>}

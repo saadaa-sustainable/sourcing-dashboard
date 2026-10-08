@@ -7,7 +7,7 @@ import { FilterTable, type Column } from '@/components/filter-table';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { Notice } from '@/components/forms/form-layout';
-import { canApprove, canEdit } from '@/lib/forms/approval';
+import { canApprove, canEdit, sheetStatusText } from '@/lib/forms/approval';
 import { decideInwardPlanRow, deleteInwardPlanRow, importInwardPlanSheet } from '@/lib/forms/actions';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import type { SdRole } from '@/lib/forms/types';
@@ -24,7 +24,8 @@ const STATUS_TONE: Record<string, string> = { Approved: 'success', Rejected: 'da
 const STATUSES = ['Pending', 'Approved', 'RE-WORK', 'Rejected'] as const;
 
 function StatusPill({ status, approverEdited }: { status: string; approverEdited?: boolean }) {
-  const text = status === 'RE-WORK' ? 'Sent back for rework' : status === 'Approved' && approverEdited ? 'Approved with Approver’s Edits' : status;
+  // The sheet stores Pending / Approved / RE-WORK / Rejected; shown in the workflow's words.
+  const text = sheetStatusText(status, { approverEdited });
   return <span className={`badge ${STATUS_TONE[status] ?? ''}`}>{text}</span>;
 }
 
@@ -95,7 +96,7 @@ export function InwardPlanSheet({
     { key: 'last_received_on', label: 'Last GRN', kind: 'text', source: 'easyecom', accessor: (r) => r.last_received_on ?? '', render: (r) => dateLabel(r.last_received_on),
       info: 'The date of the latest goods receipt on this PO.' },
     { key: 'approval_status', label: 'Status', kind: 'text', filter: 'select', source: 'supabase', accessor: (r) => r.approval_status, render: (r) => <StatusPill status={r.approval_status} approverEdited={r.approver_edited} />,
-      info: 'Pending (waiting for the admin), Approved, RE-WORK (sent back) or Rejected. The month is decided in one go on Approvals; a single line can be decided here by an admin.' },
+      info: 'Approval Pending (waiting for the admin), Approved (Edited & Approved or First time Approved), Rework / Reassign or Rejected / Discarded — a remark is mandatory for the last two. The month is decided in one go on Approvals; a single line can be decided here by an admin.' },
     { key: 'mt_comments', label: 'Management comment', kind: 'text', source: 'supabase', accessor: (r) => r.mt_comments ?? '', render: (r) => r.mt_comments ?? '—',
       info: 'The note recorded with the approval, rework or rejection.' },
     { key: 'remarks', label: 'Team remark', kind: 'text', source: 'form', accessor: (r) => r.remarks ?? '', render: (r) => r.remarks ?? '—',
@@ -132,7 +133,7 @@ export function InwardPlanSheet({
         <div className="segment wf-segment">
           <button type="button" className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>All ({monthRows.length})</button>
           {STATUSES.map((s) => (
-            <button type="button" key={s} className={statusFilter === s ? 'active' : ''} onClick={() => setStatusFilter(s)}>{s} ({totals.by[s] ?? 0})</button>
+            <button type="button" key={s} className={statusFilter === s ? 'active' : ''} onClick={() => setStatusFilter(s)}>{s === 'Approved' ? 'Approved' : sheetStatusText(s)} ({totals.by[s] ?? 0})</button>
           ))}
         </div>
         {editor && <ImportSheet month={month} monthOptions={monthOptions} />}
@@ -231,7 +232,7 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
         <input
          
           style={{ width: 160 }}
-          placeholder={mode === 'Rejected' ? 'Why reject?' : 'What to change?'}
+          placeholder={mode === 'Rejected' ? 'Remark for Reject / Discard (required)' : 'Remark for Rework / Reassign (required)'}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -246,10 +247,10 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Approved', '')}>Approve</button>
       )}
       {approver && row.approval_status !== 'RE-WORK' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('RE-WORK')}>Rework</button>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('RE-WORK')}>Rework / Reassign</button>
       )}
       {approver && row.approval_status !== 'Rejected' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('Rejected')}>Reject</button>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('Rejected')}>Reject / Discard</button>
       )}
       {approver && row.approval_status !== 'Pending' && (
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Pending', '')}>Reopen</button>

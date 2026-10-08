@@ -49,8 +49,8 @@ export function poFlag(
   if (deleteRequest && (deleteRequest.status === 'submitted' || deleteRequest.status === 'pending_l2')) {
     return { tone: 'bad', text: 'Deletion requested', title: `Reason: ${deleteRequest.reason} — raised by ${deleteRequest.requested_by}` };
   }
-  if (po.status === 'rejected') return { tone: 'bad', text: 'Rejected', title: po.rejection_notes ?? undefined };
-  if (po.status === 'rework') return { tone: 'warn', text: 'Sent back for rework', title: po.rework_notes ?? undefined };
+  if (po.status === 'rejected') return { tone: 'bad', text: 'Rejected / Discarded', title: po.rejection_notes ?? undefined };
+  if (po.status === 'rework') return { tone: 'warn', text: 'Rework / Reassign', title: po.rework_notes ?? undefined };
   if (po.status === 'draft') {
     if (po.rate == null) return { tone: 'none', text: 'Draft · cost missing' };
     if (!po.po_qty) return { tone: 'none', text: 'Draft · no SKU lines yet' };
@@ -104,8 +104,8 @@ export function nextStep(po: PoApproval, role: SdRole, lines: PoApprovalLine[], 
     case 'pending_l2': {
       const approver = po.status === 'pending_l2' ? 'the admin' : 'the approver';
       if (!canApprove(role, po.status)) return { who: 'other', title: `Awaiting ${approver}`, detail: `Submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}${po.submit_remark && /[A-Za-z0-9]/.test(po.submit_remark) ? ` with the remark “${po.submit_remark}”` : ''}. Nothing to do here until they decide.`, focus: null };
-      if (!po.tna_confirmed) return { who: 'you', title: 'Confirm the TNA dates, then decide', detail: 'Check the critical-path dates in the TNA panel against the quantity and the vendor’s history, adjust if needed, and confirm. Approve unlocks after that; Rework and Reject are open now.', focus: 'tna' };
-      return { who: 'you', title: 'Approve, rework or reject', detail: 'The four panels below are the review: stock, cost against standard, the confirmed TNA, and the vendor’s load with this PO. Decide under them; a reason is required to rework or reject.', focus: 'decide' };
+      if (!po.tna_confirmed) return { who: 'you', title: 'Confirm the TNA dates, then decide', detail: 'Check the critical-path dates in the TNA panel against the quantity and the vendor’s history, adjust if needed, and confirm. Approve unlocks after that; Rework / Reassign and Reject / Discard are open now.', focus: 'tna' };
+      return { who: 'you', title: 'Approve, Rework / Reassign or Reject / Discard', detail: 'The four panels below are the review: stock, cost against standard, the confirmed TNA, and the vendor’s load with this PO. Decide under them; a remark is mandatory for Rework / Reassign and Reject / Discard.', focus: 'decide' };
     }
     case 'approved': {
       if (!po.po_issued_at) {
@@ -118,7 +118,7 @@ export function nextStep(po: PoApproval, role: SdRole, lines: PoApprovalLine[], 
       return { who: 'done', title: 'In production', detail: `Issued in EasyCom ${dayLabel(dateOnly(po.po_issued_at))}${po.critical_path_first_delivery ? `; first delivery due ${dayLabel(po.critical_path_first_delivery)}` : ''}. Record the first actual delivery date under Signing details when it lands.`, focus: null };
     }
     case 'rejected':
-      return { who: 'done', title: 'Rejected', detail: `${po.rejection_notes ? `“${po.rejection_notes}”. ` : ''}A rejected request is closed; raise a new PO if the purchase is still needed.`, focus: null };
+      return { who: 'done', title: 'Rejected / Discarded', detail: `${po.rejection_notes ? `“${po.rejection_notes}”. ` : ''}A rejected request is closed; raise a new PO if the purchase is still needed.`, focus: null };
     default:
       return { who: 'done', title: 'No action', detail: '', focus: null };
   }
@@ -276,10 +276,10 @@ export function PoCardBody({
       )}
       {error && <Notice tone="error">{error}</Notice>}
       {po.status === 'rework' && po.rework_notes && (
-        <Notice tone="warn"><strong>Sent back for rework:</strong> {po.rework_notes}</Notice>
+        <Notice tone="warn"><strong>Rework / Reassign:</strong> {po.rework_notes}</Notice>
       )}
       {po.status === 'rejected' && po.rejection_notes && (
-        <Notice tone="error"><strong>Rejected:</strong> {po.rejection_notes}</Notice>
+        <Notice tone="error"><strong>Rejected / Discarded:</strong> {po.rejection_notes}</Notice>
       )}
       {deleteRequest && (deleteRequest.status === 'submitted' || deleteRequest.status === 'pending_l2') && (
         <Notice tone="warn">
@@ -291,7 +291,7 @@ export function PoCardBody({
       {/* ---- The review: the four panels, from the same item the Approvals queue reads. */}
       {showReview && review && <PoReviewPanels item={review} role={role} spotlightTna={focus === 'tna'} />}
       {queued && !review?.poDetail && (
-        <p className="wf-subtle">Awaiting approval{po.submit_remark ? ` — remark: ${po.submit_remark}` : ''}.</p>
+        <p className="wf-subtle">Approval Pending{po.submit_remark ? ` — remark: ${po.submit_remark}` : ''}.</p>
       )}
       {queued && review?.submitNote && <p className="poa-note">{review.submitNote}</p>}
 

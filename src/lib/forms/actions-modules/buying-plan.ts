@@ -359,7 +359,7 @@ export async function rejectBuyingPlanLines(formData: FormData): Promise<ActionR
   const planId = Number(formData.get('plan_id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!planId) return fail('Invalid plan.');
-  if (!note) return fail('Give a reason for rejecting the line.');
+  if (!note) return fail('A remark is mandatory for Reject / Discard.');
   let lineIds: number[] = [];
   try {
     lineIds = (JSON.parse(String(formData.get('line_ids') ?? '[]')) as unknown[])

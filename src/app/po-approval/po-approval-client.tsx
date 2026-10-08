@@ -17,7 +17,7 @@ import {
 import { addMonths, canApprove, canDeletePo, canEdit, isPlanFrozen, monthLabel, monthStart, routeApproval, STATUS_LABEL } from '@/lib/forms/approval';
 import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
 import type { CostSheetFigures } from '@/lib/cost-sheet';
-import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
+import { Field, Notice } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
@@ -543,7 +543,7 @@ export function PoApprovalClient({
   const FILTERS: { key: Filter; label: string; test: (p: PoApproval) => boolean }[] = [
     { key: 'mine', label: 'Needs my action', test: mine },
     { key: 'draft', label: 'Draft', test: (p) => p.status === 'draft' || p.status === 'rework' },
-    { key: 'waiting', label: 'Awaiting approval', test: queued },
+    { key: 'waiting', label: 'Approval Pending', test: queued },
     { key: 'approved', label: 'Approved, not in EasyCom', test: approvedNotIssued },
     { key: 'issued', label: 'Issued', test: (p) => Boolean(p.po_issued_at) },
     { key: 'all', label: 'All', test: () => true },
@@ -1569,7 +1569,10 @@ function PoSubmissionTable({
                     <td className="num strong">{nfmt(s.pending_qty)}</td>
                     <td className="wf-subtle">{s.expected_delivery_date ?? '—'}</td>
                     <td>
-                      <StatusBadge status={s.closureStatus} />
+                      {/* PO closure is not an approval: yes = closed, no = flagged (po-lines-cutting). */}
+                      <span className={`wf-status tone-${s.closureStatus === 'approved' ? 'teal' : s.closureStatus === 'rejected' ? 'red' : 'purple'}`}>
+                        {s.closureStatus === 'approved' ? 'Closed' : s.closureStatus === 'rejected' ? 'Flagged' : 'Open'}
+                      </span>
                     </td>
                     {editable && (
                       <td>

@@ -40,7 +40,7 @@ import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { ClosedMonthHeader } from './closed-month-header';
 import { BulkDecisionBar, LineDecision, lineIdOf, type LineEdits } from './line-decision';
-import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
+import { PlanLineViews, approvalColumn, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -90,11 +90,11 @@ const FG_KANBAN: KanbanOption[] = [
     label: 'Approval',
     columns: [
       { key: 'draft', title: 'Draft', tone: 'gray' },
-      { key: 'submitted', title: 'With the approver', tone: 'yellow' },
-      { key: 'pending_l2', title: 'With the second approver', tone: 'yellow' },
-      { key: 'approved', title: 'Approved', tone: 'green' },
-      { key: 'rework', title: 'Sent back', tone: 'red' },
-      { key: 'rejected', title: 'Rejected', tone: 'gray' },
+      { key: 'pending', title: 'Approval Pending', tone: 'yellow' },
+      { key: 'edited', title: 'Edited & Approved', tone: 'green' },
+      { key: 'first', title: 'First time Approved', tone: 'green' },
+      { key: 'rework', title: 'Rework / Reassign', tone: 'red' },
+      { key: 'rejected', title: 'Rejected / Discarded', tone: 'gray' },
     ],
   },
   {
@@ -494,7 +494,8 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
         sort: { value: v.valueToBeBought, qty: v.totalQty, pct: v.pctComplete },
         groups: {
           progress: v.overPlan ? 'over' : v.actualQty >= v.totalQty ? 'done' : v.actualQty > 0 ? 'part' : 'none',
-          approval: ls || 'draft',
+          // Workflow statuses: Approval Pending, Edited & Approved / First time Approved, Rework / Reassign, Rejected / Discarded.
+          approval: approvalColumn(ls, v.row.approver_edited),
           route: v.totalQty <= 0 ? 'noqty' : routes > 1 ? 'mixed' : Number(v.row.job_work_qty) > 0 ? 'job' : Number(v.row.efob_qty) > 0 ? 'efob' : 'fob',
           category: v.category,
           weave: v.fabricType,
@@ -1169,7 +1170,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       )}
       {plan?.rejection_notes && status === 'rejected' && (
         <Notice tone="error">
-          <strong>Rejected.</strong> {plan.rejection_notes}
+          <strong>Rejected / Discarded.</strong> {plan.rejection_notes}
         </Notice>
       )}
       {message && <Notice tone="ok">{message}</Notice>}
@@ -1335,7 +1336,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                   </h2>
                   <span className="wf-subtle">Enter quantities by PO type. Zero quantities stay out of the submitted plan.</span>
                 </div>
-                <Badge tone={status === 'draft' ? 'gray' : status === 'approved' ? 'green' : 'yellow'}>{statusText(status)}</Badge>
+                <Badge tone={status === 'draft' ? 'gray' : status === 'approved' ? 'green' : 'yellow'}>{statusText(status, { approverEdited: plan?.approver_edited })}</Badge>
               </div>
               <div className="bp-cardbody bp-cardbody-flush">
                 <PlanLineViews
@@ -1905,14 +1906,14 @@ function AttentionCard({
 }) {
   const items: { key: string; dot: 'red' | 'yellow' | 'green' | 'gray'; title: string; sub: string; n: number }[] = closed
     ? [
-        { key: 'approval', dot: 'red', title: 'Never approved', sub: 'Still awaiting approval at month end', n: counts.approvalPending },
+        { key: 'approval', dot: 'red', title: 'Approval Pending at month end', sub: 'Never approved by the admin', n: counts.approvalPending },
         { key: 'start', dot: 'yellow', title: 'Never issued', sub: 'Planned, no PO in the month', n: counts.notStarted },
         { key: 'over', dot: 'red', title: 'Issued over plan', sub: 'More pieces than planned', n: counts.overPlan },
         { key: 'cost', dot: 'gray', title: 'No approved cost', sub: 'Value understated on these lines', n: counts.missingCost },
       ]
     : [
         { key: 'cost', dot: 'red', title: 'Missing approved cost', sub: 'Blocks plan value visibility', n: counts.missingCost },
-        { key: 'approval', dot: 'yellow', title: 'Approval pending', sub: 'Lines waiting for action', n: counts.approvalPending },
+        { key: 'approval', dot: 'yellow', title: 'Approval Pending', sub: 'Lines waiting for the admin', n: counts.approvalPending },
         { key: 'over', dot: 'red', title: 'Over plan', sub: 'Issued above the planned qty', n: counts.overPlan },
         { key: 'start', dot: 'yellow', title: 'Not started', sub: 'Planned, nothing issued yet', n: counts.notStarted },
       ];

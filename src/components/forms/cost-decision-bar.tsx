@@ -14,7 +14,7 @@ import {
   type ActionResult,
 } from '@/lib/forms/actions';
 import {
-  COST_STAGE_LABEL,
+  costStageText,
   COST_STAGE_TONE,
   canAcceptProposal,
   canConfirmCm,
@@ -102,7 +102,7 @@ export function CostDecisionBar({
       <textarea
         className="wf-textarea"
         rows={2}
-        placeholder={noteMode === 'reject' ? 'Reason for rejection — sent to the team' : 'What should change — sent to the team'}
+        placeholder={noteMode === 'reject' ? 'Remark for Reject / Discard (required) — sent to the team' : 'Remark for Rework / Reassign (required) — what should change, sent to the team'}
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
@@ -113,7 +113,7 @@ export function CostDecisionBar({
           disabled={busy || !note.trim()}
           onClick={() => act(noteMode === 'reject' ? rejectCost : renegotiateCost, { note })}
         >
-          {busy ? 'Working…' : noteMode === 'reject' ? 'Confirm reject' : 'Confirm renegotiate'}
+          {busy ? 'Working…' : noteMode === 'reject' ? 'Confirm Reject / Discard' : 'Confirm Rework / Reassign'}
         </button>
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => { setNoteMode(null); setNote(''); }}>
           Cancel
@@ -130,7 +130,7 @@ export function CostDecisionBar({
           title={hasRate ? 'The proposed rates become the standard cost' : 'The proposal names no rate — set a target instead'}
           onClick={() => act(acceptProposedCost, {})}
         >
-          <Check size={15} /> {busy ? 'Working…' : 'Accept proposal'}
+          <Check size={15} /> {busy ? 'Working…' : 'Approve'}
         </button>
       )}
       {canSetTarget(role, stage) && !noTarget && (
@@ -163,12 +163,12 @@ export function CostDecisionBar({
       {!isMat && fabricDone && !cmDone && <span className="wf-tag-approved">fabric ✓</span>}
       {canRenegotiate(role, stage) && (
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setNoteMode('renegotiate')}>
-          <RotateCcw size={15} /> Renegotiate
+          <RotateCcw size={15} /> Rework / Reassign
         </button>
       )}
       {canRejectCost(role, stage) && (
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setNoteMode('reject')}>
-          <X size={15} /> Reject
+          <X size={15} /> Reject / Discard
         </button>
       )}
     </div>
@@ -200,7 +200,7 @@ export function CostDecisionBar({
                     : 'No proposal yet. You can set a target for any rate type now; the team is notified and comes back with the vendor rate.'}
           </p>
         </div>
-        <span className={`wf-status tone-${COST_STAGE_TONE[stage ?? ''] ?? 'purple'}`}>{COST_STAGE_LABEL[stage ?? ''] ?? '—'}</span>
+        <span className={`wf-status tone-${COST_STAGE_TONE[stage ?? ''] ?? 'purple'}`}>{costStageText(stage, cost)}</span>
       </div>
       {err && <p className="wf-inline-error">{err}</p>}
       {actions}

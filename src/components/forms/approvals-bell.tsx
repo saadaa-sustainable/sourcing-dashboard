@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Bell, Inbox } from 'lucide-react';
 import type { ApprovalNotification } from '@/lib/forms/types';
 
-/** A notice for this user or their role ("Target set", "Sent back for rework", …). */
+/** A notice for this user or their role ("Target set", "Rework / Reassign", …). */
 type Notice = { id: number; kind: string; title: string; body: string | null; link: string | null; createdAt: string; unread: boolean };
 
 const when = (v: string | null) => {
@@ -173,7 +173,7 @@ export function ApprovalsBell() {
               );
             })}
           </div>
-          <div className="wf-bell-section">Awaiting approval</div>
+          <div className="wf-bell-section">Approval Pending</div>
         </>
       )}
 

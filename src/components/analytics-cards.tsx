@@ -979,7 +979,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
             </AnaCard>
 
             <AnaCard
-              title="Pending approval — now"
+              title="Approval Pending — now"
               icon={CircleAlert}
               tone={pending && pending.count > 0 ? "amber" : "neutral"}
               status={pending ? `${pending.count} WAITING` : "WAITING"}

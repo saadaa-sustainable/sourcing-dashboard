@@ -69,7 +69,7 @@ export function LineDecision({
   function run(kind: 'approve' | 'rework' | 'reject') {
     setError(null);
     if (kind !== 'approve' && !note.trim()) {
-      setError('Add a reason.');
+      setError('A remark is mandatory.');
       return;
     }
     const fd = new FormData();
@@ -101,7 +101,7 @@ export function LineDecision({
           autoFocus
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder={asking === 'rework' ? 'What should change?' : 'Why reject this line?'}
+          placeholder={asking === 'rework' ? 'Remark for Rework / Reassign (required)' : 'Remark for Reject / Discard (required)'}
           aria-label={`Reason to ${asking} ${label}`}
           onKeyDown={(e) => {
             if (e.key === 'Enter') run(asking);
@@ -109,7 +109,7 @@ export function LineDecision({
           }}
         />
         <button type="button" className={`wf-btn wf-btn-sm ${asking === 'reject' ? 'wf-btn-danger' : 'wf-btn-primary'}`} disabled={pending} onClick={() => run(asking)}>
-          {pending ? '…' : asking === 'rework' ? 'Send back' : 'Reject'}
+          {pending ? '…' : asking === 'rework' ? 'Rework / Reassign' : 'Reject / Discard'}
         </button>
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setAsking(null); setError(null); }}>
           Cancel
@@ -132,10 +132,10 @@ export function LineDecision({
       >
         <Check size={13} /> {edits && Object.keys(edits).length ? 'Edit & approve' : 'Approve'}
       </button>
-      <button type="button" className="bp-ld-btn" disabled={pending} onClick={() => setAsking('rework')} title={`Send ${label} back for rework`} aria-label={`Send ${label} back for rework`}>
+      <button type="button" className="bp-ld-btn" disabled={pending} onClick={() => setAsking('rework')} title={`Rework / Reassign ${label}`} aria-label={`Rework / Reassign ${label}`}>
         <RotateCcw size={13} />
       </button>
-      <button type="button" className="bp-ld-btn reject" disabled={pending} onClick={() => setAsking('reject')} title={`Reject ${label}`} aria-label={`Reject ${label}`}>
+      <button type="button" className="bp-ld-btn reject" disabled={pending} onClick={() => setAsking('reject')} title={`Reject / Discard ${label}`} aria-label={`Reject / Discard ${label}`}>
         <X size={13} />
       </button>
       {error && <span className="bp-line-decision-error">{error}</span>}
@@ -176,7 +176,7 @@ export function BulkDecisionBar({
   function run(kind: 'approve' | 'rework' | 'reject') {
     setError(null);
     if (kind !== 'approve' && !note.trim()) {
-      setError('Add a reason — it is recorded on each line.');
+      setError('A remark is mandatory — it is recorded on each line.');
       return;
     }
     const fd = new FormData();
@@ -212,7 +212,7 @@ export function BulkDecisionBar({
             autoFocus
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder={asking === 'rework' ? 'What should change on these lines?' : 'Why reject these lines?'}
+            placeholder={asking === 'rework' ? 'Remark for Rework / Reassign (required) — recorded on each line' : 'Remark for Reject / Discard (required) — recorded on each line'}
             aria-label={`Reason to ${asking} the ticked lines`}
             onKeyDown={(e) => {
               if (e.key === 'Enter') run(asking);
@@ -220,7 +220,7 @@ export function BulkDecisionBar({
             }}
           />
           <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => run(asking)}>
-            {pending ? 'Saving…' : asking === 'rework' ? `Send ${ids.length} back` : `Reject ${ids.length}`}
+            {pending ? 'Saving…' : asking === 'rework' ? `Rework / Reassign ${ids.length}` : `Reject / Discard ${ids.length}`}
           </button>
           <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setAsking(null); setError(null); }}>
             Cancel
@@ -232,10 +232,10 @@ export function BulkDecisionBar({
             <Check size={13} /> {pending ? 'Saving…' : `Approve ${ids.length}`}{editedCount ? ` (${editedCount} edited)` : ''}
           </button>
           <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setAsking('rework')}>
-            <RotateCcw size={13} /> Rework
+            <RotateCcw size={13} /> Rework / Reassign
           </button>
           <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setAsking('reject')}>
-            <X size={13} /> Reject
+            <X size={13} /> Reject / Discard
           </button>
           <button type="button" className="bp-bulk-btn" disabled={pending} onClick={onClear}>
             Clear

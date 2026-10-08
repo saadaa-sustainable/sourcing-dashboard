@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
-import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
+import { PlanLineViews, approvalColumn, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import { InfoDot } from '@/components/info-dot';
 import { addMonths, statusText } from '@/lib/forms/approval';
 import type { MaterialCode, MaterialType, SdStatus } from '@/lib/forms/types';
@@ -84,7 +84,7 @@ export function toMaterialCard(
     ],
     sort: { value: v.value, qty: job + buy, pct: 0 },
     groups: {
-      approval: ls || 'draft',
+      approval: approvalColumn(ls, v.row.approver_edited),
       type: v.row.material_type,
       route: !job && !buy ? 'noqty' : job && buy ? 'both' : job ? 'job' : 'purchase',
       validation: !job && !buy ? 'noqty' : v.missingCost ? 'nocost' : 'ready',
@@ -101,11 +101,11 @@ export const MAT_KANBAN: KanbanOption[] = [
     label: 'Approval',
     columns: [
       { key: 'draft', title: 'Draft', tone: 'gray' },
-      { key: 'submitted', title: 'With the approver', tone: 'yellow' },
-      { key: 'pending_l2', title: 'With the second approver', tone: 'yellow' },
-      { key: 'approved', title: 'Approved', tone: 'green' },
-      { key: 'rework', title: 'Sent back', tone: 'red' },
-      { key: 'rejected', title: 'Rejected', tone: 'gray' },
+      { key: 'pending', title: 'Approval Pending', tone: 'yellow' },
+      { key: 'edited', title: 'Edited & Approved', tone: 'green' },
+      { key: 'first', title: 'First time Approved', tone: 'green' },
+      { key: 'rework', title: 'Rework / Reassign', tone: 'red' },
+      { key: 'rejected', title: 'Rejected / Discarded', tone: 'gray' },
     ],
   },
   {
@@ -275,12 +275,12 @@ export function MaterialPlanView({
 
   const attentionItems = closed
     ? [
-        { key: 'approval', dot: 'red', title: 'Never approved', sub: 'Still awaiting approval at month end', n: attention.approvalPending },
+        { key: 'approval', dot: 'red', title: 'Approval Pending at month end', sub: 'Never approved by the admin', n: attention.approvalPending },
         { key: 'cost', dot: 'gray', title: 'No approved cost', sub: 'Value understated on these lines', n: attention.missingCost },
       ]
     : [
         { key: 'cost', dot: 'red', title: 'Missing approved cost', sub: 'Blocks plan value visibility', n: attention.missingCost },
-        { key: 'approval', dot: 'yellow', title: 'Approval pending', sub: 'Lines waiting for action', n: attention.approvalPending },
+        { key: 'approval', dot: 'yellow', title: 'Approval Pending', sub: 'Lines waiting for the admin', n: attention.approvalPending },
       ];
   const liveAttention = attentionItems.filter((i) => i.n > 0);
 
@@ -439,7 +439,7 @@ export function MaterialPlanView({
                             : it.row.line_status === 'rework'
                               ? { tone: 'red' as const, text: 'Rework' }
                               : planLocked
-                                ? { tone: 'yellow' as const, text: closed ? 'Never approved' : 'Awaiting' }
+                                ? { tone: 'yellow' as const, text: closed ? 'Approval Pending at month end' : 'Approval Pending' }
                                 : { tone: 'gray' as const, text: 'Draft' };
                         return (
                           <div className="bp-skurow" key={it.row.key}>
