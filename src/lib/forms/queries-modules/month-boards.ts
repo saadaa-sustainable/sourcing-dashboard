@@ -147,107 +147,6 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
   const trackOf = (p: (typeof plans)[number]) => (p.plan_type === 'material' ? 'material' : 'fg');
   const planFor = (track: string, month: string) => plans.find((x) => trackOf(x) === track && x.plan_month === month);
   const code = (l: PlanLine) => (l.product_code ?? '').trim().toUpperCase();
-  type Measure = [string, number, number, (v: number) => string];
-
-  /** This plan against the same track's plan the month before: totals, then product by product. */
-  const comparison = (track: string, month: string, mine: PlanLine[]): MonthDetailSection[] => {
-    const prevMonth = addMonths(month, -1);
-    const prev = planFor(track, prevMonth);
-    const title = `Compared with ${short(prevMonth)}`;
-    if (!prev) return [{ kind: 'bars', title, bars: [], empty: `There is no ${track === 'fg' ? 'FG' : 'material'} plan for ${long(prevMonth)} to compare with.` }];
-    const before = lines.filter((l) => l.plan_id === prev.id && qtyOf(l) > 0);
-    const now = mine.filter((l) => qtyOf(l) > 0);
-    const sum = (ls: PlanLine[], f: (l: PlanLine) => number) => ls.reduce((s, l) => s + f(l), 0);
-    const change = (a: number, b: number) => (b === 0 ? (a === 0 ? '—' : 'new') : `${a >= b ? '+' : '−'}${Math.abs(Math.round(((a - b) / b) * 100))}%`);
-    const count = (v: number) => String(v);
-    const measures: Measure[] = [
-      [track === 'fg' ? 'Products' : 'Materials', new Set(now.map(code)).size, new Set(before.map(code)).size, count],
-      [track === 'fg' ? 'Pcs planned' : 'Qty planned', sum(now, qtyOf), sum(before, qtyOf), num],
-      ['Plan value', sum(now, lineValue), sum(before, lineValue), inrShort],
-      ['Job work', sum(now, (l) => n(l.job_work_qty)), sum(before, (l) => n(l.job_work_qty)), num],
-      ...(track === 'fg'
-        ? ([
-            ['E-FOB', sum(now, (l) => n(l.efob_qty)), sum(before, (l) => n(l.efob_qty)), num],
-            ['FOB', sum(now, (l) => n(l.fob_qty)), sum(before, (l) => n(l.fob_qty)), num],
-          ] as Measure[])
-        : ([['Purchase', sum(now, (l) => n(l.fob_qty)), sum(before, (l) => n(l.fob_qty)), num]] as Measure[])),
-    ];
-    const prevQty = new Map<string, number>();
-    for (const l of before) prevQty.set(code(l), (prevQty.get(code(l)) ?? 0) + qtyOf(l));
-    const nowQty = new Map<string, number>();
-    for (const l of now) nowQty.set(code(l), (nowQty.get(code(l)) ?? 0) + qtyOf(l));
-    const productRows = [...new Set([...prevQty.keys(), ...nowQty.keys()])]
-      .map((c) => {
-        const a = nowQty.get(c) ?? 0;
-        const b = prevQty.get(c) ?? 0;
-        const tone: Tone = b === 0 ? 'draft' : a === 0 ? 'back' : a >= b ? 'live' : 'pending';
-        return { d: Math.abs(a - b), tone, cells: [c, num(b), num(a), `${a > b ? '+' : '−'}${num(Math.abs(a - b))}`, change(a, b)] };
-      })
-      .filter((r) => r.d > 0)
-      .sort((x, y) => y.d - x.d)
-      .map(({ tone, cells }) => ({ tone, cells }));
-    return [
-      {
-        kind: 'table',
-        title,
-        hint: `This plan against the ${track === 'fg' ? 'FG' : 'material'} plan for ${long(prevMonth)}.`,
-        columns: [{ label: 'Measure' }, { label: short(prevMonth), num: true }, { label: short(month), num: true }, { label: 'Change', num: true }],
-        rows: measures.map(([label, a, b, fmt]) => ({ cells: [label, fmt(b), fmt(a), change(a, b)] })),
-      },
-      {
-        kind: 'table',
-        title: `${track === 'fg' ? 'Product' : 'Material'} changes vs ${short(prevMonth)}`,
-        hint: 'Added, dropped, raised or cut compared with last month’s plan, biggest change first.',
-        columns: [{ label: track === 'fg' ? 'Product' : 'Material' }, { label: short(prevMonth), num: true }, { label: short(month), num: true }, { label: 'Change', num: true }, { label: '%', num: true }],
-        rows: productRows,
-        filters: [
-          { label: 'New this month', tone: 'draft' },
-          { label: 'Raised', tone: 'live' },
-          { label: 'Cut', tone: 'pending' },
-          { label: 'Dropped', tone: 'back' },
-        ],
-        empty: 'Same quantities as last month.',
-      },
-    ];
-  };
-
-  /**
-   * Needs attention — the SAME four signals as the plan page's Needs attention card, so the two
-   * read alike: no approved cost, awaiting approval (submitted, line not yet approved), nothing
-   * issued yet (FG), issued over plan (FG). Planned = a line with quantity, not rejected.
-   */
-  const attention = (
-    track: string,
-    mine: PlanLine[],
-    planStatus: string,
-    issuedOf: (code: string) => number,
-  ): MonthDetailSection => {
-    const rows: { tone: Tone; cells: string[] }[] = [];
-    const locked = ['submitted', 'pending_l2', 'approved'].includes(planStatus);
-    for (const l of mine) {
-      const q = qtyOf(l);
-      if (q <= 0 || l.line_status === 'rejected') continue;
-      const c = l.product_code ?? '—';
-      const got = issuedOf((l.product_code ?? '').trim().toUpperCase());
-      if (lineValue(l) <= 0) rows.push({ tone: 'back', cells: [c, 'No approved cost', `${num(q)} ${track === 'fg' ? 'pcs' : 'qty'} cannot be valued until a standard cost is approved`] });
-      if (locked && planStatus !== 'approved' && l.line_status !== 'approved') rows.push({ tone: 'pending', cells: [c, 'Approval pending', 'Line waiting for the approver'] });
-      if (track === 'fg' && got === 0) rows.push({ tone: 'draft', cells: [c, 'Not started', `${num(q)} pcs planned, nothing issued yet`] });
-      if (track === 'fg' && got > q) rows.push({ tone: 'back', cells: [c, 'Over plan', `${num(got)} issued against ${num(q)} planned`] });
-    }
-    return {
-      kind: 'table',
-      title: 'Needs attention',
-      hint: 'The same checks as the plan page: no approved cost, approval pending, not started, over plan.',
-      columns: [{ label: track === 'fg' ? 'Product' : 'Material' }, { label: 'Issue' }, { label: 'Detail' }],
-      rows,
-      filters: [
-        { label: 'Cost / over plan', tone: 'back' },
-        { label: 'Approval pending', tone: 'pending' },
-        { label: 'Not started', tone: 'draft' },
-      ],
-      empty: 'Nothing to flag on this plan.',
-    };
-  };
 
   /** Other checks the plan page does not count: sent-back lines, product states, empty draft lines. */
   const otherChecks = (track: string, mine: PlanLine[], draft: boolean): MonthDetailSection | null => {
@@ -367,7 +266,6 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       },
     ];
     let ring: NonNullable<MonthBoardCard['detail']>['ring'];
-    sections.push(attention(track, mine, p.status, issuedOf));
     const others = otherChecks(track, mine, status === 'draft');
     if (others) sections.push(others);
     const decisions = lineDecisions(mine);
@@ -444,74 +342,6 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
         empty: 'No quantities on this plan yet.',
       });
 
-      // Every product: planned vs issued.
-      const rows = withQty
-        .map((l) => {
-          const code = (l.product_code ?? '').trim().toUpperCase();
-          const planned = qtyOf(l);
-          const got = n(issuedByCode.get(code)?.issued_qty);
-          const tone: Tone = got > planned ? 'back' : got >= planned ? 'live' : got > 0 ? 'pending' : 'draft';
-          return {
-            planned,
-            tone,
-            cells: [
-              l.product_code ?? '—',
-              categoryOf.get(code) ?? 'Uncategorised',
-              l.product_status ?? '—',
-              num(n(l.job_work_qty)),
-              num(n(l.efob_qty)),
-              num(n(l.fob_qty)),
-              num(planned),
-              num(got),
-              got > planned ? `over by ${num(got - planned)}` : num(planned - got),
-              lineValue(l) > 0 ? inrShort(lineValue(l)) : '—',
-            ],
-          };
-        })
-        .sort((a, b) => b.planned - a.planned)
-        .map(({ cells, tone }) => ({ cells, tone }));
-      sections.push({
-        kind: 'table',
-        title: 'Products in this plan',
-        hint: 'Planned pieces by PO type against the pieces issued on POs dated this month.',
-        columns: [
-          { label: 'Product' },
-          { label: 'Category' },
-          { label: 'State' },
-          { label: 'Job', num: true },
-          { label: 'E-FOB', num: true },
-          { label: 'FOB', num: true },
-          { label: 'Planned', num: true },
-          { label: 'Issued', num: true },
-          { label: 'Left', num: true },
-          { label: 'Value', num: true },
-        ],
-        rows,
-        filters: [
-          { label: 'Not started', tone: 'draft' },
-          { label: 'Partly issued', tone: 'pending' },
-          { label: 'Fully issued', tone: 'live' },
-          { label: 'Over plan', tone: 'back' },
-        ],
-        empty: 'No products on this plan yet.',
-      });
-
-      // Issued this month with no line on the plan.
-      const planned = new Set(withQty.map((l) => (l.product_code ?? '').trim().toUpperCase()));
-      const outside = monthActuals.filter((a) => n(a.issued_qty) > 0 && !planned.has(a.product_code.trim().toUpperCase()));
-      sections.push({
-        kind: 'table',
-        title: 'Issued but not in the plan',
-        hint: 'Products with POs dated this month that have no line on this plan.',
-        columns: [{ label: 'Product' }, { label: 'Category' }, { label: 'Pcs issued', num: true }, { label: 'Value', num: true }, { label: 'PO lines', num: true }],
-        rows: outside
-          .sort((a, b) => n(b.issued_qty) - n(a.issued_qty))
-          .map((a) => ({
-            tone: 'back' as Tone,
-            cells: [a.product_code, categoryOf.get(a.product_code.trim().toUpperCase()) ?? 'Uncategorised', num(n(a.issued_qty)), inrShort(n(a.issued_value)), num(n(a.po_count))],
-          })),
-        empty: 'Every PO issued this month is for a planned product.',
-      });
     } else {
       // Material track: value by how it is bought, then the lines themselves.
       const job = withQty.reduce((s, l) => s + lineSplit(l).job, 0);
@@ -557,7 +387,6 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       });
     }
 
-    sections.push(...comparison(track, p.plan_month, mine));
     const events = timeline(log.filter((r) => r.entity_id === String(p.id)));
     sections.push({ kind: 'timeline', title: 'Approval history', hint: `Deadline to submit: ${deadlineDay} ${short(p.plan_month)}.`, events, empty: 'Nothing submitted or decided yet.' });
 
