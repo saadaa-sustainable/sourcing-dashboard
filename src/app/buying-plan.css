@@ -569,3 +569,22 @@ a.bph-arw:hover { background: #f4f6f5; color: #303330; }
 .bph-mode { margin-bottom: 6px; }
 .bph-inputbar { border: 1px solid #b5dccb; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #e3f1ec; color: #303330; font-size: 12px; }
 .bph-inputbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ── Clear outlines (2026-10-08: "at least give things some border to identify") ──────────
+   The header is its own white card; tabs sit on its bottom edge; badges, cards, tiles and
+   category blocks get a visible #d2d5d8 line instead of the near-invisible default. */
+.bph { padding: 14px 16px 0; border: 1px solid #d2d5d8; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.bph-tabsrow { margin: 2px -16px 0; padding: 0 16px; border-top: 1px solid #e3e5e3; border-bottom: 0; }
+.bph-inputbar { margin: 0 -16px; border-width: 1px 0 0; border-radius: 0 0 11px 11px; }
+.bph-badge { border: 1px solid #d2d5d8; }
+
+/* Badges carry a border in their own colour, so each reads as a distinct chip. */
+.bph-badge.ok { border-color: #a8d8bf; }
+.bph-badge.warn { border-color: #f0d18c; }
+.bph-badge.crit { border-color: #f4b7b0; }
+.bph-badge.info { border-color: #b8dcf5; }
+
+.ui-shopify.ui-view-buying-plan .bp-card,
+.ui-shopify.ui-view-buying-plan .bp-category,
+.ui-shopify.ui-view-buying-plan .bp-metric { border: 1px solid #d2d5d8; }
+.ui-shopify.ui-view-buying-plan .bp-cardhead { border-bottom-color: #e3e5e3; }

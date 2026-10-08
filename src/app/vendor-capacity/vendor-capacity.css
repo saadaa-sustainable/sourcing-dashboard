@@ -421,3 +421,18 @@
 .ui-view-vendor-capacity .vc2-picker-list small { color: #8a928c; font-size: 11px; }
 .ui-view-vendor-capacity .vc2-picker-list small:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .ui-view-vendor-capacity .vc2-picker-list .vc2-picker-board { display: block; margin-top: 4px; border-top: 1px solid #eef0ee; border-radius: 0 0 8px 8px; color: #616a64; font-size: 12px; font-weight: 600; }
+
+/* ── Clear outlines (2026-10-08): header as a white card, bordered badges and cards. ── */
+.ui-view-vendor-capacity .vc2-head { padding: 14px 16px; border: 1px solid #d2d5d8; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.ui-view-vendor-capacity .vc2-badge { border: 1px solid #d2d5d8; }
+
+/* Badges carry a border in their own colour, so each reads as a distinct chip. */
+.ui-view-vendor-capacity .vc2-badge.ok { border-color: #a8d8bf; }
+.ui-view-vendor-capacity .vc2-badge.warn { border-color: #f0d18c; }
+.ui-view-vendor-capacity .vc2-badge.crit { border-color: #f4b7b0; }
+.ui-view-vendor-capacity .vc2-badge.info { border-color: #b8dcf5; }
+
+.ui-view-vendor-capacity .vc2-card { box-shadow: 0 0 0 1px #d2d5d8, 0 1px 2px rgba(0, 0, 0, .04); }
+.ui-view-vendor-capacity .vc2-metric + .vc2-metric { border-left-color: #d2d5d8; }
+.ui-view-vendor-capacity .vc2-n { box-shadow: 0 0 0 1px #d2d5d8; }
+.ui-view-vendor-capacity .vc2-tab[aria-selected="true"] { box-shadow: inset 0 0 0 1px #c9cccf; }
