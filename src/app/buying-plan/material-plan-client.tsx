@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
@@ -19,6 +20,7 @@ import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ClosedMonthHeader } from './closed-month-header';
+import { MaterialPlanView } from './material-plan-view';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -59,6 +61,9 @@ type Row = {
   remark: string;
   /** Value frozen at submission (server-owned; carried through so the view can show it). */
   standard_value: string;
+  /** Per-line approval state (server-owned, read-only here). */
+  line_status: SdStatus | null;
+  approver_edited: boolean;
 };
 
 // Legacy material lines predate material_type — treat them as raw.
@@ -77,6 +82,8 @@ function toRow(l: BuyingPlanLine): Row {
     uom: l.uom ?? 'metres',
     remark: l.remark ?? '',
     standard_value: l.standard_value?.toString() ?? '',
+    line_status: l.line_status ?? null,
+    approver_edited: Boolean(l.approver_edited),
   };
 }
 
@@ -201,6 +208,8 @@ export function MaterialPlanClient({
         uom: 'metres',
         remark: '',
         standard_value: '',
+        line_status: null,
+        approver_edited: false,
       },
     ]);
     setAddCode('');
@@ -289,6 +298,8 @@ export function MaterialPlanClient({
           uom: meta?.material_type === 'trim' ? 'pcs' : 'metres',
           remark: '',
           standard_value: '',
+          line_status: null,
+          approver_edited: false,
         };
         map.set(code, {
           ...base,
@@ -436,7 +447,8 @@ export function MaterialPlanClient({
       </div>
       )}
 
-      {/* Material type — the primary filter across the track */}
+      {/* Material type — the primary filter for Input (the View has its own type filter) */}
+      {mode === 'input' && (
       <div className="wf-toolbar">
         <div className="segment wf-segment">
           {TYPES.map((t) => {
@@ -486,6 +498,7 @@ export function MaterialPlanClient({
           </div>
         )}
       </div>
+      )}
 
       {!isPlanWindowOpen(planMonth) && (
         <Notice tone="warn">
@@ -498,7 +511,7 @@ export function MaterialPlanClient({
         Fabric / raw-material buying, on its own approval track. <strong>Job Work</strong> pays for a
         service (e.g. dyeing); <strong>Purchase</strong> buys the material outright — two distinct
         budgets. Rates come from the approved{' '}
-        <a href="/standard-cost?track=material">Material Standard Cost</a>; enter a quantity and the
+        <Link href="/standard-cost?track=material">Material Standard Cost</Link>; enter a quantity and the
         value computes automatically.
       </Notice>
 
@@ -536,7 +549,14 @@ export function MaterialPlanClient({
       )}
 
       {mode === 'view' && (
-        <MaterialView view={view} />
+        <MaterialPlanView
+          view={view}
+          codeMap={codeMap}
+          planLocked={planLocked}
+          status={status}
+          closedOn={frozen ? planMonth : null}
+          planMonth={planMonth}
+        />
       )}
 
       {mode === 'input' && (
@@ -653,104 +673,6 @@ export function MaterialPlanClient({
           </div>
         </>
       )}
-    </>
-  );
-}
-
-type ViewItem = {
-  row: Row;
-  jobValue: number;
-  purchaseValue: number;
-  value: number;
-  colour: string | null;
-};
-
-function MaterialView({ view }: { view: ViewItem[] }) {
-  const planned = view.filter((v) => v.value > 0);
-  if (!planned.length) {
-    return (
-      <div className="empty-state">
-        <p>Nothing planned yet — switch to Input to fill this month’s material plan.</p>
-      </div>
-    );
-  }
-  const groups = TYPES.map((t) => {
-    const items = planned.filter((v) => v.row.material_type === t.key);
-    const job = items.reduce((a, v) => a + v.jobValue, 0);
-    const purchase = items.reduce((a, v) => a + v.purchaseValue, 0);
-    return { ...t, items, job, purchase, total: job + purchase };
-  }).filter((g) => g.items.length);
-  const gt = groups.reduce(
-    (a, g) => ({ job: a.job + g.job, purchase: a.purchase + g.purchase }),
-    { job: 0, purchase: 0 },
-  );
-
-  return (
-    <>
-      <div className="wf-bignum-grid">
-        <div className="wf-bignum">
-          <span className="metric-label">Job Work budget</span>
-          <strong>{money.format(gt.job)}</strong>
-          <small>services (e.g. dyeing)</small>
-        </div>
-        <div className="wf-bignum">
-          <span className="metric-label">Purchase budget</span>
-          <strong>{money.format(gt.purchase)}</strong>
-          <small>material bought outright</small>
-        </div>
-        <div className="wf-bignum">
-          <span className="metric-label">Total material value</span>
-          <strong>{money.format(gt.job + gt.purchase)}</strong>
-          <small>{planned.length} line(s)</small>
-        </div>
-      </div>
-
-      {groups.map((g) => (
-        <div className="table-panel" key={g.key}>
-          <div className="table-meta">
-            <h3>
-              {g.label}
-              <InfoDot text={`WHAT: the approved ${g.label.toLowerCase()} plan — quantities and value.
-
-HOW: approved plan lines for this material type, split Job Work vs Purchase, valued at the approved material standard cost.
-
-USE: read-only; the Input view is where quantities change.`} />
-            </h3>
-            <span>
-              Job {money.format(g.job)} · Purchase {money.format(g.purchase)} · Total{' '}
-              {money.format(g.total)}
-            </span>
-          </div>
-          <div className="table-scroll">
-            <table className="wide-table">
-              <thead>
-                <tr>
-                  <th>Code <HeaderInfo label="Code" /></th>
-                  {g.key === 'dyed' && <th>Colour <HeaderInfo label="Colour" /></th>}
-                  <th className="num">Job qty <HeaderInfo label="Job qty" /></th>
-                  <th className="num">Purchase qty <HeaderInfo label="Purchase qty" /></th>
-                  <th>UOM <HeaderInfo label="UOM" /></th>
-                  <th>Remark <HeaderInfo label="Remark" /></th>
-                  <th className="num">Value <HeaderInfo label="Value" /></th>
-                </tr>
-              </thead>
-              <tbody>
-                {g.items.map((v) => (
-                  <tr key={v.row.key}>
-                    <td className="mono">{v.row.material_code}</td>
-                    {g.key === 'dyed' && <td>{v.colour || '—'}</td>}
-                    <td className="num">{v.row.job_qty ? fmt.format(num(v.row.job_qty)) : '—'}</td>
-                    <td className="num">{v.row.purchase_qty ? fmt.format(num(v.row.purchase_qty)) : '—'}</td>
-                    <td>{v.row.uom}</td>
-                    <td>{v.row.remark || '—'}</td>
-                    <td className="num strong">{money.format(v.value)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
     </>
   );
 }
