@@ -290,10 +290,7 @@ export function BuyingPlanClient({
     return m;
   }, [catalog]);
 
-  const used = useMemo(
-    () => new Set(rows.map((row) => row.product_code)),
-    [rows],
-  );
+  const used = new Set(rows.map((row) => row.product_code));
   const available = productCodes.filter((code) => !used.has(code));
 
   const view = rows.map((row) => {
