@@ -86,6 +86,8 @@ type PlanLine = {
   rework_notes: string | null;
 };
 
+const MATERIAL_TYPE_WORD: Record<string, string> = { raw: 'Raw material', dyed: 'Dyed / finished', trim: 'Trims' };
+
 export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardData> {
   const supabase = await client();
   const [plans, lines, actuals, costs, catalog, log, matCosts, demand] = await Promise.all([
@@ -249,7 +251,8 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     const tiles: { label: string; value: string }[] = [
       { label: 'Plan value', value: value == null ? '—' : inrShort(value) },
       { label: track === 'fg' ? 'Products' : 'Materials', value: String(products) },
-      { label: track === 'fg' ? 'Pcs planned' : 'Qty planned', value: num(qty) },
+      // Material quantities are in mixed units (metres, kg, pcs), so lines, not a summed qty.
+      track === 'fg' ? { label: 'Pcs planned', value: num(qty) } : { label: 'Lines planned', value: num(withQty.length) },
       {
         label: 'Deadline',
         value:
@@ -356,14 +359,27 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
         ],
         empty: 'No line has an approved material rate yet.',
       });
-      const byType = new Map<string, number>();
-      for (const l of withQty) byType.set(l.material_type || 'Unspecified', (byType.get(l.material_type || 'Unspecified') ?? 0) + qtyOf(l));
+      // By value, not quantity: material quantities are in different units (metres, kg, pcs).
+      const byType = new Map<string, { value: number; lines: number }>();
+      for (const l of withQty) {
+        const t = MATERIAL_TYPE_WORD[l.material_type ?? ''] ?? 'Raw material';
+        const row = byType.get(t) ?? { value: 0, lines: 0 };
+        row.value += lineValue(l);
+        row.lines += 1;
+        byType.set(t, row);
+      }
       sections.push({
         kind: 'bars',
-        title: 'Quantity by material type',
+        title: 'Value by material type',
+        hint: 'Line values summed per type; quantities are not added across units.',
         bars: [...byType.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([t, q]) => ({ label: t, value: `${num(q)} · ${pct(q, qty)}%`, pct: pct(q, qty), tone: 'draft' as Tone })),
+          .sort((a, b) => b[1].value - a[1].value)
+          .map(([t, r]) => ({
+            label: `${t} · ${r.lines} line${r.lines === 1 ? '' : 's'}`,
+            value: `${inrShort(r.value)} · ${pct(r.value, total)}%`,
+            pct: pct(r.value, total),
+            tone: 'draft' as Tone,
+          })),
         empty: 'No quantities on this plan yet.',
       });
       sections.push({
@@ -374,7 +390,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           tone: (l.line_status === 'approved' ? 'live' : l.line_status ? 'pending' : 'draft') as Tone,
           cells: [
             l.product_code ?? '—',
-            l.material_type ?? '—',
+            MATERIAL_TYPE_WORD[l.material_type ?? ''] ?? 'Raw material',
             l.colour ?? '—',
             num(n(l.job_work_qty)),
             num(n(l.fob_qty)),
@@ -397,7 +413,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       track: track === 'fg' ? 'FG' : 'Material',
       status,
       big: { value: value == null ? '—' : inrShort(value), label: 'Plan value' },
-      sub: `${products} ${track === 'fg' ? 'product' : 'material'}${products === 1 ? '' : 's'} · ${num(qty)} ${track === 'fg' ? 'pcs' : 'qty'} planned${p.status === 'pending_l2' ? ' · with the second approver' : p.status === 'submitted' ? ' · with the approver' : ''}`,
+      sub: `${products} ${track === 'fg' ? 'product' : 'material'}${products === 1 ? '' : 's'} · ${track === 'fg' ? `${num(qty)} pcs` : `${num(withQty.length)} line${withQty.length === 1 ? '' : 's'}`} planned${p.status === 'pending_l2' ? ' · with the second approver' : p.status === 'submitted' ? ' · with the approver' : ''}`,
       progress:
         issued != null && qty > 0
           ? {
@@ -410,7 +426,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       facts,
       warn,
       actions,
-      list: [String(products), num(qty), issued == null ? '—' : num(issued), value == null ? '—' : inrShort(value)],
+      list: [String(products), track === 'fg' ? num(qty) : '—', issued == null ? '—' : num(issued), value == null ? '—' : inrShort(value)],
       detail: {
         kicker: `Buying Plan · ${track === 'fg' ? 'FG' : 'Material'}`,
         lede: `${track === 'fg' ? 'Finished-goods' : 'Fabric / material'} plan for ${long(p.plan_month)}${
@@ -510,8 +526,60 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     });
   }
 
+  // The same for the Fabric / Material track: this and next month, when not started yet. The
+  // starting point is last month's material plan (there is no material demand feed).
+  for (const m of [monthStart(), addMonths(monthStart(), 1)]) {
+    if (plans.some((p) => p.plan_month === m && p.plan_type === 'material')) continue;
+    const prevMonth = addMonths(m, -1);
+    const prev = planFor('material', prevMonth);
+    const prevLines = prev ? lines.filter((l) => l.plan_id === prev.id && qtyOf(l) > 0) : [];
+    const left = daysToDeadline(m);
+    cards.push({
+      id: `bp-new-mat-${m}`,
+      month: m,
+      label: short(m),
+      track: 'Material',
+      status: 'draft',
+      big: { value: '—', label: 'Plan value' },
+      sub: 'Not started',
+      facts: [`Submit by ${deadlineDay} ${short(m).split(' ')[0]}`],
+      actions: [{ label: 'Start plan', href: `/buying-plan?month=${m}&type=material&mode=input`, primary: true }],
+      list: ['0', '—', '—', '—'],
+      detail: {
+        kicker: 'Buying Plan · Material',
+        lede: `No fabric / material plan has been started for ${long(m)} yet. Here is last month’s to start from.`,
+        tiles: [
+          { label: 'Deadline', value: `${deadlineDay} ${short(m)} · ${left >= 0 ? `${left} d left` : `overdue ${-left} d`}` },
+          { label: `${short(prevMonth)} materials`, value: prev ? String(new Set(prevLines.map(code)).size) : '—' },
+          { label: `${short(prevMonth)} value`, value: prev ? inrShort(prevLines.reduce((s, l) => s + lineValue(l), 0)) : '—' },
+        ],
+        sections: [
+          {
+            kind: 'table',
+            title: `${short(prevMonth)} plan, as a starting point`,
+            hint: prev ? `What was planned last month (${STATUS_WORDS[prev.status]?.[0] ?? prev.status}).` : undefined,
+            columns: [{ label: 'Material' }, { label: 'Type' }, { label: 'Colour' }, { label: 'Job work', num: true }, { label: 'Purchase', num: true }, { label: 'Unit' }, { label: 'Value', num: true }],
+            rows: prevLines.map((l) => ({
+              cells: [
+                l.product_code ?? '—',
+                MATERIAL_TYPE_WORD[l.material_type ?? ''] ?? 'Raw material',
+                l.colour ?? '—',
+                num(n(l.job_work_qty)),
+                num(n(l.fob_qty)),
+                l.uom ?? '—',
+                lineValue(l) > 0 ? inrShort(lineValue(l)) : '—',
+              ],
+            })),
+            empty: `There is no fabric / material plan for ${long(prevMonth)}.`,
+          },
+        ],
+      },
+    });
+  }
+
   const started = cards.filter((c) => !c.id.startsWith('bp-new-'));
-  const totalQty = lines.reduce((s, l) => s + qtyOf(l), 0);
+  // Pieces are FG only: material quantities are metres / kg and do not add to pieces.
+  const totalQty = lines.filter((l) => !materialPlans.has(l.plan_id)).reduce((s, l) => s + qtyOf(l), 0);
   const totalValue = lines.reduce((s, l) => s + lineValue(l), 0);
   return {
     columns: [
