@@ -82,7 +82,10 @@ export function MaterialPlanView({
   status,
   closedOn = null,
   planMonth,
+  decision,
 }: {
+  /** Per-line decision control for the approver (Plan detail column); omitted otherwise. */
+  decision?: (item: MaterialViewItem) => React.ReactNode;
   view: MaterialViewItem[];
   codeMap: Map<string, MaterialCode>;
   planLocked: boolean;
@@ -171,6 +174,9 @@ export function MaterialPlanView({
     { key: 'remark', label: 'Remark', kind: 'text', source: 'supabase', accessor: (v) => v.row.remark || '—' },
     { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase',
       accessor: (v) => (v.row.line_status ? statusText(v.row.line_status, { approverEdited: v.row.approver_edited }) : '—') },
+    ...(decision
+      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: MaterialViewItem) => v.row.line_status || 'pending', render: (v: MaterialViewItem) => decision(v) }]
+      : []),
   ];
 
   const attentionItems = closed

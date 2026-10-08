@@ -40,6 +40,7 @@ import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { ClosedMonthHeader } from './closed-month-header';
+import { LineDecision } from './line-decision';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -161,6 +162,20 @@ export function BuyingPlanClient({
   // requestPlanAmendment, line + plan approvals).
   const frozen = isPlanFrozen(planMonth);
   const editable = canEdit(role, status) && !frozen;
+  // Per-product decision for the approver, next to the plan-wide decision card.
+  const canDecideLines =
+    Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
+  const decisionCell = (row: Draft) =>
+    plan?.id ? (
+      <LineDecision
+        planId={plan.id}
+        lineKey={row.key}
+        lineStatus={row.line_status || null}
+        approverEdited={row.approver_edited}
+        label={row.product_code}
+        entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+      />
+    ) : null;
 
   // Spec: every active product is listed; you zero out what you won't make.
   // A saved plan shows its stored lines; a fresh editable plan pre-lists all
@@ -347,6 +362,9 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
     // (status issued or completed, by PO date). Ordered, not received.
     { key: 'actual', label: 'Actual qty', kind: 'num', source: 'easyecom', accessor: (v) => v.actualQty },
     { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase', accessor: (v) => (v.row.line_status ? statusText(v.row.line_status as SdStatus, { approverEdited: v.row.approver_edited }) : '—') },
+    ...(canDecideLines
+      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: ViewItem) => v.row.line_status || 'pending', render: (v: ViewItem) => decisionCell(v.row) }]
+      : []),
   ];
 
   // View module works over products that actually have a planned quantity. REJECTED lines
@@ -988,7 +1006,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
         <div className="bp-card bp-cardbody bp-approval-card">
           <div className="bp-approval-head">
             <b>Your decision</b>
-            <span>Approve as submitted, or Edit &amp; approve to change quantities first.</span>
+            <span>Approve as submitted, or Edit &amp; approve to change quantities first. To decide one product at a time, use “Your decision” on each line in Plan detail or Input.</span>
           </div>
           <ApprovalBar
             entityType="buying_plan"
@@ -1140,6 +1158,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                           <th className="num wf-cell-calc">Actual issued value <HeaderInfo label="Actual issued value" /></th>
                           <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
                           <th>Validation <HeaderInfo label="Validation" /></th>
+                          {canDecideLines && <th>Your decision</th>}
                           {editable && <th aria-label="Remove" />}
                         </tr>
                       </thead>
@@ -1184,6 +1203,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                               <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(event) => patch(row.key, 'remark', event.target.value)} />
                             </td>
                             <td>{missingCost ? <Badge tone="red">No approved cost</Badge> : overPlan ? <Badge tone="red">Over plan</Badge> : totalQty > 0 ? <Badge tone="green">Ready</Badge> : <Badge tone="gray">No qty</Badge>}</td>
+                            {canDecideLines && <td>{totalQty > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
                             {editable && (
                               <td>
                                 <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.product_code}`} onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
@@ -1195,7 +1215,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                         ))}
                         {!inputRows.length && (
                           <tr>
-                            <td colSpan={editable ? 16 : 15} className="wf-empty-cell">
+                            <td colSpan={15 + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
                               {view.length ? 'No products match the filters.' : 'No product codes added yet. Discontinued variants are excluded automatically.'}
                             </td>
                           </tr>
@@ -1212,6 +1232,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                             <td className="num strong">{money.format(totals.actualValue)}</td>
                             <td />
                             <td />
+                            {canDecideLines && <td />}
                             {editable && <td />}
                           </tr>
                         </tfoot>

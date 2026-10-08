@@ -21,6 +21,7 @@ import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ClosedMonthHeader } from './closed-month-header';
 import { MaterialPlanView } from './material-plan-view';
+import { LineDecision } from './line-decision';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -120,6 +121,20 @@ export function MaterialPlanClient({
   // A month that is over is VIEW ONLY (user rule, 2026-10-08) — same as the FG track.
   const frozen = isPlanFrozen(planMonth);
   const editable = canEdit(role, status) && !frozen;
+  // Per-line decision for the approver, next to the plan-wide decision card.
+  const canDecideLines =
+    Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
+  const decisionCell = (row: Row) =>
+    plan?.id ? (
+      <LineDecision
+        planId={plan.id}
+        lineKey={row.key}
+        lineStatus={row.line_status}
+        approverEdited={row.approver_edited}
+        label={row.material_code}
+        entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+      />
+    ) : null;
   const [rows, setRows] = useState<Row[]>(() => lines.map(toRow));
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -535,7 +550,7 @@ export function MaterialPlanClient({
         <div className="bp-card bp-cardbody bp-approval-card">
           <div className="bp-approval-head">
             <b>Your decision</b>
-            <span>Approve as submitted, or Edit &amp; approve to change quantities first.</span>
+            <span>Approve as submitted, or Edit &amp; approve to change quantities first. To decide one material at a time, use “Your decision” on each line in Plan detail or Input.</span>
           </div>
           <ApprovalBar
             entityType="buying_plan"
@@ -556,6 +571,7 @@ export function MaterialPlanClient({
           status={status}
           closedOn={frozen ? planMonth : null}
           planMonth={planMonth}
+          decision={canDecideLines ? (v) => decisionCell(v.row as Row) : undefined}
         />
       )}
 
@@ -581,6 +597,7 @@ export function MaterialPlanClient({
                     <th className="input-col wf-cell-input">UOM <HeaderInfo label="UOM" /></th>
                     <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
                     <th className="num wf-cell-calc">Value <HeaderInfo label="Value" /></th>
+                    {canDecideLines && <th>Your decision</th>}
                     {editable && <th aria-label="Remove" />}
                   </tr>
                 </thead>
@@ -631,6 +648,7 @@ export function MaterialPlanClient({
                       <td className="num strong wf-cell-calc">
                         {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
                       </td>
+                      {canDecideLines && <td>{num(row.job_qty) + num(row.purchase_qty) > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
                       {editable && (
                         <td>
                           <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
@@ -642,7 +660,7 @@ export function MaterialPlanClient({
                   ))}
                   {!shownRows.length && (
                     <tr>
-                      <td colSpan={type === 'dyed' ? (editable ? 10 : 9) : editable ? 9 : 8} className="wf-empty-cell">
+                      <td colSpan={(type === 'dyed' ? 9 : 8) + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
                         No {TYPE_LABEL[type].toLowerCase()} lines yet
                         {editable ? ' — add a code above or import a CSV.' : '.'}
                       </td>
