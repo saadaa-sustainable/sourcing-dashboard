@@ -493,19 +493,54 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
   };
   const planCards: PlanCard[] = view.filter((v) => v.totalQty > 0).filter(matchesFilters).map(toCard);
 
+  // Fill the plan cards carry every column of the input table: weave, pending qty, total,
+  // value to be bought, issued qty and value, and the entry check.
+  const toInputCard = (v: ViewItem): PlanCard => {
+    const base = toCard(v);
+    const check: PlanCard['check'] =
+      v.missingCost && v.totalQty > 0
+        ? { text: 'No approved cost', tone: 'red' }
+        : v.overPlan
+          ? { text: 'Over plan', tone: 'red' }
+          : v.totalQty > 0
+            ? { text: 'Ready', tone: 'green' }
+            : { text: 'No qty', tone: 'gray' };
+    return {
+      ...base,
+      context: `${v.category} · ${v.productStatus} · ${v.fabricType}`,
+      check,
+      tags: base.tags.filter((t) => t.text !== v.fabricType),
+      info: [
+        ['Pending qty', v.pending != null ? fmt.format(v.pending) : '—'],
+        ['Total qty', `${fmt.format(v.totalQty)} pcs`],
+        ['Value to be bought', v.missingCost ? 'No approved cost' : money.format(v.valueToBeBought)],
+        ['Issued', `${fmt.format(v.actualQty)} pcs · ${money.format(v.actualValue)}`],
+      ],
+    };
+  };
+
   // Fill the plan on a card: the three PO-type quantities and the remark, same fields and
   // same handlers as the Input table (read-only when the plan cannot be edited).
   const inputEditor = (key: string) => {
     const row = rows.find((r) => r.key === key);
     if (!row) return null;
+    const item = view.find((v) => v.row.key === key);
     return (
       <>
-        {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => (
-          <label key={field}>
-            {field === 'job_work_qty' ? 'Job' : field === 'efob_qty' ? 'E-FOB' : 'FOB'}
-            <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(e) => patch(row.key, field, e.target.value)} />
-          </label>
-        ))}
+        {(['job_work_qty', 'efob_qty', 'fob_qty'] as const).map((field) => {
+          const k = field === 'job_work_qty' ? 'job' : field === 'efob_qty' ? 'efob' : 'fob';
+          const rate = item?.cost?.[k] ?? 0;
+          const val = item?.byType[k] ?? 0;
+          return (
+            <label key={field}>
+              {k === 'job' ? 'Job' : k === 'efob' ? 'E-FOB' : 'FOB'}
+              <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(e) => patch(row.key, field, e.target.value)} />
+              <small title="Approved standard cost per piece · value of this quantity">
+                {rate ? `@ ₹${fmt.format(rate)}` : 'no rate'}{val ? ` · ${money.format(val)}` : ''}
+              </small>
+            </label>
+          );
+        })}
         <label className="wide">
           Remark
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1287,7 +1322,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
               </div>
               <div className="bp-cardbody bp-cardbody-flush">
                 <PlanLineViews
-                  items={inputRows.map(toCard)}
+                  items={inputRows.map(toInputCard)}
                   storageKey="buying-plan-input-view"
                   noun="product"
                   defaultView="table"

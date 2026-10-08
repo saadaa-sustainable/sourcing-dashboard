@@ -226,15 +226,19 @@ export function MaterialPlanClient({
   const inputEditor = (key: string) => {
     const row = rows.find((r) => r.key === key);
     if (!row) return null;
+    const cost = materialCosts[row.material_code];
+    const unit = row.uom || 'unit';
     return (
       <>
         <label>
           Job Work qty
           <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
+          <small title="Approved Job rate per unit">{cost?.job ? `@ ₹${fmt.format(cost.job)} / ${unit}` : 'no rate'}</small>
         </label>
         <label>
           Purchase qty
           <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
+          <small title="Approved Purchase rate per unit">{cost?.fob ? `@ ₹${fmt.format(cost.fob)} / ${unit}` : 'no rate'}</small>
         </label>
         <label>
           UOM
@@ -646,7 +650,25 @@ export function MaterialPlanClient({
         <>
           <div className="bp-card" style={{ marginBottom: 14 }}>
           <PlanLineViews
-            items={shownRows.map((v) => toMaterialCard(v, { codeMap, status, total: grandTotal }))}
+            items={shownRows.map((v) => {
+              // Every input-table column on the card: rates and values per route, total, check.
+              const base = toMaterialCard(v, { codeMap, status, total: grandTotal });
+              const qty = num(v.row.job_qty) + num(v.row.purchase_qty);
+              return {
+                ...base,
+                check: !qty
+                  ? { text: 'No qty', tone: 'gray' as const }
+                  : v.missingCost
+                    ? { text: 'No approved cost', tone: 'red' as const }
+                    : { text: 'Ready', tone: 'green' as const },
+                info: [
+                  ['Job Work value', v.jobValue ? money.format(v.jobValue) : '—'],
+                  ['Purchase value', v.purchaseValue ? money.format(v.purchaseValue) : '—'],
+                  ['Base fabric', codeMap.get(v.row.material_code)?.base_fabric_code ?? '—'],
+                  ['Total value', v.missingCost ? 'No approved cost' : money.format(v.value)],
+                ] as [string, string][],
+              };
+            })}
             storageKey="material-plan-input-view"
             noun="material line"
             qtyUnit={null}

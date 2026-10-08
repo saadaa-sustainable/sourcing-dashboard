@@ -21,6 +21,10 @@ export type PlanCard = {
   rates: string;
   tags: { text: string; kind?: 'npd' | 'nocost' | 'over' }[];
   details: [string, string][];
+  /** Extra facts printed on the card itself (Fill the plan shows every table column). */
+  info?: [string, string][];
+  /** A check shown beside the status (Ready / No qty / No approved cost / Over plan). */
+  check?: { text: string; tone: CardTone };
   sort: { value: number; qty: number; pct: number };
   /** Kanban column key for each column option. */
   groups: Record<string, string>;
@@ -144,7 +148,10 @@ export function PlanLineViews({
     >
       <div className="pl-card-head">
         <span className="mono pl-card-code">{it.code}</span>
-        <span className={`bp-badge ${it.status.tone}`}>{it.status.text}</span>
+        <span className="pl-card-pills">
+          {it.check && <span className={`bp-badge ${it.check.tone}`}>{it.check.text}</span>}
+          <span className={`bp-badge ${it.status.tone}`}>{it.status.text}</span>
+        </span>
       </div>
       <div className="pl-card-ctx">{it.context}</div>
       {editor ? (
@@ -158,6 +165,13 @@ export function PlanLineViews({
             </div>
           ))}
         </div>
+      )}
+      {it.info && it.info.length > 0 && (
+        <dl className="pl-card-info">
+          {it.info.map(([k, v]) => (
+            <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+          ))}
+        </dl>
       )}
       <div className="pl-card-money">
         <b>{it.value ? inr(it.value) : '—'}</b>
