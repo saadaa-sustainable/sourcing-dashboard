@@ -172,42 +172,6 @@ export function StandardCostDetailClient({
         />
       ) : null}
 
-      <section className="sc-page-rates" aria-label="Current rates">
-        {[
-          ...(isMat
-            ? [
-                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
-                { label: `${rateLabels.job} rate`, value: cost.job_cost },
-              ]
-            : [
-                { label: `${rateLabels.job} rate`, value: cost.job_cost },
-                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
-              ]),
-          { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
-          { label: 'Proposed', value: cost.proposed_cost },
-        ].map((r) => (
-          <div className="sc-page-rate" key={r.label}>
-            <span>{r.label}</span>
-            <strong>{money(r.value)}</strong>
-          </div>
-        ))}
-        {/* The target names the rate it is aimed at (Job / FOB / E-FOB), not one bare figure. */}
-        <div className="sc-page-rate">
-          <span>Target</span>
-          {targetParts(cost, isMat ? 'material' : 'fg').length ? (
-            <div className="sc-page-targets">
-              {targetParts(cost, isMat ? 'material' : 'fg').map((t) => (
-                <strong key={t.label}>
-                  <small>{t.label}</small> {money(t.value)}
-                </strong>
-              ))}
-            </div>
-          ) : (
-            <strong>—</strong>
-          )}
-        </div>
-      </section>
-
       {editing && (
         <section className="sc-page-edit" aria-label="Change the cost">
           <div className="sc-page-edit-head">
@@ -264,6 +228,44 @@ export function StandardCostDetailClient({
           extraFabrics={extraFabrics}
         />
         )}
+      </section>
+
+      {/* The headline rates sit with the decision, after the full record, so they are read
+          last, right before acting. */}
+      <section className="sc-page-rates" aria-label="Current rates">
+        {[
+          ...(isMat
+            ? [
+                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
+                { label: `${rateLabels.job} rate`, value: cost.job_cost },
+              ]
+            : [
+                { label: `${rateLabels.job} rate`, value: cost.job_cost },
+                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
+              ]),
+          { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
+          { label: 'Proposed', value: cost.proposed_cost },
+        ].map((r) => (
+          <div className="sc-page-rate" key={r.label}>
+            <span>{r.label}</span>
+            <strong>{money(r.value)}</strong>
+          </div>
+        ))}
+        {/* The target names the rate it is aimed at (Job / FOB / E-FOB), not one bare figure. */}
+        <div className="sc-page-rate">
+          <span>Target</span>
+          {targetParts(cost, isMat ? 'material' : 'fg').length ? (
+            <div className="sc-page-targets">
+              {targetParts(cost, isMat ? 'material' : 'fg').map((t) => (
+                <strong key={t.label}>
+                  <small>{t.label}</small> {money(t.value)}
+                </strong>
+              ))}
+            </div>
+          ) : (
+            <strong>—</strong>
+          )}
+        </div>
       </section>
 
       {/* The approver decides here, after the whole cost record (CMTP, fabric cost, history)
