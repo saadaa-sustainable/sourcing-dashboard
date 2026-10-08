@@ -46,7 +46,7 @@ export function WeekHeader({ weeks, shown, current }: { weeks: HeaderWeek[]; sho
   const isCurrent = shown >= current;
 
   return (
-    <header className="vc2-head">
+    <div className="vc2-head">
       <Link className="vc2-crumb" href="/vendor-capacity">
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
         All weeks
@@ -96,6 +96,6 @@ export function WeekHeader({ weeks, shown, current }: { weeks: HeaderWeek[]; sho
           {!isCurrent && <Link className="vc2-btn vc2-btn-primary" href="/vendor-capacity?view=vendors">Go to this week</Link>}
         </div>
       </div>
-    </header>
+    </div>
   );
 }

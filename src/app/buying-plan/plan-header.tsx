@@ -157,7 +157,7 @@ export function PlanHeader({
   const shortMonth = (m: string) => new Date(`${m}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 
   return (
-    <header className="bph">
+    <div className="bph">
       <Link className="bph-crumb" href="/buying-plan">
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
         All months
@@ -226,6 +226,6 @@ export function PlanHeader({
         {modeControl}
       </div>
       {inputBar && <div className="bph-inputbar">{inputBar}</div>}
-    </header>
+    </div>
   );
 }

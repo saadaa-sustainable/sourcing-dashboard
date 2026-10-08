@@ -390,10 +390,10 @@ export function StandardCostClient({
             const items = list.filter((c) => (c.neg_stage ?? '') === key);
             return (
               <section key={key || 'not_started'} className="sc-kcol" aria-label={COST_STAGE_LABEL[key]}>
-                <header className="sc-kcol-head">
+                <div className="sc-kcol-head">
                   <span className={`wf-status tone-${COST_STAGE_TONE[key] ?? 'purple'}`}>{COST_STAGE_LABEL[key]}</span>
                   <span className="sc-kcol-n">{items.length}</span>
-                </header>
+                </div>
                 <small className="sc-kcol-hint">{nextActor(key || null)}</small>
                 {items.map((cost) => (
                   <article className="sc-kcard" key={cost.product_code}>

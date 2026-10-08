@@ -391,7 +391,7 @@
 
 /* Week page header (Option A): "All weeks" link, the week as the heading with its status,
    week picker on the right. The section tabs sit straight under it. */
-.ui-view-vendor-capacity .vc2-head { display: grid; gap: 8px; margin: -4px 0 6px; }
+.ui-view-vendor-capacity .vc2-head { display: grid; gap: 10px; margin: 0 0 14px; }
 .ui-view-vendor-capacity .vc2-crumb { display: inline-flex; align-items: center; gap: 4px; width: max-content; color: #616a64; font-size: 12px; font-weight: 550; text-decoration: none; }
 .ui-view-vendor-capacity .vc2-crumb:hover { color: #303330; text-decoration: underline; }
 .ui-view-vendor-capacity .vc2-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
@@ -401,13 +401,13 @@
 .ui-view-vendor-capacity .vc2-head-title .vc2-badge { height: 22px; font-size: 11.5px; }
 .ui-view-vendor-capacity .vc2-head-meta { margin: 2px 0 0; color: #8a928c; font-size: 12px; }
 .ui-view-vendor-capacity .vc2-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ui-view-vendor-capacity .vc2-picker { position: relative; display: inline-flex; align-items: stretch; height: 32px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px #e3e5e3, 0 1px 0 rgba(26, 26, 26, .06); }
+.ui-view-vendor-capacity .vc2-picker { position: relative; display: inline-flex; align-items: stretch; height: 34px; border: 1px solid #c9cccf; border-radius: 9px; background: #fff; box-shadow: 0 1px 0 rgba(26, 26, 26, .05); }
 .ui-view-vendor-capacity .vc2-picker-arw { display: grid; place-items: center; width: 32px; color: #616a64; font-size: 16px; text-decoration: none; }
 .ui-view-vendor-capacity a.vc2-picker-arw:hover { background: #f4f6f5; color: #303330; }
 .ui-view-vendor-capacity .vc2-picker-arw:first-child { border-radius: 8px 0 0 8px; }
 .ui-view-vendor-capacity .vc2-picker-arw:last-child { border-radius: 0 8px 8px 0; }
 .ui-view-vendor-capacity .vc2-picker-arw.is-off { opacity: .3; }
-.ui-view-vendor-capacity .vc2-picker-menu { border-inline: 1px solid #e3e5e3; }
+.ui-view-vendor-capacity .vc2-picker-menu { border-inline: 1px solid #c9cccf; }
 .ui-view-vendor-capacity .vc2-picker-menu > summary { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; color: #303330; font-size: 12.5px; font-weight: 600; white-space: nowrap; list-style: none; cursor: pointer; }
 .ui-view-vendor-capacity .vc2-picker-menu > summary::-webkit-details-marker { display: none; }
 .ui-view-vendor-capacity .vc2-picker-menu > summary svg { color: #8a928c; transition: transform .15s ease; }
