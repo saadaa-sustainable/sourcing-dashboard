@@ -1115,8 +1115,8 @@ export async function loadVendorCapacityBoard(
   const cur = capacityWeekStart();
   const TRAIL_WEEK = weekOf('2026-10-01T00:00:00+05:30');
   // Every week since the trail began (an empty week is worth seeing), earlier weeks only when
-  // someone's latest update fell in them, plus next week to plan.
-  const weekSet = new Set<string>([addDays(cur, 7)]);
+  // someone's latest update fell in them. The board stops at the running week (no future card).
+  const weekSet = new Set<string>([cur]);
   for (let w = TRAIL_WEEK; w <= cur; w = addDays(w, 7)) weekSet.add(w);
   for (const e of events) if (weekOf(e.at) <= cur) weekSet.add(weekOf(e.at));
   const months = [...weekSet].sort();
