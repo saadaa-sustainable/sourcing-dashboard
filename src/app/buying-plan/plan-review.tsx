@@ -92,7 +92,9 @@ export function PlanReview({
   const p = lines.length - a - w - r;
   const total = lines.reduce((s, l) => s + (l.value ?? 0), 0);
 
+  // A line stays in view while its reason box is open, even if the filter would hide it.
   const shown = lines.filter((l) => {
+    if (l.lineId === openReason) return true;
     if (q && !l.code.toLowerCase().includes(q.toLowerCase())) return false;
     if (filter === 'all') return true;
     if (filter === 'pending') return !current(l);
@@ -155,10 +157,11 @@ export function PlanReview({
             : { tone: 'bad', title: 'Plan is rejected', body: 'Every line was rejected.' };
 
   const kept = lines.filter((l) => current(l) !== 'reject');
-  const routeTotals = routeLabels.map((label) => ({
+  // routes[] is in the same order as routeLabels.
+  const routeTotals = routeLabels.map((label, i) => ({
     label,
     value: kept.reduce((s, l) => s + (l.routeValue[label] ?? 0), 0),
-    qty: kept.reduce((s, l) => s + (l.routes.find((x) => x.label === label)?.qty ?? 0), 0),
+    qty: kept.reduce((s, l) => s + (l.routes[i]?.qty ?? 0), 0),
   }));
   const routeSum = routeTotals.reduce((s, x) => s + x.value, 0);
   const groups = [...new Set(kept.map((l) => l.group))]
@@ -435,7 +438,7 @@ export function PlanReview({
           <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setStaged({}); setNotes({}); setOpenReason(null); setError(null); }}>
             Undo all
           </button>
-          <button type="button" className="wf-btn rv-confirm-btn" disabled={pending} onClick={confirm}>
+          <button type="button" className="wf-btn wf-btn-primary" disabled={pending} onClick={confirm}>
             {pending ? 'Saving…' : 'Confirm decisions'}
           </button>
         </div>
