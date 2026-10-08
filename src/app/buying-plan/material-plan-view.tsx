@@ -168,9 +168,12 @@ export function MaterialPlanView({
   closedOn = null,
   planMonth,
   decision,
+  bulk,
 }: {
   /** Per-line decision control for the approver (Plan detail column); omitted otherwise. */
   decision?: (item: MaterialViewItem) => React.ReactNode;
+  /** Approver: tick several lines on the cards and decide them together. */
+  bulk?: { pickable: (key: string) => boolean; bar: (keys: string[], clear: () => void) => React.ReactNode };
   view: MaterialViewItem[];
   codeMap: Map<string, MaterialCode>;
   planLocked: boolean;
@@ -483,6 +486,7 @@ export function MaterialPlanView({
             <PlanLineViews
               items={cards}
               storageKey="material-plan-detail-view"
+              bulk={bulk}
               noun="material line"
               qtyUnit={null}
               kanban={MAT_KANBAN}

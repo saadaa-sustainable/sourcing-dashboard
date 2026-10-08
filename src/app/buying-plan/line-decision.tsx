@@ -115,3 +115,105 @@ export function LineDecision({
     </span>
   );
 }
+
+/**
+ * Decide several plan lines at once (approver): Approve, Rework or Reject every ticked line.
+ * Rework and Reject take one reason that is recorded on each line. Floats at the bottom of the
+ * screen while lines are ticked.
+ */
+export function BulkDecisionBar({
+  planId,
+  entityLabel,
+  keys,
+  value,
+  onClear,
+}: {
+  planId: number;
+  entityLabel: string;
+  keys: string[];
+  /** Plan value of the ticked lines, already formatted. */
+  value: string;
+  onClear: () => void;
+}) {
+  const [asking, setAsking] = useState<null | 'rework' | 'reject'>(null);
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const ids = keys.map(lineIdOf).filter((n): n is number => n != null);
+  if (!ids.length) return null;
+
+  function run(kind: 'approve' | 'rework' | 'reject') {
+    setError(null);
+    if (kind !== 'approve' && !note.trim()) {
+      setError('Add a reason — it is recorded on each line.');
+      return;
+    }
+    const fd = new FormData();
+    start(async () => {
+      let r;
+      if (kind === 'approve') {
+        fd.set('plan_id', String(planId));
+        fd.set('line_ids', JSON.stringify(ids));
+        r = await approveBuyingPlanLines(fd);
+      } else if (kind === 'reject') {
+        fd.set('plan_id', String(planId));
+        fd.set('line_ids', JSON.stringify(ids));
+        fd.set('note', note.trim());
+        r = await rejectBuyingPlanLines(fd);
+      } else {
+        fd.set('entity_type', 'buying_plan');
+        fd.set('entity_id', String(planId));
+        fd.set('entity_label', entityLabel);
+        fd.set('line_decisions', JSON.stringify(ids.map((id) => ({ lineId: String(id), note: note.trim() }))));
+        r = await reworkLines(fd);
+      }
+      if (r.ok) reloadWithToast(r.message ?? 'Saved.');
+      else setError(toastError(r.error));
+    });
+  }
+
+  return (
+    <div className="bp-bulk-bar" role="region" aria-label="Decide the ticked lines">
+      <span className="bp-bulk-count">
+        <b>{ids.length}</b> line{ids.length === 1 ? '' : 's'} ticked · {value}
+      </span>
+      {asking ? (
+        <>
+          <input
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={asking === 'rework' ? 'What should change on these lines?' : 'Why reject these lines?'}
+            aria-label={`Reason to ${asking} the ticked lines`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') run(asking);
+              if (e.key === 'Escape') setAsking(null);
+            }}
+          />
+          <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => run(asking)}>
+            {pending ? 'Saving…' : asking === 'rework' ? `Send ${ids.length} back` : `Reject ${ids.length}`}
+          </button>
+          <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setAsking(null); setError(null); }}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => run('approve')}>
+            <Check size={13} /> {pending ? 'Saving…' : `Approve ${ids.length}`}
+          </button>
+          <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setAsking('rework')}>
+            <RotateCcw size={13} /> Rework
+          </button>
+          <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setAsking('reject')}>
+            <X size={13} /> Reject
+          </button>
+          <button type="button" className="bp-bulk-btn" disabled={pending} onClick={onClear}>
+            Clear
+          </button>
+        </>
+      )}
+      {error && <span className="bp-bulk-error">{error}</span>}
+    </div>
+  );
+}

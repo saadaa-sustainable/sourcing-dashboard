@@ -81,6 +81,7 @@ export function PlanLineViews({
   table,
   kanban,
   decision,
+  bulk,
   editor,
   storageKey,
   noun = 'line',
@@ -91,6 +92,8 @@ export function PlanLineViews({
   table: ReactNode;
   kanban: KanbanOption[];
   decision?: (key: string) => ReactNode;
+  /** Approver: tick several lines and decide them together. */
+  bulk?: { pickable: (key: string) => boolean; bar: (keys: string[], clear: () => void) => ReactNode };
   /** Fill the plan: quantity inputs shown on each card in place of the read-only figures. */
   editor?: (key: string) => ReactNode;
   storageKey: string;
@@ -115,6 +118,17 @@ export function PlanLineViews({
   const [by, setBy] = useState(kanban[0]?.key ?? '');
   const [sort, setSort] = useState<'value' | 'qty' | 'pct' | 'code'>('value');
   const [open, setOpen] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const pickableShown = bulk ? items.filter((i) => bulk.pickable(i.key)).map((i) => i.key) : [];
+  // Only lines still in view and still awaiting a decision count as ticked.
+  const pickedNow = pickableShown.filter((k) => picked.has(k));
+  const togglePick = (key: string) =>
+    setPicked((cur) => {
+      const n = new Set(cur);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
 
   const sorted = [...items].sort((a, b) =>
     sort === 'qty'
@@ -151,13 +165,25 @@ export function PlanLineViews({
   const card = (it: PlanCard, compact = false) => (
     <article
       key={it.key}
-      className={`pl-card${compact ? ' compact' : ''}${editor ? ' editing' : ''}`}
+      className={`pl-card${compact ? ' compact' : ''}${editor ? ' editing' : ''}${picked.has(it.key) ? ' picked' : ''}`}
       // Mouse convenience only: keyboard users open the panel with the Line details button.
       // A card with inputs on it (Fill the plan) opens only from that button.
       onClick={editor ? undefined : () => setOpen(it.key)}
     >
       <div className="pl-card-head">
-        <span className="mono pl-card-code">{it.code}</span>
+        <span className="mono pl-card-code">
+          {bulk?.pickable(it.key) && (
+            <input
+              type="checkbox"
+              className="pl-card-pick"
+              checked={picked.has(it.key)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => togglePick(it.key)}
+              aria-label={`Tick ${it.code} to decide with others`}
+            />
+          )}
+          {it.code}
+        </span>
         <span className="pl-card-pills">
           {it.check && <span className={`bp-badge ${it.check.tone}`}>{it.check.text}</span>}
           <span className={`bp-badge ${it.status.tone}`}>{it.status.text}</span>
@@ -233,6 +259,15 @@ export function PlanLineViews({
             <Table2 size={14} aria-hidden="true" /> Table
           </button>
         </div>
+        {bulk && pickableShown.length > 0 && (
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost wf-btn-sm pl-pick-all"
+            onClick={() => setPicked(pickedNow.length === pickableShown.length ? new Set() : new Set(pickableShown))}
+          >
+            {pickedNow.length === pickableShown.length ? 'Untick all' : `Tick all to decide (${pickableShown.length})`}
+          </button>
+        )}
         {view === 'kanban' && kanban.length > 1 && (
           <select aria-label="Kanban columns" value={option?.key} onChange={(e) => setBy(e.target.value)}>
             {kanban.map((k) => (
@@ -280,6 +315,8 @@ export function PlanLineViews({
           })}
         </div>
       )}
+
+      {bulk && pickedNow.length > 0 && bulk.bar(pickedNow, () => setPicked(new Set()))}
 
       {openItem && typeof document !== 'undefined' &&
         createPortal(

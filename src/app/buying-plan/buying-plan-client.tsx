@@ -36,11 +36,10 @@ import {
   type PlanCompliance,
 } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
-import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { ClosedMonthHeader } from './closed-month-header';
-import { LineDecision } from './line-decision';
+import { BulkDecisionBar, LineDecision, lineIdOf } from './line-decision';
 import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import type {
   BuyingPlan,
@@ -492,6 +491,26 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       };
   };
   const planCards: PlanCard[] = view.filter((v) => v.totalQty > 0).filter(matchesFilters).map(toCard);
+
+  // Approver: tick several products (cards / kanban) and decide them together. Only saved
+  // lines with quantity that are still awaiting a decision can be ticked.
+  const bulkDecide = canDecideLines && plan?.id
+    ? {
+        pickable: (key: string) => {
+          const v = view.find((x) => x.row.key === key);
+          return Boolean(v && lineIdOf(key) && v.totalQty > 0 && !['approved', 'rejected', 'rework'].includes(v.row.line_status));
+        },
+        bar: (keys: string[], clear: () => void) => (
+          <BulkDecisionBar
+            planId={plan.id}
+            entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+            keys={keys}
+            value={inr(view.filter((v) => keys.includes(v.row.key)).reduce((t, v) => t + (v.missingCost ? 0 : v.valueToBeBought), 0))}
+            onClear={clear}
+          />
+        ),
+      }
+    : undefined;
 
   // Fill the plan cards carry every column of the input table: weave, pending qty, total,
   // value to be bought, issued qty and value, and the entry check.
@@ -1176,24 +1195,6 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
         </div>
       )}
 
-      {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
-      {canApprove(role, status) && plan && !frozen && (
-        <div className="bp-card bp-cardbody bp-approval-card">
-          <div className="bp-approval-head">
-            <b>Your decision</b>
-            <span>Approve as submitted, or Edit &amp; approve to change quantities first. To decide one product at a time, use “Your decision” on each line in Plan detail or Input.</span>
-          </div>
-          <ApprovalBar
-            entityType="buying_plan"
-            entityId={String(plan.id)}
-            entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
-            onDone={(result) => {
-              if (result.ok) reloadWithToast(result.message ?? 'Saved.');
-            }}
-          />
-        </div>
-      )}
-
       {mode === 'view' && (
         <div className="bp-layout">
           <div className="bp-stack">
@@ -1245,6 +1246,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                 <PlanLineViews
                   items={planCards}
                   storageKey="buying-plan-detail-view"
+                  bulk={bulkDecide}
                   noun="product"
                   kanban={FG_KANBAN}
                   decision={canDecideLines ? (key) => {
@@ -1325,6 +1327,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                 <PlanLineViews
                   items={inputRows.map(toInputCard)}
                   storageKey="buying-plan-input-view"
+                  bulk={bulkDecide}
                   noun="product"
                   defaultView="table"
                   kanban={INPUT_KANBAN}

@@ -17,12 +17,11 @@ import {
 } from '@/lib/forms/approval';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
-import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ClosedMonthHeader } from './closed-month-header';
 import { MAT_KANBAN, MaterialPlanView, toMaterialCard } from './material-plan-view';
 import { PlanLineViews, type KanbanOption } from './plan-line-views';
-import { LineDecision } from './line-decision';
+import { BulkDecisionBar, LineDecision, lineIdOf } from './line-decision';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -223,6 +222,25 @@ export function MaterialPlanClient({
     ? available.filter((c) => c.base_fabric_code === addBase)
     : available;
   const shownRows = view.filter((v) => v.row.material_type === type);
+
+  // Approver: tick several material lines and decide them together.
+  const bulkDecide = canDecideLines && plan?.id
+    ? {
+        pickable: (key: string) => {
+          const r = rows.find((x) => x.key === key);
+          return Boolean(r && lineIdOf(key) && num(r.job_qty) + num(r.purchase_qty) > 0 && !['approved', 'rejected', 'rework'].includes(r.line_status ?? ''));
+        },
+        bar: (keys: string[], clear: () => void) => (
+          <BulkDecisionBar
+            planId={plan.id}
+            entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+            keys={keys}
+            value={money.format(view.filter((v) => keys.includes(v.row.key)).reduce((t, v) => t + (v.missingCost ? 0 : v.value), 0))}
+            onClear={clear}
+          />
+        ),
+      }
+    : undefined;
 
   // Fill the plan on a card: the same fields and handlers as the Input table.
   const inputEditor = (key: string) => {
@@ -580,24 +598,6 @@ export function MaterialPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
-      {canApprove(role, status) && plan && !frozen && (
-        <div className="bp-card bp-cardbody bp-approval-card">
-          <div className="bp-approval-head">
-            <b>Your decision</b>
-            <span>Approve as submitted, or Edit &amp; approve to change quantities first. To decide one material at a time, use “Your decision” on each line in Plan detail or Input.</span>
-          </div>
-          <ApprovalBar
-            entityType="buying_plan"
-            entityId={String(plan.id)}
-            entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
-            onDone={(result) => {
-              if (result.ok) reloadWithToast(result.message ?? 'Saved.');
-            }}
-          />
-        </div>
-      )}
-
       {mode === 'view' && (
         <MaterialPlanView
           view={view}
@@ -607,6 +607,7 @@ export function MaterialPlanClient({
           closedOn={frozen ? planMonth : null}
           planMonth={planMonth}
           decision={canDecideLines ? (v) => decisionCell(v.row as Row) : undefined}
+          bulk={bulkDecide}
         />
       )}
 
@@ -724,6 +725,7 @@ export function MaterialPlanClient({
               };
             })}
             storageKey="material-plan-input-view"
+            bulk={bulkDecide}
             noun="material line"
             qtyUnit={null}
             defaultView="table"
