@@ -22,7 +22,7 @@ import { InfoDot } from '@/components/info-dot';
 import { ClosedMonthHeader } from './closed-month-header';
 import { MAT_KANBAN, MaterialPlanView, toMaterialCard } from './material-plan-view';
 import { PlanLineViews, type KanbanOption } from './plan-line-views';
-import { LineDecision } from './line-decision';
+import { PlanReview, type ReviewLine } from './plan-review';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -141,17 +141,6 @@ export function MaterialPlanClient({
   // Per-line decision for the approver, next to the plan-wide decision card.
   const canDecideLines =
     Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
-  const decisionCell = (row: Row) =>
-    plan?.id ? (
-      <LineDecision
-        planId={plan.id}
-        lineKey={row.key}
-        lineStatus={row.line_status}
-        approverEdited={row.approver_edited}
-        label={row.material_code}
-        entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
-      />
-    ) : null;
   const [rows, setRows] = useState<Row[]>(() => lines.map(toRow));
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -221,6 +210,34 @@ export function MaterialPlanClient({
     ? available.filter((c) => c.base_fabric_code === addBase)
     : available;
   const shownRows = view.filter((v) => v.row.material_type === type);
+
+  // The approver's review: every material line with quantity.
+  const lineById = new Map(lines.map((l) => [`line-${l.id}`, l]));
+  const reviewLines: ReviewLine[] = view
+    .filter((v) => num(v.row.job_qty) + num(v.row.purchase_qty) > 0 && lineById.has(v.row.key))
+    .map((v) => {
+      const src = lineById.get(v.row.key)!;
+      const job = num(v.row.job_qty);
+      const buy = num(v.row.purchase_qty);
+      const unit = v.row.uom || 'units';
+      return {
+        lineId: src.id,
+        code: v.row.material_code,
+        sub: [TYPE_LABEL[v.row.material_type], codeMap.get(v.row.material_code)?.fabric_name, v.colour].filter(Boolean).join(' · '),
+        routes: [
+          { label: 'JOB', qty: job, kind: 'job' as const },
+          { label: 'PURCHASE', qty: buy, kind: 'buy' as const },
+        ],
+        qty: job + buy,
+        qtyText: `${fmt.format(job + buy)} ${unit}`,
+        value: v.missingCost ? null : v.value,
+        routeValue: { 'Job Work': v.jobValue, Purchase: v.purchaseValue },
+        group: TYPE_LABEL[v.row.material_type],
+        lineStatus: src.line_status,
+        note: src.rework_notes,
+        flags: { nocost: v.missingCost },
+      };
+    });
 
   // Fill the plan on a card: the same fields and handlers as the Input table.
   const inputEditor = (key: string) => {
@@ -612,22 +629,35 @@ export function MaterialPlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
-      {canApprove(role, status) && plan && !frozen && (
-        <div className="bp-card bp-cardbody bp-approval-card">
-          <div className="bp-approval-head">
-            <b>Your decision</b>
-            <span>Approve as submitted, or Edit &amp; approve to change quantities first. To decide one material at a time, use “Your decision” on each line in Plan detail or Input.</span>
-          </div>
-          <ApprovalBar
-            entityType="buying_plan"
-            entityId={String(plan.id)}
-            entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
-            onDone={(result) => {
-              if (result.ok) reloadWithToast(result.message ?? 'Saved.');
-            }}
-          />
-        </div>
+      {/* The approver's review: line decisions held on screen and saved together. */}
+      {canDecideLines && plan && (
+        <PlanReview
+          planId={plan.id}
+          entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+          monthLabel={monthLabel(planMonth)}
+          trackLabel="Fabric / Material"
+          stageLabel={status === 'pending_l2' ? 'Second approval' : 'First approval'}
+          facts={[
+            ...(plan.submitted_at
+              ? [{ text: `Submitted ${new Date(plan.submitted_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}` }]
+              : []),
+            ...(status === 'pending_l2' ? [{ text: 'First approval done' }] : []),
+          ]}
+          lines={reviewLines}
+          routeLabels={['Job Work', 'Purchase']}
+          groupLabel="material type"
+          noun="material"
+          wholePlan={
+            <ApprovalBar
+              entityType="buying_plan"
+              entityId={String(plan.id)}
+              entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+              onDone={(result) => {
+                if (result.ok) reloadWithToast(result.message ?? 'Saved.');
+              }}
+            />
+          }
+        />
       )}
 
       {mode === 'view' && (
@@ -638,7 +668,6 @@ export function MaterialPlanClient({
           status={status}
           closedOn={frozen ? planMonth : null}
           planMonth={planMonth}
-          decision={canDecideLines ? (v) => decisionCell(v.row as Row) : undefined}
         />
       )}
 
@@ -653,10 +682,6 @@ export function MaterialPlanClient({
             defaultView="table"
             kanban={MAT_INPUT_KANBAN}
             editor={inputEditor}
-            decision={canDecideLines ? (key) => {
-              const r = rows.find((x) => x.key === key);
-              return r && num(r.job_qty) + num(r.purchase_qty) > 0 ? decisionCell(r) : null;
-            } : undefined}
             table={
               <div className="table-panel wf-grid-panel">
                 <div className="table-scroll">
@@ -678,8 +703,7 @@ export function MaterialPlanClient({
                         <th className="input-col wf-cell-input">UOM <HeaderInfo label="UOM" /></th>
                         <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
                         <th className="num wf-cell-calc">Value <HeaderInfo label="Value" /></th>
-                        {canDecideLines && <th>Your decision</th>}
-                        {editable && <th aria-label="Remove" />}
+                            {editable && <th aria-label="Remove" />}
                       </tr>
                     </thead>
                     <tbody>
@@ -729,8 +753,7 @@ export function MaterialPlanClient({
                           <td className="num strong wf-cell-calc">
                             {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
                           </td>
-                          {canDecideLines && <td>{num(row.job_qty) + num(row.purchase_qty) > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
-                          {editable && (
+                              {editable && (
                             <td>
                               <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
                                 <Trash2 size={14} />
@@ -741,7 +764,7 @@ export function MaterialPlanClient({
                       ))}
                       {!shownRows.length && (
                         <tr>
-                          <td colSpan={(type === 'dyed' ? 9 : 8) + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
+                          <td colSpan={(type === 'dyed' ? 9 : 8) + (editable ? 1 : 0)} className="wf-empty-cell">
                             No {TYPE_LABEL[type].toLowerCase()} lines yet
                             {editable ? ' — add a code above or import a CSV.' : '.'}
                           </td>

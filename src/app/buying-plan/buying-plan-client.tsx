@@ -40,7 +40,7 @@ import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { ClosedMonthHeader } from './closed-month-header';
-import { LineDecision } from './line-decision';
+import { PlanReview, type ReviewLine } from './plan-review';
 import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import type {
   BuyingPlan,
@@ -222,17 +222,6 @@ export function BuyingPlanClient({
   // Per-product decision for the approver, next to the plan-wide decision card.
   const canDecideLines =
     Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
-  const decisionCell = (row: Draft) =>
-    plan?.id ? (
-      <LineDecision
-        planId={plan.id}
-        lineKey={row.key}
-        lineStatus={row.line_status || null}
-        approverEdited={row.approver_edited}
-        label={row.product_code}
-        entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
-      />
-    ) : null;
 
   // Spec: every active product is listed; you zero out what you won't make.
   // A saved plan shows its stored lines; a fresh editable plan pre-lists all
@@ -419,9 +408,6 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
     // (status issued or completed, by PO date). Ordered, not received.
     { key: 'actual', label: 'Actual qty', kind: 'num', source: 'easyecom', accessor: (v) => v.actualQty },
     { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase', accessor: (v) => (v.row.line_status ? statusText(v.row.line_status as SdStatus, { approverEdited: v.row.approver_edited }) : '—') },
-    ...(canDecideLines
-      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: ViewItem) => v.row.line_status || 'pending', render: (v: ViewItem) => (v.totalQty > 0 ? decisionCell(v.row) : <span className="wf-subtle">—</span>) }]
-      : []),
   ];
 
   // View module works over products that actually have a planned quantity. REJECTED lines
@@ -492,6 +478,39 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       };
   };
   const planCards: PlanCard[] = view.filter((v) => v.totalQty > 0).filter(matchesFilters).map(toCard);
+
+  // The approver's review: every line with quantity, valued as on the plan screen.
+  const lineById = new Map(lines.map((l) => [`line-${l.id}`, l]));
+  const reviewLines: ReviewLine[] = view
+    .filter((v) => v.totalQty > 0 && lineById.has(v.row.key))
+    .map((v) => {
+      const src = lineById.get(v.row.key)!;
+      const job = Number(v.row.job_work_qty) || 0;
+      const efob = Number(v.row.efob_qty) || 0;
+      const fob = Number(v.row.fob_qty) || 0;
+      return {
+        lineId: src.id,
+        code: v.row.product_code,
+        sub: `${v.category} · ${v.productStatus} · ${v.fabricType}`,
+        routes: [
+          { label: 'JOB', qty: job, kind: 'job' as const },
+          { label: 'E-FOB', qty: efob, kind: 'efob' as const },
+          { label: 'FOB', qty: fob, kind: 'fob' as const },
+        ],
+        qty: v.totalQty,
+        qtyText: fmt.format(v.totalQty),
+        value: v.missingCost ? null : v.valueToBeBought,
+        routeValue: { 'Job Work': v.byType.job, 'E-FOB': v.byType.efob, FOB: v.byType.fob },
+        group: v.fabricType,
+        lineStatus: src.line_status,
+        note: src.rework_notes,
+        flags: {
+          npd: /npd/i.test(v.productStatus),
+          nocost: v.missingCost,
+          nostate: v.productStatus === '—' || v.fabricType === 'Unspecified',
+        },
+      };
+    });
 
   // Fill the plan on a card: the three PO-type quantities and the remark, same fields and
   // same handlers as the Input table (read-only when the plan cannot be edited).
@@ -849,6 +868,18 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
     planMonth,
     deadlineDay,
   );
+  // Facts for the review header: when it was submitted, the stage, the decide-by date.
+  const dayOf = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+  const reviewFacts: { text: string; tone?: 'red' }[] = [
+    ...(plan?.submitted_at
+      ? [{ text: `Submitted ${dayOf(plan.submitted_at)} · ${compliance.status === 'breach_submission' ? 'late' : 'on time'}` }]
+      : []),
+    ...(status === 'pending_l2' ? [{ text: 'First approval done' }] : []),
+    compliance.status === 'breach_approval'
+      ? { text: `Decide by ${dayOf(compliance.deadline)} · ${compliance.daysLate > 0 ? `${compliance.daysLate} day${compliance.daysLate === 1 ? '' : 's'} late` : 'deadline passed'}`, tone: 'red' as const }
+      : { text: `Decide by ${dayOf(compliance.deadline)}` },
+  ];
   const [amendOpen, setAmendOpen] = useState(false);
   const [amendNote, setAmendNote] = useState('');
   const canAmend = status === 'approved' && role !== 'viewer' && Boolean(plan?.id) && !frozen;
@@ -1000,14 +1031,15 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
             </select>
           </Field>
           <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
-          <DeadlineChip
+          {/* The review header carries the deadline and line progress while the approver reviews. */}
+          {!canDecideLines && <DeadlineChip
             c={compliance}
             status={status}
             decisionAt={firstActionAt ?? plan?.approved_at ?? null}
             submittedAt={plan?.submitted_at ?? null}
             frozen={frozen}
-          />
-          {showLineProgress && lineCounts.total > 0 && (
+          />}
+          {showLineProgress && !canDecideLines && lineCounts.total > 0 && (
             <span
               className={`bp-badge ${awaitingReview > 0 ? 'yellow' : lineCounts.rework > 0 ? 'red' : 'green'}`}
               style={{ whiteSpace: 'normal' }}
@@ -1140,22 +1172,31 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
         </div>
       )}
 
-      {/* The approver's decision sits above both views: Approve, Edit & approve, Rework, Reject. */}
-      {canApprove(role, status) && plan && !frozen && (
-        <div className="bp-card bp-cardbody bp-approval-card">
-          <div className="bp-approval-head">
-            <b>Your decision</b>
-            <span>Approve as submitted, or Edit &amp; approve to change quantities first. To decide one product at a time, use “Your decision” on each line in Plan detail or Input.</span>
-          </div>
-          <ApprovalBar
-            entityType="buying_plan"
-            entityId={String(plan.id)}
-            entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
-            onDone={(result) => {
-              if (result.ok) reloadWithToast(result.message ?? 'Saved.');
-            }}
-          />
-        </div>
+      {/* The approver's review (approved demo, 2026-10-08): line-by-line decisions held on
+          screen and saved together; the whole-plan decision sits under "Decide the whole plan". */}
+      {canDecideLines && plan && (
+        <PlanReview
+          planId={plan.id}
+          entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+          monthLabel={monthLabel(planMonth)}
+          trackLabel="Finished goods"
+          stageLabel={status === 'pending_l2' ? 'Second approval' : 'First approval'}
+          facts={reviewFacts}
+          lines={reviewLines}
+          routeLabels={['Job Work', 'E-FOB', 'FOB']}
+          groupLabel="weave"
+          noun="product"
+          wholePlan={
+            <ApprovalBar
+              entityType="buying_plan"
+              entityId={String(plan.id)}
+              entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+              onDone={(result) => {
+                if (result.ok) reloadWithToast(result.message ?? 'Saved.');
+              }}
+            />
+          }
+        />
       )}
 
       {mode === 'view' && (
@@ -1211,10 +1252,6 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                   storageKey="buying-plan-detail-view"
                   noun="product"
                   kanban={FG_KANBAN}
-                  decision={canDecideLines ? (key) => {
-                    const v = view.find((x) => x.row.key === key);
-                    return v ? decisionCell(v.row) : null;
-                  } : undefined}
                   table={
                     <FilterTable
                       rows={view.filter(matchesFilters)}
@@ -1293,10 +1330,6 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                   defaultView="table"
                   kanban={INPUT_KANBAN}
                   editor={inputEditor}
-                  decision={canDecideLines ? (key) => {
-                    const v = view.find((x) => x.row.key === key);
-                    return v && v.totalQty > 0 ? decisionCell(v.row) : null;
-                  } : undefined}
                   table={
                     <div className="table-panel wf-grid-panel bp-input-panel">
                       <div className="table-scroll">
@@ -1321,8 +1354,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                               <th className="num wf-cell-calc">Actual issued value <HeaderInfo label="Actual issued value" /></th>
                               <th className="input-col wf-cell-input">Remark <HeaderInfo label="Remark" /></th>
                               <th>Validation <HeaderInfo label="Validation" /></th>
-                              {canDecideLines && <th>Your decision</th>}
-                              {editable && <th aria-label="Remove" />}
+                                  {editable && <th aria-label="Remove" />}
                             </tr>
                           </thead>
                           <tbody>
@@ -1366,8 +1398,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                                   <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(event) => patch(row.key, 'remark', event.target.value)} />
                                 </td>
                                 <td>{missingCost ? <Badge tone="red">No approved cost</Badge> : overPlan ? <Badge tone="red">Over plan</Badge> : totalQty > 0 ? <Badge tone="green">Ready</Badge> : <Badge tone="gray">No qty</Badge>}</td>
-                                {canDecideLines && <td>{totalQty > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
-                                {editable && (
+                                    {editable && (
                                   <td>
                                     <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.product_code}`} onClick={() => setRows((current) => current.filter((item) => item.key !== row.key))}>
                                       <Trash2 size={14} />
@@ -1378,7 +1409,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                             ))}
                             {!inputRows.length && (
                               <tr>
-                                <td colSpan={15 + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
+                                <td colSpan={15 + (editable ? 1 : 0)} className="wf-empty-cell">
                                   {view.length ? 'No products match the filters.' : 'No product codes added yet. Discontinued variants are excluded automatically.'}
                                 </td>
                               </tr>
@@ -1395,8 +1426,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                                 <td className="num strong">{money.format(totals.actualValue)}</td>
                                 <td />
                                 <td />
-                                {canDecideLines && <td />}
-                                {editable && <td />}
+                                    {editable && <td />}
                               </tr>
                             </tfoot>
                           )}

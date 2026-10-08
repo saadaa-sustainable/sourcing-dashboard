@@ -285,6 +285,125 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
 }
 
 /**
+ * Buying plan review: every line decision the approver staged, saved in one go.
+ * decisions = [{ lineId, decision: approve | rework | reject, note }] — a reason is required
+ * for rework and reject. Lines are scoped to this plan. Then the plan itself:
+ *   any line sent for rework → the plan goes back to the team (approved lines stay approved);
+ *   otherwise, once every line with quantity is decided → approved if any line is approved,
+ *   rejected if every line was rejected; else it stays with the approver.
+ * One log entry, one notice to whoever submitted it.
+ */
+export async function decidePlanLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const planId = Number(formData.get('plan_id'));
+  const label = String(formData.get('entity_label') ?? '');
+  if (!planId) return fail('Invalid plan.');
+  type D = { lineId: number; decision: 'approve' | 'rework' | 'reject'; note: string };
+  let decisions: D[] = [];
+  try {
+    decisions = (JSON.parse(String(formData.get('decisions') ?? '[]')) as Partial<D>[])
+      .map((d) => ({ lineId: Number(d.lineId), decision: d.decision as D['decision'], note: String(d.note ?? '').trim() }))
+      .filter((d) => d.lineId > 0 && ['approve', 'rework', 'reject'].includes(d.decision));
+  } catch {
+    decisions = [];
+  }
+  if (!decisions.length) return fail('Nothing to save — decide at least one line.');
+  const missing = decisions.filter((d) => d.decision !== 'approve' && !d.note).length;
+  if (missing) return fail(`${missing} line${missing === 1 ? ' needs' : 's need'} a reason before saving.`);
+
+  const supabase = await supa();
+  const { data: rowRaw } = await supabase.from('sd_buying_plan').select('*').eq('id', planId).maybeSingle();
+  const row = rowRaw as unknown as Record<string, unknown> | null;
+  if (!row) return fail('Plan not found.');
+  if (typeof row.plan_month === 'string' && isPlanFrozen(row.plan_month)) {
+    return fail(`The ${row.plan_month.slice(0, 7)} plan is view only — its month is over.`);
+  }
+  const from = row.status as SdStatus;
+  if (from !== 'submitted' && from !== 'pending_l2') return fail('This plan is not awaiting approval any more.');
+  const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
+  const escalated = isEscalated((row.submitted_at as string | null) ?? null, Number(rules.approval_escalation_days ?? 0));
+  if (!canDecide(user, from, matrix, escalated)) return fail('This decision is above your approval level.');
+
+  // Line updates, grouped so approve is one statement and each reason its own.
+  const approveIds = decisions.filter((d) => d.decision === 'approve').map((d) => d.lineId);
+  if (approveIds.length) {
+    const { error } = await supabase
+      .from('sd_buying_plan_line')
+      .update({ line_status: 'approved', rework_notes: null })
+      .eq('plan_id', planId)
+      .in('id', approveIds);
+    if (error) return fail(error.message);
+  }
+  for (const d of decisions.filter((x) => x.decision !== 'approve')) {
+    const { error } = await supabase
+      .from('sd_buying_plan_line')
+      .update({ line_status: d.decision === 'rework' ? 'rework' : 'rejected', rework_notes: d.note })
+      .eq('plan_id', planId)
+      .eq('id', d.lineId);
+    if (error) return fail(error.message);
+  }
+
+  // paging-ok: one plan's lines, at most a few hundred
+  const { data: allLines } = await supabase
+    .from('sd_buying_plan_line')
+    .select('job_work_qty, fob_qty, efob_qty, line_status')
+    .eq('plan_id', planId);
+  const nonZero = ((allLines ?? []) as Record<string, unknown>[]).filter(
+    (l) => Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0) > 0,
+  );
+  const count = (s: string) => nonZero.filter((l) => l.line_status === s).length;
+  const approved = count('approved');
+  const rework = count('rework');
+  const rejected = count('rejected');
+  const open = nonZero.length - approved - rework - rejected;
+  const a = decisions.filter((d) => d.decision === 'approve').length;
+  const w = decisions.filter((d) => d.decision === 'rework').length;
+  const r = decisions.filter((d) => d.decision === 'reject').length;
+  const summary = [a && `${a} approved`, w && `${w} sent for rework`, r && `${r} rejected`].filter(Boolean).join(', ');
+  const reasons = decisions.filter((d) => d.note).map((d) => d.note);
+  const notes = reasons.length ? `${summary}: ${[...new Set(reasons)].join('; ')}` : summary;
+  const now = new Date().toISOString();
+
+  let to: SdStatus = from;
+  let patch: Record<string, unknown> | null = null;
+  if (rework > 0) {
+    to = 'rework';
+    patch = { status: to, rework_notes: notes, reworked_by: user.email, reworked_at: now, edited_before_approval: true };
+  } else if (open === 0 && nonZero.length > 0) {
+    to = approved > 0 ? 'approved' : 'rejected';
+    patch = to === 'approved' ? { status: to, approved_by: user.email, approved_at: now } : { status: to, rejection_notes: notes };
+  }
+  if (patch) {
+    const { data: updated, error } = await supabase
+      .from('sd_buying_plan')
+      .update(patch)
+      .eq('id', planId)
+      .eq('status', from)
+      .select('id');
+    if (error) return fail(error.message);
+    if (!updated?.length) return fail('Already processed by another approver.');
+  }
+
+  await writeLog('buying_plan', String(planId), label, from, to, user.email, notes);
+  if (to !== from) {
+    await tellRaiser('buying_plan', planId, label, row, to === 'approved' ? 'approve' : to === 'rework' ? 'rework' : 'reject', user.email, notes);
+    if (to === 'rework') await notifyReworkSlack({ what: label || `buying_plan #${planId}`, by: user.email, reason: notes, scope: `${w} lines` });
+  }
+  revalidatePath('/approvals');
+  revalidatePath('/buying-plan');
+  return done(
+    to === 'rework'
+      ? `Saved — ${summary}. The plan goes back to the team for the rework.`
+      : to === 'approved'
+        ? `Saved — ${summary}. Plan approved.`
+        : to === 'rejected'
+          ? `Saved — every line rejected. Plan rejected.`
+          : `Saved — ${summary}. ${open} line${open === 1 ? '' : 's'} still to decide.`,
+  );
+}
+
+/**
  * Line-item rework: send specific lines back with their own reason (the per-line
  * pop-up). Each flagged line gets line_status='rework' + its note; the parent
  * record moves to 'rework' and is marked edited so a later approval counts as edited.
