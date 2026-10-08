@@ -510,3 +510,4 @@
 .pl-card-pick { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: -2px; accent-color: var(--ink-1, #161513); cursor: pointer; }
 .pl-card.picked { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
 .pl-pick-all { font-size: 12px; }
+.bp-ld-edited { font-size: 10px; font-weight: 700; color: #8a6116; background: #fff1d1; border-radius: 999px; padding: 2px 7px; }

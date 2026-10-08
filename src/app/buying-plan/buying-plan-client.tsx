@@ -39,7 +39,7 @@ import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { ClosedMonthHeader } from './closed-month-header';
-import { BulkDecisionBar, LineDecision, lineIdOf } from './line-decision';
+import { BulkDecisionBar, LineDecision, lineIdOf, type LineEdits } from './line-decision';
 import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import type {
   BuyingPlan,
@@ -221,6 +221,20 @@ export function BuyingPlanClient({
   // Per-product decision for the approver, next to the plan-wide decision card.
   const canDecideLines =
     Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
+  // Quantities the approver changed on screen, against what was submitted. Approving such a
+  // line saves the new quantities as edited and approved (editAndApprovePlanLines).
+  const savedByKey = new Map(lines.map((l) => [`line-${l.id}`, l]));
+  const editsFor = (key: string): LineEdits | null => {
+    const saved = savedByKey.get(key);
+    const row = rows.find((r) => r.key === key);
+    if (!saved || !row) return null;
+    const out: LineEdits = {};
+    for (const f of ['job_work_qty', 'efob_qty', 'fob_qty'] as const) {
+      const now = Number(row[f]) || 0;
+      if (now !== (Number(saved[f]) || 0)) out[f] = now;
+    }
+    return Object.keys(out).length ? out : null;
+  };
   const decisionCell = (row: Draft) =>
     plan?.id ? (
       <LineDecision
@@ -230,6 +244,7 @@ export function BuyingPlanClient({
         approverEdited={row.approver_edited}
         label={row.product_code}
         entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
+        edits={editsFor(row.key)}
       />
     ) : null;
 
@@ -505,6 +520,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
             planId={plan.id}
             entityLabel={`Buying plan ${planMonth.slice(0, 7)}`}
             keys={keys}
+            editsFor={editsFor}
             value={inr(view.filter((v) => keys.includes(v.row.key)).reduce((t, v) => t + (v.missingCost ? 0 : v.valueToBeBought), 0))}
             onClear={clear}
           />

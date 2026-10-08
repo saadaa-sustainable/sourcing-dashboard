@@ -6,6 +6,7 @@ import { canApprove, isPlanFrozen } from '../approval';
 import type { ApprovalEntity, SdStatus } from '../types';
 import type { ApprovalEditChange, ApprovalEditField, ApprovalEditForm, ApprovalEditKind, ApprovalEditRow } from '../approval-edit-types';
 import { decideApproval } from './approval';
+import { approveBuyingPlanLines } from './buying-plan';
 import { type ActionResult, fail, supa } from './_shared';
 
 /*
@@ -381,4 +382,129 @@ export async function editAndApprove(formData: FormData): Promise<ActionResult> 
   revalidatePath('/receivable-plan');
   revalidatePath('/approvals');
   return { ok: true, message: `Approved with ${edits.length} edit${edits.length === 1 ? '' : 's'}.` };
+}
+
+/**
+ * Buying plan, per line: the approver changed quantities on some lines (on the plan's cards
+ * or table) and approves them, together with any other ticked lines approved as they are.
+ * Each changed value is written, the line re-priced at the approved cost and flagged
+ * approver_edited, the plan flagged too, and every change recorded in sd_approval_edit — the
+ * same record Edit & approve keeps. The approval itself goes through approveBuyingPlanLines;
+ * if it is refused, the edits are put back.
+ *   edits      = [{ lineId, job_work_qty?, efob_qty?, fob_qty? }]
+ *   approve_ids = other line ids to approve unchanged
+ */
+export async function editAndApprovePlanLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const planId = String(formData.get('plan_id') ?? '');
+  let editsIn: Record<string, unknown>[] = [];
+  let approveIds: number[] = [];
+  try {
+    editsIn = JSON.parse(String(formData.get('edits') ?? '[]'));
+    approveIds = (JSON.parse(String(formData.get('approve_ids') ?? '[]')) as unknown[]).map(Number).filter((n) => n > 0);
+  } catch {
+    return fail('Invalid edits.');
+  }
+
+  const db = (await supa()) as unknown as Db;
+  const built = await buildForm(db, 'buying_plan', planId);
+  if ('error' in built) return fail(built.error);
+  if (!PENDING.includes(built.status)) return fail('This plan is no longer waiting for approval.');
+  if (!canApprove(user.role, built.status)) return fail('This decision is above your approval level.');
+
+  const rowsByRef = new Map(built.form.rows.map((r) => [r.ref, r]));
+  type Edit = { row: ApprovalEditRow; field: ApprovalEditField; next: string };
+  const edits: Edit[] = [];
+  for (const e of editsIn) {
+    const row = rowsByRef.get(String(e.lineId));
+    if (!row) return fail('One of the edited lines cannot be edited here.');
+    for (const field of row.fields) {
+      if (!(field.key in e)) continue;
+      const next = normalise(field.kind, String(e[field.key] ?? ''));
+      if (next == null) return fail(`${row.label}: "${String(e[field.key])}" is not a valid ${field.label.toLowerCase()}.`);
+      if (!same(field.kind, field.value, next)) edits.push({ row, field, next });
+    }
+  }
+
+  const write = async (target: RowTarget, patch: Record<string, unknown>) =>
+    (await db.from(target.table).update(patch).eq(target.keyCol, target.key)) as unknown as { error: { message: string } | null };
+  const undo: { target: RowTarget; patch: Record<string, unknown> }[] = [];
+  const byRef = new Map<string, Edit[]>();
+  for (const e of edits) byRef.set(e.row.ref, [...(byRef.get(e.row.ref) ?? []), e]);
+
+  for (const [ref, list] of byRef) {
+    const target = built.targets.get(ref);
+    if (!target) return fail('Edited line not found.');
+    const patch: Record<string, unknown> = { approver_edited: true };
+    const back: Record<string, unknown> = {};
+    for (const e of list) {
+      patch[e.field.key] = dbValue(e.field.kind, e.next);
+      back[e.field.key] = dbValue(e.field.kind, e.field.value);
+    }
+    const { data: prev } = await db.from(target.table).select('approver_edited, standard_value').eq(target.keyCol, target.key).maybeSingle();
+    back.approver_edited = Boolean(prev?.approver_edited);
+    back.standard_value = prev?.standard_value ?? null;
+    const { error } = await write(target, patch);
+    if (error) {
+      for (const u of undo.reverse()) await write(u.target, u.patch);
+      return fail(error.message);
+    }
+    undo.push({ target, patch: back });
+  }
+
+  if (byRef.size && built.header) {
+    // Re-price the edited lines at the approved cost, as the plan was valued at submission.
+    const { data: plan } = await db.from('sd_buying_plan').select('plan_type, approver_edited').eq('id', built.header.id).maybeSingle();
+    const material = plan?.plan_type === 'material';
+    const costs = material ? await loadApprovedMaterialCosts() : await loadApprovedStandardCosts();
+    for (const ref of byRef.keys()) {
+      const { data: l } = await db.from('sd_buying_plan_line').select('id, product_code, job_work_qty, fob_qty, efob_qty').eq('id', Number(ref)).maybeSingle();
+      if (!l) continue;
+      const c = (costs as Record<string, { job: number; fob: number; efob?: number }>)[text(l.product_code)];
+      if (!c) continue;
+      const value = Number(l.job_work_qty || 0) * c.job + Number(l.fob_qty || 0) * c.fob + (material ? 0 : Number(l.efob_qty || 0) * (c.efob ?? 0));
+      await write({ ref, table: 'sd_buying_plan_line', keyCol: 'id', key: l.id }, { standard_value: value > 0 ? value : null });
+    }
+    const target = { ref: 'header', table: built.header.table, keyCol: 'id', key: built.header.id };
+    undo.push({ target, patch: { approver_edited: Boolean(plan?.approver_edited) } });
+    await write(target, { approver_edited: true });
+  }
+
+  const ids = [...new Set([...[...byRef.keys()].map(Number), ...approveIds])];
+  if (!ids.length) return fail('Nothing to approve.');
+  const approval = new FormData();
+  approval.set('plan_id', planId);
+  approval.set('line_ids', JSON.stringify(ids));
+  const result = await approveBuyingPlanLines(approval);
+  if (!result.ok) {
+    for (const u of undo.reverse()) await write(u.target, u.patch);
+    return result;
+  }
+
+  if (edits.length) {
+    const now = new Date().toISOString();
+    const { error: logError } = await db.from('sd_approval_edit').insert(
+      edits.map((e) => ({
+        entity_type: 'buying_plan',
+        entity_id: planId,
+        row_ref: e.row.ref,
+        row_label: e.row.label,
+        field: e.field.key,
+        field_label: e.field.label,
+        old_value: e.field.value || null,
+        new_value: e.next || null,
+        edited_by: user.email,
+        edited_at: now,
+      })),
+    );
+    if (logError) console.error('[approval-edit] edit history not recorded:', logError.message);
+  }
+  revalidatePath('/buying-plan');
+  revalidatePath('/approvals');
+  const n = byRef.size;
+  return {
+    ok: true,
+    message: n ? `${result.message ?? 'Approved.'} ${n} line${n === 1 ? '' : 's'} edited and approved.` : result.message ?? 'Approved.',
+  };
 }

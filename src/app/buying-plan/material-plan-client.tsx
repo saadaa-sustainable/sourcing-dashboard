@@ -21,7 +21,7 @@ import { InfoDot } from '@/components/info-dot';
 import { ClosedMonthHeader } from './closed-month-header';
 import { MAT_KANBAN, MaterialPlanView, toMaterialCard } from './material-plan-view';
 import { PlanLineViews, type KanbanOption } from './plan-line-views';
-import { BulkDecisionBar, LineDecision, lineIdOf } from './line-decision';
+import { BulkDecisionBar, LineDecision, lineIdOf, type LineEdits } from './line-decision';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -140,6 +140,17 @@ export function MaterialPlanClient({
   // Per-line decision for the approver, next to the plan-wide decision card.
   const canDecideLines =
     Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
+  // Quantities the approver changed on screen (Job Work → job_work_qty, Purchase → fob_qty).
+  const savedByKey = new Map(lines.map((l) => [`line-${l.id}`, l]));
+  const editsFor = (key: string): LineEdits | null => {
+    const saved = savedByKey.get(key);
+    const row = rows.find((r) => r.key === key);
+    if (!saved || !row) return null;
+    const out: LineEdits = {};
+    if (num(row.job_qty) !== (Number(saved.job_work_qty) || 0)) out.job_work_qty = num(row.job_qty);
+    if (num(row.purchase_qty) !== (Number(saved.fob_qty) || 0)) out.fob_qty = num(row.purchase_qty);
+    return Object.keys(out).length ? out : null;
+  };
   const decisionCell = (row: Row) =>
     plan?.id ? (
       <LineDecision
@@ -149,6 +160,7 @@ export function MaterialPlanClient({
         approverEdited={row.approver_edited}
         label={row.material_code}
         entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
+        edits={editsFor(row.key)}
       />
     ) : null;
   const [rows, setRows] = useState<Row[]>(() => lines.map(toRow));
@@ -209,7 +221,7 @@ export function MaterialPlanClient({
   const missingCostLines = view.filter((v) => v.missingCost).length;
 
   // Codes for the active type not already added — for the "Add code" picker.
-  const usedCodes = useMemo(() => new Set(rows.map((r) => r.material_code)), [rows]);
+  const usedCodes = new Set(rows.map((r) => r.material_code));
   const available = materialCodes.filter(
     (c) => c.material_type === type && !usedCodes.has(c.material_code),
   );
@@ -235,6 +247,7 @@ export function MaterialPlanClient({
             planId={plan.id}
             entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
             keys={keys}
+            editsFor={editsFor}
             value={money.format(view.filter((v) => keys.includes(v.row.key)).reduce((t, v) => t + (v.missingCost ? 0 : v.value), 0))}
             onClear={clear}
           />
