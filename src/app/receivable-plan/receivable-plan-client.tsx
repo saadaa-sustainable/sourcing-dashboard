@@ -122,6 +122,9 @@ export function ReceivablePlanClient({
   const [tab, setTab] = useState<'arrivals' | 'input' | 'monthly'>(initialTab);
   const [message, setMessage] = useState<string | null>(null);
   const [submitRemark, setSubmitRemark] = useState('');
+  // An approver opens on the rows waiting for their decision; "All rows" shows the rest.
+  const isApprover = canApprove(role, 'submitted');
+  const [needsMine, setNeedsMine] = useState(() => isApprover && rows.some((r) => r.input_status === 'submitted'));
   const [submitting, startSubmit] = useTransition();
 
   const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
@@ -147,6 +150,7 @@ export function ReceivablePlanClient({
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
+      if (needsMine && r.input_status !== 'submitted') return false;
       if (q &&
         !`${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`
           .toLowerCase()
@@ -163,7 +167,7 @@ export function ReceivablePlanClient({
       }
       return true;
     });
-  }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd]);
+  }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd, needsMine]);
 
   const sort = useColumnSort<ReceivablePlanRow>();
   const oosCount = rows.filter((r) => r.oos_flag).length;
@@ -251,9 +255,19 @@ export function ReceivablePlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
 
       <div className="wf-toolbar wf-filter-bar">
+        {isApprover && (
+          <div className="segment fb-seg" role="group" aria-label="Show">
+            <button type="button" className={needsMine ? 'active' : ''} aria-pressed={needsMine} onClick={() => setNeedsMine(true)}>
+              Needs approval ({submittedCount})
+            </button>
+            <button type="button" className={!needsMine ? 'active' : ''} aria-pressed={!needsMine} onClick={() => setNeedsMine(false)}>
+              All rows
+            </button>
+          </div>
+        )}
         <input
           className="wf-search"
-          placeholder="Filter PO / product / vendor…"
+          placeholder="Search PO, product or vendor…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -292,25 +306,6 @@ export function ReceivablePlanClient({
             <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
           )}
         </span>
-        {editable && view === 'lines' && (
-          <>
-            <input
-              className="wf-search"
-              placeholder="Remark for approver (optional)…"
-              value={submitRemark}
-              onChange={(e) => setSubmitRemark(e.target.value)}
-              aria-label="Remark for the approver"
-            />
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              disabled={submitting}
-              onClick={submitAll}
-            >
-              {submitting ? 'Submitting…' : 'Submit week for approval'}
-            </button>
-          </>
-        )}
       </div>
 
       <div className="segment tracker-status-tabs">
@@ -387,6 +382,26 @@ export function ReceivablePlanClient({
         </div>
       ) : (
         <GroupedView rows={shown} mode={view} />
+      )}
+
+      {/* Submit sits after the PO lines: fill the rows first, then send the week. */}
+      {editable && view === 'lines' && (
+        <div className="rp-submit">
+          <div className="rp-submit-text">
+            <b>Submit for approval</b>
+            <span>Sends every row you filled this week to the approver. Add a remark if something needs explaining.</span>
+          </div>
+          <input
+            className="rp-submit-remark"
+            placeholder="Remark for the approver (optional)"
+            value={submitRemark}
+            onChange={(e) => setSubmitRemark(e.target.value)}
+            aria-label="Remark for the approver"
+          />
+          <button type="button" className="wf-btn wf-btn-primary" disabled={submitting} onClick={submitAll}>
+            {submitting ? 'Submitting…' : 'Submit week for approval'}
+          </button>
+        </div>
       )}
       </>
       )}

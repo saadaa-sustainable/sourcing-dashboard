@@ -2587,3 +2587,11 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .wf-cost-edit-approve input { border: 1px solid var(--line-strong, #c9c2ae); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--ink-1, #161513); background: #fff; }
 .wf-cost-edit-approve .wide { grid-column: 1 / -1; }
 .wf-cost-edit-approve-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+
+/* Inward Plan: the week's submit block, after the PO lines table. */
+.rp-submit { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; padding: 14px 16px; border: 1px solid #d2d5d8; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
+.rp-submit-text { display: grid; gap: 2px; flex: 1 1 260px; min-width: 0; }
+.rp-submit-text b { color: #303330; font-size: 13px; }
+.rp-submit-text span { color: #6d7175; font-size: 11.5px; }
+.rp-submit-remark { flex: 2 1 280px; min-width: 0; min-height: 36px; padding: 0 12px; border: 1px solid #c9cccf; border-radius: 9px; background: #fff; color: #303330; font-size: 12.5px; }
+.rp-submit-remark:focus { outline: 0; border-color: #8c9196; box-shadow: 0 0 0 3px rgba(0, 128, 96, .14); }
