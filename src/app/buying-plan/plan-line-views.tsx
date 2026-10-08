@@ -138,6 +138,16 @@ export function PlanLineViews({
   const openItem = open ? items.find((i) => i.key === open) ?? null : null;
   const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
+  const decided = (key: string) => {
+    const node = decision?.(key);
+    return node ? (
+      <div className="pl-card-decide" onClick={(e) => e.stopPropagation()}>
+        <span>Your decision</span>
+        {node}
+      </div>
+    ) : null;
+  };
+
   const card = (it: PlanCard, compact = false) => (
     <article
       key={it.key}
@@ -204,6 +214,8 @@ export function PlanLineViews({
           ))}
         </div>
       )}
+      {/* The approver decides the line right on the card (clicks here don't open the panel). */}
+      {decided(it.key)}
     </article>
   );
 
