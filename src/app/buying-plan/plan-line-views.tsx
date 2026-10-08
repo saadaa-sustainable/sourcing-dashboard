@@ -195,7 +195,7 @@ export function PlanLineViews({
         >
           Line details
         </button>
-        <span className="pl-card-rates" title="Approved standard cost, ₹ per unit">{it.rates}</span>
+        {it.rates && <span className="pl-card-rates" title="Approved standard cost, ₹ per unit">{it.rates}</span>}
       </div>
       {it.tags.length > 0 && (
         <div className="pl-card-tags">

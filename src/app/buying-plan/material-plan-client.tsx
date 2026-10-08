@@ -661,6 +661,7 @@ export function MaterialPlanClient({
                   : v.missingCost
                     ? { text: 'No approved cost', tone: 'red' as const }
                     : { text: 'Ready', tone: 'green' as const },
+                rates: '',
                 info: [
                   ['Job Work value', v.jobValue ? money.format(v.jobValue) : '—'],
                   ['Purchase value', v.purchaseValue ? money.format(v.purchaseValue) : '—'],

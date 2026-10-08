@@ -510,11 +510,13 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       context: `${v.category} · ${v.productStatus} · ${v.fabricType}`,
       check,
       tags: base.tags.filter((t) => t.text !== v.fabricType),
+      // The big figure below is the value to be bought; the rates sit under each box.
+      rates: '',
       info: [
         ['Pending qty', v.pending != null ? fmt.format(v.pending) : '—'],
         ['Total qty', `${fmt.format(v.totalQty)} pcs`],
-        ['Value to be bought', v.missingCost ? 'No approved cost' : money.format(v.valueToBeBought)],
-        ['Issued', `${fmt.format(v.actualQty)} pcs · ${money.format(v.actualValue)}`],
+        ['Issued qty', `${fmt.format(v.actualQty)} pcs`],
+        ['Issued value', money.format(v.actualValue)],
       ],
     };
   };
@@ -535,9 +537,8 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
             <label key={field}>
               {k === 'job' ? 'Job' : k === 'efob' ? 'E-FOB' : 'FOB'}
               <input type="number" min={0} value={row[field]} disabled={!editable} onChange={(e) => patch(row.key, field, e.target.value)} />
-              <small title="Approved standard cost per piece · value of this quantity">
-                {rate ? `@ ₹${fmt.format(rate)}` : 'no rate'}{val ? ` · ${money.format(val)}` : ''}
-              </small>
+              <small title="Approved standard cost per piece">{rate ? `@ ₹${fmt.format(rate)}` : 'no rate'}</small>
+              {val > 0 && <small title="Value of this quantity">{inr(val)}</small>}
             </label>
           );
         })}
