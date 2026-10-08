@@ -4,11 +4,11 @@ import { useMemo, useState, useTransition, useEffect } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
-import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
+import { decideApproval, saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
 import { STATUS_LABEL, canApprove, statusText } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import type { ReceivablePlanRow, SdRole } from '@/lib/forms/types';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
@@ -406,6 +406,7 @@ export function ReceivablePlanClient({
             pageTo={pageTo}
             editable={editable}
             onEdit={editInList}
+            canDecide={isApprover}
           />
           {layout === 'cards' && pagerEl}
         </>
@@ -476,6 +477,7 @@ export function ReceivablePlanClient({
           mode={view}
           layout={layout}
           onOpenLines={(q) => { setSearch(q); setView('lines'); }}
+          canDecide={isApprover}
         />
       )}
 
@@ -510,12 +512,15 @@ function GroupedView({
   mode,
   layout = 'list',
   onOpenLines,
+  canDecide = false,
 }: {
   rows: ReceivablePlanRow[];
   mode: Exclude<ViewMode, 'lines'>;
   layout?: LinesLayout;
   /** Open the PO lines filtered to a product / variant. */
   onOpenLines?: (query: string) => void;
+  /** The approver may decide a group's submitted lines from its card. */
+  canDecide?: boolean;
 }) {
   const groups = useMemo(() => {
     type G = {
@@ -528,6 +533,8 @@ function GroupedView({
       planned: number;
       oos: number;
       rows: number;
+      /** Lines in this group waiting for the approver. */
+      submitted: string[];
     };
     const map = new Map<string, G>();
     for (const r of rows) {
@@ -551,7 +558,7 @@ function GroupedView({
       }
       let g = map.get(key);
       if (!g) {
-        g = { key, label, sub, pos: new Set(), variants: new Set(), arriving: 0, planned: 0, oos: 0, rows: 0 };
+        g = { key, label, sub, pos: new Set(), variants: new Set(), arriving: 0, planned: 0, oos: 0, rows: 0, submitted: [] };
         map.set(key, g);
       }
       g.pos.add(r.po_number);
@@ -559,6 +566,7 @@ function GroupedView({
       g.arriving += r.arriving_qty || 0;
       g.planned += Number(r.qty_expected_this_week) || 0;
       if (r.oos_flag) g.oos += 1;
+      if (r.input_status === 'submitted') g.submitted.push(r.row_key);
       g.rows += 1;
     }
     const arr = [...map.values()];
@@ -604,6 +612,9 @@ function GroupedView({
         <div className="ip-card-foot">
           <span className="ip-card-when">{g.arriving > 0 ? `${pct}% planned` : 'Nothing arriving'}{mode === 'product' ? ` · ${g.variants.size} variant${g.variants.size === 1 ? '' : 's'}` : ''}</span>
         </div>
+        {canDecide && g.submitted.length > 0 && (
+          <CardDecision rowKeys={g.submitted} what={`${head} ${g.label}`} label={`Receivable plan — ${head.toLowerCase()} ${g.label} (${g.submitted.length} line${g.submitted.length === 1 ? '' : 's'})`} />
+        )}
         {onOpenLines && mode !== 'month' && (
           <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm ip-card-edit" onClick={() => onOpenLines(g.label)}>
             Show PO lines
@@ -703,6 +714,70 @@ function GroupedView({
   );
 }
 
+/**
+ * The approver's decision on a card: Approve, or Send back / Reject with a remark. Decides
+ * only the given rows (one PO line, or a group's submitted lines) through the same approval
+ * path as the week's batch decision — approved-month stamping, notifications and the log.
+ */
+function CardDecision({ rowKeys, label, what }: { rowKeys: string[]; label: string; what: string }) {
+  const [mode, setMode] = useState<null | 'rework' | 'reject'>(null);
+  const [notes, setNotes] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  function decide(decision: 'approve' | 'rework' | 'reject') {
+    setErr(null);
+    if (decision !== 'approve' && !notes.trim()) {
+      setErr('Add a remark: the team sees it with the line.');
+      return;
+    }
+    const fd = new FormData();
+    fd.set('entity_type', 'receivable_plan');
+    fd.set('entity_id', 'rows');
+    fd.set('entity_label', label);
+    fd.set('decision', decision);
+    fd.set('notes', notes.trim());
+    fd.set('row_keys', JSON.stringify(rowKeys));
+    start(async () => {
+      const res = await decideApproval(fd);
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+      else setErr(toastError(res.error));
+    });
+  }
+  return (
+    <div className="ip-decide" role="group" aria-label={`Decision on ${what}`}>
+      <span className="ip-decide-label">Awaiting your decision{rowKeys.length > 1 ? ` · ${rowKeys.length} lines` : ''}</span>
+      {mode ? (
+        <>
+          <textarea
+            className="ip-decide-note"
+            rows={2}
+            autoFocus
+            value={notes}
+            placeholder={mode === 'rework' ? 'What should the team change?' : 'Why is it rejected?'}
+            onChange={(e) => setNotes(e.target.value)}
+            aria-label="Remark for the team"
+          />
+          <div className="ip-decide-actions">
+            <button type="button" className={`wf-btn wf-btn-sm ${mode === 'reject' ? 'wf-btn-danger' : 'wf-btn-primary'}`} disabled={pending} onClick={() => decide(mode)}>
+              {pending ? 'Working…' : mode === 'rework' ? 'Send back' : 'Reject'}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setMode(null); setNotes(''); setErr(null); }}>Cancel</button>
+          </div>
+        </>
+      ) : (
+        <div className="ip-decide-actions">
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={() => decide('approve')}>
+            {pending ? 'Working…' : rowKeys.length > 1 ? `Approve ${rowKeys.length}` : 'Approve'}
+          </button>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('rework')}>Send back</button>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('reject')}>Reject</button>
+        </div>
+      )}
+      {err && <small className="ip-decide-err" role="alert">{err}</small>}
+    </div>
+  );
+}
+
 /** Where a row is planned to land, in words: a week range or a whole month. */
 function pickLabel(r: ReceivablePlanRow): string | null {
   if (!r.delivery_date_this_week) return null;
@@ -710,7 +785,7 @@ function pickLabel(r: ReceivablePlanRow): string | null {
 }
 
 /** One PO line as a card (Cards and Kanban). Read-only; Edit opens it in the list. */
-function LineCard({ row, editable, onEdit }: { row: ReceivablePlanRow; editable: boolean; onEdit: (r: ReceivablePlanRow) => void }) {
+function LineCard({ row, editable, onEdit, canDecide = false }: { row: ReceivablePlanRow; editable: boolean; onEdit: (r: ReceivablePlanRow) => void; canDecide?: boolean }) {
   const planned = row.qty_expected_this_week ?? 0;
   const pct = row.arriving_qty > 0 ? Math.round((planned / row.arriving_qty) * 100) : null;
   const when = pickLabel(row);
@@ -737,6 +812,13 @@ function LineCard({ row, editable, onEdit }: { row: ReceivablePlanRow; editable:
           {row.input_status && <span className="ip-card-status">{statusText(row.input_status, { approverEdited: row.input_approver_edited })}</span>}
         </span>
       </div>
+      {canDecide && row.input_status === 'submitted' && (
+        <CardDecision
+          rowKeys={[row.row_key]}
+          what={`${row.po_ref_num || row.po_number} ${row.product_variant}`}
+          label={`Receivable plan — ${row.po_ref_num || row.po_number} · ${row.product_variant}`}
+        />
+      )}
       <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm ip-card-edit" onClick={() => onEdit(row)}>
         {editable ? 'Edit in list' : 'Show in list'}
       </button>
@@ -752,6 +834,7 @@ function LinesBoard({
   pageTo,
   editable,
   onEdit,
+  canDecide = false,
 }: {
   rows: ReceivablePlanRow[];
   layout: 'cards' | 'kanban';
@@ -759,13 +842,14 @@ function LinesBoard({
   pageTo: number;
   editable: boolean;
   onEdit: (r: ReceivablePlanRow) => void;
+  canDecide?: boolean;
 }) {
   const PER_COLUMN = 40;
   if (!rows.length) return <p className="wf-empty-cell ip-empty">No open receivables match.</p>;
   if (layout === 'cards') {
     return (
       <div className="ip-cards">
-        {rows.slice(pageFrom, pageTo).map((r) => <LineCard key={r.row_key} row={r} editable={editable} onEdit={onEdit} />)}
+        {rows.slice(pageFrom, pageTo).map((r) => <LineCard key={r.row_key} row={r} editable={editable} onEdit={onEdit} canDecide={canDecide} />)}
       </div>
     );
   }
@@ -780,7 +864,7 @@ function LinesBoard({
               <span className="ip-kcol-n">{items.length}</span>
             </div>
             <small className="ip-kcol-hint">{st.hint}</small>
-            {items.slice(0, PER_COLUMN).map((r) => <LineCard key={r.row_key} row={r} editable={editable} onEdit={onEdit} />)}
+            {items.slice(0, PER_COLUMN).map((r) => <LineCard key={r.row_key} row={r} editable={editable} onEdit={onEdit} canDecide={canDecide} />)}
             {items.length > PER_COLUMN && (
               <p className="ip-kcol-more">+{items.length - PER_COLUMN} more — narrow the filters or use List</p>
             )}

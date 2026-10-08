@@ -143,7 +143,16 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   // Receivable plan is a batch of row_key-keyed rows, not one id record — decide
   // the whole submitted batch in one go (keeps ApprovalBar reusable for it).
   if (entityType === 'receivable_plan') {
-    return decideReceivablePlanBulk(user.role, user.email, decision, notes, label);
+    // row_keys (JSON list) narrows the decision to those rows — a card on the Inward Plan
+    // decides its own line(s); without it the whole submitted week is decided.
+    let rowKeys: string[] | undefined;
+    try {
+      const parsed = JSON.parse(String(formData.get('row_keys') ?? '[]'));
+      if (Array.isArray(parsed) && parsed.length) rowKeys = parsed.map(String);
+    } catch {
+      return fail('Invalid row selection.');
+    }
+    return decideReceivablePlanBulk(user.role, user.email, decision, notes, label, rowKeys);
   }
   // The monthly inward-plan sheet is decided a month at a time — entity_id is the
   // plan month (YYYY-MM-01), and every Pending row of that month takes the decision.
@@ -401,6 +410,8 @@ async function decideReceivablePlanBulk(
   decision: string,
   notes: string,
   label: string,
+  /** Only these rows (a card's line, or a group's submitted lines); every submitted row when omitted. */
+  rowKeys?: string[],
 ): Promise<ActionResult> {
   const from: SdStatus = 'submitted';
   if (!canApprove(role, from)) return fail('This decision is above your approval level.');
@@ -420,6 +431,11 @@ async function decideReceivablePlanBulk(
           }
         : { status: to, rejection_notes: notes || null };
   const supabase = await supa();
+  // One PostgREST filter narrows every read and write below to the chosen rows (quoted, so a
+  // row key with commas or dots stays one value); without rows it matches every row.
+  const rows = rowKeys?.length
+    ? `row_key.in.(${rowKeys.map((k) => `"${k.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`).join(',')})`
+    : 'row_key.not.is.null';
 
   // Who submitted this batch, read before the decision changes the rows.
   // paging-ok: the people on one submitted batch; distinct-ed below
@@ -427,6 +443,7 @@ async function decideReceivablePlanBulk(
     .from('sd_receivable_input')
     .select('submitted_by, updated_by')
     .eq('status', from)
+    .or(rows)
     .limit(1000);
 
   // Capture the month-granularity rows being approved so we can stamp the
@@ -438,6 +455,7 @@ async function decideReceivablePlanBulk(
       .from('sd_receivable_input')
       .select('row_key, delivery_date_this_week')
       .eq('status', from)
+    .or(rows)
       .eq('receiving_granularity', 'month');
     monthRows = (data ?? []) as typeof monthRows;
   }
@@ -449,13 +467,15 @@ async function decideReceivablePlanBulk(
       .from('sd_receivable_input')
       .update({ approved_month: null })
       .eq('status', from)
+    .or(rows)
       .neq('receiving_granularity', 'month');
   }
 
   const { error } = await supabase
     .from('sd_receivable_input')
     .update(patch)
-    .eq('status', from);
+    .eq('status', from)
+    .or(rows);
   if (error) return fail(error.message);
 
   if (decision === 'approve' && monthRows.length) {
@@ -470,7 +490,7 @@ async function decideReceivablePlanBulk(
       await supabase.from('sd_receivable_input').update({ approved_month: month }).in('row_key', keys);
     }
   }
-  await writeLog('receivable_plan', 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
+  await writeLog('receivable_plan', rowKeys?.length === 1 ? rowKeys[0] : 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
   await tellBatch(
     ((submitters ?? []) as { submitted_by: string | null; updated_by: string | null }[]).map((r) => r.submitted_by ?? r.updated_by),
     label || 'Receivable plan',

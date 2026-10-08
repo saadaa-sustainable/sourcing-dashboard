@@ -2628,3 +2628,11 @@ tr[hidden] { display: none !important; }
 .ip-kcol-n { min-width: 22px; padding: 0 6px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px #d2d5d8; color: #4a524c; font-size: 11px; font-weight: 650; line-height: 20px; text-align: center; }
 .ip-kcol-hint { margin-top: -4px; color: #6d7175; font-size: 10.5px; }
 .ip-kcol-more { margin: 2px 0; color: #8c9196; font-size: 11.5px; text-align: center; }
+
+/* Decision on an Inward Plan card (approver): Approve / Send back / Reject with a remark. */
+.ip-decide { display: grid; gap: 6px; margin-top: 2px; padding: 9px 10px; border: 1px solid #f0d18c; border-radius: 10px; background: #fff8e8; }
+.ip-decide-label { color: #7a5600; font-size: 11px; font-weight: 650; }
+.ip-decide-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ip-decide-note { width: 100%; min-height: 52px; padding: 7px 9px; border: 1px solid #c9cccf; border-radius: 8px; background: #fff; font: inherit; font-size: 12px; resize: vertical; }
+.ip-decide-note:focus { outline: 0; border-color: #8c9196; box-shadow: 0 0 0 3px rgba(0, 128, 96, .14); }
+.ip-decide-err { color: #b0261a; font-size: 11px; }
