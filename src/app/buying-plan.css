@@ -85,7 +85,7 @@
 /* Per-product decision (Approve / Rework / Reject one line). */
 .bp-line-decision { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; white-space: nowrap; }
 .bp-line-decision.asking input { width: 170px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 12px; }
-.bp-ld-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line-strong, #c9c2ae); background: #fff; color: var(--ink-2, #494640); border-radius: 7px; padding: 4px 7px; font: 600 11px inherit; font-family: inherit; cursor: pointer; }
+.bp-ld-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line-strong, #c9c2ae); background: #fff; color: var(--ink-2, #494640); border-radius: 7px; padding: 4px 7px; font-family: inherit; font-size: 11px; font-weight: 600; line-height: 1.3; min-height: 0; cursor: pointer; }
 .bp-ld-btn:hover:not(:disabled) { background: var(--bg-tint, #f6f3f1); }
 .bp-ld-btn.approve { border-color: var(--success-border, #3d9e6b); color: var(--success-text, #1f7a4d); }
 .bp-ld-btn.reject:hover:not(:disabled) { color: var(--danger-text, #c0392b); border-color: var(--danger-text, #c0392b); }
