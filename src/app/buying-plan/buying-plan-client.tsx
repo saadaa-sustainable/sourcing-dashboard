@@ -124,7 +124,6 @@ export function BuyingPlanClient({
   catalog = [],
   pickerItems = [],
   restrictPicker = false,
-  npdBudgetSet = true,
   leadDays = { job: 30, efob: 45, fob: 75 },
   deadlineDay = 7,
   firstActionAt = null,
@@ -144,8 +143,6 @@ export function BuyingPlanClient({
   pickerItems?: ProductCatalogItem[];
   /** When true, only Standard-Cost products are selectable (no free-typed codes). */
   restrictPicker?: boolean;
-  /** Whether Sourcing has set the monthly NPD cap shown above this plan. */
-  npdBudgetSet?: boolean;
   leadDays?: { job: number; efob: number; fob: number };
   /** Rules Master: day of the plan month by which the plan must be approved. */
   deadlineDay?: number;
@@ -661,7 +658,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
   };
   const attentionTotal =
     attention.missingCost + attention.approvalPending + attention.notStarted + attention.overPlan;
-  const inputReviewCount = attention.missingCost + (npdBudgetSet ? 0 : 1);
+  const inputReviewCount = attention.missingCost;
   const inputReadyCount = planned.filter((item) => !item.missingCost).length;
   const inputSplit = poTypeSplit(view.map((item) => item.row));
 
@@ -1249,7 +1246,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
             </section>
 
             <aside className="bp-input-support-grid" aria-label="Plan review and lead-time summary">
-              <InputValidationCard missingCost={attention.missingCost} npdBudgetSet={npdBudgetSet} ready={inputReadyCount} planned={planned.length} />
+              <InputValidationCard missingCost={attention.missingCost} ready={inputReadyCount} planned={planned.length} />
               <PlanSplitCard split={inputSplit} leadDays={leadDays} />
               <LeadTimesCard buckets={buckets} isAdmin={role === 'admin'} />
             </aside>
@@ -1366,14 +1363,14 @@ function BuyingPlanProductDrawer({ items, exclude, allowFreeText, onAdd, onAddAl
   );
 }
 
-function InputValidationCard({ missingCost, npdBudgetSet, ready, planned }: { missingCost: number; npdBudgetSet: boolean; ready: number; planned: number }) {
-  const reviewCount = missingCost + (npdBudgetSet ? 0 : 1);
+function InputValidationCard({ missingCost, ready, planned }: { missingCost: number; ready: number; planned: number }) {
+  const reviewCount = missingCost;
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
         <h2>
           Review before submit
-          <InfoDot text={"WHAT: the things that will stop this plan being approved cleanly.\n\nHOW: products on the plan with no approved standard cost (no value can be computed), and an NPD budget for the month that is not set up.\n\nUSE: clear these before submitting; an approver sends a plan with missing costs back for rework."} />
+          <InfoDot text={"WHAT: the things that will stop this plan being approved cleanly.\n\nHOW: products on the plan with no approved standard cost (no value can be computed).\n\nUSE: clear these before submitting; an approver sends a plan with missing costs back for rework."} />
         </h2>
         <Badge tone={reviewCount ? 'yellow' : 'green'}>{reviewCount ? `${reviewCount} to review` : 'All clear'}</Badge>
       </div>
@@ -1388,18 +1385,6 @@ function InputValidationCard({ missingCost, npdBudgetSet, ready, planned }: { mi
               </div>
             </div>
             <strong>{missingCost}</strong>
-          </div>
-        )}
-        {!npdBudgetSet && (
-          <div className="bp-issue">
-            <div className="left">
-              <span className="bp-dot yellow" />
-              <div>
-                <b>NPD budget not set</b>
-                <span>Monthly planning reference is not configured</span>
-              </div>
-            </div>
-            <strong>1</strong>
           </div>
         )}
         {!reviewCount && <span className="wf-subtle">Nothing is flagged at plan level.</span>}

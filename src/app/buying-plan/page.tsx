@@ -138,12 +138,10 @@ async function FgTrack({ planMonth, role, startInInput }: { planMonth: string; r
   const firstActionAt = plan?.id ? await loadPlanFirstActionAt(plan.id) : null;
   return (
     <>
-    {/* A month that is over: nothing can be set, so no "not set" banner; a cap that was set
-        shows read-only. */}
-    {isPlanFrozen(planMonth) ? (
-      npdBudget.cap != null && <NpdBudgetCard budget={npdBudget} role="viewer" />
-    ) : (
-      <NpdBudgetCard budget={npdBudget} role={role} />
+    {/* NPD budget shows only when a cap exists (the "not set" banner was dropped, 2026-10-08);
+        on a month that is over it is read-only. */}
+    {npdBudget.cap != null && (
+      <NpdBudgetCard budget={npdBudget} role={isPlanFrozen(planMonth) ? 'viewer' : role} />
     )}
     <BuyingPlanClient
       planMonth={planMonth}
@@ -158,7 +156,6 @@ async function FgTrack({ planMonth, role, startInInput }: { planMonth: string; r
       catalog={catalog}
       pickerItems={pickerItems}
       restrictPicker={restrictToStandardCost}
-      npdBudgetSet={npdBudget.cap != null}
       leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
       deadlineDay={rules.plan_approval_deadline_day ?? 7}
       firstActionAt={firstActionAt}
