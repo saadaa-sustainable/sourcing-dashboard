@@ -2600,3 +2600,31 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .rp-pager-size select { height: 28px; padding: 0 8px; border: 1px solid #c9cccf; border-radius: 8px; background: #fff; font-size: 11px; }
 /* Rows kept mounted off the current page (unsaved typing survives a page change). */
 tr[hidden] { display: none !important; }
+
+/* Inward Plan PO lines: Cards and Kanban layouts (List = the editable table). */
+.ip-viewrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ip-layout-seg { flex: 0 0 auto; }
+.ip-empty { padding: 28px; text-align: center; }
+.ip-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.ip-card { display: grid; gap: 6px; align-content: start; padding: 12px 13px; border: 1px solid #d2d5d8; border-radius: 12px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .04); transition: border-color .15s ease, box-shadow .15s ease; }
+.ip-card:hover { border-color: #b9bec2; box-shadow: 0 3px 12px rgba(0, 0, 0, .06); }
+.ip-card.is-oos { border-left: 3px solid #d72c0d; }
+.ip-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ip-card-po { color: #4d6fa9; font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.ip-card-name { color: #1f1d19; font-size: 13px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.ip-card-meta { color: #6d7175; font-size: 11px; }
+.ip-card-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 8px 0; border-top: 1px solid #eef0ee; border-bottom: 1px solid #eef0ee; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ip-card-figs small { display: block; color: #6d7175; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.ip-card-bar { display: block; height: 5px; overflow: hidden; border-radius: 999px; background: #e6e9e7; }
+.ip-card-bar i { display: block; height: 100%; border-radius: inherit; background: #008060; }
+.ip-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.ip-card-when { color: #4a524c; font-size: 11.5px; }
+.ip-card-tags { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ip-card-status { color: #6d7175; font-size: 11px; }
+.ip-card-edit { justify-self: start; }
+.ip-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 10px; overflow-x: auto; align-items: start; padding-bottom: 6px; }
+.ip-kcol { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 1px solid #d2d5d8; border-radius: 12px; background: #f6f7f6; }
+.ip-kcol-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ip-kcol-n { min-width: 22px; padding: 0 6px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px #d2d5d8; color: #4a524c; font-size: 11px; font-weight: 650; line-height: 20px; text-align: center; }
+.ip-kcol-hint { margin-top: -4px; color: #6d7175; font-size: 10.5px; }
+.ip-kcol-more { margin: 2px 0; color: #8c9196; font-size: 11.5px; text-align: center; }
