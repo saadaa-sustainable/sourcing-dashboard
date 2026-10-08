@@ -312,7 +312,7 @@ export function BuyingPlanClient({
   };
   const rateCol = (k: 'job' | 'efob' | 'fob', label: string): Column<ViewItem> => ({
     key: `std_${k}`,
-    label: `Std rate (${label})`,
+    label: `Standard Cost (${label})`,
     kind: 'num',
     source: 'supabase',
     info: `WHAT: the approved standard cost of one piece bought as ${label}.
