@@ -295,21 +295,6 @@
 
 /* ── Week sheet, Shopify-admin style (Entry tab): week bar, summary strip, filter tabs,
    one table, one save bar. ─────────────────────────────────────────────────────────── */
-.ui-view-vendor-capacity .vc2-weekbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.ui-view-vendor-capacity .vc2-weekbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.ui-view-vendor-capacity .vc2-back { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: #616a64; font-size: 20px; line-height: 1; text-decoration: none; }
-.ui-view-vendor-capacity .vc2-back:hover { background: #e9ebe9; color: #303330; }
-.ui-view-vendor-capacity .vc2-weekbar-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ui-view-vendor-capacity .vc2-weekbar-title strong { color: #303330; font-size: 15px; font-weight: 700; }
-.ui-view-vendor-capacity .vc2-weekbar-sub { color: #616a64; font-size: 11.5px; text-decoration: none; }
-.ui-view-vendor-capacity .vc2-weekbar-sub:hover { text-decoration: underline; }
-.ui-view-vendor-capacity .vc2-weekbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ui-view-vendor-capacity .vc2-stepper { display: inline-flex; align-items: center; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px #e3e5e3, 0 1px 0 rgba(26, 26, 26, .06); }
-.ui-view-vendor-capacity .vc2-stepper a,
-.ui-view-vendor-capacity .vc2-stepper > span[aria-hidden] { display: grid; place-items: center; width: 30px; height: 30px; color: #616a64; font-size: 16px; text-decoration: none; }
-.ui-view-vendor-capacity .vc2-stepper a:hover { background: #f4f6f5; color: #303330; }
-.ui-view-vendor-capacity .vc2-stepper > span[aria-hidden] { opacity: .3; }
-.ui-view-vendor-capacity .vc2-stepper-label { padding: 0 10px; border-inline: 1px solid #e3e5e3; color: #303330; font-size: 12px; font-weight: 600; line-height: 30px; white-space: nowrap; }
 
 .ui-view-vendor-capacity .vc2-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px #e3e5e3, inset 0 -1px 0 #cfd3d0; color: #303330; font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .ui-view-vendor-capacity .vc2-btn:hover { background: #f4f6f5; }
@@ -403,3 +388,36 @@
   .ui-view-vendor-capacity .vc2-metric:nth-child(3) { border-left: 0; }
   .ui-view-vendor-capacity .vc2-metric:nth-child(n+3) { border-top: 1px solid #e3e5e3; }
 }
+
+/* Week page header (Option A): "All weeks" link, the week as the heading with its status,
+   week picker on the right. The section tabs sit straight under it. */
+.ui-view-vendor-capacity .vc2-head { display: grid; gap: 8px; margin: -4px 0 6px; }
+.ui-view-vendor-capacity .vc2-crumb { display: inline-flex; align-items: center; gap: 4px; width: max-content; color: #616a64; font-size: 12px; font-weight: 550; text-decoration: none; }
+.ui-view-vendor-capacity .vc2-crumb:hover { color: #303330; text-decoration: underline; }
+.ui-view-vendor-capacity .vc2-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+.ui-view-vendor-capacity .vc2-head-main { min-width: 0; }
+.ui-view-vendor-capacity .vc2-head-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ui-view-vendor-capacity .vc2-head-title h2 { margin: 0; color: #303330; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.ui-view-vendor-capacity .vc2-head-title .vc2-badge { height: 22px; font-size: 11.5px; }
+.ui-view-vendor-capacity .vc2-head-meta { margin: 2px 0 0; color: #8a928c; font-size: 12px; }
+.ui-view-vendor-capacity .vc2-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ui-view-vendor-capacity .vc2-picker { position: relative; display: inline-flex; align-items: stretch; height: 32px; border-radius: 8px; background: #fff; box-shadow: 0 0 0 1px #e3e5e3, 0 1px 0 rgba(26, 26, 26, .06); }
+.ui-view-vendor-capacity .vc2-picker-arw { display: grid; place-items: center; width: 32px; color: #616a64; font-size: 16px; text-decoration: none; }
+.ui-view-vendor-capacity a.vc2-picker-arw:hover { background: #f4f6f5; color: #303330; }
+.ui-view-vendor-capacity .vc2-picker-arw:first-child { border-radius: 8px 0 0 8px; }
+.ui-view-vendor-capacity .vc2-picker-arw:last-child { border-radius: 0 8px 8px 0; }
+.ui-view-vendor-capacity .vc2-picker-arw.is-off { opacity: .3; }
+.ui-view-vendor-capacity .vc2-picker-menu { border-inline: 1px solid #e3e5e3; }
+.ui-view-vendor-capacity .vc2-picker-menu > summary { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; color: #303330; font-size: 12.5px; font-weight: 600; white-space: nowrap; list-style: none; cursor: pointer; }
+.ui-view-vendor-capacity .vc2-picker-menu > summary::-webkit-details-marker { display: none; }
+.ui-view-vendor-capacity .vc2-picker-menu > summary svg { color: #8a928c; transition: transform .15s ease; }
+.ui-view-vendor-capacity .vc2-picker-menu[open] > summary svg { transform: rotate(180deg); }
+.ui-view-vendor-capacity .vc2-picker-menu > summary:hover { background: #f4f6f5; }
+.ui-view-vendor-capacity .vc2-picker-list { position: absolute; top: 38px; right: 0; z-index: 30; display: grid; gap: 2px; width: 300px; max-height: 360px; overflow-y: auto; padding: 6px; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px #e3e5e3, 0 12px 28px rgba(0, 0, 0, .14); }
+.ui-view-vendor-capacity .vc2-picker-list a { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 8px 10px; border-radius: 8px; color: #303330; text-decoration: none; }
+.ui-view-vendor-capacity .vc2-picker-list a:hover,
+.ui-view-vendor-capacity .vc2-picker-list a.is-on { background: #f4f6f5; }
+.ui-view-vendor-capacity .vc2-picker-list b { font-size: 12.5px; font-weight: 600; }
+.ui-view-vendor-capacity .vc2-picker-list small { color: #8a928c; font-size: 11px; }
+.ui-view-vendor-capacity .vc2-picker-list small:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.ui-view-vendor-capacity .vc2-picker-list .vc2-picker-board { display: block; margin-top: 4px; border-top: 1px solid #eef0ee; border-radius: 0 0 8px 8px; color: #616a64; font-size: 12px; font-weight: 600; }
