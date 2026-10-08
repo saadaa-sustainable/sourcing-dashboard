@@ -33,12 +33,11 @@ import {
   monthLabel,
   planComplianceStatus,
   statusText,
-  type PlanCompliance,
 } from '@/lib/forms/approval';
-import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
+import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
-import { ClosedMonthHeader } from './closed-month-header';
+import { PlanHeader, planFacts, planStatusWord, type PlanMonthStatus } from './plan-header';
 import { BulkDecisionBar, LineDecision, lineIdOf, type LineEdits } from './line-decision';
 import { PlanLineViews, approvalColumn, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import type {
@@ -185,6 +184,8 @@ export function BuyingPlanClient({
   deadlineDay = 7,
   firstActionAt = null,
   role,
+  planMonths = [],
+  afterHeader = null,
   startInInput = false,
 }: {
   planMonth: string;
@@ -205,6 +206,10 @@ export function BuyingPlanClient({
   deadlineDay?: number;
   /** First admin decision (approve / reject / rework) on this plan, from the approval log. */
   firstActionAt?: string | null;
+  /** Every month's status on both tracks, for the header's month picker and tab dots. */
+  planMonths?: PlanMonthStatus[];
+  /** Shown straight under the header (the NPD budget card). */
+  afterHeader?: React.ReactNode;
   role: SdRole;
   /** Open on the Input view (and scroll to it) - set by ?mode=input. */
   startInInput?: boolean;
@@ -1037,68 +1042,60 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
 
   return (
     <>
-      {/* A month that is over gets one closed-month header; otherwise the page bar:
-          month · status · View/Input on the left; actions on the right. */}
-      {frozen ? (
-        <ClosedMonthHeader
-          planMonth={planMonth}
-          status={status}
-          submittedAt={plan?.submitted_at ?? null}
-          decisionAt={firstActionAt ?? plan?.approved_at ?? null}
-          compliance={compliance}
-          monthHref={(m) => `/buying-plan?month=${m}`}
-          onExport={exportCsv}
-          exportDisabled={!view.length}
-          chipRef={modeRef}
-        />
-      ) : (
-      <div className="bp-pagebar">
-        <div className="bp-pagebar-left">
-          <Field label="Month">
-            <select
-              value={planMonth}
-              onChange={(event) => {
-                window.location.href = `/buying-plan?month=${event.target.value}`;
-              }}
-            >
-              {[-1, 0, 1, 2].map((delta) => {
-                const month = addMonths(planMonth, delta);
-                return (
-                  <option key={month} value={month}>
-                    {monthLabel(month)}
-                  </option>
-                );
-              })}
-            </select>
-          </Field>
-          <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
-          <DeadlineChip
-            c={compliance}
-            status={status}
-            decisionAt={firstActionAt ?? plan?.approved_at ?? null}
-            submittedAt={plan?.submitted_at ?? null}
-            frozen={frozen}
-          />
-          {showLineProgress && lineCounts.total > 0 && (
+      {/* One header for every Buying Plan tab (plan-header.tsx): month, status, facts, month
+          picker and actions; tabs with View / Input; Input-only actions in a bar under them. */}
+      <PlanHeader
+        planMonth={planMonth}
+        planType="fg"
+        months={planMonths}
+        status={(() => {
+          const w = planStatusWord(plan ? status : null, frozen);
+          // An approval says how it got there (with the approver's edits / after rework).
+          return status === 'approved' ? { tone: w.tone, text: statusText(status, { edited: plan?.edited_before_approval, approverEdited: plan?.approver_edited }) } : w;
+        })()}
+        badges={
+          showLineProgress && lineCounts.total > 0 && !frozen ? (
             <span
-              className={`bp-badge ${awaitingReview > 0 ? 'yellow' : lineCounts.rework > 0 ? 'red' : 'green'}`}
-              style={{ whiteSpace: 'normal' }}
+              className={`bph-badge ${awaitingReview > 0 ? 'warn' : lineCounts.rework > 0 ? 'crit' : 'ok'}`}
               title="Line-level approval progress on this submission"
             >
-              {awaitingReview > 0
-                ? `${awaitingReview} of ${lineCounts.total} lines still awaiting review`
-                : `All ${lineCounts.total} lines reviewed`}
-              {lineCounts.approved ? ` · ${lineCounts.approved} approved` : ''}
-              {lineCounts.rework ? ` · ${lineCounts.rework} sent for rework` : ''}
+              {awaitingReview > 0 ? `${awaitingReview} of ${lineCounts.total} lines awaiting review` : `All ${lineCounts.total} lines reviewed`}
+              {lineCounts.rework ? ` · ${lineCounts.rework} rework` : ''}
               {lineCounts.rejected ? ` · ${lineCounts.rejected} rejected` : ''}
             </span>
-          )}
-          {frozen ? (
-            <span className="bp-badge gray" ref={modeRef} title="The month is over — this plan is shown as it was entered">
-              <Eye size={13} aria-hidden="true" /> View only
-            </span>
-          ) : (
-            <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
+          ) : null
+        }
+        facts={planFacts(
+          planMonth,
+          plan ? { status, submitted_at: plan.submitted_at ?? null, decided_at: firstActionAt ?? plan.approved_at ?? null } : null,
+          compliance,
+        )}
+        actions={
+          <>
+            {canAmend && (
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setAmendOpen((o) => !o)}>
+                Request amendment
+              </button>
+            )}
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
+              <Download size={15} /> Export
+            </button>
+            {canSubmit(role, status) && !frozen && (
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary"
+                onClick={submit}
+                disabled={pending || !plan?.id}
+                title={!plan?.id ? 'Save the plan first' : undefined}
+              >
+                <Send size={15} /> Submit for approval
+              </button>
+            )}
+          </>
+        }
+        modeControl={
+          frozen ? null : (
+            <div className="segment wf-segment bph-mode" ref={modeRef} style={{ scrollMarginTop: 96 }}>
               <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
                 <Eye size={14} /> View
               </button>
@@ -1106,64 +1103,39 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                 <ClipboardList size={14} /> Input
               </button>
             </div>
-          )}
-        </div>
-
-        <div className="bp-pagebar-right">
-          {editable && mode === 'input' && (
+          )
+        }
+        inputBar={
+          editable && mode === 'input' && !frozen ? (
             <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".csv,text/csv"
-                hidden
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void onCsvFile(file);
-                  event.target.value = '';
-                }}
-              />
-              <button type="button" className="wf-btn wf-btn-ghost" onClick={downloadTemplate}>
-                <Download size={15} /> Template
-              </button>
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost"
-                onClick={() => fileRef.current?.click()}
-                title="Import a product_code, po_type, qty CSV"
-              >
-                <Upload size={15} /> Import CSV
-              </button>
-
+              <span><b>Input</b> · changes stay a draft until you submit for approval.</span>
+              <span className="bph-inputbar-actions">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onCsvFile(file);
+                    event.target.value = '';
+                  }}
+                />
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
+                  <Download size={14} /> Template
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()} title="Import a product_code, po_type, qty CSV">
+                  <Upload size={14} /> Import CSV
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={save} disabled={pending}>
+                  <Save size={14} /> {pending ? 'Saving…' : 'Save draft'}
+                </button>
+              </span>
             </>
-          )}
-          {canAmend && (
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setAmendOpen((o) => !o)}>
-              Request amendment
-            </button>
-          )}
-          <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
-            <Download size={15} /> Export
-          </button>
-          {editable && mode === 'input' && (
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
-              <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
-            </button>
-          )}
-          {canSubmit(role, status) && !frozen && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary"
-              onClick={submit}
-              disabled={pending || !plan?.id}
-              title={!plan?.id ? 'Save the plan first' : undefined}
-            >
-              <Send size={15} /> Submit for approval
-            </button>
-          )}
-        </div>
-      </div>
-      )}
+          ) : null
+        }
+      />
+      {afterHeader}
 
       {!isPlanWindowOpen(planMonth) && (
         <Notice tone="warn">
@@ -1691,73 +1663,6 @@ type ViewItemFull = {
   subCategory: string;
   overPlan: boolean;
 };
-
-const dShort = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
-const dayWord = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
-
-/**
- * Deadline pill that completes the status badge in plain words, e.g.
- *   Approval Pending  · Deadline passed — no admin decision since 7 Sept (8 days)
- *   Approved          · Approved 5 Sept — on time
- *   Draft             · Submit and approve by 7 Oct
- * The first admin decision is judged on the current submission cycle (see
- * loadPlanFirstActionAt), so an old approval never covers a fresh wait.
- */
-function DeadlineChip({
-  c,
-  status,
-  decisionAt,
-  submittedAt,
-  frozen,
-}: {
-  c: PlanCompliance;
-  status: SdStatus;
-  decisionAt: string | null;
-  submittedAt: string | null;
-  frozen: boolean;
-}) {
-  const dl = dShort(c.deadline);
-  const waiting = status === 'submitted' || status === 'pending_l2';
-  let tone: 'green' | 'yellow' | 'red' | 'gray' = 'gray';
-  let text = '';
-  let title = '';
-  if (c.status === 'on_time') {
-    tone = 'green';
-    const when = decisionAt ? dShort(decisionAt) : dl;
-    text = status === 'approved' ? `Approved ${when} — on time` : `Admin decided ${when} — on time`;
-    title = `An admin acted by the ${dl} deadline`;
-  } else if (c.status === 'pending') {
-    tone = 'yellow';
-    text = waiting ? `Awaiting admin decision — due by ${dl}` : `Submit and approve by ${dl}`;
-    title = 'An admin must approve, reject or send for rework by the deadline';
-  } else if (c.status === 'breach_approval') {
-    tone = 'red';
-    text = decisionAt
-      ? `${status === 'approved' ? 'Approved' : 'Decided'} ${dShort(decisionAt)} — ${dayWord(c.daysLate)} after the ${dl} deadline`
-      : `Deadline passed — no admin decision since ${dl} (${dayWord(c.daysLate)})`;
-    title = `Compliance breach, approval side: submitted ${submittedAt ? dShort(submittedAt) : 'in time'}, but not decided by ${dl}`;
-  } else {
-    tone = 'red';
-    text = submittedAt
-      ? `Submitted late (${dShort(submittedAt)}) — ${dayWord(c.daysLate)} past the ${dl} deadline`
-      : `Not submitted — ${dayWord(c.daysLate)} past the ${dl} deadline`;
-    title = 'Compliance breach, submission side: the plan was not submitted by the deadline';
-  }
-  return (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span className={`bp-badge ${tone}`} title={title} style={{ whiteSpace: 'normal' }}>
-        {text}
-      </span>
-      {frozen && (
-        <span className="bp-badge gray" title="Month ended — the plan is frozen">
-          Month closed
-        </span>
-      )}
-    </span>
-  );
-}
-
 
 function Progress({ pct, flush = false }: { pct: number; flush?: boolean }) {
   return (

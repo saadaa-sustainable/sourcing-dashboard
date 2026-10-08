@@ -7,7 +7,6 @@ import { reloadWithToast, toastError } from '@/lib/toast';
 import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
-  addMonths,
   canApprove,
   canEdit,
   canSubmit,
@@ -16,9 +15,10 @@ import {
   monthLabel,
 } from '@/lib/forms/approval';
 import { csvObjects, downloadCsv } from '@/lib/csv';
-import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
+import { Notice, StatusBadge } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
-import { ClosedMonthHeader } from './closed-month-header';
+import { statusText } from '@/lib/forms/approval';
+import { PlanHeader, planFacts, planStatusWord, type PlanMonthStatus } from './plan-header';
 import { MAT_KANBAN, MaterialPlanView, toMaterialCard } from './material-plan-view';
 import { PlanLineViews, type KanbanOption } from './plan-line-views';
 import { BulkDecisionBar, LineDecision, lineIdOf, type LineEdits } from './line-decision';
@@ -120,8 +120,11 @@ export function MaterialPlanClient({
   materialCosts,
   role,
   startInInput = false,
+  planMonths = [],
 }: {
   planMonth: string;
+  /** Every month's status on both tracks, for the header's month picker and tab dots. */
+  planMonths?: PlanMonthStatus[];
   plan: BuyingPlan | null;
   lines: BuyingPlanLine[];
   materialCodes: MaterialCode[];
@@ -484,44 +487,34 @@ export function MaterialPlanClient({
 
   return (
     <>
-      {frozen ? (
-        <ClosedMonthHeader
-          planMonth={planMonth}
-          status={status}
-          submittedAt={plan?.submitted_at ?? null}
-          decisionAt={plan?.approved_at ?? null}
-          monthHref={(m) => `/buying-plan?month=${m}&type=material`}
-          onExport={exportCsv}
-          exportDisabled={!view.length}
-          chipRef={modeRef}
-        />
-      ) : (
-      <div className="bp-pagebar">
-        <div className="bp-pagebar-left">
-          <Field label="Month">
-            <select
-              value={planMonth}
-              onChange={(event) => {
-                window.location.href = `/buying-plan?month=${event.target.value}&type=material`;
-              }}
-            >
-              {[-1, 0, 1, 2].map((delta) => {
-                const month = addMonths(planMonth, delta);
-                return (
-                  <option key={month} value={month}>
-                    {monthLabel(month)}
-                  </option>
-                );
-              })}
-            </select>
-          </Field>
-          <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
-          {frozen ? (
-            <span className="bp-badge gray" ref={modeRef} title="The month is over — this plan is shown as it was entered">
-              <Eye size={13} aria-hidden="true" /> View only
-            </span>
-          ) : (
-            <div className="segment wf-segment" ref={modeRef} style={{ scrollMarginTop: 96 }}>
+      {/* Same header as every Buying Plan tab (plan-header.tsx). */}
+      <PlanHeader
+        planMonth={planMonth}
+        planType="material"
+        months={planMonths}
+        status={(() => {
+          const w = planStatusWord(plan ? status : null, frozen);
+          return status === 'approved' ? { tone: w.tone, text: statusText(status, { edited: plan?.edited_before_approval, approverEdited: plan?.approver_edited }) } : w;
+        })()}
+        facts={planFacts(
+          planMonth,
+          plan ? { status, submitted_at: plan.submitted_at ?? null, decided_at: plan.approved_at ?? null } : null,
+        )}
+        actions={
+          <>
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
+              <Download size={15} /> Export
+            </button>
+            {canSubmit(role, status) && !frozen && (
+              <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
+                <Send size={15} /> Submit for approval
+              </button>
+            )}
+          </>
+        }
+        modeControl={
+          frozen ? null : (
+            <div className="segment wf-segment bph-mode" ref={modeRef} style={{ scrollMarginTop: 96 }}>
               <button type="button" className={mode === 'view' ? 'active' : ''} onClick={() => setMode('view')}>
                 <Eye size={14} /> View
               </button>
@@ -529,58 +522,49 @@ export function MaterialPlanClient({
                 <ClipboardList size={14} /> Input
               </button>
             </div>
-          )}
-        </div>
-        <div className="bp-pagebar-right">
-        {editable && mode === 'input' && (
-          <>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void onCsvFile(file);
-                event.target.value = '';
-              }}
-            />
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={downloadTemplate}>
-              <Download size={15} /> Template
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => fileRef.current?.click()}>
-              <Upload size={15} /> Import CSV
-            </button>
-            {/* A code has to exist before it can be planned. Deep-links to the add form for
-                the active type — Raw goes to Fabric Master (its single source of truth),
-                Dyed / Trim to Material Master — in a new tab so the draft grid isn't lost. */}
-            <a
-              className="wf-btn wf-btn-ghost"
-              href={type === 'raw' ? '/fabric-master' : `/material-master?type=${type}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`Create a new ${TYPE_LABEL[type].toLowerCase()} code, then pick it from the list below`}
-            >
-              <ExternalLink size={15} /> Add new {TYPE_LABEL[type].toLowerCase()}
-            </a>
-          </>
-        )}
-          <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
-            <Download size={15} /> Export
-          </button>
-          {editable && mode === 'input' && (
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
-              <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
-            </button>
-          )}
-          {canSubmit(role, status) && !frozen && (
-            <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
-              <Send size={15} /> Submit for approval
-            </button>
-          )}
-        </div>
-      </div>
-      )}
+          )
+        }
+        inputBar={
+          editable && mode === 'input' ? (
+            <>
+              <span><b>Input</b> · changes stay a draft until you submit for approval.</span>
+              <span className="bph-inputbar-actions">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onCsvFile(file);
+                    event.target.value = '';
+                  }}
+                />
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
+                  <Download size={14} /> Template
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
+                  <Upload size={14} /> Import CSV
+                </button>
+                {/* A code has to exist before it can be planned. Raw goes to Fabric Master,
+                    Dyed / Trim to Material Master — in a new tab so the draft grid isn't lost. */}
+                <a
+                  className="wf-btn wf-btn-ghost wf-btn-sm"
+                  href={type === 'raw' ? '/fabric-master' : `/material-master?type=${type}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Create a new ${TYPE_LABEL[type].toLowerCase()} code, then pick it from the list below`}
+                >
+                  <ExternalLink size={14} /> Add new {TYPE_LABEL[type].toLowerCase()}
+                </a>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={save} disabled={pending}>
+                  <Save size={14} /> {pending ? 'Saving…' : 'Save draft'}
+                </button>
+              </span>
+            </>
+          ) : null
+        }
+      />
 
       {!isPlanWindowOpen(planMonth) && (
         <Notice tone="warn">
