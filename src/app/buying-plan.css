@@ -495,3 +495,4 @@
 .bp-mat-toolbar { align-items: center; }
 .bp-mat-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .bp-mat-add select { max-width: 280px; }
+.pl-card-edit select { padding: 6px 18px 6px 6px; font-size: 12px; text-overflow: clip; }

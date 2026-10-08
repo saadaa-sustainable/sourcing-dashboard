@@ -233,12 +233,12 @@ export function MaterialPlanClient({
     return (
       <>
         <label>
-          Job Work qty
+          Job Work
           <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
           <small title="Approved Job rate per unit">{cost?.job ? `@ ₹${fmt.format(cost.job)} / ${unit}` : 'no rate'}</small>
         </label>
         <label>
-          Purchase qty
+          Purchase
           <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
           <small title="Approved Purchase rate per unit">{cost?.fob ? `@ ₹${fmt.format(cost.fob)} / ${unit}` : 'no rate'}</small>
         </label>
