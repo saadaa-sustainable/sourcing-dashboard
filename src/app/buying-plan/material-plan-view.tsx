@@ -210,7 +210,7 @@ export function MaterialPlanView({
     { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase',
       accessor: (v) => (v.row.line_status ? statusText(v.row.line_status, { approverEdited: v.row.approver_edited }) : '—') },
     ...(decision
-      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: MaterialViewItem) => v.row.line_status || 'pending', render: (v: MaterialViewItem) => decision(v) }]
+      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: MaterialViewItem) => v.row.line_status || 'pending', render: (v: MaterialViewItem) => (num(v.row.job_qty) + num(v.row.purchase_qty) > 0 ? decision(v) : <span className="wf-subtle">—</span>) }]
       : []),
   ];
 

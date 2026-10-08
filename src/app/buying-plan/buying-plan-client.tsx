@@ -402,7 +402,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
     { key: 'actual', label: 'Actual qty', kind: 'num', source: 'easyecom', accessor: (v) => v.actualQty },
     { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase', accessor: (v) => (v.row.line_status ? statusText(v.row.line_status as SdStatus, { approverEdited: v.row.approver_edited }) : '—') },
     ...(canDecideLines
-      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: ViewItem) => v.row.line_status || 'pending', render: (v: ViewItem) => decisionCell(v.row) }]
+      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: ViewItem) => v.row.line_status || 'pending', render: (v: ViewItem) => (v.totalQty > 0 ? decisionCell(v.row) : <span className="wf-subtle">—</span>) }]
       : []),
   ];
 
