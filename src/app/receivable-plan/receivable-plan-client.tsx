@@ -388,15 +388,13 @@ export function ReceivablePlanClient({
             </button>
           ))}
         </div>
-        {view === 'lines' && (
-          <div className="segment ip-layout-seg" role="group" aria-label="Layout">
-            {(['list', 'cards', 'kanban'] as LinesLayout[]).map((l) => (
-              <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
-                {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="segment ip-layout-seg" role="group" aria-label="Layout">
+          {(['list', 'cards', 'kanban'] as LinesLayout[]).map((l) => (
+            <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
+              {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {view === 'lines' && layout !== 'list' ? (
@@ -473,7 +471,12 @@ export function ReceivablePlanClient({
           {layout === 'list' && pagerEl}
         </div>
       ) : (
-        <GroupedView rows={shown} mode={view} />
+        <GroupedView
+          rows={shown}
+          mode={view}
+          layout={layout}
+          onOpenLines={(q) => { setSearch(q); setView('lines'); }}
+        />
       )}
 
       {/* Submit sits after the PO lines: fill the rows first, then send the week. */}
@@ -502,7 +505,18 @@ export function ReceivablePlanClient({
 }
 
 /* ---- Read-only rollups: by product / variant / receiving month ---- */
-function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<ViewMode, 'lines'> }) {
+function GroupedView({
+  rows,
+  mode,
+  layout = 'list',
+  onOpenLines,
+}: {
+  rows: ReceivablePlanRow[];
+  mode: Exclude<ViewMode, 'lines'>;
+  layout?: LinesLayout;
+  /** Open the PO lines filtered to a product / variant. */
+  onOpenLines?: (query: string) => void;
+}) {
   const groups = useMemo(() => {
     type G = {
       key: string;
@@ -568,6 +582,67 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
 
   const head =
     mode === 'product' ? 'Product' : mode === 'variant' ? 'Variant' : 'Receiving month';
+
+  type Group = (typeof groups)[number];
+  const pctOf = (g: Group) => (g.arriving > 0 ? Math.round((g.planned / g.arriving) * 100) : 0);
+  const card = (g: Group) => {
+    const pct = pctOf(g);
+    return (
+      <article key={g.key} className={`ip-card${g.oos ? ' is-oos' : ''}`}>
+        <div className="ip-card-top">
+          <span className="ip-card-po">{head}</span>
+          {g.oos > 0 && <span className="badge danger">{g.oos} OOS</span>}
+        </div>
+        <b className={`ip-card-name${mode === 'month' ? '' : ' mono'}`}>{g.label}</b>
+        {g.sub && <span className="ip-card-meta">{g.sub}</span>}
+        <div className="ip-card-figs">
+          <span><small>POs</small>{fmt.format(g.pos.size)}</span>
+          <span><small>Arriving</small>{fmt.format(g.arriving)}</span>
+          <span><small>Planned</small>{g.planned ? fmt.format(g.planned) : '—'}</span>
+        </div>
+        <span className="ip-card-bar" aria-label={`${pct}% planned`}><i style={{ width: `${Math.min(100, pct)}%` }} /></span>
+        <div className="ip-card-foot">
+          <span className="ip-card-when">{g.arriving > 0 ? `${pct}% planned` : 'Nothing arriving'}{mode === 'product' ? ` · ${g.variants.size} variant${g.variants.size === 1 ? '' : 's'}` : ''}</span>
+        </div>
+        {onOpenLines && mode !== 'month' && (
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm ip-card-edit" onClick={() => onOpenLines(g.label)}>
+            Show PO lines
+          </button>
+        )}
+      </article>
+    );
+  };
+
+  if (layout === 'cards') {
+    return groups.length ? <div className="ip-cards">{groups.map(card)}</div> : <p className="wf-empty-cell ip-empty">No rows match.</p>;
+  }
+  if (layout === 'kanban') {
+    const COVER: { key: string; label: string; hint: string; tone: string; test: (g: Group) => boolean }[] = [
+      { key: 'none', label: 'Not planned', hint: 'Nothing planned yet', tone: 'danger', test: (g) => g.planned <= 0 },
+      { key: 'part', label: 'Partly planned', hint: 'Some of the arriving qty planned', tone: 'warn', test: (g) => g.planned > 0 && g.planned < g.arriving },
+      { key: 'full', label: 'Fully planned', hint: 'Planned qty covers what is arriving', tone: 'success', test: (g) => g.planned > 0 && g.planned >= g.arriving },
+    ];
+    const PER_COLUMN = 40;
+    return (
+      <div className="ip-kanban">
+        {COVER.map((c) => {
+          const items = groups.filter(c.test);
+          return (
+            <section key={c.key} className="ip-kcol" aria-label={c.label}>
+              <div className="ip-kcol-head">
+                <span className={`badge ${c.tone}`}>{c.label}</span>
+                <span className="ip-kcol-n">{items.length}</span>
+              </div>
+              <small className="ip-kcol-hint">{c.hint}</small>
+              {items.slice(0, PER_COLUMN).map(card)}
+              {items.length > PER_COLUMN && <p className="ip-kcol-more">+{items.length - PER_COLUMN} more — narrow the filters or use List</p>}
+              {!items.length && <p className="ip-kcol-more">Nothing here.</p>}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="table-panel wf-grid-panel">
