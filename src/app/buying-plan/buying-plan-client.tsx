@@ -302,20 +302,38 @@ export function BuyingPlanClient({
     (!inputSearchQ || v.row.product_code.toLowerCase().includes(inputSearchQ));
   const inputRows = view.filter(matchesFilters);
 
-  // The full sheet, line-for-line — every column the buying-plan sheet has, verbatim,
-  // with per-column filters + sort (via FilterTable). Rates come from the stored line.
-  const rate = (s: string) => (s === '' || s == null ? null : Number(s));
+  // The full sheet, line-for-line, with per-column filters + sort (via FilterTable). The three
+  // rate columns are the approved standard cost per piece that values each line (Standard Cost,
+  // latest accepted rate) — the old "Buy value" columns only held rates copied from the August
+  // sheet import and fed nothing.
+  const stdRate = (v: ViewItem, k: 'job' | 'efob' | 'fob') => {
+    const r = v.cost?.[k];
+    return r != null && Number(r) > 0 ? Number(r) : null;
+  };
+  const rateCol = (k: 'job' | 'efob' | 'fob', label: string): Column<ViewItem> => ({
+    key: `std_${k}`,
+    label: `Std rate (${label})`,
+    kind: 'num',
+    source: 'supabase',
+    info: `WHAT: the approved standard cost of one piece bought as ${label}.
+
+HOW: the latest accepted ${label} rate from Standard Cost; the line's ${label} quantity × this rate is its ${label} value. A submitted or approved plan keeps the value frozen at submission, so a rate changed since then does not change it.
+
+USE: '—' means no approved ${label} rate yet — that quantity cannot be valued until Standard Cost has one.`,
+    accessor: (v) => stdRate(v, k),
+    render: (v) => {
+      const r = stdRate(v, k);
+      return r == null ? <span className="wf-subtle">—</span> : money.format(r);
+    },
+  });
   const sheetCols: Column<ViewItem>[] = [
     { key: 'code', label: 'Product code', kind: 'mono', source: 'easyecom', accessor: (v) => v.row.product_code },
     { key: 'weave', label: 'Weave', kind: 'text', source: 'easyecom', accessor: (v) => v.fabricType },
     { key: 'category', label: 'Category', kind: 'text', source: 'easyecom', accessor: (v) => v.category },
     { key: 'sub_category', label: 'Sub-category', kind: 'text', source: 'easyecom', accessor: (v) => v.subCategory },
-    { key: 'fob_efob_rate', label: 'Buy value (FOB/E-FOB)', kind: 'num', source: 'supabase',
-      accessor: (v) => rate(v.row.fob_efob_rate),
-      render: (v) => (rate(v.row.fob_efob_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.fob_efob_rate))) },
-    { key: 'job_rate', label: 'Buy value (Job)', kind: 'num', source: 'supabase',
-      accessor: (v) => rate(v.row.job_rate),
-      render: (v) => (rate(v.row.job_rate) == null ? <span className="wf-subtle">—</span> : money.format(Number(v.row.job_rate))) },
+    rateCol('job', 'Job'),
+    rateCol('efob', 'E-FOB'),
+    rateCol('fob', 'FOB'),
     { key: 'status', label: 'Product State', kind: 'text', source: 'easyecom', accessor: (v) => v.productStatus },
     { key: 'pending', label: 'Pending qty', kind: 'num', source: 'bigquery', accessor: (v) => v.pending },
     // The three PO-type quantities are what the team types into the plan.
