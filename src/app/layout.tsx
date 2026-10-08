@@ -6,6 +6,8 @@ import './analytics-cards.css';
 import './buying-plan.css';
 import './po-approval.css';
 import './shopify-ui.css';
+// Last: the one search-bar look, over every page's own styles.
+import './search-bars.css';
 import { ToastHost } from '@/components/toast-host';
 import { ConfirmHost } from '@/components/confirm-host';
 import { NumberInputGuard } from '@/components/number-input-guard';

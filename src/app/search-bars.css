@@ -1,0 +1,155 @@
+/*
+ * One search bar, everywhere.
+ *
+ * Every search box in the app looks like the Buying Plan one: white, a light grey border,
+ * rounded corners, grey placeholder, no icon. Only the look is set here; each place keeps
+ * its own width, height and flex sizing, so a box can be wide in a toolbar and small in a
+ * popover.
+ *
+ * Two shapes exist in the markup and both are covered:
+ *  - a plain <input> (class bp-search / wf-search, any type="search", or any input whose
+ *    placeholder starts with "Search");
+ *  - a wrapper (label/div) holding an icon + an <input>: the wrapper becomes the box, the
+ *    icon is hidden, and the inner input is reset so it does not draw a second border.
+ *
+ * This file loads last (src/app/layout.tsx) and uses !important on the look only, because
+ * page stylesheets (e.g. `.ui-shopify .wf-page input`) are more specific. A new search box
+ * needs nothing: give it type="search" or a "Search…" placeholder, or one of the classes.
+ */
+
+:root {
+  --search-bg: #fff;
+  --search-line: #c9cccf;
+  --search-line-hover: #8c9196;
+  --search-ring: rgba(0, 128, 96, .14);
+  --search-fg: #303330;
+  --search-placeholder: #8c9196;
+  --search-radius: 9px;
+  --search-pad: 12px;
+}
+
+/* ---- the box ---- */
+.bp-search,
+.wf-search,
+input[type="search"],
+input[placeholder^="Search"],
+input[placeholder^="Filter available"],
+.search-field,
+.table-meta-search,
+.mb-search,
+.vc2-search,
+.sc-fg-search,
+.poa-search,
+.bp-drawer-search,
+.wf-picker-input {
+  min-height: 34px !important;
+  padding-inline: var(--search-pad) !important;
+  border: 1px solid var(--search-line) !important;
+  border-radius: var(--search-radius) !important;
+  background: var(--search-bg) !important;
+  box-shadow: none !important;
+  color: var(--search-fg) !important;
+  font-size: 12.5px !important;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.bp-search:hover,
+.wf-search:hover,
+input[type="search"]:hover,
+input[placeholder^="Search"]:hover,
+.search-field:hover,
+.mb-search:hover,
+.vc2-search:hover,
+.sc-fg-search:hover,
+.poa-search:hover,
+.bp-drawer-search:hover,
+.wf-picker-input:hover {
+  border-color: var(--search-line-hover) !important;
+}
+.bp-search:focus,
+.wf-search:focus,
+input[type="search"]:focus,
+input[placeholder^="Search"]:focus,
+input[placeholder^="Filter available"]:focus,
+.search-field:focus-within,
+.table-meta-search:focus-within,
+.mb-search:focus-within,
+.vc2-search:focus-within,
+.sc-fg-search:focus-within,
+.poa-search:focus-within,
+.bp-drawer-search:focus-within,
+.wf-picker-input:focus-within {
+  outline: 0 !important;
+  border-color: var(--search-line-hover) !important;
+  box-shadow: 0 0 0 3px var(--search-ring) !important;
+}
+.bp-search::placeholder,
+.wf-search::placeholder,
+input[type="search"]::placeholder,
+input[placeholder^="Search"]::placeholder,
+input[placeholder^="Filter available"]::placeholder {
+  color: var(--search-placeholder);
+  opacity: 1;
+}
+
+/* ---- wrapper shape: the wrapper is the box ---- */
+.search-field,
+.table-meta-search,
+.mb-search,
+.vc2-search,
+.sc-fg-search,
+.poa-search,
+.bp-drawer-search,
+.wf-picker-input {
+  display: flex !important;
+  align-items: center;
+  gap: 0 !important;
+}
+.search-field > svg,
+.table-meta-search > svg,
+.mb-search > svg,
+.vc2-search > svg,
+.sc-fg-search > svg,
+.poa-search > svg,
+.bp-drawer-search > svg,
+.wf-picker-input > svg {
+  display: none !important;
+}
+.search-field input,
+.search-field input:hover,
+.search-field input:focus,
+.table-meta-search input,
+.table-meta-search input:hover,
+.table-meta-search input:focus,
+.mb-search input,
+.mb-search input:hover,
+.mb-search input:focus,
+.vc2-search input,
+.vc2-search input:hover,
+.vc2-search input:focus,
+.sc-fg-search input,
+.sc-fg-search input:hover,
+.sc-fg-search input:focus,
+.poa-search input,
+.poa-search input:hover,
+.poa-search input:focus,
+.bp-drawer-search input,
+.bp-drawer-search input:hover,
+.bp-drawer-search input:focus,
+.wf-picker-input input,
+.wf-picker-input input:hover,
+.wf-picker-input input:focus {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 6px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+
+/* The browser's own clear (×) on type="search" stays, but quieter. */
+input[type="search"]::-webkit-search-cancel-button { opacity: .5; cursor: pointer; }
