@@ -4,7 +4,7 @@ import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { HeaderInfo } from '@/components/header-info';
-import { AlertTriangle, Download, Info, Save, Search, Plus, Trash2, ArrowUpRight } from 'lucide-react';
+import { AlertTriangle, Clock, Download, Info, Lock, Save, Search, Plus, Trash2, ArrowUpRight } from 'lucide-react';
 import {
   saveVendorCapacityRow,
   saveVendorProductAllocation,
@@ -23,7 +23,7 @@ import {
   type CapacityModel,
   type CapacityRules,
 } from '@/lib/business-logic';
-import { capacityWeekNext, capacityWeekStart } from '@/lib/forms/approval';
+import { capacityLocked, capacityWeekNext, capacityWeekStart } from '@/lib/forms/approval';
 import type {
   DeboardedVendor,
   SdRole,
@@ -65,6 +65,17 @@ function modelOf(vendor: Vendor, rules: CapacityRules): CapacityModel {
     },
     rules,
   );
+}
+
+function ageLabel(iso: string | null, now: number | null) {
+  if (!iso) return 'Never';
+  const then = new Date(iso).getTime();
+  const label = new Date(iso).toLocaleDateString('en-IN');
+  if (now == null) return label;
+  const days = Math.floor((now - then) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${label} · ${days}d ago`;
 }
 
 const TABS = [
@@ -138,6 +149,12 @@ function downloadCsv(name: string, rows: (string | number | null)[][]) {
 
 /* ------------------------------ Shell (item 6) ------------------------------ */
 
+/** Entry: the running week is the editable sheet; a past week is the view-only page. */
+function EntryForWeek(props: Parameters<typeof EntryTab>[0]) {
+  return props.asOf ? <EntryTab {...props} /> : <LiveEntryTab {...props} />;
+}
+
+
 export function VendorCapacityClient({
   vendors,
   role,
@@ -181,7 +198,7 @@ export function VendorCapacityClient({
       </div>
 
       {tab === 'entry' && (
-        <EntryTab
+        <EntryForWeek
           vendors={vendors}
           asOf={asOf}
           role={role}
@@ -221,7 +238,7 @@ export function VendorCapacityClient({
   );
 }
 
-/* ------------------------------ Entry tab ------------------------------ */
+/* -------------------------- Entry tab: a past week -------------------------- */
 
 type AsOf = { week: string; label: string; inProcessKept: boolean } | null;
 type Edit = { machines_allocated?: string; active_karigar?: string };
@@ -625,6 +642,572 @@ function EntryTab({
         </div>
       )}
     </div>
+  );
+}
+
+/* ------------------------- Entry tab: the running week ------------------------- */
+// The editable sheet for the current week, as it was before the past-week redesign
+// (the user wants the new look on past weeks only). Past weeks use EntryTab below.
+
+function LiveEntryTab({
+  vendors,
+  asOf = null,
+  role,
+  initialSearch,
+  allocations = [],
+  catalog = [],
+  rules = DEFAULT_CAPACITY_RULES,
+}: {
+  vendors: Vendor[];
+  asOf?: { week: string; label: string; inProcessKept: boolean } | null;
+  role: SdRole;
+  initialSearch?: string;
+  /** Product allocations, so the sheet can be narrowed to who makes a given product. */
+  allocations?: VendorProductAllocation[];
+  catalog?: ProductCatalogItem[];
+  rules?: CapacityRules;
+}) {
+  // A past week is a record of what was entered then: nothing to type.
+  const editable = !asOf && canEdit(role, 'draft');
+  const [search, setSearch] = useState(initialSearch ?? '');
+  const [staleOnly, setStaleOnly] = useState(false);
+  const [merchant, setMerchant] = useState('');
+  const [vType, setVType] = useState('');
+  // Third filter alongside merchandiser and type: which vendors are committed to a product.
+  const [product, setProduct] = useState('');
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    // Client-only "now", set once after mount so the server render never disagrees
+    // on staleness (hydration-safe) — an intentional set-in-effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(Date.now());
+  }, []);
+
+  const merchants = useMemo(
+    () => [...new Set(vendors.map((v) => v.merchant.trim()).filter(Boolean))].sort(),
+    [vendors],
+  );
+  /** Vendors carrying an allocation for the chosen product code. */
+  const vendorsForProduct = useMemo(() => {
+    if (!product) return null;
+    const want = product.trim().toUpperCase();
+    return new Set(
+      allocations
+        .filter((a) => (a.product_code ?? '').trim().toUpperCase() === want)
+        .map((a) => (a.vendor_code ?? '').trim().toUpperCase()),
+    );
+  }, [allocations, product]);
+  const allocatedProducts = useMemo(
+    () =>
+      [...new Set(allocations.map((a) => (a.product_code ?? '').trim()).filter(Boolean))].sort(),
+    [allocations],
+  );
+
+  const vTypes = useMemo(
+    () => [...new Set(vendors.map((v) => v.vendor_type.trim()).filter(Boolean))].sort(),
+    [vendors],
+  );
+
+  // Staleness is judged at the end of the week shown (a past week) or right now.
+  const ref = asOf ? Date.parse(`${capacityWeekNext(new Date(`${asOf.week}T12:00:00+05:30`))}T00:00:00+05:30`) : now;
+  const decorated = useMemo(
+    () =>
+      vendors.map((vendor) => {
+        const lastUpdated = vendor.current?.entry_date ?? null;
+        const isStale =
+          ref != null && (!lastUpdated || ref - new Date(lastUpdated).getTime() > STALE_MS);
+        return { vendor, lastUpdated, isStale };
+      }),
+    [vendors, ref],
+  );
+
+  const overCount = decorated.filter(({ vendor }) => modelOf(vendor, rules).over).length;
+  const staleCount = decorated.filter((d) => d.isStale).length;
+  // Section 8 of the spec: the formulas are pointless while the data is a month old.
+  const oldestUpdate = decorated.reduce<number | null>((m, d) => {
+    const t = d.lastUpdated ? new Date(d.lastUpdated).getTime() : null;
+    return t == null ? m : m == null ? t : Math.max(m, t);
+  }, null);
+  const weekStart = capacityWeekStart();
+
+  const q = search.trim().toLowerCase();
+  const filtered = decorated
+    .filter(({ vendor }) =>
+      q ? `${vendor.vendor_code} ${vendor.vendor_name}`.toLowerCase().includes(q) : true,
+    )
+    .filter(({ vendor }) => (merchant ? vendor.merchant.trim() === merchant : true))
+    .filter(({ vendor }) => (vType ? vendor.vendor_type.trim() === vType : true))
+    .filter(({ vendor }) =>
+      vendorsForProduct ? vendorsForProduct.has(vendor.vendor_code.trim().toUpperCase()) : true,
+    )
+    .filter((d) => (staleOnly ? d.isStale : true))
+    .sort((a, b) => {
+      const at = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+      const bt = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+      return at - bt;
+    });
+  const sort = useColumnSort<(typeof filtered)[number]>();
+  // Totals count only vendors with a capacity entry; "Not entered" is not zero capacity.
+  const visibleModels = filtered.map(({ vendor }) => ({ vendor, m: modelOf(vendor, rules) }));
+  const entered = visibleModels.filter((x) => x.m.entered);
+  const visiblePoCapacity = entered.reduce((t, x) => t + x.m.poCapacity, 0);
+  const visibleMonthly = entered.reduce((t, x) => t + x.m.capacityPerMonth, 0);
+  const visibleInProcess = entered.reduce((t, x) => t + x.vendor.inProcessQty, 0);
+  const visibleOver = entered.filter((x) => x.m.over).length;
+  const visibleNotEntered = visibleModels.length - entered.length;
+  const visibleStale = filtered.filter(({ isStale }) => isStale).length;
+
+  function exportRows() {
+    downloadCsv('vendor-capacity-entry.csv', [
+      ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Machines allocated', 'Karigar allocated', 'Capacity/month', 'First machines', 'PO capacity', 'In process', 'Available', 'Machine util %', 'Capacity util %', 'Last updated'],
+      ...sort.apply(filtered).map(({ vendor, lastUpdated }) => {
+        const machines = Number(vendor.current?.machines_allocated ?? 0);
+        const karigar = Number(vendor.current?.active_karigar ?? 0);
+        const m = modelOf(vendor, rules);
+        return m.entered
+          ? [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, m.capacityPerMonth, vendor.machinesAtOnboarding, m.poCapacity, vendor.inProcessQty, m.available, m.machineUtil, utilisationLabel(m.capacityUtil), lastUpdated]
+          : [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, 'Not entered', vendor.machinesAtOnboarding, 'Not entered', vendor.inProcessQty, '', '', '', lastUpdated];
+      }),
+    ]);
+  }
+
+  return (
+    <div className="vc-section">
+      <div className="vc-metrics">
+        <CapacityMetric
+          label="PO capacity"
+          value={fmt.format(visiblePoCapacity)}
+          detail={`${entered.length} vendors entered · ${fmt.format(visibleMonthly)} pcs/month capacity${visibleNotEntered ? ` · ${visibleNotEntered} not entered` : ''}`}
+        />
+        <CapacityMetric
+          label="On order (in process)"
+          value={fmt.format(visibleInProcess)}
+          detail={visiblePoCapacity ? `${Math.round((visibleInProcess / visiblePoCapacity) * 1000) / 10}% of PO capacity` : 'pcs in production'}
+          tone="blue"
+        />
+        <CapacityMetric label="Over PO capacity" value={String(visibleOver)} detail="vendors with more on order than their PO capacity" tone="red" />
+        <CapacityMetric label="Stale updates" value={String(visibleStale)} detail={`older than ${STALE_DAYS} days`} tone="amber" />
+      </div>
+      {asOf && (
+        <Notice tone="info">
+          <strong>Week {asOf.label}.</strong>{' '}Machines, karigars, capacity and Last updated are each
+          vendor&apos;s figures as entered by the end of this week (its last update on or before that
+          Sunday); a vendor with nothing entered by then reads Not entered.{' '}
+          {asOf.inProcessKept
+            ? 'On order (in process), Available and Capacity util use what was on order at the end of this week.'
+            : 'On order (in process), Available and Capacity util use today’s open POs: the weekly in-process copy started after this week.'}{' '}
+          Read-only: to change figures, open the current week.
+        </Notice>
+      )}
+      {!asOf && staleCount > 0 && staleCount >= Math.max(1, Math.round(decorated.length * 0.5)) && (
+        <Notice tone="warn">
+          <strong>{staleCount} of {decorated.length} vendors have not been updated in over {STALE_DAYS} days</strong>
+          {oldestUpdate ? ` — the most recent entry anywhere is ${new Date(oldestUpdate).toLocaleDateString('en-IN')}` : ''}.
+          Every capacity, availability and utilisation figure on this page is only as current
+          as that. Get this week&apos;s submission from each merchandiser before these numbers are
+          presented. This week runs Monday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })} to Sunday; a vendor can be updated on any day of it.
+        </Notice>
+      )}
+
+      <div className="wf-toolbar vc-toolbar">
+        <div className="wf-toolbar-left">
+          <Field label="Search vendor">
+            <input
+              value={search}
+              placeholder="Search vendor name or code"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </Field>
+          <select className="meta-select" value={merchant} onChange={(e) => setMerchant(e.target.value)}>
+            <option value="">All merchandisers</option>
+            {merchants.map((m) => (
+              <option key={m}>{m}</option>
+            ))}
+          </select>
+          <select className="meta-select" value={vType} onChange={(e) => setVType(e.target.value)}>
+            <option value="">All vendor types</option>
+            {vTypes.map((t) => (
+              <option key={t} value={t}>
+                {typeConfig(t)?.label ?? t}
+              </option>
+            ))}
+          </select>
+          <select
+            className="meta-select"
+            aria-label="Filter by product"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+          >
+            <option value="">Product: All</option>
+            {allocatedProducts.map((code) => (
+              <option key={code} value={code}>
+                {code}
+                {catalog.find((c) => c.product_code === code)?.product_name
+                  ? ` · ${catalog.find((c) => c.product_code === code)?.product_name}`
+                  : ''}
+              </option>
+            ))}
+          </select>
+          <label className="wf-check-field">
+            <input
+              type="checkbox"
+              checked={staleOnly}
+              onChange={(event) => setStaleOnly(event.target.checked)}
+            />
+            Stale only ({staleCount})
+          </label>
+        </div>
+        <div className="wf-toolbar-right">
+          <span className="vc-result-count">{filtered.length} of {decorated.length} shown</span>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}>
+            <Download size={13} /> Download CSV
+          </button>
+          <span className="wf-chip">
+            {decorated.length} vendors
+            {staleCount > 0 && (
+              <em className="wf-chip-warn">
+                <Clock size={13} /> {staleCount} stale
+              </em>
+            )}
+            {overCount > 0 && (
+              <em className="wf-chip-warn">
+                <AlertTriangle size={13} /> {overCount} over PO capacity
+              </em>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {!asOf && (
+      <Notice tone="info">
+        Only <strong>two fields are ever typed</strong>:{' '}
+        <span className="wf-live-tag">LIVE</span> Machines allocated and Karigar allocated.
+        Everything in an <span className="wf-computed-tag">orange</span> cell is computed by one
+        formula (Rules Master): capacity/day = {rules.driverMinMachines ? 'min(machines, karigars)' : 'karigars'} × {rules.dailyOutput} pieces;
+        <strong> Capacity/month</strong> = capacity/day × {rules.workingDays} working days;
+        <strong> PO capacity</strong> = what the vendor can make inside its PO type&apos;s lead time
+        (Job Work {rules.leadDays.job_work}d · E-FOB {rules.leadDays.efob}d · FOB {rules.leadDays.fob}d), i.e.
+        capacity/month × lead days ÷ 30. <strong>Available</strong> = PO capacity − on order;
+        <strong> Capacity util</strong> = on order ÷ PO capacity, reading "100% Over Utilised"
+        once past capacity. A vendor with nothing entered reads <strong>Not entered</strong> and is
+        left out of every total. First machines and Type are{' '}
+        <span className="wf-fixed-tag">
+          <Lock size={10} /> FIXED
+        </span>{' '}
+        from the vendor master. A vendor not updated in over {STALE_DAYS} days is flagged{' '}
+        <strong>stale</strong>.
+      </Notice>
+      )}
+
+      {asOf ? (
+        <div className="table-panel vc-table-card vc-snap-card">
+          <div className="vc-card-head">
+            <div><h2>Capacity · week {asOf.label}</h2><p>What each vendor had entered by the end of this week.</p></div>
+            <span className="vc-pill">Past week · view only</span>
+          </div>
+          <div className="table-scroll">
+            <table className="vc-snap">
+              <thead>
+                <tr>
+                  <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')}</th>
+                  <th className="num" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>Machines {sort.ind('machines')}</th>
+                  <th className="num" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>Karigars {sort.ind('karigar')}</th>
+                  <th className="num" {...sort.th('cap', (d) => modelOf(d.vendor, rules).capacityPerMonth || null)}>Capacity / month {sort.ind('cap')}</th>
+                  <th className="num" {...sort.th('po', (d) => modelOf(d.vendor, rules).poCapacity || null)}>PO capacity {sort.ind('po')}</th>
+                  <th className="num" {...sort.th('onorder', (d) => d.vendor.inProcessQty)}>On order {sort.ind('onorder')}</th>
+                  <th className="num">Available</th>
+                  <th {...sort.th('util', (d) => modelOf(d.vendor, rules).capacityUtil)}>Capacity used {sort.ind('util')}</th>
+                  <th className="num">Machine util</th>
+                  <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sort.apply(filtered).map(({ vendor, lastUpdated, isStale }) => {
+                  const m = modelOf(vendor, rules);
+                  const type = typeConfig(vendor.vendor_type)?.label ?? (vendor.vendor_type || '—');
+                  const util = m.capacityUtil ?? 0;
+                  return (
+                    <tr key={vendor.vendor_code} className={!m.entered ? 'is-empty' : m.over ? 'is-over' : undefined}>
+                      <td>
+                        <div className="vc-snap-vendor">
+                          <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
+                          <span>{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''} · {type} · {m.leadDays}d lead</span>
+                        </div>
+                        <DeboardedPill flag={vendor.deboarded} />
+                      </td>
+                      {m.entered ? (
+                        <>
+                          <td className="num">{fmt.format(Number(vendor.current?.machines_allocated ?? 0))}</td>
+                          <td className="num">{fmt.format(Number(vendor.current?.active_karigar ?? 0))}</td>
+                          <td className="num strong">{fmt.format(m.capacityPerMonth)}</td>
+                          <td className="num">{fmt.format(m.poCapacity)}</td>
+                          <td className="num">{fmt.format(vendor.inProcessQty)}</td>
+                          <td className="num">{m.over ? <span className="vc-over-text">Over</span> : fmt.format(m.available ?? 0)}</td>
+                          <td>
+                            <div className="vc-snap-util">
+                              <span className={m.over ? 'vc-util-over' : undefined}>{utilisationLabel(m.capacityUtil)}</span>
+                              <span className="vc-progress">
+                                <span className={m.over ? 'vc-progress-over' : util >= 80 ? 'vc-progress-warn' : undefined} style={{ width: `${Math.min(100, Math.max(0, util))}%` }} />
+                              </span>
+                            </div>
+                          </td>
+                          <td className="num">{m.machineUtil == null ? '—' : `${m.machineUtil}%`}</td>
+                        </>
+                      ) : (
+                        <td colSpan={8} className="vc-snap-none">{lastUpdated ? 'Saved with no machines or karigars' : 'Nothing entered by the end of this week'}{vendor.inProcessQty ? ` · ${fmt.format(vendor.inProcessQty)} pcs on order` : ''}</td>
+                      )}
+                      <td>
+                        <div className="vc-snap-date">
+                          <span>{lastUpdated ? new Date(lastUpdated).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'}</span>
+                          {isStale && <span className="vc-pill vc-pill-amber">Stale</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!filtered.length && (
+                  <tr>
+                    <td colSpan={10} className="vc-snap-none">{staleOnly ? 'No stale vendors in this week.' : 'No vendors match your filters.'}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+      <div className="table-panel wf-grid-panel vc-table-card">
+        <div className="vc-card-head">
+          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday). Each Monday the boxes start blank; until a vendor is updated, every figure keeps using its last saved numbers (hover a blank box to see them).</p></div>
+          <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
+        </div>
+        <div className="table-scroll">
+          <table className="wide-table wf-grid">
+            <thead>
+              <tr>
+                <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')} <HeaderInfo label="Vendor" /></th>
+                <th {...sort.th('type', (d) => d.vendor.vendor_type)}>
+                  Type <span className="wf-fixed-tag"><Lock size={9} /></span> {sort.ind('type')}
+                 <HeaderInfo label="Type" /></th>
+                <th className="num input-col" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>
+                  Machines allocated <span className="wf-live-tag">LIVE</span> {sort.ind('machines')}
+                 <HeaderInfo label="Machines allocated LIVE" /></th>
+                <th className="num input-col" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>
+                  Karigar allocated <span className="wf-live-tag">LIVE</span> {sort.ind('karigar')}
+                 <HeaderInfo label="Karigar allocated LIVE" /></th>
+                <th className="num">Capacity / month <HeaderInfo label="Capacity / month" /></th>
+                <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
+                <th className="num">
+                  First machines <span className="wf-fixed-tag"><Lock size={9} /></span>
+                 <HeaderInfo label="First machines" /></th>
+                <th className="num">On order (in process) <HeaderInfo label="On order (in process)" /></th>
+                <th className="num">Available <HeaderInfo label="Available" /></th>
+                <th className="num">Machine util <HeaderInfo label="Machine util" /></th>
+                <th className="num">Capacity util <HeaderInfo label="Capacity util" /></th>
+                <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')} <HeaderInfo label="Last updated" /></th>
+                {editable && <th aria-label="Save" />}
+              </tr>
+            </thead>
+            <tbody>
+              {sort.apply(filtered).map(({ vendor, lastUpdated, isStale }) => (
+                <CapacityRow
+                  key={vendor.vendor_code}
+                  vendor={vendor}
+                  editable={editable}
+                  lastUpdated={lastUpdated}
+                  isStale={isStale}
+                  now={asOf ? null : now}
+                  rules={rules}
+                  isAdmin={role === 'admin'}
+                />
+              ))}
+              {!filtered.length && (
+                <tr>
+                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
+                    {staleOnly
+                      ? 'No stale vendors — everyone is up to date.'
+                      : 'No vendors match your filters.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
+
+      <div className="wf-footer-bar">
+        <p className="wf-footer-note">
+          Capacity/month = Karigars × pieces per karigar per day × working days a month
+          (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5 · E-FOB/FOB ×2.0). Available = PO capacity −
+          in-process (negative = 100% and over Utilised). Machine util = Karigar ÷ Machines; Capacity
+          util = In-process ÷ PO capacity.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CapacityRow({
+  vendor,
+  editable,
+  lastUpdated,
+  isStale,
+  now,
+  rules = DEFAULT_CAPACITY_RULES,
+  isAdmin = false,
+}: {
+  vendor: Vendor;
+  editable: boolean;
+  lastUpdated: string | null;
+  isStale: boolean;
+  now: number | null;
+  rules?: CapacityRules;
+  /** An admin can correct a locked row; the team waits for Monday. */
+  isAdmin?: boolean;
+}) {
+  // The vendor's last saved figures. Every calculation (here and on every other page) keeps
+  // using them until a new update is saved.
+  const last = {
+    machines_allocated: vendor.current?.machines_allocated?.toString() ?? '',
+    active_karigar: vendor.current?.active_karigar?.toString() ?? '',
+  };
+  // A new week starts blank: the inputs show only what was entered this week (Monday to Sunday),
+  // so a vendor not yet updated reads as not entered yet.
+  const enteredThisWeek =
+    lastUpdated != null && Date.parse(lastUpdated) >= Date.parse(`${capacityWeekStart()}T00:00:00+05:30`);
+  const initial = enteredThisWeek ? last : { machines_allocated: '', active_karigar: '' };
+  const [fields, setFields] = useState(initial);
+  const [saved, setSaved] = useState<string | null>(lastUpdated);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const dirty =
+    fields.machines_allocated !== initial.machines_allocated ||
+    fields.active_karigar !== initial.active_karigar;
+
+  const config = typeConfig(vendor.vendor_type);
+  // What counts: a typed figure, else the last saved one (a blank field is not zero).
+  const effective = {
+    machines_allocated: fields.machines_allocated !== '' ? fields.machines_allocated : last.machines_allocated,
+    active_karigar: fields.active_karigar !== '' ? fields.active_karigar : last.active_karigar,
+  };
+  const machines = num(effective.machines_allocated);
+  const karigar = num(effective.active_karigar);
+  // One model for every figure on the row — the same function Reporting, Vendor Performance
+  // and PO Approval use — fed from what is typed now, or the last saved figures.
+  const model = vendorCapacityModel(
+    { machines, karigar, vendorType: vendor.vendor_type, inProcessQty: vendor.inProcessQty },
+    rules,
+  );
+  const inProcess = vendor.inProcessQty;
+  // Submitted inside the current capacity week → locked until Monday (admins can correct).
+  const locked = capacityLocked(saved) && !dirty;
+  const canType = editable && (!locked || isAdmin);
+
+  function set(field: keyof typeof fields, value: string) {
+    setFields((cur) => ({ ...cur, [field]: value }));
+  }
+
+  function save() {
+    setError(null);
+    const payload = new FormData();
+    payload.set('vendor_code', vendor.vendor_code);
+    payload.set('vendor_name', vendor.vendor_name);
+    payload.set('machines_allocated', effective.machines_allocated);
+    payload.set('active_karigar', effective.active_karigar);
+    payload.set('capacity_per_month', String(model.capacityPerMonth || ''));
+    start(async () => {
+      const result = await saveVendorCapacityRow(payload);
+      if (result.ok) setSaved(new Date().toISOString());
+      else setError(toastError(result.error));
+    });
+  }
+
+  return (
+    <tr className={model.over ? 'wf-row-over' : isStale ? 'wf-row-stale' : ''}>
+      <td className="vc-vendor-cell">
+        <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
+        <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
+        <DeboardedPill flag={vendor.deboarded} />
+      </td>
+      <td>
+        <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>
+        <small className="wf-subtle">lead {model.leadDays}d</small>
+      </td>
+      {(['machines_allocated', 'active_karigar'] as const).map((field) => (
+        <td key={field} className="num input-col">
+          <input
+            type="number"
+            min={0}
+            value={fields[field]}
+            title={!enteredThisWeek && last[field] ? `Not entered this week. Last saved: ${last[field]}${lastUpdated ? ` on ${new Date(lastUpdated).toLocaleDateString('en-IN')}` : ''} (still used in calculations)` : undefined}
+            disabled={!canType}
+            aria-label={`${field === 'machines_allocated' ? 'Machines allocated' : 'Karigar allocated'} for ${vendor.vendor_name || vendor.vendor_code}`}
+            onChange={(event) => set(field, event.target.value)}
+          />
+        </td>
+      ))}
+      {model.entered ? (
+        <>
+          <td className="num wf-computed">{fmt.format(model.capacityPerMonth)}</td>
+          <td className="num wf-computed" title={`capacity/day ${fmt.format(model.capacityPerDay)} × ${model.leadDays} lead days × ${rules.workingDays}/30`}>
+            {fmt.format(model.poCapacity)}
+          </td>
+        </>
+      ) : (
+        <>
+          <td className="num"><span className="wf-subtle">Not entered</span></td>
+          <td className="num"><span className="wf-subtle">Not entered</span></td>
+        </>
+      )}
+      <td className="num wf-fixed-value">
+        {vendor.machinesAtOnboarding ? fmt.format(vendor.machinesAtOnboarding) : '—'}
+      </td>
+      <td className="num">{fmt.format(inProcess)}</td>
+      {/* Past capacity the headroom is negative and only says how far past; the state is the
+          thing to read — the utilisation cell beside it reads "100% Over Utilised". */}
+      <td className="num wf-computed strong">
+        {!model.entered ? (
+          <span className="wf-subtle">—</span>
+        ) : model.over ? (
+          <span className="vc-over-text">Over Utilised</span>
+        ) : (
+          fmt.format(model.available ?? 0)
+        )}
+      </td>
+      <td className="num wf-computed">{model.machineUtil == null ? '—' : `${model.machineUtil}%`}</td>
+      {/* Past 100% the cell states the condition, not the figure — see src/lib/utilisation.ts. */}
+      <td className={`num wf-computed${model.over ? ' vc-util-over' : ''}`}>
+        {utilisationLabel(model.capacityUtil)}
+      </td>
+      <td className="wf-subtle">
+        {ageLabel(saved, now)}
+        {locked && (
+          <span className="vc-pill vc-pill-green" title={`Submitted this week; reopens Monday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`}>
+            <Lock size={9} /> Submitted · locked
+          </span>
+        )}
+        {isStale && !dirty && !locked && <span className="vc-pill vc-pill-amber">Stale</span>}
+        {error && <small className="wf-error-text">{error}</small>}
+      </td>
+      {editable && (
+        <td>
+          {locked && !isAdmin ? (
+            <span className="wf-subtle">Opens Mon</span>
+          ) : (
+            <button
+              type="button"
+              className="wf-btn wf-btn-primary wf-btn-sm"
+              onClick={save}
+              disabled={pending || !dirty}
+              title={locked ? 'Admin correction to a submitted week' : 'Save this vendor’s figures (any day of the week)'}
+            >
+              <Save size={14} /> {pending ? 'Saving…' : locked ? 'Correct' : 'Save update'}
+            </button>
+          )}
+        </td>
+      )}
+    </tr>
   );
 }
 
