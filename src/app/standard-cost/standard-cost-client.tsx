@@ -156,6 +156,17 @@ export function StandardCostClient({
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
   const [tempName, setTempName] = useState('');
+  // Add popup: where the product comes from, and the one picked (added only on confirm).
+  const [addMode, setAddMode] = useState<'master' | 'new'>('master');
+  const [pickedCode, setPickedCode] = useState<string | null>(null);
+  function openAdd() {
+    setAddMode('master');
+    setPickedCode(null);
+    setNewCode('');
+    setTempName('');
+    setError(null);
+    setAddOpen(true);
+  }
 
   const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
   const undocumented = costs.filter((c) => !c.documented && c.neg_stage == null).length;
@@ -481,51 +492,127 @@ export function StandardCostClient({
     );
   }
 
+  // What the add popup will do, worked out once so the body, the hint and the main button agree.
+  const matUp = newCode.trim().toUpperCase();
+  const matExists = isMat && matUp !== '' && existingCodes.has(matUp);
+  const addTarget = isMat ? matUp : addMode === 'master' ? pickedCode : null;
+  const restoring = addTarget ? hiddenSet.has(addTarget) : false;
+  const canSubmitAdd = !pending && (isMat ? matUp.length >= 2 && !matExists : addMode === 'master' ? !!pickedCode : tempName.trim().length > 0);
+  const submitAdd = () => {
+    if (!canSubmitAdd) return;
+    if (isMat) addCode(matUp);
+    else if (addMode === 'master' && pickedCode) addCode(pickedCode);
+    else addTemp();
+  };
+  const submitLabel = pending
+    ? 'Adding…'
+    : restoring
+      ? 'Restore and open'
+      : isMat
+        ? 'Add material'
+        : addMode === 'new'
+          ? 'Create temporary product'
+          : 'Add product';
+
   const addForm = editable ? (
-    <div className="wf-form-panel">
+    <form
+      className="sc-add"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submitAdd();
+      }}
+    >
       {isMat ? (
-        <div className="wf-form-grid">
-          <Field label={`Add a ${codeLabel.toLowerCase()}`} hint="seeds a row you can then propose">
-            <input value={newCode} placeholder="e.g. TRM07" onChange={(e) => setNewCode(e.target.value)} />
-          </Field>
-          <button type="button" className="wf-btn wf-btn-primary" onClick={() => addCode(newCode)} disabled={pending}>
-            <Plus size={15} /> Add to sheet
-          </button>
+        <div className="sc-add-body">
+          <label className="sc-add-field" htmlFor="sc-add-mat">
+            <span>Material code</span>
+            <input
+              id="sc-add-mat"
+              autoFocus
+              value={newCode}
+              placeholder="e.g. TRM07"
+              autoComplete="off"
+              onChange={(e) => setNewCode(e.target.value)}
+            />
+            <small>The code as it is in the material master. Its rates are filled in on its own page.</small>
+          </label>
+          {matExists && (
+            <p className="sc-add-note is-warn">
+              {matUp} is already on the sheet.{' '}
+              <Link href={`/standard-cost/${encodeURIComponent(matUp)}?track=material`}>Open it</Link>
+            </p>
+          )}
         </div>
       ) : (
-        <div className="wf-form-grid">
-          <Field label="Add a product" hint="search by code or name — from the product master">
-            <ProductPicker
-              items={catalog}
-              exclude={existingCodes}
-              onPick={(code) => addCode(code)}
-              // Anything typed that is not in the product master becomes a temporary product
-              // with a TMP code, never a free-text product code.
-              onAddNew={(typed) => addTemp(typed)}
-              disabled={pending}
-              placeholder="Search product code or name…"
-            />
-          </Field>
-          <Field label="…or a new product not in EasyEcom yet" hint="gets a temporary ID (TMP-…) you can link to EasyEcom later">
-            <div className="wf-temp-add">
+        <div className="sc-add-body">
+          <div className="sc-add-choice" role="radiogroup" aria-label="Where the product comes from">
+            <button type="button" role="radio" aria-checked={addMode === 'master'} className="sc-add-option" onClick={() => setAddMode('master')}>
+              <span className="sc-add-radio" aria-hidden="true" />
+              <span><b>From Product Master</b><small>A product already in EasyEcom</small></span>
+            </button>
+            <button type="button" role="radio" aria-checked={addMode === 'new'} className="sc-add-option" onClick={() => { setAddMode('new'); setPickedCode(null); }}>
+              <span className="sc-add-radio" aria-hidden="true" />
+              <span><b>New product</b><small>Not in EasyEcom yet, gets a TMP code</small></span>
+            </button>
+          </div>
+
+          {addMode === 'master' ? (
+            pickedCode ? (
+              <div className="sc-add-picked">
+                <div>
+                  <span className="mono">{pickedCode}</span>
+                  <b>{productNames.get(pickedCode) || 'Product name unavailable'}</b>
+                </div>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setPickedCode(null)}>Change</button>
+              </div>
+            ) : (
+              <div className="sc-add-field">
+                <span>Product</span>
+                <ProductPicker
+                  items={catalog}
+                  exclude={existingCodes}
+                  onPick={(code) => setPickedCode(code)}
+                  // Anything typed that is not in the product master becomes a temporary
+                  // product with a TMP code, never a free-text product code.
+                  onAddNew={(typed) => { setTempName(typed); setAddMode('new'); }}
+                  disabled={pending}
+                  placeholder="Search product code or name…"
+                />
+                <small>Products already on the sheet are not listed.</small>
+              </div>
+            )
+          ) : (
+            <label className="sc-add-field" htmlFor="sc-add-temp">
+              <span>Product name</span>
               <input
+                id="sc-add-temp"
+                autoFocus
                 value={tempName}
-                placeholder="New product name"
+                placeholder="e.g. Linen co-ord set, sage"
+                autoComplete="off"
                 onChange={(e) => setTempName(e.target.value)}
               />
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost wf-btn-sm"
-                disabled={pending || !tempName.trim()}
-                onClick={() => addTemp()}
-              >
-                <Plus size={13} /> Create temporary
-              </button>
-            </div>
-          </Field>
+              <small>It gets a temporary code (TMP-…). Link it to its EasyEcom product later from its cost page.</small>
+            </label>
+          )}
+          {restoring && (
+            <p className="sc-add-note">This product was removed from the sheet earlier. Adding it brings back its cost, cost sheet and history.</p>
+          )}
         </div>
       )}
-    </div>
+
+      {error && <p className="sc-add-note is-error" role="alert">{error}</p>}
+
+      <div className="sc-add-foot">
+        <span className="sc-add-next">Next: the {isMat ? 'material' : 'product'}’s own page opens to fill in the cost.</span>
+        <div className="sc-add-actions">
+          <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setAddOpen(false)} disabled={pending}>Cancel</button>
+          <button type="submit" className="wf-btn wf-btn-primary" disabled={!canSubmitAdd}>
+            <Plus size={14} /> {submitLabel}
+          </button>
+        </div>
+      </div>
+    </form>
   ) : null;
 
   return (
@@ -580,7 +667,7 @@ export function StandardCostClient({
         {viewSwitch}
         <span className="wf-subtle">{shown.length} shown</span>
         {editable && (
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={() => setAddOpen(true)}>
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}>
             <Plus size={14} /> Add Material to Input Standard Cost
           </button>
         )}
@@ -608,7 +695,7 @@ export function StandardCostClient({
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportFinishedGoods}>
                   <Download size={14} /> Export CSV
                 </button>
-                {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={() => setAddOpen(true)}><Plus size={14} /> Add Product to Input Standard Cost</button>}
+                {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}><Plus size={14} /> Add Product to Input Standard Cost</button>}
               </div>
             </div>
             <div className="sc-fg-toolbar">
@@ -662,16 +749,11 @@ export function StandardCostClient({
       {addOpen && editable && (
         <div className="sc-fg-add-layer" role="presentation" onKeyDown={(e) => { if (e.key === 'Escape') setAddOpen(false); }}>
           <button type="button" className="sc-fg-scrim" onClick={() => setAddOpen(false)} aria-label="Close" />
-          <div className="sc-fg-add-dialog" role="dialog" aria-modal="true" aria-labelledby="sc-fg-add-title">
+          <div className="sc-fg-add-dialog sc-add-dialog" role="dialog" aria-modal="true" aria-labelledby="sc-fg-add-title">
             <div className="sc-fg-card-head">
               <h2 id="sc-fg-add-title">{isMat ? 'Add Material to Input Standard Cost' : 'Add Product to Input Standard Cost'}</h2>
               <button type="button" className="sc-fg-close" ref={addCloseRef} onClick={() => setAddOpen(false)} aria-label="Close"><X size={18} /></button>
             </div>
-            <p>
-              {isMat
-                ? 'Enter the material code. It opens on its own page, where its rates are filled in.'
-                : 'Choose an existing Product Master code or create a temporary product for an item not yet in EasyEcom. It opens on its own page, where the cost is filled in.'}
-            </p>
             {addForm}
           </div>
         </div>
