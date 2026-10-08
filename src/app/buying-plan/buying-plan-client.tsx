@@ -308,7 +308,8 @@ export function BuyingPlanClient({
     // plan. An ingested line with no live cost keeps its sheet value either way.
     const storedValue = row.standard_value ? Number(row.standard_value) : 0;
     const liveValue = cost ? jobQty * cost.job + fobQty * cost.fob + efobQty * cost.efob : 0;
-    const useStored = storedValue > 0 && (planLocked || !cost);
+    // A line the approver is editing is valued live, as it will be re-priced on approval.
+    const useStored = storedValue > 0 && (planLocked || !cost) && !(planLocked && editsFor(row.key));
     const valueToBeBought = useStored ? storedValue : liveValue;
     // Split by PO type for the value-by-type panel: live rates when live, else the
     // frozen value apportioned by quantity share.

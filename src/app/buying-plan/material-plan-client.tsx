@@ -193,7 +193,8 @@ export function MaterialPlanClient({
     // Same rule as the FG track: live latest-accepted rate while editing; once
     // submitted, the value frozen at submission (standard_value) is shown verbatim.
     const storedValue = r.standard_value ? Number(r.standard_value) : 0;
-    const useStored = storedValue > 0 && (planLocked || !cost);
+    // A line the approver is editing is valued live, as it will be re-priced on approval.
+    const useStored = storedValue > 0 && (planLocked || !cost) && !(planLocked && editsFor(r.key));
     const jobValue = useStored
       ? (totalQty ? (storedValue * jobQty) / totalQty : 0)
       : jobQty * (cost?.job ?? 0);
