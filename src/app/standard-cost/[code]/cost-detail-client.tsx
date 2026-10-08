@@ -208,10 +208,6 @@ export function StandardCostDetailClient({
         </div>
       </section>
 
-      {/* The approver decides here, without opening the editor. Renders nothing when the
-          signed-in role has no decision to make at this stage. */}
-      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} noTarget />
-
       {editing && (
         <section className="sc-page-edit" aria-label="Change the cost">
           <div className="sc-page-edit-head">
@@ -269,6 +265,11 @@ export function StandardCostDetailClient({
         />
         )}
       </section>
+
+      {/* The approver decides here, after the whole cost record (CMTP, fabric cost, history)
+          above it, without opening the editor. Renders nothing when the signed-in role has no
+          decision to make at this stage. */}
+      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} noTarget />
     </div>
   );
 }
