@@ -146,7 +146,11 @@ export default async function VendorCapacityPage({
   return (
     <FormLayout
       title="Vendor Capacity"
-      subtitle="Per-vendor capacity for active vendors — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only."
+      subtitle={
+        asOf
+          ? `What each active vendor had entered by the end of the week ${asOf.label}. View only.`
+          : 'Per-vendor capacity for active vendors — update one vendor at a time; each save is stamped so stale vendors stand out. No approval; input and update only.'
+      }
       active="/vendor-capacity"
       role={user.role}
       userEmail={user.email}

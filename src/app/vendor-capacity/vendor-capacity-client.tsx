@@ -375,7 +375,7 @@ function EntryTab({
       </div>
       {asOf && (
         <Notice tone="info">
-          <strong>Week {asOf.label}.</strong> Machines, karigars, capacity and Last updated are each
+          <strong>Week {asOf.label}.</strong>{' '}Machines, karigars, capacity and Last updated are each
           vendor&apos;s figures as entered by the end of this week (its last update on or before that
           Sunday); a vendor with nothing entered by then reads Not entered.{' '}
           {asOf.inProcessKept
@@ -539,7 +539,7 @@ function EntryTab({
                           <td className="num">{m.machineUtil == null ? '—' : `${m.machineUtil}%`}</td>
                         </>
                       ) : (
-                        <td colSpan={8} className="vc-snap-none">Nothing entered by the end of this week{vendor.inProcessQty ? ` · ${fmt.format(vendor.inProcessQty)} pcs on order` : ''}</td>
+                        <td colSpan={8} className="vc-snap-none">{lastUpdated ? 'Saved with no machines or karigars' : 'Nothing entered by the end of this week'}{vendor.inProcessQty ? ` · ${fmt.format(vendor.inProcessQty)} pcs on order` : ''}</td>
                       )}
                       <td>
                         <div className="vc-snap-date">
