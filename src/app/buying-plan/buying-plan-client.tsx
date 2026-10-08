@@ -349,10 +349,12 @@ export function BuyingPlanClient({
         totalQty > 0 ? Math.min(100, Math.round((actual.qty / totalQty) * 100)) : 0,
       // Weave/category is the product master's, falling back to the stored line only
       // when the master has nothing for this code.
-      fabricType: productMaster[row.product_code]?.fabric_type || row.fabric_type || 'Unspecified',
+      // A product with no EasyEcom SKU yet (a TEMP code) says so; one that is in EasyEcom but
+      // has the field blank there says that — never a bare dash or "Unspecified".
+      fabricType: productMaster[row.product_code]?.fabric_type || row.fabric_type || (productMaster[row.product_code] ? 'Weave not set in EasyEcom' : 'Not in EasyEcom yet'),
       // Product State is sourced from the product master (rolled up to the code),
       // falling back to the stored line only when the master has nothing for it.
-      productStatus: productMaster[row.product_code]?.status || row.product_status || '—',
+      productStatus: productMaster[row.product_code]?.status || row.product_status || (productMaster[row.product_code] ? 'State not set in EasyEcom' : 'Not in EasyEcom yet'),
       // Garment category / sub-category (from the product catalog) — for Group By.
       category: catalogByCode[row.product_code]?.category || 'Uncategorised',
       subCategory: catalogByCode[row.product_code]?.sub_category || 'Uncategorised',
