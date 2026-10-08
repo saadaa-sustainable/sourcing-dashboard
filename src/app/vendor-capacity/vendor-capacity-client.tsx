@@ -721,7 +721,14 @@ function LiveEntryTab({
     [vendors, ref],
   );
 
-  const overCount = decorated.filter(({ vendor }) => modelOf(vendor, rules).over).length;
+  // On this sheet a vendor counts once entered this week; until then its machines / karigars
+  // are blank here, so it adds nothing to the tiles (other pages keep the last saved figures).
+  const weekStartMs = Date.parse(`${capacityWeekStart()}T00:00:00+05:30`);
+  const modelThisWeek = (vendor: Vendor) =>
+    vendor.current?.entry_date && Date.parse(vendor.current.entry_date) >= weekStartMs
+      ? modelOf(vendor, rules)
+      : vendorCapacityModel({ machines: 0, karigar: 0, vendorType: vendor.vendor_type, inProcessQty: vendor.inProcessQty }, rules);
+  const overCount = decorated.filter(({ vendor }) => modelThisWeek(vendor).over).length;
   const staleCount = decorated.filter((d) => d.isStale).length;
   // Section 8 of the spec: the formulas are pointless while the data is a month old.
   const oldestUpdate = decorated.reduce<number | null>((m, d) => {
@@ -748,7 +755,7 @@ function LiveEntryTab({
     });
   const sort = useColumnSort<(typeof filtered)[number]>();
   // Totals count only vendors with a capacity entry; "Not entered" is not zero capacity.
-  const visibleModels = filtered.map(({ vendor }) => ({ vendor, m: modelOf(vendor, rules) }));
+  const visibleModels = filtered.map(({ vendor }) => ({ vendor, m: modelThisWeek(vendor) }));
   const entered = visibleModels.filter((x) => x.m.entered);
   const visiblePoCapacity = entered.reduce((t, x) => t + x.m.poCapacity, 0);
   const visibleMonthly = entered.reduce((t, x) => t + x.m.capacityPerMonth, 0);
@@ -761,12 +768,14 @@ function LiveEntryTab({
     downloadCsv('vendor-capacity-entry.csv', [
       ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Machines allocated', 'Karigar allocated', 'Capacity/month', 'First machines', 'PO capacity', 'In process', 'Available', 'Machine util %', 'Capacity util %', 'Last updated'],
       ...sort.apply(filtered).map(({ vendor, lastUpdated }) => {
-        const machines = Number(vendor.current?.machines_allocated ?? 0);
-        const karigar = Number(vendor.current?.active_karigar ?? 0);
-        const m = modelOf(vendor, rules);
+        const m = modelThisWeek(vendor);
+        // Same as the screen: a vendor not entered this week has blank figures.
+        const thisWeek = lastUpdated != null && Date.parse(lastUpdated) >= weekStartMs;
+        const machines = thisWeek ? Number(vendor.current?.machines_allocated ?? 0) : '';
+        const karigar = thisWeek ? Number(vendor.current?.active_karigar ?? 0) : '';
         return m.entered
           ? [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, m.capacityPerMonth, vendor.machinesAtOnboarding, m.poCapacity, vendor.inProcessQty, m.available, m.machineUtil, utilisationLabel(m.capacityUtil), lastUpdated]
-          : [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, 'Not entered', vendor.machinesAtOnboarding, 'Not entered', vendor.inProcessQty, '', '', '', lastUpdated];
+          : [vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type, machines, karigar, '', vendor.machinesAtOnboarding, '', vendor.inProcessQty, '', '', '', lastUpdated];
       }),
     ]);
   }
@@ -777,7 +786,7 @@ function LiveEntryTab({
         <CapacityMetric
           label="PO capacity"
           value={fmt.format(visiblePoCapacity)}
-          detail={`${entered.length} vendors entered · ${fmt.format(visibleMonthly)} pcs/month capacity${visibleNotEntered ? ` · ${visibleNotEntered} not entered` : ''}`}
+          detail={`${entered.length} vendors entered this week · ${fmt.format(visibleMonthly)} pcs/month capacity${visibleNotEntered ? ` · ${visibleNotEntered} not entered yet` : ''}`}
         />
         <CapacityMetric
           label="On order (in process)"
@@ -977,7 +986,7 @@ function LiveEntryTab({
       ) : (
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday). Each Monday the boxes start blank; until a vendor is updated, every figure keeps using its last saved numbers (hover a blank box to see them).</p></div>
+          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday). Each Monday the boxes start blank, and so do the figures worked out from them, until the vendor is entered. Other pages keep using the last saved numbers meanwhile (hover a blank box to see them).</p></div>
           <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
         </div>
         <div className="table-scroll">
@@ -1100,6 +1109,9 @@ function CapacityRow({
     rules,
   );
   const inProcess = vendor.inProcessQty;
+  // Nothing entered this week yet: every figure built on machines / karigars stays blank on this
+  // sheet (other pages keep using the last saved figures). Typing brings them back.
+  const showFigures = enteredThisWeek || dirty;
   // Submitted inside the current capacity week → locked until Monday (admins can correct).
   const locked = capacityLocked(saved) && !dirty;
   const canType = editable && (!locked || isAdmin);
@@ -1124,7 +1136,7 @@ function CapacityRow({
   }
 
   return (
-    <tr className={model.over ? 'wf-row-over' : isStale ? 'wf-row-stale' : ''}>
+    <tr className={showFigures && model.over ? 'wf-row-over' : isStale ? 'wf-row-stale' : ''}>
       <td className="vc-vendor-cell">
         <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
         <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
@@ -1147,7 +1159,12 @@ function CapacityRow({
           />
         </td>
       ))}
-      {model.entered ? (
+      {!showFigures ? (
+        <>
+          <td className="num wf-computed" />
+          <td className="num wf-computed" />
+        </>
+      ) : model.entered ? (
         <>
           <td className="num wf-computed">{fmt.format(model.capacityPerMonth)}</td>
           <td className="num wf-computed" title={`capacity/day ${fmt.format(model.capacityPerDay)} × ${model.leadDays} lead days × ${rules.workingDays}/30`}>
@@ -1167,7 +1184,7 @@ function CapacityRow({
       {/* Past capacity the headroom is negative and only says how far past; the state is the
           thing to read — the utilisation cell beside it reads "100% Over Utilised". */}
       <td className="num wf-computed strong">
-        {!model.entered ? (
+        {!showFigures ? null : !model.entered ? (
           <span className="wf-subtle">—</span>
         ) : model.over ? (
           <span className="vc-over-text">Over Utilised</span>
@@ -1175,10 +1192,10 @@ function CapacityRow({
           fmt.format(model.available ?? 0)
         )}
       </td>
-      <td className="num wf-computed">{model.machineUtil == null ? '—' : `${model.machineUtil}%`}</td>
+      <td className="num wf-computed">{!showFigures ? null : model.machineUtil == null ? '—' : `${model.machineUtil}%`}</td>
       {/* Past 100% the cell states the condition, not the figure — see src/lib/utilisation.ts. */}
-      <td className={`num wf-computed${model.over ? ' vc-util-over' : ''}`}>
-        {utilisationLabel(model.capacityUtil)}
+      <td className={`num wf-computed${showFigures && model.over ? ' vc-util-over' : ''}`}>
+        {showFigures ? utilisationLabel(model.capacityUtil) : null}
       </td>
       <td className="wf-subtle">
         {ageLabel(saved, now)}
