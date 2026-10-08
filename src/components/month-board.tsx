@@ -46,6 +46,15 @@ export function MonthBoard({
   // Previous / next month of the same track, for the overview's arrows.
   const sameTrack = opened ? data.cards.filter((c) => (c.track ?? '') === (opened.track ?? '') && c.detail).sort((a, b) => a.month.localeCompare(b.month)) : [];
   const at = opened ? sameTrack.findIndex((c) => c.id === opened.id) : -1;
+  // The same month on each track (Buying Plan: FG ⇄ Fabric / Material), for the overview's switch.
+  const tracks =
+    opened?.track && data.trackLabels && Object.keys(data.trackLabels).length > 1
+      ? Object.entries(data.trackLabels).map(([t, label]) => ({
+          track: t,
+          label,
+          card: data.cards.find((c) => c.month === opened.month && c.track === t && c.detail),
+        }))
+      : undefined;
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -176,6 +185,7 @@ export function MonthBoard({
           col={colOf(opened.status)}
           prev={at > 0 ? sameTrack[at - 1] : undefined}
           next={at >= 0 && at < sameTrack.length - 1 ? sameTrack[at + 1] : undefined}
+          tracks={tracks}
           onNavigate={openCard}
           onClose={closeCard}
         />

@@ -657,6 +657,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       { value: inrShort(totalValue), label: 'Valued' },
     ],
     unit: 'plans',
+    trackLabels: { FG: 'Finished Goods (FG)', Material: 'Fabric / Material' },
     listColumns: [{ label: 'Products', num: true }, { label: 'Pcs planned', num: true }, { label: 'Issued', num: true }, { label: 'Value', num: true }],
   };
 }

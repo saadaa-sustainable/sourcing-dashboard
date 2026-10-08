@@ -18,6 +18,7 @@ export function MonthOverview({
   col,
   prev,
   next,
+  tracks,
   onNavigate,
   onClose,
 }: {
@@ -25,6 +26,8 @@ export function MonthOverview({
   col?: MonthBoardColumn;
   prev?: MonthBoardCard;
   next?: MonthBoardCard;
+  /** The same month on each track (FG / Fabric-Material); a track with no plan that month is greyed. */
+  tracks?: { track: string; label: string; card?: MonthBoardCard }[];
   onNavigate: (id: string) => void;
   onClose: () => void;
 }) {
@@ -64,6 +67,23 @@ export function MonthOverview({
             </div>
             <h2>{card.label}</h2>
             {d?.lede && <p>{d.lede}</p>}
+            {tracks && (
+              <div className="segment mo-tracks" role="group" aria-label="Plan track">
+                {tracks.map((t) => (
+                  <button
+                    key={t.track}
+                    type="button"
+                    className={t.track === card.track ? 'active' : ''}
+                    aria-pressed={t.track === card.track}
+                    disabled={!t.card}
+                    title={t.card ? undefined : `No ${t.label} plan for ${card.label}`}
+                    onClick={() => t.card && t.card.id !== card.id && onNavigate(t.card.id)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="mo-head-actions">
             {d && (

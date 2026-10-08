@@ -85,6 +85,9 @@ export type MonthBoardData = {
   /** What one card is, singular: "month" (default) or "week". */
   noun?: string;
   listColumns: { label: string; num?: boolean }[];
+  /** Display names for card tracks, in switch order (e.g. FG → 'Finished Goods (FG)'). When a
+   *  board has more than one track, the overview shows a switch between them for the same month. */
+  trackLabels?: Record<string, string>;
 };
 
 /** Indian money, short: ₹46.76 L, ₹1.67 Cr. */

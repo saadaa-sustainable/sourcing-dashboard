@@ -2514,3 +2514,5 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 .ea-gridwrap { max-height: 50vh; }
 .ea-foot-actions { display: flex; gap: 8px; }
 .mo-foot svg { vertical-align: -2px; }
+.mo-tracks { align-self: flex-start; margin: 6px 0 0; }
+.mo-tracks button:disabled { opacity: .45; cursor: not-allowed; }
