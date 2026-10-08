@@ -45,9 +45,11 @@
 .pl-card-figs span { font-size: 10px; font-weight: 700; color: var(--ink-3, #6e695e); text-transform: uppercase; letter-spacing: .04em; }
 .pl-card-figs strong { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-1, #161513); }
 .pl-card-figs strong.muted { color: var(--ink-4, #9a9384); }
-.pl-card.compact .pl-card-figs strong { font-size: 13px; }
+.pl-card.compact .pl-card-figs strong { font-size: 12.5px; }
+.pl-card.compact .pl-card-figs div { padding: 6px 7px; }
+.pl-card.compact .pl-card-money b { font-size: 15px; }
 .pl-card-money { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.pl-card-money b { font-size: 17px; font-variant-numeric: tabular-nums; color: var(--ink-1, #161513); }
+.pl-card-money b { white-space: nowrap; font-size: 17px; font-variant-numeric: tabular-nums; color: var(--ink-1, #161513); }
 .pl-card-money small { color: var(--ink-3, #6e695e); font-size: 11px; text-align: right; }
 .pl-card-prog { display: flex; flex-direction: column; gap: 4px; }
 .pl-card-prog small { font-size: 11px; color: var(--ink-3, #6e695e); display: flex; justify-content: space-between; gap: 6px; }
@@ -59,7 +61,7 @@
 .pl-tag.npd { border-color: transparent; background: #efedfc; color: #5c4dd4; }
 .pl-tag.nocost { border-color: transparent; background: var(--danger-bg, #fdecea); color: var(--danger-text, #c0392b); }
 .pl-tag.over { border-color: transparent; background: var(--warning-bg, #faf1dc); color: var(--warning-text, #b57514); }
-.pl-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 12px; overflow-x: auto; padding: 14px 16px 16px; }
+.pl-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(290px, 1fr); gap: 12px; overflow-x: auto; padding: 14px 16px 16px; }
 .pl-col { background: var(--bg-surface, #fbfbfb); border: 1px solid var(--line, #e7e2d2); border-radius: 12px; display: flex; flex-direction: column; min-width: 0; max-height: 72vh; }
 .pl-col-head { padding: 10px 12px; border-bottom: 1px solid var(--line, #e7e2d2); display: flex; flex-direction: column; gap: 3px; }
 .pl-col-title { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-weight: 700; font-size: 12.5px; color: var(--ink-1, #161513); }
