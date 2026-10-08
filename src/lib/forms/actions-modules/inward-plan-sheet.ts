@@ -138,6 +138,84 @@ export async function decideInwardPlanRow(formData: FormData): Promise<ActionRes
   return done(`${row.product_code} · ${row.po_no ?? '—'} marked ${status}.`);
 }
 
+/**
+ * Edit & approve one line (admin): change its inward quantity and / or ₹ per piece and approve
+ * it in one step. Saved as "Edited & Approved" (approver_edited) and every change recorded in
+ * sd_approval_edit, the same history the month-level Edit & approve keeps.
+ */
+export async function editAndApproveInwardRow(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canApprove(user.role, 'pending_l2')) return fail('Only an admin can decide inward-plan lines.');
+  const id = Number(formData.get('id'));
+  const notes = String(formData.get('notes') ?? '').trim();
+  if (!id) return fail('Invalid line.');
+  const qtyRaw = String(formData.get('inward_qty') ?? '').trim();
+  const costRaw = String(formData.get('cost_per_piece') ?? '').trim();
+  const qty = qtyRaw === '' ? null : Number(qtyRaw);
+  const cost = costRaw === '' ? null : Number(costRaw);
+  if (qty == null || !Number.isInteger(qty) || qty < 0) return fail('Inward qty must be a whole number of 0 or more.');
+  if (cost != null && (!Number.isFinite(cost) || cost < 0)) return fail('₹ per piece must be a number of 0 or more.');
+
+  const supabase = await supa();
+  const { data: row } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('id, plan_month, product_code, po_no, approval_status, inward_qty, cost_per_piece')
+    .eq('id', id)
+    .maybeSingle();
+  if (!row) return fail('Line not found.');
+  if (row.approval_status === 'Approved') return fail('This line is already approved.');
+  const changes: { field: 'inward_qty' | 'cost_per_piece'; label: string; old: number | null; next: number | null }[] = [];
+  if (Number(row.inward_qty ?? 0) !== qty) changes.push({ field: 'inward_qty', label: 'Inward qty', old: row.inward_qty, next: qty });
+  if ((row.cost_per_piece == null ? null : Number(row.cost_per_piece)) !== cost) changes.push({ field: 'cost_per_piece', label: '₹ / pc', old: row.cost_per_piece, next: cost });
+  if (!changes.length) return fail('Nothing was changed. Use Approve to approve it as submitted.');
+
+  const now = new Date().toISOString();
+  const summary = changes.map((c) => `${c.label} ${c.old ?? '—'} → ${c.next ?? '—'}`).join('; ');
+  const { error } = await supabase
+    .from('sd_inward_plan_entry')
+    .update({
+      inward_qty: qty,
+      cost_per_piece: cost,
+      approver_edited: true,
+      approval_status: 'Approved',
+      mt_comments: notes || `Edited & Approved: ${summary}`,
+      updated_by: user.email,
+      updated_at: now,
+    })
+    .eq('id', id)
+    .neq('approval_status', 'Approved');
+  if (error) return fail(error.message);
+
+  const { error: logError } = await supabase.from('sd_approval_edit').insert(
+    changes.map((c) => ({
+      entity_type: 'inward_plan',
+      entity_id: String(row.plan_month),
+      row_ref: String(id),
+      row_label: [row.po_no, row.product_code].filter(Boolean).join(' · '),
+      field: c.field,
+      field_label: c.label,
+      old_value: c.old == null ? null : String(c.old),
+      new_value: c.next == null ? null : String(c.next),
+      edited_by: user.email,
+      edited_at: now,
+    })) as never,
+  );
+  if (logError) console.error('[inward edit & approve] edit history not recorded:', logError.message);
+  const from: SdStatus = row.approval_status === 'RE-WORK' ? 'rework' : row.approval_status === 'Rejected' ? 'rejected' : 'pending_l2';
+  await writeLog(
+    'inward_plan',
+    String(row.plan_month),
+    `Inward plan — ${monthLabel(String(row.plan_month))} · ${row.product_code} · ${row.po_no ?? '—'}`,
+    from,
+    'approved',
+    user.email,
+    `Edited & Approved: ${summary}${notes ? `. ${notes}` : ''}`,
+  );
+  revalidate();
+  return done(`${row.product_code} · ${row.po_no ?? '—'} Edited & Approved — ${summary}.`);
+}
+
 /** Remove a line that has not been decided yet (a wrong PO, a duplicate). */
 export async function deleteInwardPlanRow(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();

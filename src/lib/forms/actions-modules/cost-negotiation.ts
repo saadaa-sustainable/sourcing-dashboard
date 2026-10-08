@@ -12,6 +12,7 @@ import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
 import { targetSummary,
+  canEditApproveCost,
   canAcceptProposal,
   canConfirmCm,
   canConfirmFabric,
@@ -343,6 +344,91 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   return done('Approved. This is now the standard cost.');
+}
+
+/**
+ * Edit & approve (approval workflow, 2026-10-08): the admin changes the rates on a cost that is
+ * awaiting approval (a proposal, or a submitted vendor rate) and approves in one step. The new
+ * rates become the standard cost; they are also kept as the admin's target for the round, which
+ * is what makes the badge read "Edited & Approved" (costStageText). Every changed rate is
+ * recorded in sd_approval_edit, like every other Edit & approve.
+ */
+export async function editAndApproveCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  const note = String(formData.get('note') ?? '').trim();
+  if (!id) return fail('Invalid cost row.');
+  const next = {
+    job_cost: numOrNull(formData.get('job_cost')),
+    fob_cost: numOrNull(formData.get('fob_cost')),
+    efob_cost: numOrNull(formData.get('efob_cost')),
+  };
+  if (Object.values(next).some((v) => v != null && (!Number.isFinite(v) || v < 0))) return fail('Rates must be numbers of 0 or more.');
+  if (next.job_cost == null && next.fob_cost == null && next.efob_cost == null) return fail('Enter at least one rate.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
+  if (!canEditApproveCost(user.role, row.neg_stage)) return fail('This cost is not waiting for your approval.');
+
+  const labels = track === 'material'
+    ? { job_cost: 'FOB Fabric', fob_cost: 'Billing', efob_cost: 'Standard Fabric' }
+    : { job_cost: 'Job', fob_cost: 'FOB', efob_cost: 'E-FOB' };
+  const before = row as unknown as Record<string, number | null>;
+  const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => (before[k] ?? null) !== next[k]);
+  if (!changed.length) return fail('Nothing was changed. Use Approve to approve it as submitted.');
+
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    ...next,
+    target_job: next.job_cost,
+    target_fob: next.fob_cost,
+    target_efob: next.efob_cost,
+    target_cost: null,
+    neg_stage: 'signed_off',
+    status: 'approved',
+    approved_by: user.email,
+    approved_at: now,
+    updated_at: now,
+  };
+  if (track === 'fg') Object.assign(patch, { documented: true, edited_before_approval: true });
+  const { data: done1, error } = await supabase
+    .from(table)
+    .update(patch)
+    .eq('id', id)
+    .in('neg_stage', ['proposed', 'rate_submitted'])
+    .select('id');
+  if (error) return fail(error.message);
+  if (!done1?.length) return fail('Already decided by someone else — reload to see it.');
+
+  await recordAcceptedRate(
+    supabase, track, row.product_code,
+    { job: next.job_cost, fob: next.fob_cost, efob: next.efob_cost },
+    user.email, `Edited & approved by the admin${note ? ` — ${note}` : ''}`,
+  );
+  const summary = changed.map((k) => `${labels[k]} ${before[k] ?? '—'} → ${next[k] ?? '—'}`).join('; ');
+  const { error: logError } = await supabase.from('sd_approval_edit').insert(
+    changed.map((k) => ({
+      entity_type: costEntity(track),
+      entity_id: String(id),
+      row_ref: String(id),
+      row_label: row.product_code,
+      field: k,
+      field_label: labels[k],
+      old_value: before[k] == null ? null : String(before[k]),
+      new_value: next[k] == null ? null : String(next[k]),
+      edited_by: user.email,
+      edited_at: now,
+    })) as never,
+  );
+  if (logError) console.error('[cost edit & approve] edit history not recorded:', logError.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, `Edited & Approved: ${summary}${note ? `. ${note}` : ''}`);
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Edited & Approved: ${row.product_code}`, `The admin changed the rates and approved them — ${summary}.`, user.email);
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  revalidatePath('/approvals');
+  return done(`Edited & Approved — ${summary}. This is now the standard cost.`);
 }
 
 /** The approver (admin) sends the rate back for renegotiation. */

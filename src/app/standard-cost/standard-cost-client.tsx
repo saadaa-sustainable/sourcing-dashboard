@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'r
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { Check, Download, Lock, Plus, Search, Save, Trash2, X } from 'lucide-react';
+import { CostEditApprove } from '@/components/forms/cost-edit-approve';
 import Link from 'next/link';
 import { downloadCsv } from '@/lib/download';
 import {
@@ -1120,6 +1121,7 @@ export function CostRow({
                 Approve
               </button>
             )}
+            <CostEditApprove cost={cost} track={track} role={role} small />
             <button
               type="button"
               className="wf-btn wf-btn-ghost wf-btn-sm"

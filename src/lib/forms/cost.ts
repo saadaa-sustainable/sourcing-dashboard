@@ -98,6 +98,9 @@ export const canSubmitRate = (role: SdRole, stage: string | null) =>
   isTeam(role) && (stage === 'target_set' || stage === 'renegotiate');
 export const canSignOff = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'rate_submitted';
+/** Edit & approve: the admin changes the rates on a cost awaiting approval and approves in one step. */
+export const canEditApproveCost = (role: SdRole, stage: string | null) =>
+  isAdmin(role) && (stage === 'proposed' || stage === 'rate_submitted');
 export const canRenegotiate = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'rate_submitted';
 export const canRejectCost = (role: SdRole, stage: string | null) =>

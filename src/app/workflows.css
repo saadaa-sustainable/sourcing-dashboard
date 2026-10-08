@@ -2580,3 +2580,10 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 
 /* Standard Cost: a ticked proposal card (group decision). */
 .sc-card.picked { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
+
+/* Standard Cost: Edit & approve inline form. */
+.wf-cost-edit-approve { display: grid; grid-template-columns: repeat(3, minmax(90px, 1fr)); gap: 8px; align-items: end; padding: 10px; border: 1px solid var(--line, #e7e2d2); border-radius: 10px; background: var(--bg-surface, #fbfbfb); flex-basis: 100%; }
+.wf-cost-edit-approve label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-3, #6e695e); }
+.wf-cost-edit-approve input { border: 1px solid var(--line-strong, #c9c2ae); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--ink-1, #161513); background: #fff; }
+.wf-cost-edit-approve .wide { grid-column: 1 / -1; }
+.wf-cost-edit-approve-actions { grid-column: 1 / -1; display: flex; gap: 8px; }

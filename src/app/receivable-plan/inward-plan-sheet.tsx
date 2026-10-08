@@ -8,7 +8,7 @@ import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { Notice } from '@/components/forms/form-layout';
 import { canApprove, canEdit, sheetStatusText } from '@/lib/forms/approval';
-import { decideInwardPlanRow, deleteInwardPlanRow, importInwardPlanSheet } from '@/lib/forms/actions';
+import { decideInwardPlanRow, deleteInwardPlanRow, editAndApproveInwardRow, importInwardPlanSheet } from '@/lib/forms/actions';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import type { SdRole } from '@/lib/forms/types';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
@@ -197,8 +197,23 @@ export function InwardPlanSheet({
 /** Per-line decision (admin) and removal (team / admin) — the odd PO handled on its own. */
 function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean }) {
   const [pending, start] = useTransition();
-  const [mode, setMode] = useState<'' | 'RE-WORK' | 'Rejected'>('');
+  const [mode, setMode] = useState<'' | 'RE-WORK' | 'Rejected' | 'EDIT'>('');
   const [note, setNote] = useState('');
+  const [qty, setQty] = useState(row.inward_qty?.toString() ?? '');
+  const [cost, setCost] = useState(row.cost_per_piece?.toString() ?? '');
+
+  function editApprove() {
+    const fd = new FormData();
+    fd.set('id', String(row.id));
+    fd.set('inward_qty', qty);
+    fd.set('cost_per_piece', cost);
+    fd.set('notes', note);
+    start(async () => {
+      const res = await editAndApproveInwardRow(fd);
+      if (!res.ok) toastError(res.error);
+      else reloadWithToast(res.message ?? 'Edited & Approved.');
+    });
+  }
 
   function decide(status: string, notes: string) {
     const fd = new FormData();
@@ -226,6 +241,17 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
     });
   }
 
+  if (mode === 'EDIT') {
+    return (
+      <span className="wf-inline-actions">
+        <input type="number" min={0} style={{ width: 80 }} aria-label="Inward qty" title="Inward qty" value={qty} onChange={(e) => setQty(e.target.value)} />
+        <input type="number" min={0} step="0.01" style={{ width: 80 }} aria-label="₹ per piece" title="₹ per piece" value={cost} onChange={(e) => setCost(e.target.value)} />
+        <input style={{ width: 140 }} placeholder="Comment (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={editApprove}>{pending ? 'Saving…' : 'Save & approve'}</button>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
+      </span>
+    );
+  }
   if (mode) {
     return (
       <span className="wf-inline-actions">
@@ -245,6 +271,9 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
     <span className="wf-inline-actions">
       {approver && row.approval_status !== 'Approved' && (
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Approved', '')}>Approve</button>
+      )}
+      {approver && row.approval_status !== 'Approved' && (
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} title="Change the qty or ₹ per piece and approve in one step" onClick={() => setMode('EDIT')}>Edit &amp; approve</button>
       )}
       {approver && row.approval_status !== 'RE-WORK' && (
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('RE-WORK')}>Rework / Reassign</button>

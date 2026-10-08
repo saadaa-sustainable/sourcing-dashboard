@@ -27,6 +27,7 @@ import {
   type RateKey,
 } from '@/lib/forms/cost';
 import { TargetInputs, targetFields } from '@/components/forms/target-inputs';
+import { CostEditApprove } from '@/components/forms/cost-edit-approve';
 import type { CostDecisionRecord, SdRole } from '@/lib/forms/types';
 
 const disp = (v: number | null | undefined) => (v == null ? '—' : String(v));
@@ -161,6 +162,7 @@ export function CostDecisionBar({
           </button>
         ) : null)}
       {!isMat && fabricDone && !cmDone && <span className="wf-tag-approved">fabric ✓</span>}
+      <CostEditApprove cost={cost} track={track} role={role} />
       {canRenegotiate(role, stage) && (
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setNoteMode('renegotiate')}>
           <RotateCcw size={15} /> Rework / Reassign
