@@ -75,6 +75,10 @@ const disp = (v: number | null) => (v == null ? '—' : String(v));
 /** Read-only fabric buildup referenced from the Fabric Cost master. */
 type FabricBuildup = { grey: number | null; processing: number | null; finished: number | null };
 
+type SheetView = 'cards' | 'kanban' | 'table';
+/** Kanban columns, in the order a cost moves through them. */
+const KANBAN_STAGES = ['', 'proposed', 'target_set', 'rate_submitted', 'renegotiate', 'signed_off', 'rejected'];
+
 const rateDisplay = (v: number | null) =>
   v == null ? '—' : `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(v)}`;
 
@@ -134,6 +138,21 @@ export function StandardCostClient({
   // Cards carry no column headers, so the ordering the table's headers gave gets an
   // explicit control rather than quietly disappearing.
   const [cardSort, setCardSort] = useState<'code' | 'job' | 'fob' | 'efob' | 'stage' | 'updated'>('code');
+  // Cards / Kanban / Table, remembered per browser (both tracks share the choice).
+  const [view, setView] = useState<SheetView>('cards');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sc-sheet-view');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
+      if (saved === 'cards' || saved === 'kanban' || saved === 'table') setView(saved);
+    } catch {
+      /* storage blocked: keep cards */
+    }
+  }, []);
+  const chooseView = (v: SheetView) => {
+    setView(v);
+    try { localStorage.setItem('sc-sheet-view', v); } catch { /* ignore */ }
+  };
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
   const [tempName, setTempName] = useState('');
@@ -294,6 +313,174 @@ export function StandardCostClient({
     });
   }
 
+  /* ---- the sheet's three views (Finished Goods and Material share them) ---- */
+  const nameOf = (cost: StandardCost) =>
+    isMat
+      ? materialNames[cost.product_code.toUpperCase()] || null
+      : productNames.get(cost.product_code.toUpperCase()) || tempProducts[cost.product_code]?.name || null;
+  const missingName = isMat ? 'Not in the material master' : 'Product name unavailable';
+  const detailHref = (cost: StandardCost) =>
+    `/standard-cost/${encodeURIComponent(cost.product_code)}${isMat ? '?track=material' : ''}`;
+  // Rates in each track's own order and words (Material: Billing, FOB Fabric, Standard Fabric).
+  const rateCols: { label: string; get: (c: StandardCost) => number | null }[] = isMat
+    ? [
+        { label: fobLabel, get: (c) => c.fob_cost },
+        { label: jobLabel, get: (c) => c.job_cost },
+        { label: efobLabel, get: (c) => c.efob_cost },
+      ]
+    : [
+        { label: 'Job', get: (c) => c.job_cost },
+        { label: 'FOB', get: (c) => c.fob_cost },
+        { label: 'E-FOB', get: (c) => c.efob_cost },
+      ];
+  const updatedOf = (cost: StandardCost) => shortDate(rateHistory[cost.product_code]?.[0]?.accepted_at ?? cost.updated_at);
+  const stageBadge = (cost: StandardCost) => {
+    const key = cost.neg_stage ?? '';
+    return <span className={`wf-status tone-${COST_STAGE_TONE[key] ?? 'purple'}`}>{COST_STAGE_LABEL[key] ?? 'Not started'}</span>;
+  };
+  const pickBox = (cost: StandardCost) =>
+    pickable(cost) ? (
+      <input type="checkbox" className="sc-card-pick" checked={picked.has(cost.id)} onChange={() => togglePick(cost.id)} aria-label={`Select ${cost.product_code} for a group decision`} />
+    ) : null;
+  const tags = (cost: StandardCost) => {
+    const temp = tempProducts[cost.product_code];
+    return (
+      <>
+        {!isMat && temp?.status === 'active' && <span className="wf-temp-badge">TEMP</span>}
+        {!isMat && !productNames.has(cost.product_code.toUpperCase()) && temp?.status !== 'active' && (
+          <span className="wf-temp-badge" title="Not in the product master: open Cost Details to link it to its EasyEcom product or delete it">
+            Not in EasyEcom
+          </span>
+        )}
+        {cost.frozen && <span className="sc-card-frozen"><Lock size={11} /> Frozen</span>}
+        {!isMat && !cost.documented && cost.neg_stage == null && <span className="wf-gap-tag">Undocumented</span>}
+      </>
+    );
+  };
+  const emptyText = `No ${isMat ? 'material code' : 'product'}s match these filters.`;
+
+  const viewSwitch = (
+    <div className="segment sc-view-seg" role="group" aria-label="View">
+      {(['cards', 'kanban', 'table'] as SheetView[]).map((v) => (
+        <button key={v} type="button" className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => chooseView(v)}>
+          {v === 'cards' ? 'Cards' : v === 'kanban' ? 'Kanban' : 'Table'}
+        </button>
+      ))}
+    </div>
+  );
+
+  function sheetViews(list: StandardCost[]) {
+    if (view === 'kanban') {
+      return (
+        <div className="sc-kanban">
+          {KANBAN_STAGES.map((key) => {
+            const items = list.filter((c) => (c.neg_stage ?? '') === key);
+            return (
+              <section key={key || 'not_started'} className="sc-kcol" aria-label={COST_STAGE_LABEL[key]}>
+                <header className="sc-kcol-head">
+                  <span className={`wf-status tone-${COST_STAGE_TONE[key] ?? 'purple'}`}>{COST_STAGE_LABEL[key]}</span>
+                  <span className="sc-kcol-n">{items.length}</span>
+                </header>
+                <small className="sc-kcol-hint">{nextActor(key || null)}</small>
+                {items.map((cost) => (
+                  <article className="sc-kcard" key={cost.product_code}>
+                    <div className="sc-kcard-top">
+                      <span className="mono sc-card-code">{pickBox(cost)}{cost.product_code}</span>
+                      {cost.frozen && <Lock size={11} aria-label="Frozen" />}
+                    </div>
+                    <Link className="sc-kcard-name" href={detailHref(cost)}>{nameOf(cost) || <span className="wf-subtle">{missingName}</span>}</Link>
+                    <div className="sc-kcard-rates">
+                      {rateCols.map((r) => (
+                        <span key={r.label}><small>{r.label}</small>{rateDisplay(r.get(cost))}</span>
+                      ))}
+                    </div>
+                    <div className="sc-kcard-foot">
+                      <small className="wf-subtle">{updatedOf(cost) ? `Updated ${updatedOf(cost)}` : 'No cost yet'}</small>
+                      <span className="sc-card-tags">{tags(cost)}</span>
+                    </div>
+                  </article>
+                ))}
+                {!items.length && <p className="sc-kcol-empty">Nothing here.</p>}
+              </section>
+            );
+          })}
+        </div>
+      );
+    }
+    if (view === 'table') {
+      return (
+        <div className="table-scroll sc-table-wrap">
+          <table className="wf-grid sc-table">
+            <thead>
+              <tr>
+                <th {...sort.th('code', (c) => c.product_code)}>{codeLabel} {sort.ind('code')}</th>
+                <th {...sort.th('name', (c) => nameOf(c) ?? '')}>{isMat ? 'Material' : 'Product'} {sort.ind('name')}</th>
+                <th {...sort.th('stage', (c) => COST_STAGE_LABEL[c.neg_stage ?? ''] ?? '')}>Stage {sort.ind('stage')}</th>
+                {rateCols.map((r) => (
+                  <th key={r.label} className="num" {...sort.th(`rate-${r.label}`, (c) => (r.get(c) == null ? null : Number(r.get(c))))}>{r.label} {sort.ind(`rate-${r.label}`)}</th>
+                ))}
+                <th>Target</th>
+                <th>Next step</th>
+                <th {...sort.th('updated', (c) => rateHistory[c.product_code]?.[0]?.accepted_at ?? c.updated_at ?? '')}>Updated {sort.ind('updated')}</th>
+                <th aria-label="Open" />
+              </tr>
+            </thead>
+            <tbody>
+              {sort.apply(list).map((cost) => (
+                <tr key={cost.product_code}>
+                  <td><span className="mono sc-card-code">{pickBox(cost)}{cost.product_code}</span></td>
+                  <td className="sc-table-name">
+                    <span>{nameOf(cost) || <span className="wf-subtle">{missingName}</span>}</span>
+                    <span className="sc-card-tags">{tags(cost)}</span>
+                  </td>
+                  <td>{stageBadge(cost)}</td>
+                  {rateCols.map((r) => <td key={r.label} className="num">{rateDisplay(r.get(cost))}</td>)}
+                  <td className="wf-subtle">{targetSummary(cost, isMat ? 'material' : 'fg') ?? '—'}</td>
+                  <td className="wf-subtle">{nextActor(cost.neg_stage)}</td>
+                  <td className="wf-subtle">{updatedOf(cost) ?? '—'}</td>
+                  <td><Link className="wf-btn wf-btn-ghost wf-btn-sm" href={detailHref(cost)}>Cost Details</Link></td>
+                </tr>
+              ))}
+              {!list.length && (
+                <tr><td colSpan={rateCols.length + 7} className="wf-empty-cell">{emptyText}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    // Cards: code, name, then the three rates side by side, the Cost Details link, and when
+    // the current cost was last accepted. Rate entry and the negotiation steps live on the
+    // product's own page; the sheet is for scanning.
+    return (
+      <div className="sc-cards">
+        {list.map((cost) => {
+          const updated = updatedOf(cost);
+          return (
+            <article className="sc-card" key={cost.product_code}>
+              <div className="sc-card-head">
+                <span className="mono sc-card-code">{pickBox(cost)}{cost.product_code}</span>
+                {stageBadge(cost)}
+              </div>
+              <h3 className="sc-card-name">{nameOf(cost) || <span className="wf-subtle">{missingName}</span>}</h3>
+              <div className="sc-card-rates">
+                {rateCols.map((r) => (
+                  <div key={r.label}><span>{r.label}</span><strong>{rateDisplay(r.get(cost))}</strong></div>
+                ))}
+              </div>
+              <div className="sc-card-foot">
+                <Link className="wf-btn wf-btn-ghost wf-btn-sm sc-card-btn" href={detailHref(cost)}>Cost Details</Link>
+                <small className="wf-subtle">{updated ? `Cost updated ${updated}` : 'No cost recorded yet'}</small>
+              </div>
+              <div className="sc-card-tags">{tags(cost)}</div>
+            </article>
+          );
+        })}
+        {!list.length && <p className="wf-empty-cell sc-cards-empty">{emptyText}</p>}
+      </div>
+    );
+  }
+
   const addForm = editable ? (
     <div className="wf-form-panel">
       {isMat ? (
@@ -392,58 +579,14 @@ export function StandardCostClient({
             {role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})
           </button>
         </div>
+        {viewSwitch}
         <span className="wf-subtle">{shown.length} shown</span>
       </div>
 
-      {/* Material codes get the same cards as Finished Goods: code, what the material is,
-          the three rates, then Cost Details. Rate entry happens on the code's own page. */}
+      {/* Material codes get the same three views as Finished Goods. Rate entry happens on the
+          code's own page. */}
       <div className="table-panel wf-grid-panel">
-        <div className="sc-cards">
-          {sortCards(shown).map((cost) => {
-            const stageKey = cost.neg_stage ?? '';
-            const latest = rateHistory[cost.product_code]?.[0] ?? null;
-            const updated = shortDate(latest?.accepted_at ?? cost.updated_at);
-            return (
-              <article className="sc-card" key={cost.product_code}>
-                <div className="sc-card-head">
-                  <span className="mono sc-card-code">
-                    {pickable(cost) && (
-                      <input type="checkbox" className="sc-card-pick" checked={picked.has(cost.id)} onChange={() => togglePick(cost.id)} aria-label={`Select ${cost.product_code} for a group decision`} />
-                    )}
-                    {cost.product_code}
-                  </span>
-                  <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
-                    {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
-                  </span>
-                </div>
-                <h3 className="sc-card-name">
-                  {materialNames[cost.product_code.toUpperCase()] || (
-                    <span className="wf-subtle">Not in the material master</span>
-                  )}
-                </h3>
-                <div className="sc-card-rates">
-                  <div><span>{fobLabel}</span><strong>{rateDisplay(cost.fob_cost)}</strong></div>
-                  <div><span>{jobLabel}</span><strong>{rateDisplay(cost.job_cost)}</strong></div>
-                  <div><span>{efobLabel}</span><strong>{rateDisplay(cost.efob_cost)}</strong></div>
-                </div>
-                <div className="sc-card-foot">
-                  <Link className="wf-btn wf-btn-ghost wf-btn-sm sc-card-btn" href={`/standard-cost/${encodeURIComponent(cost.product_code)}?track=material`}>
-                    Cost Details
-                  </Link>
-                  <small className="wf-subtle">
-                    {updated ? `Cost updated ${updated}` : 'No cost recorded yet'}
-                  </small>
-                </div>
-                <div className="sc-card-tags">
-                  {cost.frozen && <span className="sc-card-frozen"><Lock size={11} /> Frozen</span>}
-                </div>
-              </article>
-            );
-          })}
-          {!shown.length && (
-            <p className="wf-empty-cell sc-cards-empty">No {codeLabel.toLowerCase()}s match these filters.</p>
-          )}
-        </div>
+        {sheetViews(sortCards(shown))}
       </div>
         </>
       ) : (
@@ -457,7 +600,7 @@ export function StandardCostClient({
 
           <section className="sc-fg-sheet" aria-label="Finished Goods cost sheet">
             <div className="sc-fg-sheet-head">
-              <div><h2>Finished Goods cost sheet</h2><p>One card per product. Open Cost Details to see the full record and change a rate.</p></div>
+              <div><h2>Finished Goods cost sheet</h2><p>Every product as cards, by stage (Kanban) or as a table. Open Cost Details to see the full record and change a rate.</p></div>
               <div className="sc-fg-head-actions">
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={exportFinishedGoods}>
                   <Download size={14} /> Export CSV
@@ -494,70 +637,12 @@ export function StandardCostClient({
                 <button type="button" className={!mineOnly ? 'active' : ''} aria-pressed={!mineOnly} onClick={() => setMineOnly(false)}>All products</button>
                 <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
               </div>
+              {viewSwitch}
             </div>
             {role === 'admin' && mineOnly && (
               <ListBulkDecide items={shown} track={isMat ? 'material' : 'fg'} picked={picked} setPicked={setPicked} pickable={pickable} />
             )}
-            {/* One card per product: code, name, then the three rates side by side, the
-                Cost Details link, and when the current cost was last accepted. Rate entry
-                and the negotiation steps live on the product's own page, which is where a
-                cost is actually worked out — the sheet is for scanning. */}
-            <div className="sc-cards">
-              {sortCards(shown).map((cost) => {
-                const stageKey = cost.neg_stage ?? '';
-                const latest = rateHistory[cost.product_code]?.[0] ?? null;
-                const updated = shortDate(latest?.accepted_at ?? cost.updated_at);
-                const temp = tempProducts[cost.product_code];
-                return (
-                  <article className="sc-card" key={cost.product_code}>
-                    <div className="sc-card-head">
-                      <span className="mono sc-card-code">
-                        {pickable(cost) && (
-                          <input type="checkbox" className="sc-card-pick" checked={picked.has(cost.id)} onChange={() => togglePick(cost.id)} aria-label={`Select ${cost.product_code} for a group decision`} />
-                        )}
-                        {cost.product_code}
-                      </span>
-                      <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
-                        {COST_STAGE_LABEL[stageKey] ?? 'Not started'}
-                      </span>
-                    </div>
-                    <h3 className="sc-card-name">
-                      {productNames.get(cost.product_code.toUpperCase()) || temp?.name || (
-                        <span className="wf-subtle">Product name unavailable</span>
-                      )}
-                    </h3>
-                    <div className="sc-card-rates">
-                      <div><span>Job</span><strong>{rateDisplay(cost.job_cost)}</strong></div>
-                      <div><span>FOB</span><strong>{rateDisplay(cost.fob_cost)}</strong></div>
-                      <div><span>E-FOB</span><strong>{rateDisplay(cost.efob_cost)}</strong></div>
-                    </div>
-                    <div className="sc-card-foot">
-                      <Link className="wf-btn wf-btn-ghost wf-btn-sm sc-card-btn" href={`/standard-cost/${encodeURIComponent(cost.product_code)}`}>
-                        Cost Details
-                      </Link>
-                      <small className="wf-subtle">
-                        {updated ? `Cost updated ${updated}` : 'No cost recorded yet'}
-                      </small>
-                    </div>
-                    <div className="sc-card-tags">
-                      {temp?.status === 'active' && <span className="wf-temp-badge">TEMP</span>}
-                      {!productNames.has(cost.product_code.toUpperCase()) && temp?.status !== 'active' && (
-                        <span className="wf-temp-badge" title="Not in the product master: open Cost Details to link it to its EasyEcom product or delete it">
-                          Not in EasyEcom
-                        </span>
-                      )}
-                      {cost.frozen && <span className="sc-card-frozen"><Lock size={11} /> Frozen</span>}
-                      {!cost.documented && cost.neg_stage == null && (
-                        <span className="wf-gap-tag">Undocumented</span>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-              {!shown.length && (
-                <p className="wf-empty-cell sc-cards-empty">No products match these filters.</p>
-              )}
-            </div>
+            {sheetViews(sortCards(shown))}
             <div className="sc-fg-sheet-foot"><span>{shown.length} of {costs.length} products shown</span><span>Rates in ₹ per piece</span></div>
           </section>
 

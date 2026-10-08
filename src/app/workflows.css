@@ -1877,6 +1877,67 @@ th.wf-cell-input { background: #33302b; color: #fff; }
   padding: 14px 16px 16px;
 }
 .sc-cards-empty { grid-column: 1 / -1; text-align: center; padding: 26px 0; }
+
+/* ---- Standard Cost: Kanban and Table views of the same sheet ---- */
+.sc-view-seg { flex: 0 0 auto; }
+.sc-kanban {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: 10px;
+  padding: 14px 16px 16px;
+  overflow-x: auto;
+  align-items: start;
+}
+.sc-kcol {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: #f6f6f4;
+  box-shadow: inset 0 0 0 1px var(--line, #e7e2d2);
+}
+.sc-kcol-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sc-kcol-n {
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--line, #e7e2d2);
+  color: var(--ink-3, #6e695e);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 20px;
+  text-align: center;
+}
+.sc-kcol-hint { margin-top: -4px; color: var(--ink-3, #6e695e); font-size: 10.5px; }
+.sc-kcol-empty { margin: 4px 0; color: var(--ink-4, #8c9196); font-size: 11.5px; text-align: center; }
+.sc-kcard {
+  display: grid;
+  gap: 6px;
+  padding: 10px 11px;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.sc-kcard:hover { border-color: #cfc9b6; box-shadow: 0 3px 12px rgba(0, 0, 0, .06); }
+.sc-kcard-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--ink-3, #6e695e); }
+.sc-kcard-name { color: var(--ink-1, #1f1d19); font-size: 12.5px; font-weight: 650; line-height: 1.3; text-decoration: none; overflow-wrap: anywhere; }
+.sc-kcard-name:hover { text-decoration: underline; }
+.sc-kcard-rates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sc-kcard-rates small { display: block; color: var(--ink-3, #6e695e); font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.sc-kcard-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+.sc-kcard-foot small { font-size: 10.5px; }
+
+.sc-table-wrap { padding: 0 0 4px; }
+.sc-table { width: 100%; min-width: 980px; }
+.sc-table td { vertical-align: middle; }
+.sc-table td.num, .sc-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.sc-table-name { min-width: 200px; }
+.sc-table-name > span:first-child { display: block; font-weight: 600; color: var(--ink-1, #1f1d19); white-space: normal; }
+.sc-table-name .sc-card-tags { margin-top: 3px; }
 .sc-card {
   display: flex;
   flex-direction: column;
