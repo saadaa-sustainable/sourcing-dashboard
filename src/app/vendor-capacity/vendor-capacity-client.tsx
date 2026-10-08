@@ -562,7 +562,7 @@ function EntryTab({
       ) : (
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday).</p></div>
+          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday). Each Monday the boxes start blank; until a vendor is updated, every figure keeps using its last saved numbers (hover a blank box to see them).</p></div>
           <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
         </div>
         <div className="table-scroll">
@@ -650,10 +650,17 @@ function CapacityRow({
   /** An admin can correct a locked row; the team waits for Monday. */
   isAdmin?: boolean;
 }) {
-  const initial = {
+  // The vendor's last saved figures. Every calculation (here and on every other page) keeps
+  // using them until a new update is saved.
+  const last = {
     machines_allocated: vendor.current?.machines_allocated?.toString() ?? '',
     active_karigar: vendor.current?.active_karigar?.toString() ?? '',
   };
+  // A new week starts blank: the inputs show only what was entered this week (Monday to Sunday),
+  // so a vendor not yet updated reads as not entered yet.
+  const enteredThisWeek =
+    lastUpdated != null && Date.parse(lastUpdated) >= Date.parse(`${capacityWeekStart()}T00:00:00+05:30`);
+  const initial = enteredThisWeek ? last : { machines_allocated: '', active_karigar: '' };
   const [fields, setFields] = useState(initial);
   const [saved, setSaved] = useState<string | null>(lastUpdated);
   const [error, setError] = useState<string | null>(null);
@@ -664,10 +671,15 @@ function CapacityRow({
     fields.active_karigar !== initial.active_karigar;
 
   const config = typeConfig(vendor.vendor_type);
-  const machines = num(fields.machines_allocated);
-  const karigar = num(fields.active_karigar);
+  // What counts: a typed figure, else the last saved one (a blank field is not zero).
+  const effective = {
+    machines_allocated: fields.machines_allocated !== '' ? fields.machines_allocated : last.machines_allocated,
+    active_karigar: fields.active_karigar !== '' ? fields.active_karigar : last.active_karigar,
+  };
+  const machines = num(effective.machines_allocated);
+  const karigar = num(effective.active_karigar);
   // One model for every figure on the row — the same function Reporting, Vendor Performance
-  // and PO Approval use — fed from what is typed right now.
+  // and PO Approval use — fed from what is typed now, or the last saved figures.
   const model = vendorCapacityModel(
     { machines, karigar, vendorType: vendor.vendor_type, inProcessQty: vendor.inProcessQty },
     rules,
@@ -686,8 +698,8 @@ function CapacityRow({
     const payload = new FormData();
     payload.set('vendor_code', vendor.vendor_code);
     payload.set('vendor_name', vendor.vendor_name);
-    payload.set('machines_allocated', fields.machines_allocated);
-    payload.set('active_karigar', fields.active_karigar);
+    payload.set('machines_allocated', effective.machines_allocated);
+    payload.set('active_karigar', effective.active_karigar);
     payload.set('capacity_per_month', String(model.capacityPerMonth || ''));
     start(async () => {
       const result = await saveVendorCapacityRow(payload);
@@ -713,6 +725,7 @@ function CapacityRow({
             type="number"
             min={0}
             value={fields[field]}
+            title={!enteredThisWeek && last[field] ? `Not entered this week. Last saved: ${last[field]}${lastUpdated ? ` on ${new Date(lastUpdated).toLocaleDateString('en-IN')}` : ''} (still used in calculations)` : undefined}
             disabled={!canType}
             aria-label={`${field === 'machines_allocated' ? 'Machines allocated' : 'Karigar allocated'} for ${vendor.vendor_name || vendor.vendor_code}`}
             onChange={(event) => set(field, event.target.value)}
