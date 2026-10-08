@@ -39,6 +39,7 @@ import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
+import { ClosedMonthHeader } from './closed-month-header';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -810,7 +811,21 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
 
   return (
     <>
-      {/* Page bar: month · status · View/Input on the left; actions on the right. */}
+      {/* A month that is over gets one closed-month header; otherwise the page bar:
+          month · status · View/Input on the left; actions on the right. */}
+      {frozen ? (
+        <ClosedMonthHeader
+          planMonth={planMonth}
+          status={status}
+          submittedAt={plan?.submitted_at ?? null}
+          decisionAt={firstActionAt ?? plan?.approved_at ?? null}
+          compliance={compliance}
+          monthHref={(m) => `/buying-plan?month=${m}`}
+          onExport={exportCsv}
+          exportDisabled={!view.length}
+          chipRef={modeRef}
+        />
+      ) : (
       <div className="bp-pagebar">
         <div className="bp-pagebar-left">
           <Field label="Month">
@@ -922,6 +937,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
           )}
         </div>
       </div>
+      )}
 
       {!isPlanWindowOpen(planMonth) && (
         <Notice tone="warn">
@@ -935,12 +951,6 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       )}
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
-
-      {frozen && (
-        <Notice tone="info">
-          <strong>{monthLabel(planMonth)} is over — this plan is view only.</strong> It shows the data as it was entered; nothing on it can be changed, submitted or approved any more. Plans are filled in on the current and upcoming months.
-        </Notice>
-      )}
 
       {amendOpen && canAmend && (
         <div className="bp-card bp-cardbody" style={{ marginBottom: 14 }}>
@@ -1006,6 +1016,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
               issuedValue={plannedTotals.actualValue}
               byCategory={blendedByCategory}
               byWeave={blendedByWeave}
+              closedOn={frozen ? planMonth : null}
             />
 
             <div className="bp-sticky">
@@ -1057,8 +1068,8 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
           </div>
 
           <div className="bp-stack bp-rightcol">
-            <AttentionCard counts={attention} total={attentionTotal} />
-            <LeadTimesCard buckets={buckets} isAdmin={role === 'admin'} />
+            <AttentionCard counts={attention} total={attentionTotal} closed={frozen} planned={planned.length} />
+            <LeadTimesCard buckets={buckets} isAdmin={role === 'admin' && !frozen} />
             <ValueByTypeCard
               value={valueByPoType}
               total={valueByPoTypeTotal}
@@ -1556,6 +1567,7 @@ function OverviewCard({
   issuedValue,
   byCategory,
   byWeave,
+  closedOn = null,
 }: {
   pctBought: number;
   issuedQty: number;
@@ -1566,42 +1578,62 @@ function OverviewCard({
   byCategory: [string, number][];
   /** 7.1: total blended request by weave (Woven/Knitted), each split by category beneath. */
   byWeave?: { weave: string; value: number; qty: number; cats: [string, number][] }[];
+  /** Plan month when the month is over: the card reads as the month's final figures. */
+  closedOn?: string | null;
 }) {
   const remaining = Math.max(0, plannedQty - issuedQty);
+  const closed = Boolean(closedOn);
+  const frozenOn = closedOn
+    ? new Date(Date.parse(addMonths(closedOn, 1)) - 86_400_000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+    : '';
+  const issuedShare = plannedValue > 0 ? Math.round((issuedValue / plannedValue) * 100) : null;
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
         <h2>
-          Plan overview
-          <InfoDot text={"WHAT: the month at a glance — planned against issued, in pieces and rupees.\n\nHOW: planned = pieces on the approved plan; issued = pieces on real EasyEcom POs dated this month; values at the approved standard cost / the PO rate. The 30-day demand projection is IPDOQ × 30 over the planned products.\n\nUSE: issued well below planned late in the month means the plan is not being executed; issued above planned means buying outside the plan."} />
+          {closed ? 'How the month closed' : 'Plan overview'}
+          <InfoDot text={closed
+            ? "WHAT: the month's final figures — planned against issued, in pieces and rupees.\n\nHOW: planned = pieces on the plan; issued = pieces on real EasyEcom POs dated in the month; values at the approved standard cost / the PO rate.\n\nUSE: how much of the plan was actually bought before the month closed."
+            : "WHAT: the month at a glance — planned against issued, in pieces and rupees.\n\nHOW: planned = pieces on the approved plan; issued = pieces on real EasyEcom POs dated this month; values at the approved standard cost / the PO rate. The 30-day demand projection is IPDOQ × 30 over the planned products.\n\nUSE: issued well below planned late in the month means the plan is not being executed; issued above planned means buying outside the plan."} />
         </h2>
-        <span className="wf-subtle">Run rate and last-3-month average: sales feed not wired yet</span>
+        <span className="wf-subtle">
+          {closed ? `Final figures · frozen ${frozenOn}` : 'Run rate and last-3-month average: sales feed not wired yet'}
+        </span>
       </div>
       <div className="bp-cardbody">
-        <div className="bp-metrics">
+        <div className="bp-metrics" style={closed ? { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' } : undefined}>
           <div className="bp-metric">
-            <div className="label">Buying progress</div>
+            <div className="label">{closed ? 'Bought against plan' : 'Buying progress'}</div>
             <div className="value">{pctBought}%</div>
-            <div className="sub">{fmt.format(issuedQty)} of {fmt.format(plannedQty)} pcs issued</div>
+            <div className="sub">
+              {fmt.format(issuedQty)} of {fmt.format(plannedQty)} pcs issued
+              {closed && remaining > 0 && ` · ${fmt.format(remaining)} never issued`}
+            </div>
             <Progress pct={pctBought} />
           </div>
           <div className="bp-metric">
-            <div className="label">Total plan value</div>
+            <div className="label">{closed ? 'Plan value' : 'Total plan value'}</div>
             <div className="value">{plannedValue ? inr(plannedValue) : '—'}</div>
             <div className="sub">
               {fmt.format(plannedQty)} pcs
               {byCategory.length > 0 && ` · ${byCategory.slice(0, 2).map(([c, v]) => `${c} ${inr(v)}`).join(' · ')}`}
             </div>
           </div>
-          <div className="bp-metric">
-            <div className="label">Demand projection</div>
-            <div className="value">{fmt.format(demandQty)} pcs</div>
-            <div className="sub">30-day, from ROP / DOQ</div>
-          </div>
+          {!closed && (
+            <div className="bp-metric">
+              <div className="label">Demand projection</div>
+              <div className="value">{fmt.format(demandQty)} pcs</div>
+              <div className="sub">30-day, from ROP / DOQ</div>
+            </div>
+          )}
           <div className="bp-metric">
             <div className="label">Issued value</div>
             <div className="value">{issuedValue ? inr(issuedValue) : '—'}</div>
-            <div className="sub">{fmt.format(remaining)} pcs remaining</div>
+            <div className="sub">
+              {closed
+                ? issuedShare != null ? `${issuedShare}% of the plan value` : 'no plan value to compare'
+                : `${fmt.format(remaining)} pcs remaining`}
+            </div>
           </div>
         </div>
         {/* 7.1 — total blended request: Woven / Knitted first, categories beneath each. */}
@@ -1638,25 +1670,43 @@ function OverviewCard({
 function AttentionCard({
   counts,
   total,
+  closed = false,
+  planned = 0,
 }: {
   counts: { missingCost: number; approvalPending: number; notStarted: number; overPlan: number };
   total: number;
+  /** Month is over: the same four counts, worded as what happened. */
+  closed?: boolean;
+  planned?: number;
 }) {
-  const items: { key: string; dot: 'red' | 'yellow' | 'green'; title: string; sub: string; n: number }[] = [
-    { key: 'cost', dot: 'red', title: 'Missing approved cost', sub: 'Blocks plan value visibility', n: counts.missingCost },
-    { key: 'approval', dot: 'yellow', title: 'Approval pending', sub: 'Lines waiting for action', n: counts.approvalPending },
-    { key: 'over', dot: 'red', title: 'Over plan', sub: 'Issued above the planned qty', n: counts.overPlan },
-    { key: 'start', dot: 'yellow', title: 'Not started', sub: 'Planned, nothing issued yet', n: counts.notStarted },
-  ];
+  const items: { key: string; dot: 'red' | 'yellow' | 'green' | 'gray'; title: string; sub: string; n: number }[] = closed
+    ? [
+        { key: 'approval', dot: 'red', title: 'Never approved', sub: 'Still awaiting approval at month end', n: counts.approvalPending },
+        { key: 'start', dot: 'yellow', title: 'Never issued', sub: 'Planned, no PO in the month', n: counts.notStarted },
+        { key: 'over', dot: 'red', title: 'Issued over plan', sub: 'More pieces than planned', n: counts.overPlan },
+        { key: 'cost', dot: 'gray', title: 'No approved cost', sub: 'Value understated on these lines', n: counts.missingCost },
+      ]
+    : [
+        { key: 'cost', dot: 'red', title: 'Missing approved cost', sub: 'Blocks plan value visibility', n: counts.missingCost },
+        { key: 'approval', dot: 'yellow', title: 'Approval pending', sub: 'Lines waiting for action', n: counts.approvalPending },
+        { key: 'over', dot: 'red', title: 'Over plan', sub: 'Issued above the planned qty', n: counts.overPlan },
+        { key: 'start', dot: 'yellow', title: 'Not started', sub: 'Planned, nothing issued yet', n: counts.notStarted },
+      ];
   const live = items.filter((i) => i.n > 0);
   return (
     <section className="bp-card">
       <div className="bp-cardhead">
         <h2>
-          Needs attention
-          <InfoDot text={"WHAT: how many lines need someone's attention, and why.\n\nHOW: four reasons — no approved standard cost; approval still pending; POs issued above the planned quantity; planned but nothing issued yet.\n\nUSE: the review list for the weekly plan meeting."} />
+          {closed ? 'Month-end lines' : 'Needs attention'}
+          <InfoDot text={closed
+            ? "WHAT: how the planned lines stood when the month closed.\n\nHOW: never approved = lines not approved by month end; never issued = planned with no PO dated in the month; issued over plan = POs above the planned quantity; no approved cost = no standard cost, so their value is not counted.\n\nUSE: what to carry into the next month's plan."
+            : "WHAT: how many lines need someone's attention, and why.\n\nHOW: four reasons — no approved standard cost; approval still pending; POs issued above the planned quantity; planned but nothing issued yet.\n\nUSE: the review list for the weekly plan meeting."} />
         </h2>
-        <Badge tone={total ? 'red' : 'green'}>{total ? `${total} item${total === 1 ? '' : 's'}` : 'All clear'}</Badge>
+        {closed ? (
+          <span className="wf-subtle">{fmt.format(planned)} planned</span>
+        ) : (
+          <Badge tone={total ? 'red' : 'green'}>{total ? `${total} item${total === 1 ? '' : 's'}` : 'All clear'}</Badge>
+        )}
       </div>
       <div className="bp-cardbody bp-attention">
         {live.length ? (

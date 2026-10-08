@@ -17,6 +17,16 @@
 .bp-tab.active { background: #fff; color: var(--ink-1, #161513); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); font-weight: 600; }
 
 /* Banner (NPD budget not set). */
+/* Closed (past) month header — replaces the page bar on a month that is over. */
+.bp-closed { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; padding: 14px 16px; border-left: 4px solid var(--ink-3, #6e695e); margin-bottom: 14px; }
+.bp-closed h2 { margin: 0; font-size: 15px; font-weight: 650; color: var(--ink-1, #161513); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bp-closed h2 .bp-badge { gap: 4px; }
+.bp-closed-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 7px; font-size: 12px; color: var(--ink-3, #6e695e); }
+.bp-closed-facts b { color: var(--ink-1, #161513); font-weight: 600; font-variant-numeric: tabular-nums; }
+.bp-closed-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.bp-closed-actions select { border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 8px 28px 8px 10px; background: #fff; font-size: 12px; color: var(--ink-2, #494640); font-family: inherit; }
+@media (max-width: 720px) { .bp-closed { grid-template-columns: 1fr; } .bp-closed-actions { justify-content: flex-start; } }
+
 .bp-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--warning-bg, #faf1dc); border: 1px solid var(--warning-border, #e8c87a); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; }
 .bp-banner strong { font-size: 13px; display: block; color: var(--ink-1, #161513); }
 .bp-banner span { font-size: 12px; color: var(--warning-text, #b57514); }
@@ -96,6 +106,7 @@
 .bp-dot.red { background: var(--danger-text, #c0392b); }
 .bp-dot.yellow { background: #d89b00; }
 .bp-dot.green { background: var(--success-border, #3d9e6b); }
+.bp-dot.gray { background: var(--ink-4, #9a9384); }
 .bp-summaryrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line, #e7e2d2); font-size: 12px; }
 .bp-summaryrow:last-child { border-bottom: 0; }
 .bp-summaryrow > span { color: var(--ink-2, #494640); }

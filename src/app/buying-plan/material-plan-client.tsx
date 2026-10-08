@@ -18,6 +18,7 @@ import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
+import { ClosedMonthHeader } from './closed-month-header';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -206,6 +207,24 @@ export function MaterialPlanClient({
     setAddBase('');
   }
 
+  // Export = every line of the plan as entered (used by the closed-month header).
+  function exportCsv() {
+    downloadCsv(
+      `material-buying-plan-${planMonth.slice(0, 7)}.csv`,
+      ['material_type', 'material_code', 'colour', 'job_qty', 'purchase_qty', 'uom', 'value', 'remark'],
+      view.map((v) => [
+        v.row.material_type,
+        v.row.material_code,
+        v.colour ?? '',
+        v.row.job_qty,
+        v.row.purchase_qty,
+        v.row.uom,
+        String(Math.round(v.value)),
+        v.row.remark,
+      ]),
+    );
+  }
+
   function downloadTemplate() {
     const examples = materialCodes.slice(0, 2).map((c) => [
       c.material_type,
@@ -334,6 +353,18 @@ export function MaterialPlanClient({
 
   return (
     <>
+      {frozen ? (
+        <ClosedMonthHeader
+          planMonth={planMonth}
+          status={status}
+          submittedAt={plan?.submitted_at ?? null}
+          decisionAt={plan?.approved_at ?? null}
+          monthHref={(m) => `/buying-plan?month=${m}&type=material`}
+          onExport={exportCsv}
+          exportDisabled={!view.length}
+          chipRef={modeRef}
+        />
+      ) : (
       <div className="wf-toolbar">
         <div className="wf-toolbar-left">
           <Field label="Month">
@@ -403,6 +434,7 @@ export function MaterialPlanClient({
           </div>
         )}
       </div>
+      )}
 
       {/* Material type — the primary filter across the track */}
       <div className="wf-toolbar">
@@ -469,12 +501,6 @@ export function MaterialPlanClient({
         <a href="/standard-cost?track=material">Material Standard Cost</a>; enter a quantity and the
         value computes automatically.
       </Notice>
-
-      {frozen && (
-        <Notice tone="info">
-          <strong>{monthLabel(planMonth)} is over — this plan is view only.</strong> It shows the data as it was entered; nothing on it can be changed, submitted or approved any more.
-        </Notice>
-      )}
 
       {!editable && !frozen && mode === 'input' && (
         <Notice tone="warn">

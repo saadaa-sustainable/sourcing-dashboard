@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { addMonths, monthLabel, monthStart } from '@/lib/forms/approval';
+import { addMonths, isPlanFrozen, monthLabel, monthStart } from '@/lib/forms/approval';
 import {
   currentUser,
   loadActualsByProduct,
@@ -138,7 +138,13 @@ async function FgTrack({ planMonth, role, startInInput }: { planMonth: string; r
   const firstActionAt = plan?.id ? await loadPlanFirstActionAt(plan.id) : null;
   return (
     <>
-    <NpdBudgetCard budget={npdBudget} role={role} />
+    {/* A month that is over: nothing can be set, so no "not set" banner; a cap that was set
+        shows read-only. */}
+    {isPlanFrozen(planMonth) ? (
+      npdBudget.cap != null && <NpdBudgetCard budget={npdBudget} role="viewer" />
+    ) : (
+      <NpdBudgetCard budget={npdBudget} role={role} />
+    )}
     <BuyingPlanClient
       planMonth={planMonth}
       startInInput={startInInput}
