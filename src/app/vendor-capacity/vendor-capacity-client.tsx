@@ -162,7 +162,7 @@ export function VendorCapacityClient({
   vendors: Vendor[];
   role: SdRole;
   /** A past week opened from the board: vendors carry that week's figures; read-only. */
-  asOf?: { week: string; label: string } | null;
+  asOf?: { week: string; label: string; inProcessKept: boolean } | null;
   allocations?: VendorProductAllocation[];
   catalog?: ProductCatalogItem[];
   leadDays: { job: number; efob: number; fob: number };
@@ -244,7 +244,7 @@ function EntryTab({
   rules = DEFAULT_CAPACITY_RULES,
 }: {
   vendors: Vendor[];
-  asOf?: { week: string; label: string } | null;
+  asOf?: { week: string; label: string; inProcessKept: boolean } | null;
   role: SdRole;
   initialSearch?: string;
   /** Product allocations, so the sheet can be narrowed to who makes a given product. */
@@ -314,7 +314,6 @@ function EntryTab({
     return t == null ? m : m == null ? t : Math.max(m, t);
   }, null);
   const weekStart = capacityWeekStart();
-  const weekNext = capacityWeekNext();
 
   const q = search.trim().toLowerCase();
   const filtered = decorated
@@ -378,9 +377,11 @@ function EntryTab({
         <Notice tone="info">
           <strong>Week {asOf.label}.</strong> Machines, karigars, capacity and Last updated are each
           vendor&apos;s figures as entered by the end of this week (its last update on or before that
-          Sunday); a vendor with nothing entered by then reads Not entered. On order (in process),
-          Available and Capacity util use today&apos;s open POs — the past in-process position is not
-          kept. Read-only: to change figures, open the current week.
+          Sunday); a vendor with nothing entered by then reads Not entered.{' '}
+          {asOf.inProcessKept
+            ? 'On order (in process), Available and Capacity util use what was on order at the end of this week.'
+            : 'On order (in process), Available and Capacity util use today’s open POs: the weekly in-process copy started after this week.'}{' '}
+          Read-only: to change figures, open the current week.
         </Notice>
       )}
       {!asOf && staleCount > 0 && staleCount >= Math.max(1, Math.round(decorated.length * 0.5)) && (
@@ -389,7 +390,7 @@ function EntryTab({
           {oldestUpdate ? ` — the most recent entry anywhere is ${new Date(oldestUpdate).toLocaleDateString('en-IN')}` : ''}.
           Every capacity, availability and utilisation figure on this page is only as current
           as that. Get this week&apos;s submission from each merchandiser before these numbers are
-          presented. This week opened Monday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}; it locks per vendor on submission and reopens {new Date(`${weekNext}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.
+          presented. This week runs Monday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })} to Sunday; a vendor can be updated on any day of it.
         </Notice>
       )}
 
@@ -490,8 +491,8 @@ function EntryTab({
             </>
           ) : (
             <>
-              <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and submit that row. It locks for the week; next week opens on Monday.</p></div>
-              <span className="vc-pill vc-pill-blue">Weekly submission · locks until Monday</span>
+              <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday).</p></div>
+              <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
             </>
           )}
         </div>
@@ -701,9 +702,9 @@ function CapacityRow({
               className="wf-btn wf-btn-primary wf-btn-sm"
               onClick={save}
               disabled={pending || !dirty}
-              title={locked ? 'Admin correction to a submitted week' : 'Submit this week and lock the row until Monday'}
+              title={locked ? 'Admin correction to a submitted week' : 'Save this vendor’s figures (any day of the week)'}
             >
-              <Save size={14} /> {pending ? 'Submitting…' : locked ? 'Correct' : 'Submit this week'}
+              <Save size={14} /> {pending ? 'Saving…' : locked ? 'Correct' : 'Save update'}
             </button>
           )}
         </td>

@@ -298,9 +298,16 @@ export function capacityWeekNext(date = new Date()): string {
   return new Date(start.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
 }
 
+/**
+ * The once-a-week submit lock. Off for now (2026-10-08): a vendor can be updated on any day,
+ * as often as needed; the board counts each vendor's latest update in a week. Set true to bring
+ * the lock back (row locked from submission until the next Monday; admins can still correct).
+ */
+export const CAPACITY_WEEKLY_LOCK = false;
+
 /** Was this submission made inside the current capacity week (so the row is locked)? */
 export function capacityLocked(submittedAt: string | null | undefined, date = new Date()): boolean {
-  if (!submittedAt) return false;
+  if (!CAPACITY_WEEKLY_LOCK || !submittedAt) return false;
   const weekStartUtc = Date.parse(`${capacityWeekStart(date)}T00:00:00Z`) - 5.5 * 3600_000;
   return Date.parse(submittedAt) >= weekStartUtc;
 }

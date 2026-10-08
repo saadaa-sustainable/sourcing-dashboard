@@ -462,7 +462,7 @@ const PAGE: Record<string, Record<string, string>> = {
     'type': 'The PO type from the vendor master (locked). It sets the lead days under it, which PO capacity is built on.',
     'in process': 'Pieces on approved POs with this vendor not yet received.',
     'utilization': 'Pieces on order ÷ PO capacity × 100; past 100% it reads "100% Over Utilised".',
-    'last updated': 'When this vendor was last submitted. "Submitted · locked" = done this week; it reopens Monday. Over 7 days without a submission = stale.',
+    'last updated': 'When this vendor was last updated. Any day of the week; over 7 days without an update = stale.',
   },
   '/po-amendment': {
     'po': 'The issued PO being amended — its EasyEcom reference, vendor, products and EasyEcom PO number.',

@@ -236,6 +236,23 @@ export async function loadVendorOtif(
 }
 
 /**
+ * In-process quantity per vendor as it stood at the end of a past week (the week's Monday),
+ * from the hourly copy in sd_vendor_in_process_weekly. Null when that week has no copy
+ * (weeks before the copy started); a vendor missing from a copied week had nothing on order.
+ */
+export async function loadInProcessForWeek(week: string): Promise<Map<string, number> | null> {
+  const supabase = await client();
+  // paging-ok: filtered to one week, one row per vendor (a few dozen)
+  const { data } = await supabase
+    .from('sd_vendor_in_process_weekly')
+    .select('vendor_code, in_process_qty')
+    .eq('week', week);
+  const rows = (data ?? []) as { vendor_code: string; in_process_qty: number | null }[];
+  if (!rows.length) return null;
+  return new Map(rows.map((r) => [r.vendor_code.trim().toLowerCase(), Number(r.in_process_qty) || 0]));
+}
+
+/**
  * In-process (Approved) quantity per vendor, from the PO pipeline view
  * (sd_vendor_in_process). Feeds Vendor Capacity's available-capacity — real PO
  * load instead of the sheet's open-qty. Keyed by lower-cased vendor_code.

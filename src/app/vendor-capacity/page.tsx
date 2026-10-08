@@ -5,6 +5,7 @@ import {
   currentUser,
   loadAnalyticsRules,
   loadInProcessByVendor,
+  loadInProcessForWeek,
   loadProductCatalog,
   loadVendorCapacity,
   loadVendorCapacityAsOfWeek,
@@ -122,14 +123,16 @@ export default async function VendorCapacityPage({
     params.week && /^\d{4}-\d{2}-\d{2}$/.test(params.week) && params.week === capacityWeekStart(new Date(`${params.week}T12:00:00+05:30`))
       ? params.week
       : null;
-  let asOf: { week: string; label: string } | null = null;
+  let asOf: { week: string; label: string; inProcessKept: boolean } | null = null;
   let shown = vendors;
   if (week && week < capacityWeekStart()) {
-    const snap = await loadVendorCapacityAsOfWeek(week);
+    const [snap, inProcessThen] = await Promise.all([loadVendorCapacityAsOfWeek(week), loadInProcessForWeek(week)]);
     shown = vendors.map((v) => {
       const e = snap.get(key(v.vendor_code));
       return {
         ...v,
+        // On order at the end of that week, once the weekly copy covers it; else today's.
+        inProcessQty: inProcessThen ? (inProcessThen.get(key(v.vendor_code)) ?? 0) : v.inProcessQty,
         current: e
           ? { ...(v.current ?? {}), vendor_code: v.vendor_code, machines_allocated: e.machines, active_karigar: e.karigar, capacity_per_month: e.capacity, entry_date: e.at, submitted_at: e.at } as NonNullable<typeof v.current>
           : null,
@@ -137,7 +140,7 @@ export default async function VendorCapacityPage({
     });
     const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
     const end = new Date(Date.parse(`${week}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
-    asOf = { week, label: `Mon ${day(week)} – Sun ${day(end)}` };
+    asOf = { week, label: `Mon ${day(week)} – Sun ${day(end)}`, inProcessKept: inProcessThen != null };
   }
 
   return (

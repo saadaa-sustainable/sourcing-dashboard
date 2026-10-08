@@ -8,7 +8,7 @@ import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, capacityLocked, capacityWeekNext, statusOnSubmit } from '../approval';
+import { CAPACITY_WEEKLY_LOCK, canApprove, canEdit, canSubmit, capacityLocked, capacityWeekNext, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -46,9 +46,9 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   if (!vendor_code) return fail('Vendor code is required.');
 
   const supabase = await supa();
-  // Weekly submit-lock: once a vendor's figures are submitted inside the current capacity
-  // week (Monday to Sunday) they stay as submitted until the next Monday. An admin may
-  // correct a locked row; the team waits.
+  // Weekly submit-lock (only while CAPACITY_WEEKLY_LOCK is on; off for now): once a vendor's
+  // figures are submitted inside the current capacity week (Monday to Sunday) they stay as
+  // submitted until the next Monday. An admin may correct a locked row; the team waits.
   if (user.role !== 'admin') {
     const { data: existing } = await supabase
       .from('sd_vendor_capacity_log')
@@ -83,7 +83,7 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   // Capacity/month feeds the PO Approval vendor headroom tab (main page + queue).
   revalidatePath('/po-approval');
   revalidatePath('/approvals');
-  return done(`Submitted ${vendor_code} for this week — locked until Monday.`);
+  return done(CAPACITY_WEEKLY_LOCK ? `Submitted ${vendor_code} for this week — locked until Monday.` : `Saved ${vendor_code}.`);
 }
 
 /** Vendor Capacity item 1 — upsert one vendor+product capacity allocation (pieces/month). */
