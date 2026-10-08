@@ -463,6 +463,7 @@ function EntryTab({
         </div>
       </div>
 
+      {!asOf && (
       <Notice tone="info">
         Only <strong>two fields are ever typed</strong>:{' '}
         <span className="wf-live-tag">LIVE</span> Machines allocated and Karigar allocated.
@@ -481,20 +482,88 @@ function EntryTab({
         from the vendor master. A vendor not updated in over {STALE_DAYS} days is flagged{' '}
         <strong>stale</strong>.
       </Notice>
+      )}
 
+      {asOf ? (
+        <div className="table-panel vc-table-card vc-snap-card">
+          <div className="vc-card-head">
+            <div><h2>Capacity · week {asOf.label}</h2><p>What each vendor had entered by the end of this week.</p></div>
+            <span className="vc-pill">Past week · view only</span>
+          </div>
+          <div className="table-scroll">
+            <table className="vc-snap">
+              <thead>
+                <tr>
+                  <th {...sort.th('vendor', (d) => d.vendor.vendor_name || d.vendor.vendor_code)}>Vendor {sort.ind('vendor')}</th>
+                  <th className="num" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>Machines {sort.ind('machines')}</th>
+                  <th className="num" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>Karigars {sort.ind('karigar')}</th>
+                  <th className="num" {...sort.th('cap', (d) => modelOf(d.vendor, rules).capacityPerMonth || null)}>Capacity / month {sort.ind('cap')}</th>
+                  <th className="num" {...sort.th('po', (d) => modelOf(d.vendor, rules).poCapacity || null)}>PO capacity {sort.ind('po')}</th>
+                  <th className="num" {...sort.th('onorder', (d) => d.vendor.inProcessQty)}>On order {sort.ind('onorder')}</th>
+                  <th className="num">Available</th>
+                  <th {...sort.th('util', (d) => modelOf(d.vendor, rules).capacityUtil)}>Capacity used {sort.ind('util')}</th>
+                  <th className="num">Machine util</th>
+                  <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sort.apply(filtered).map(({ vendor, lastUpdated, isStale }) => {
+                  const m = modelOf(vendor, rules);
+                  const type = typeConfig(vendor.vendor_type)?.label ?? (vendor.vendor_type || '—');
+                  const util = m.capacityUtil ?? 0;
+                  return (
+                    <tr key={vendor.vendor_code} className={!m.entered ? 'is-empty' : m.over ? 'is-over' : undefined}>
+                      <td>
+                        <div className="vc-snap-vendor">
+                          <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
+                          <span>{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''} · {type} · {m.leadDays}d lead</span>
+                        </div>
+                        <DeboardedPill flag={vendor.deboarded} />
+                      </td>
+                      {m.entered ? (
+                        <>
+                          <td className="num">{fmt.format(Number(vendor.current?.machines_allocated ?? 0))}</td>
+                          <td className="num">{fmt.format(Number(vendor.current?.active_karigar ?? 0))}</td>
+                          <td className="num strong">{fmt.format(m.capacityPerMonth)}</td>
+                          <td className="num">{fmt.format(m.poCapacity)}</td>
+                          <td className="num">{fmt.format(vendor.inProcessQty)}</td>
+                          <td className="num">{m.over ? <span className="vc-over-text">Over</span> : fmt.format(m.available ?? 0)}</td>
+                          <td>
+                            <div className="vc-snap-util">
+                              <span className={m.over ? 'vc-util-over' : undefined}>{utilisationLabel(m.capacityUtil)}</span>
+                              <span className="vc-progress">
+                                <span className={m.over ? 'vc-progress-over' : util >= 80 ? 'vc-progress-warn' : undefined} style={{ width: `${Math.min(100, Math.max(0, util))}%` }} />
+                              </span>
+                            </div>
+                          </td>
+                          <td className="num">{m.machineUtil == null ? '—' : `${m.machineUtil}%`}</td>
+                        </>
+                      ) : (
+                        <td colSpan={8} className="vc-snap-none">Nothing entered by the end of this week{vendor.inProcessQty ? ` · ${fmt.format(vendor.inProcessQty)} pcs on order` : ''}</td>
+                      )}
+                      <td>
+                        <div className="vc-snap-date">
+                          <span>{lastUpdated ? new Date(lastUpdated).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never'}</span>
+                          {isStale && <span className="vc-pill vc-pill-amber">Stale</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!filtered.length && (
+                  <tr>
+                    <td colSpan={10} className="vc-snap-none">{staleOnly ? 'No stale vendors in this week.' : 'No vendors match your filters.'}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          {asOf ? (
-            <>
-              <div><h2>Capacity · week {asOf.label}</h2><p>What each vendor had entered by the end of this week.</p></div>
-              <span className="vc-pill">Past week · read-only</span>
-            </>
-          ) : (
-            <>
-              <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday).</p></div>
-              <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
-            </>
-          )}
+          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday).</p></div>
+          <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
         </div>
         <div className="table-scroll">
           <table className="wide-table wf-grid">
@@ -549,6 +618,7 @@ function EntryTab({
           </table>
         </div>
       </div>
+      )}
 
       <div className="wf-footer-bar">
         <p className="wf-footer-note">
@@ -658,8 +728,8 @@ function CapacityRow({
         </>
       ) : (
         <>
-          <td className="num wf-subtle">Not entered</td>
-          <td className="num wf-subtle">Not entered</td>
+          <td className="num"><span className="wf-subtle">Not entered</span></td>
+          <td className="num"><span className="wf-subtle">Not entered</span></td>
         </>
       )}
       <td className="num wf-fixed-value">
