@@ -206,6 +206,8 @@ export function MaterialPlanClient({
     { job: 0, purchase: 0 },
   );
   const grandTotal = totals.job + totals.purchase;
+  const plannedLines = rows.filter((r) => num(r.job_qty) + num(r.purchase_qty) > 0).length;
+  const missingCostLines = view.filter((v) => v.missingCost).length;
 
   // Codes for the active type not already added — for the "Add code" picker.
   const usedCodes = useMemo(() => new Set(rows.map((r) => r.material_code)), [rows]);
@@ -462,8 +464,8 @@ export function MaterialPlanClient({
           chipRef={modeRef}
         />
       ) : (
-      <div className="wf-toolbar">
-        <div className="wf-toolbar-left">
+      <div className="bp-pagebar">
+        <div className="bp-pagebar-left">
           <Field label="Month">
             <select
               value={planMonth}
@@ -497,8 +499,9 @@ export function MaterialPlanClient({
             </div>
           )}
         </div>
+        <div className="bp-pagebar-right">
         {editable && mode === 'input' && (
-          <div className="wf-toolbar-right">
+          <>
             <input
               ref={fileRef}
               type="file"
@@ -528,61 +531,22 @@ export function MaterialPlanClient({
             >
               <ExternalLink size={15} /> Add new {TYPE_LABEL[type].toLowerCase()}
             </a>
-          </div>
+          </>
         )}
-      </div>
-      )}
-
-      {/* Material type — the primary filter for Input (the View has its own type filter) */}
-      {mode === 'input' && (
-      <div className="wf-toolbar">
-        <div className="segment wf-segment">
-          {TYPES.map((t) => {
-            const count = rows.filter((r) => r.material_type === t.key).length;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                className={type === t.key ? 'active' : ''}
-                onClick={() => setType(t.key)}
-              >
-                {t.label}
-                {count > 0 && <span className="wf-seg-count">{count}</span>}
-              </button>
-            );
-          })}
+          <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
+            <Download size={15} /> Export
+          </button>
+          {editable && mode === 'input' && (
+            <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
+              <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
+            </button>
+          )}
+          {canSubmit(role, status) && !frozen && (
+            <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
+              <Send size={15} /> Submit for approval
+            </button>
+          )}
         </div>
-        {editable && mode === 'input' && (
-          <div className="wf-toolbar-right">
-            {baseFabrics.length > 0 && (
-              <select
-                className="wf-add-select"
-                value={addBase}
-                onChange={(e) => setAddBase(e.target.value)}
-                disabled={!available.length}
-                aria-label="Base fabric"
-              >
-                <option value="">All base fabrics</option>
-                {baseFabrics.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            )}
-            <select className="wf-add-select" value={addCode} onChange={(e) => addRow(e.target.value)} disabled={!codeChoices.length}>
-              <option value="">
-                {codeChoices.length ? `Add ${TYPE_LABEL[type].toLowerCase()} code (${codeChoices.length})` : 'All codes added'}
-              </option>
-              {codeChoices.map((c) => (
-                <option key={c.material_code} value={c.material_code}>
-                  {c.material_code}
-                  {c.colour ? ` · ${c.colour}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
       )}
 
@@ -648,7 +612,96 @@ export function MaterialPlanClient({
 
       {mode === 'input' && (
         <>
-          <div className="bp-card" style={{ marginBottom: 14 }}>
+          <div className="bp-metrics bp-input-metrics" aria-label="Material plan input summary">
+            <div className="bp-metric">
+              <div className="label">Lines in plan</div>
+              <div className="value">{fmt.format(plannedLines)}</div>
+              <div className="sub">{fmt.format(rows.length)} material lines on sheet</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Job Work value</div>
+              <div className="value">{totals.job ? money.format(totals.job) : '—'}</div>
+              <div className="sub">services (e.g. dyeing)</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Purchase value</div>
+              <div className="value">{totals.purchase ? money.format(totals.purchase) : '—'}</div>
+              <div className="sub">material bought outright</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Review</div>
+              <div className="value">{fmt.format(missingCostLines)}</div>
+              <div className="sub">{missingCostLines ? `line${missingCostLines === 1 ? '' : 's'} with no approved material cost` : 'All planned lines have an approved cost'}</div>
+            </div>
+          </div>
+
+          <div className="bp-sticky">
+            <div className="bp-card bp-toolbar-card">
+              <div className="bp-toolbar bp-mat-toolbar">
+        <div className="segment wf-segment">
+          {TYPES.map((t) => {
+            const count = rows.filter((r) => r.material_type === t.key).length;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                className={type === t.key ? 'active' : ''}
+                onClick={() => setType(t.key)}
+              >
+                {t.label}
+                {count > 0 && <span className="wf-seg-count">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {editable && (
+          <div className="bp-mat-add">
+            {baseFabrics.length > 0 && (
+              <select
+                className="wf-add-select"
+                value={addBase}
+                onChange={(e) => setAddBase(e.target.value)}
+                disabled={!available.length}
+                aria-label="Base fabric"
+              >
+                <option value="">All base fabrics</option>
+                {baseFabrics.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            )}
+            <select className="wf-add-select" value={addCode} onChange={(e) => addRow(e.target.value)} disabled={!codeChoices.length}>
+              <option value="">
+                {codeChoices.length ? `Add ${TYPE_LABEL[type].toLowerCase()} code (${codeChoices.length})` : 'All codes added'}
+              </option>
+              {codeChoices.map((c) => (
+                <option key={c.material_code} value={c.material_code}>
+                  {c.material_code}
+                  {c.colour ? ` · ${c.colour}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+                <span className="bp-toolbar-count">{shownRows.length} {TYPE_LABEL[type].toLowerCase()} line{shownRows.length === 1 ? '' : 's'}</span>
+              </div>
+            </div>
+          </div>
+
+          <section className="bp-card">
+            <div className="bp-cardhead">
+              <div>
+                <h2>
+                  Fill the plan
+                  <InfoDot text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."} />
+                </h2>
+                <span className="wf-subtle">Enter Job Work and Purchase quantities per {TYPE_LABEL[type].toLowerCase()} code. Zero quantities stay out of the submitted plan.</span>
+              </div>
+              <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
+            </div>
+            <div className="bp-cardbody bp-cardbody-flush">
           <PlanLineViews
             items={shownRows.map((v) => {
               // Every input-table column on the card: rates and values per route, total, check.
@@ -776,14 +829,13 @@ export function MaterialPlanClient({
               </div>
             }
           />
-          </div>
-
-          <div className="wf-footer-bar">
-            <p className="wf-footer-note">
-              Job Work {money.format(totals.job)} · Purchase {money.format(totals.purchase)} ·{' '}
-              <strong>Total {money.format(grandTotal)}</strong>
-            </p>
-            <div className="wf-footer-actions">
+            </div>
+            <div className="bp-input-footer">
+              <div>
+                <strong>{grandTotal ? money.format(grandTotal) : 'value pending'}</strong>
+                <span>Job Work {money.format(totals.job)} · Purchase {money.format(totals.purchase)} · {plannedLines} planned line{plannedLines === 1 ? '' : 's'}</span>
+              </div>
+              <div className="bp-actions">
               {editable && (
                 <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
                   <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
@@ -794,8 +846,9 @@ export function MaterialPlanClient({
                   <Send size={15} /> Submit for approval
                 </button>
               )}
+              </div>
             </div>
-          </div>
+          </section>
         </>
       )}
     </>

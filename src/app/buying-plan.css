@@ -490,3 +490,8 @@
 .pl-card-decide > span:first-child { font-size: 10px; font-weight: 700; color: var(--ink-3, #6e695e); text-transform: uppercase; letter-spacing: .04em; }
 .pl-card-decide .bp-line-decision.asking { width: 100%; }
 .pl-card-decide .bp-line-decision.asking input { flex: 1; width: auto; min-width: 0; }
+
+/* Fabric / Material Fill the plan toolbar: type tabs + add-a-code pickers. */
+.bp-mat-toolbar { align-items: center; }
+.bp-mat-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bp-mat-add select { max-width: 280px; }
