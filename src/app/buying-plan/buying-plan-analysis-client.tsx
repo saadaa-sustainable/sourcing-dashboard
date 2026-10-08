@@ -3,10 +3,10 @@
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { AlertTriangle, ChevronRight, Download, FileText, Send, TrendingDown, TrendingUp } from 'lucide-react';
-import { addMonths, monthLabel } from '@/lib/forms/approval';
+import { monthLabel, statusText } from '@/lib/forms/approval';
+import type { SdStatus } from '@/lib/forms/types';
 import { generatePlanReportAction, getPlanReportUrl } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
-import { Field } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { downloadCsv } from '@/lib/download';
 import { InfoDot } from '@/components/info-dot';
@@ -44,14 +44,17 @@ const fmtTs = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '—';
 
 /** Approval deadline compliance, approval quality and the first-time-approval rate. */
+
+/** "deadline passed" on the day after, then "N days late". */
+const late = (n: number) => (n > 0 ? `${n} day${n === 1 ? '' : 's'} late` : 'deadline passed');
 function LifecycleCard({ lifecycle: lc, planMonth }: { lifecycle: BuyingPlanAnalysis['lifecycle']; planMonth: string }) {
   const c = lc.compliance;
   const dl = new Date(c.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
   const comp: Record<typeof c.status, { tone: 'green' | 'yellow' | 'red'; text: string }> = {
     on_time: { tone: 'green', text: 'Approved on time' },
     pending: { tone: 'yellow', text: `Approval Pending — due ${dl}` },
-    breach_submission: { tone: 'red', text: `Compliance breach — submission side · ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} late` },
-    breach_approval: { tone: 'red', text: `Compliance breach — approval side · ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} late` },
+    breach_submission: { tone: 'red', text: `Compliance breach — submission side · ${late(c.daysLate)}` },
+    breach_approval: { tone: 'red', text: `Compliance breach — approval side · ${late(c.daysLate)}` },
   };
   const kind: Record<typeof lc.approvalKind, { tone: 'green' | 'yellow' | 'red' | 'gray'; text: string }> = {
     first_time: { tone: 'green', text: 'First-time approval' },
@@ -301,27 +304,13 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
   const planNote = !hasPlan
     ? 'No finished-goods plan exists for this month — everything issued counts as not budgeted.'
     : planStatus === 'approved' || approvedLines > 0
-      ? `Plan ${planStatus} · ${approvedLines} of ${totalLines} lines approved.`
-      : `Plan is ${planStatus} — no lines approved yet, so every issued PO shows as not budgeted until approval.`;
+      ? `Plan: ${statusText(planStatus as SdStatus)} · ${approvedLines} of ${totalLines} lines approved.`
+      : `Plan: ${statusText(planStatus as SdStatus)} — no lines approved yet, so every issued PO shows as not budgeted until approval.`;
 
   return (
-    <div className="wf-stack">
-      <div className="wf-toolbar">
-        <div className="wf-toolbar-left">
-          <Field label="Month">
-            <select
-              value={planMonth}
-              onChange={(e) => { window.location.href = `/buying-plan?month=${e.target.value}&type=analysis`; }}
-            >
-              {[-3, -2, -1, 0, 1].map((delta) => {
-                const month = addMonths(planMonth, delta);
-                return <option key={month} value={month}>{monthLabel(month)}</option>;
-              })}
-            </select>
-          </Field>
-          <span className="wf-subtle" style={{ fontSize: 12 }}>{planNote}</span>
-        </div>
-      </div>
+    <div className="bp-analysis-page">
+      {/* The month is chosen in the page header, the same picker as every Buying Plan tab. */}
+      <p className="bp-analysis-note">{planNote}</p>
 
       {note && <Notice tone={note.tone}>{note.text}</Notice>}
 

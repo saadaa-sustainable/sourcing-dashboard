@@ -588,3 +588,9 @@ a.bph-arw:hover { background: #f4f6f5; color: #303330; }
 .ui-shopify.ui-view-buying-plan .bp-category,
 .ui-shopify.ui-view-buying-plan .bp-metric { border: 1px solid #d2d5d8; }
 .ui-shopify.ui-view-buying-plan .bp-cardhead { border-bottom-color: #e3e5e3; }
+
+/* Buying Plan Analysis: even spacing between sections (the month is picked in the page header). */
+.bp-analysis-page { display: flex; flex-direction: column; gap: 16px; }
+.bp-analysis-page > .wf-macro { margin-bottom: 0; }
+.bp-analysis-page .bp-lifecycle { align-items: start; }
+.bp-analysis-note { margin: 0; font-size: 12.5px; color: var(--ink-3, #6e695e); }
