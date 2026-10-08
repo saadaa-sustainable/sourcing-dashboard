@@ -115,8 +115,9 @@ export function InwardPlanSheet({
     <>
       <Notice tone="info">
         The team&rsquo;s monthly inward sheet — one line per PO and product the team intends to inward in the month,
-        with the cost written on the sheet. A loaded month waits as <strong>Pending</strong> until an admin decides it
-        (on <strong>Approvals → Inward Plan (month)</strong>, or line by line here). <strong>Received (month)</strong> is
+        with the cost written on the sheet. A loaded month waits as <strong>Approval Pending</strong> until an admin decides it
+        (on <strong>Approvals → Inward Plan (month)</strong>, or line by line here: Approve, Edit &amp; approve, Rework / Reassign or
+        Reject / Discard — a remark is mandatory for the last two). <strong>Received (month)</strong> is
         what has actually landed against each PO inside the month, from goods receipts.
       </Notice>
 
