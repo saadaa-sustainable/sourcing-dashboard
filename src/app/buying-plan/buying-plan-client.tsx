@@ -41,6 +41,7 @@ import { InfoDot } from '@/components/info-dot';
 import { ProductPicker } from '@/components/forms/product-picker';
 import { ClosedMonthHeader } from './closed-month-header';
 import { LineDecision } from './line-decision';
+import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import type {
   BuyingPlan,
   BuyingPlanLine,
@@ -72,6 +73,44 @@ const money = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 0,
 });
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+
+// Plan detail kanban: what the columns can be.
+const FG_KANBAN: KanbanOption[] = [
+  {
+    key: 'progress',
+    label: 'Buying progress',
+    columns: [
+      { key: 'none', title: 'Not started', tone: 'gray' },
+      { key: 'part', title: 'Partly issued', tone: 'yellow' },
+      { key: 'done', title: 'Fully issued', tone: 'green' },
+      { key: 'over', title: 'Over plan', tone: 'red' },
+    ],
+  },
+  {
+    key: 'approval',
+    label: 'Approval',
+    columns: [
+      { key: 'draft', title: 'Draft', tone: 'gray' },
+      { key: 'submitted', title: 'With the approver', tone: 'yellow' },
+      { key: 'pending_l2', title: 'With the second approver', tone: 'yellow' },
+      { key: 'approved', title: 'Approved', tone: 'green' },
+      { key: 'rework', title: 'Sent back', tone: 'red' },
+      { key: 'rejected', title: 'Rejected', tone: 'gray' },
+    ],
+  },
+  {
+    key: 'route',
+    label: 'PO type',
+    columns: [
+      { key: 'job', title: 'Job Work', tone: 'blue' },
+      { key: 'efob', title: 'E-FOB', tone: 'violet' },
+      { key: 'fob', title: 'FOB', tone: 'yellow' },
+      { key: 'mixed', title: 'Split across types', tone: 'gray' },
+    ],
+  },
+  { key: 'category', label: 'Category' },
+  { key: 'weave', label: 'Woven / Knitted' },
+];
 const num = (value: string) => Number(value) || 0;
 
 function toDraft(line: BuyingPlanLine): Draft {
@@ -381,6 +420,60 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
     { key: 'fob', label: 'FOB', ruleKey: 'lead_days_fob', days: leadDays.fob, qty: coverage(leadDays.fob) },
   ];
   const viewRows = planned.filter(matchesFilters);
+
+  // Plan detail as cards / kanban: every line that carries quantity (rejected ones too, so
+  // the Approval board can show them), after the toolbar filters.
+  const cardsTotal = planned.reduce((s, v) => s + v.valueToBeBought, 0);
+  const planCards: PlanCard[] = view
+    .filter((v) => v.totalQty > 0)
+    .filter(matchesFilters)
+    .map((v) => {
+      const ls = (v.row.line_status || '') as SdStatus | '';
+      const tone: CardTone =
+        ls === 'approved' ? 'green' : ls === 'rework' || ls === 'rejected' ? 'red' : ls ? 'yellow' : 'gray';
+      const routes = [v.row.job_work_qty, v.row.efob_qty, v.row.fob_qty].filter((q) => Number(q) > 0).length;
+      const q = (s: string) => (Number(s) > 0 ? fmt.format(Number(s)) : null);
+      return {
+        key: v.row.key,
+        code: v.row.product_code,
+        status: { text: ls ? statusText(ls, { approverEdited: v.row.approver_edited }) : statusText(status), tone },
+        context: `${v.category} · ${v.productStatus}`,
+        figs: [
+          { label: 'Job', value: q(v.row.job_work_qty) },
+          { label: 'E-FOB', value: q(v.row.efob_qty) },
+          { label: 'FOB', value: q(v.row.fob_qty) },
+        ],
+        value: v.missingCost ? null : v.valueToBeBought,
+        valueNote: `${fmt.format(v.totalQty)} pcs${!v.missingCost && cardsTotal > 0 && ls !== 'rejected' ? ` · ${((v.valueToBeBought / cardsTotal) * 100).toFixed(1)}% of plan` : ''}`,
+        progress: { text: `${fmt.format(v.actualQty)} of ${fmt.format(v.totalQty)} issued`, pct: v.pctComplete },
+        rates: v.cost ? `J ${fmt.format(v.cost.job)} · E ${fmt.format(v.cost.efob)} · F ${fmt.format(v.cost.fob)}` : 'no standard cost',
+        tags: [
+          ...(/npd/i.test(v.productStatus) ? [{ text: 'NPD', kind: 'npd' as const }] : []),
+          ...(v.missingCost ? [{ text: 'No approved cost', kind: 'nocost' as const }] : []),
+          ...(v.overPlan ? [{ text: 'Over plan', kind: 'over' as const }] : []),
+          { text: v.fabricType },
+        ],
+        details: [
+          ['Category', v.category],
+          ['Sub-category', v.subCategory],
+          ['Product state', v.productStatus],
+          ['Woven / Knitted', v.fabricType],
+          ['Pending qty (30-day)', v.pending != null ? fmt.format(v.pending) : '—'],
+          ['Plan value', v.missingCost ? 'No approved cost' : money.format(v.valueToBeBought)],
+          ['Issued this month', `${fmt.format(v.actualQty)} pcs · ${money.format(v.actualValue)}`],
+          ['Still to issue', `${fmt.format(v.remaining)} pcs`],
+          ...(v.row.remark ? [['Remark', v.row.remark] as [string, string]] : []),
+        ],
+        sort: { value: v.valueToBeBought, qty: v.totalQty, pct: v.pctComplete },
+        groups: {
+          progress: v.overPlan ? 'over' : v.actualQty >= v.totalQty ? 'done' : v.actualQty > 0 ? 'part' : 'none',
+          approval: ls || 'draft',
+          route: routes > 1 ? 'mixed' : Number(v.row.job_work_qty) > 0 ? 'job' : Number(v.row.efob_qty) > 0 ? 'efob' : 'fob',
+          category: v.category,
+          weave: v.fabricType,
+        },
+      };
+    });
   const groupKey = (item: ViewItem) =>
     groupBy === 'category'
       ? item.category
@@ -1053,7 +1146,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                   <InfoDot text={"WHAT: every product line on this month's finished-goods plan.\n\nHOW: one row per product code with its Job Work / E-FOB / FOB quantities, value at the approved standard cost, and status.\n\nUSE: read-only here — search, sort, filter, download or expand. Quantities are entered on the Input view."} />
                 </h2>
                 <div className="bp-plan-detail-head-actions">
-                  <span className="wf-subtle">{view.length} products · every line as on the sheet · filter or sort any column</span>
+                  <span className="wf-subtle">{view.length} products · as cards, a kanban board or the table</span>
                   <button
                     type="button"
                     className="wf-btn wf-btn-ghost wf-btn-sm bp-plan-detail-toggle"
@@ -1067,16 +1160,28 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                 </div>
               </div>
               <div className="bp-cardbody bp-cardbody-flush">
-                <FilterTable
-                  rows={view.filter(matchesFilters)}
-                  columns={sheetCols}
-                  rowKey={(v) => v.row.key}
-                  defaultSource="supabase"
-                  unit="lines"
-                  pageSize={100}
-                  searchPlaceholder="Product code or status"
-                  emptyText="No lines in this plan."
-                  download={{ filename: `buying-plan-${planMonth.slice(0, 7)}` }}
+                <PlanLineViews
+                  items={planCards}
+                  storageKey="buying-plan-detail-view"
+                  noun="product"
+                  kanban={FG_KANBAN}
+                  decision={canDecideLines ? (key) => {
+                    const v = view.find((x) => x.row.key === key);
+                    return v ? decisionCell(v.row) : null;
+                  } : undefined}
+                  table={
+                    <FilterTable
+                      rows={view.filter(matchesFilters)}
+                      columns={sheetCols}
+                      rowKey={(v) => v.row.key}
+                      defaultSource="supabase"
+                      unit="lines"
+                      pageSize={100}
+                      searchPlaceholder="Product code or status"
+                      emptyText="No lines in this plan."
+                      download={{ filename: `buying-plan-${planMonth.slice(0, 7)}` }}
+                    />
+                  }
                 />
               </div>
             </section>

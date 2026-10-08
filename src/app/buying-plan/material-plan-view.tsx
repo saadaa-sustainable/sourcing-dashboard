@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { PlanLineViews, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import { InfoDot } from '@/components/info-dot';
 import { addMonths, statusText } from '@/lib/forms/approval';
 import type { MaterialCode, MaterialType, SdStatus } from '@/lib/forms/types';
@@ -43,6 +44,40 @@ export type MaterialViewItem = {
 };
 
 type GroupBy = 'type' | 'base' | 'uom' | 'code';
+
+const MAT_KANBAN: KanbanOption[] = [
+  {
+    key: 'approval',
+    label: 'Approval',
+    columns: [
+      { key: 'draft', title: 'Draft', tone: 'gray' },
+      { key: 'submitted', title: 'With the approver', tone: 'yellow' },
+      { key: 'pending_l2', title: 'With the second approver', tone: 'yellow' },
+      { key: 'approved', title: 'Approved', tone: 'green' },
+      { key: 'rework', title: 'Sent back', tone: 'red' },
+      { key: 'rejected', title: 'Rejected', tone: 'gray' },
+    ],
+  },
+  {
+    key: 'type',
+    label: 'Material type',
+    columns: [
+      { key: 'raw', title: 'Raw material', tone: 'blue' },
+      { key: 'dyed', title: 'Dyed / finished', tone: 'violet' },
+      { key: 'trim', title: 'Trims', tone: 'yellow' },
+    ],
+  },
+  {
+    key: 'route',
+    label: 'Route',
+    columns: [
+      { key: 'job', title: 'Job Work', tone: 'blue' },
+      { key: 'purchase', title: 'Purchase', tone: 'yellow' },
+      { key: 'both', title: 'Both', tone: 'gray' },
+    ],
+  },
+  { key: 'base', label: 'Base fabric' },
+];
 const GROUP_LABEL: Record<GroupBy, string> = { type: 'material type', base: 'base fabric', uom: 'unit', code: 'material code' };
 
 /** "1,200 metres · 30 kg" — quantities never add across units. */
@@ -178,6 +213,54 @@ export function MaterialPlanView({
       ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: MaterialViewItem) => v.row.line_status || 'pending', render: (v: MaterialViewItem) => decision(v) }]
       : []),
   ];
+
+  // Plan detail as cards / kanban: lines with quantity, after the filters.
+  const cards: PlanCard[] = view
+    .filter((v) => num(v.row.job_qty) + num(v.row.purchase_qty) > 0)
+    .filter(matches)
+    .map((v) => {
+      const ls = v.row.line_status;
+      const tone: CardTone = ls === 'approved' ? 'green' : ls === 'rework' || ls === 'rejected' ? 'red' : ls ? 'yellow' : 'gray';
+      const meta = codeMap.get(v.row.material_code);
+      const job = num(v.row.job_qty);
+      const buy = num(v.row.purchase_qty);
+      const unit = v.row.uom || 'units';
+      return {
+        key: v.row.key,
+        code: v.row.material_code,
+        status: { text: ls ? statusText(ls, { approverEdited: v.row.approver_edited }) : statusText(status), tone },
+        context: [TYPE_LABEL[v.row.material_type], meta?.fabric_name, v.colour].filter(Boolean).join(' · '),
+        figs: [
+          { label: 'Job Work', value: job ? `${fmt.format(job)} ${unit}` : null },
+          { label: 'Purchase', value: buy ? `${fmt.format(buy)} ${unit}` : null },
+        ],
+        value: v.missingCost ? null : v.value,
+        valueNote: !v.missingCost && total > 0 && ls !== 'rejected' ? `${((v.value / total) * 100).toFixed(1)}% of plan` : '',
+        rates: v.cost ? `Job ${fmt.format(v.cost.job)} · Purchase ${fmt.format(v.cost.fob)} / ${unit}` : 'no material cost',
+        tags: [
+          ...(v.missingCost ? [{ text: 'No approved cost', kind: 'nocost' as const }] : []),
+          ...(meta?.base_fabric_code ? [{ text: meta.base_fabric_code }] : []),
+        ],
+        details: [
+          ['Type', TYPE_LABEL[v.row.material_type]],
+          ['Fabric name', meta?.fabric_name ?? '—'],
+          ['Base fabric', meta?.base_fabric_code ?? '—'],
+          ['Colour', v.colour ?? '—'],
+          ['Unit', unit],
+          ['Job Work value', v.jobValue ? money.format(v.jobValue) : '—'],
+          ['Purchase value', v.purchaseValue ? money.format(v.purchaseValue) : '—'],
+          ['Plan value', v.missingCost ? 'No approved cost' : money.format(v.value)],
+          ...(v.row.remark ? [['Remark', v.row.remark] as [string, string]] : []),
+        ],
+        sort: { value: v.value, qty: job + buy, pct: 0 },
+        groups: {
+          approval: ls || 'draft',
+          type: v.row.material_type,
+          route: job && buy ? 'both' : job ? 'job' : 'purchase',
+          base: meta?.base_fabric_code || 'No base fabric',
+        },
+      };
+    });
 
   const attentionItems = closed
     ? [
@@ -389,16 +472,29 @@ export function MaterialPlanView({
             </div>
           </div>
           <div className="bp-cardbody bp-cardbody-flush">
-            <FilterTable
-              rows={view.filter(matches)}
-              columns={cols}
-              rowKey={(v) => v.row.key}
-              defaultSource="supabase"
-              unit="lines"
-              pageSize={100}
-              searchPlaceholder="Material code or status"
-              emptyText="No lines in this plan."
-              download={{ filename: `material-buying-plan-${planMonth.slice(0, 7)}` }}
+            <PlanLineViews
+              items={cards}
+              storageKey="material-plan-detail-view"
+              noun="material line"
+              qtyUnit={null}
+              kanban={MAT_KANBAN}
+              decision={decision ? (key) => {
+                const v = view.find((x) => x.row.key === key);
+                return v ? decision(v) : null;
+              } : undefined}
+              table={
+                <FilterTable
+                  rows={view.filter(matches)}
+                  columns={cols}
+                  rowKey={(v) => v.row.key}
+                  defaultSource="supabase"
+                  unit="lines"
+                  pageSize={100}
+                  searchPlaceholder="Material code or status"
+                  emptyText="No lines in this plan."
+                  download={{ filename: `material-buying-plan-${planMonth.slice(0, 7)}` }}
+                />
+              }
             />
           </div>
         </section>
