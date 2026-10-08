@@ -95,7 +95,7 @@ export default async function VendorCapacityPage({
     })
     .sort((a, b) => a.vendor_name.localeCompare(b.vendor_name));
 
-  // Landing view: one card per month showing how many active vendors updated capacity in it.
+  // Landing view: one card per Monday-to-Sunday week showing how many active vendors updated capacity in it.
   if (!params.view) {
     const board = await loadVendorCapacityBoard(
       vendors.map((v) => ({ code: v.vendor_code, name: v.vendor_name, signed: Number(v.capacitySigned) || 0 })),
@@ -103,13 +103,13 @@ export default async function VendorCapacityPage({
     return (
       <FormLayout
         title="Vendor Capacity"
-        subtitle="Month by month: how many active vendors updated their capacity, and the capacity they declared. Open a month to update vendors."
+        subtitle="Week by week (Monday to Sunday): how many active vendors updated their capacity, and the capacity they declared. Open a week to update vendors."
         active="/vendor-capacity"
         role={user.role}
         userEmail={user.email}
         allowedPages={user.allowed_pages ?? null}
       >
-        <MonthBoard data={board} />
+        <MonthBoard data={board} searchPlaceholder="Search week…" />
       </FormLayout>
     );
   }
@@ -123,7 +123,7 @@ export default async function VendorCapacityPage({
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <Link className="mb-back" href="/vendor-capacity">← All months</Link>
+      <Link className="mb-back" href="/vendor-capacity">← All weeks</Link>
       <VendorCapacityClient
         vendors={vendors}
         role={user.role}

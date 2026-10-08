@@ -82,6 +82,8 @@ export type MonthBoardData = {
   totals: { value: string; label: string }[];
   /** "plans" / "months" */
   unit: string;
+  /** What one card is, singular: "month" (default) or "week". */
+  noun?: string;
   listColumns: { label: string; num?: boolean }[];
 };
 

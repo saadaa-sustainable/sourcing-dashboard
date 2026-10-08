@@ -371,7 +371,7 @@ function EntryTab({
           {oldestUpdate ? ` — the most recent entry anywhere is ${new Date(oldestUpdate).toLocaleDateString('en-IN')}` : ''}.
           Every capacity, availability and utilisation figure on this page is only as current
           as that. Get this week&apos;s submission from each merchandiser before these numbers are
-          presented. This week opened Saturday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}; it locks per vendor on submission and reopens {new Date(`${weekNext}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.
+          presented. This week opened Monday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}; it locks per vendor on submission and reopens {new Date(`${weekNext}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.
         </Notice>
       )}
 
@@ -465,8 +465,8 @@ function EntryTab({
 
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and submit that row. It locks for the week; next week opens on Saturday.</p></div>
-          <span className="vc-pill vc-pill-blue">Weekly submission · locks until Saturday</span>
+          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and submit that row. It locks for the week; next week opens on Monday.</p></div>
+          <span className="vc-pill vc-pill-blue">Weekly submission · locks until Monday</span>
         </div>
         <div className="table-scroll">
           <table className="wide-table wf-grid">
@@ -549,7 +549,7 @@ function CapacityRow({
   isStale: boolean;
   now: number | null;
   rules?: CapacityRules;
-  /** An admin can correct a locked row; the team waits for Saturday. */
+  /** An admin can correct a locked row; the team waits for Monday. */
   isAdmin?: boolean;
 }) {
   const initial = {
@@ -575,7 +575,7 @@ function CapacityRow({
     rules,
   );
   const inProcess = vendor.inProcessQty;
-  // Submitted inside the current capacity week → locked until Saturday (admins can correct).
+  // Submitted inside the current capacity week → locked until Monday (admins can correct).
   const locked = capacityLocked(saved) && !dirty;
   const canType = editable && (!locked || isAdmin);
 
@@ -657,7 +657,7 @@ function CapacityRow({
       <td className="wf-subtle">
         {ageLabel(saved, now)}
         {locked && (
-          <span className="vc-pill vc-pill-green" title={`Submitted this week; reopens Saturday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`}>
+          <span className="vc-pill vc-pill-green" title={`Submitted this week; reopens Monday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`}>
             <Lock size={9} /> Submitted · locked
           </span>
         )}
@@ -674,7 +674,7 @@ function CapacityRow({
               className="wf-btn wf-btn-primary wf-btn-sm"
               onClick={save}
               disabled={pending || !dirty}
-              title={locked ? 'Admin correction to a submitted week' : 'Submit this week and lock the row until Saturday'}
+              title={locked ? 'Admin correction to a submitted week' : 'Submit this week and lock the row until Monday'}
             >
               <Save size={14} /> {pending ? 'Submitting…' : locked ? 'Correct' : 'Submit this week'}
             </button>

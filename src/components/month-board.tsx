@@ -54,6 +54,9 @@ export function MonthBoard({
       .sort((a, b) => (sort === 'new' ? b.month.localeCompare(a.month) : a.month.localeCompare(b.month)) || (a.track ?? '').localeCompare(b.track ?? ''));
   }, [data.cards, filter, query, sort]);
 
+  const noun = data.noun ?? 'month';
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
+
   const cols = filter === 'all' ? data.columns : data.columns.filter((c) => c.key === filter);
   const colOf = (key: string) => data.columns.find((c) => c.key === key);
 
@@ -88,8 +91,8 @@ export function MonthBoard({
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
         </label>
         <select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')} aria-label="Sort">
-          <option value="new">Newest month first</option>
-          <option value="old">Oldest month first</option>
+          <option value="new">Newest {noun} first</option>
+          <option value="old">Oldest {noun} first</option>
         </select>
         <div className="segment mb-view" role="group" aria-label="View">
           {(['kanban', 'cards', 'list'] as View[]).map((v) => (
@@ -126,14 +129,14 @@ export function MonthBoard({
       ) : view === 'cards' ? (
         <div className="mb-grid">
           {shown.map((c) => <Card key={c.id} card={c} col={colOf(c.status)} onOpen={openCard} />)}
-          {!shown.length && <p className="mb-empty">No months match.</p>}
+          {!shown.length && <p className="mb-empty">No {noun}s match.</p>}
         </div>
       ) : (
         <div className="table-scroll mb-listwrap">
           <table className="wf-grid mb-list">
             <thead>
               <tr>
-                <th>Month</th>
+                <th>{Noun}</th>
                 {data.cards.some((c) => c.track) && <th>Track</th>}
                 <th>Status</th>
                 {data.listColumns.map((l) => (

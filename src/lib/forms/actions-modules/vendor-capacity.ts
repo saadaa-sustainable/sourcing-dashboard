@@ -47,7 +47,7 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
 
   const supabase = await supa();
   // Weekly submit-lock: once a vendor's figures are submitted inside the current capacity
-  // week (Saturday to Friday) they stay as submitted until the next Saturday. An admin may
+  // week (Monday to Sunday) they stay as submitted until the next Monday. An admin may
   // correct a locked row; the team waits.
   if (user.role !== 'admin') {
     const { data: existing } = await supabase
@@ -56,7 +56,7 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
       .eq('vendor_code', vendor_code)
       .maybeSingle();
     if (capacityLocked((existing as { submitted_at?: string | null } | null)?.submitted_at)) {
-      return fail(`Already submitted this week — it reopens on Saturday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.`);
+      return fail(`Already submitted this week — it reopens on Monday ${new Date(`${capacityWeekNext()}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.`);
     }
   }
 
@@ -83,7 +83,7 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
   // Capacity/month feeds the PO Approval vendor headroom tab (main page + queue).
   revalidatePath('/po-approval');
   revalidatePath('/approvals');
-  return done(`Submitted ${vendor_code} for this week — locked until Saturday.`);
+  return done(`Submitted ${vendor_code} for this week — locked until Monday.`);
 }
 
 /** Vendor Capacity item 1 — upsert one vendor+product capacity allocation (pieces/month). */

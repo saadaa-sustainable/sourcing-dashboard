@@ -2,7 +2,7 @@ import 'server-only';
 import { client, pageAll } from './_shared';
 import { loadApprovedMaterialCosts, loadApprovedStandardCosts } from './standard-cost';
 import { loadReplenishmentByProduct } from './replenishment-oos';
-import { addMonths, isPlanFrozen, monthStart } from '../approval';
+import { addMonths, capacityWeekStart, isPlanFrozen, monthStart } from '../approval';
 import {
   inrShort,
   num,
@@ -31,7 +31,6 @@ const dayYear = (ts: string | null) => {
   const d = new Date(new Date(ts).getTime() + 5.5 * 3600_000);
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 };
-const istMonth = (ts: string) => monthStart(new Date(ts));
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const daysSince = (ts: string) => Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 86_400_000));
 const n = (v: unknown) => Number(v) || 0;
@@ -1057,10 +1056,29 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
 /* Vendor Capacity                                                     */
 /* ------------------------------------------------------------------ */
 
+/* Capacity weeks: Monday to Sunday, IST, keyed by the Monday's ISO date. */
+const addDays = (iso: string, k: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + k * 86_400_000).toISOString().slice(0, 10);
+const weekOf = (ts: string) => capacityWeekStart(new Date(ts));
+const dayMon = (iso: string) => `${Number(iso.slice(8, 10))} ${MON[Number(iso.slice(5, 7)) - 1]}`;
+/** "5 – 11 Oct 2026", "28 Sep – 4 Oct 2026". */
+const weekShort = (w: string) => {
+  const end = addDays(w, 6);
+  return `${w.slice(5, 7) === end.slice(5, 7) ? Number(w.slice(8, 10)) : dayMon(w)} – ${dayMon(end)} ${end.slice(0, 4)}`;
+};
+const weekLong = (w: string) => `the week of ${weekShort(w)}`;
+/** ISO-8601 week number of the week starting on Monday `w`. */
+const isoWeekNo = (w: string) => {
+  const thu = Date.parse(`${addDays(w, 3)}T00:00:00Z`);
+  return Math.floor((thu - Date.UTC(new Date(thu).getUTCFullYear(), 0, 1)) / 86_400_000 / 7) + 1;
+};
+
 /**
- * Capacity keeps one live row per vendor (overwritten on update), so a month's updates are
+ * Vendor Capacity is updated weekly, so its board has one card per Monday-to-Sunday week (IST),
+ * the same week the update screen locks a vendor for (capacityWeekStart).
+ * Capacity keeps one live row per vendor (overwritten on update), so a week's updates are
  * read from the change trail (sd_audit_log, kept since 5 Oct 2026) plus each vendor's
- * last-update date. Months before the trail only show vendors whose LATEST update fell in them.
+ * last-update date. Weeks before the trail only show vendors whose LATEST update fell in them,
+ * and only weeks that hold such an update are listed.
  */
 export async function loadVendorCapacityBoard(
   activeVendors: { code: string; name: string; signed: number }[],
@@ -1094,13 +1112,17 @@ export async function loadVendorCapacityBoard(
   }
   const active = new Map(activeVendors.map((v) => [v.code.toLowerCase(), v]));
   const total = activeVendors.length;
-  const cur = monthStart();
-  const first = events.length ? events.map((e) => istMonth(e.at)).sort()[0] : cur;
-  const months: string[] = [];
-  for (let m = first; m <= addMonths(cur, 1); m = addMonths(m, 1)) months.push(m);
+  const cur = capacityWeekStart();
+  const TRAIL_WEEK = weekOf('2026-10-01T00:00:00+05:30');
+  // Every week since the trail began (an empty week is worth seeing), earlier weeks only when
+  // someone's latest update fell in them, plus next week to plan.
+  const weekSet = new Set<string>([addDays(cur, 7)]);
+  for (let w = TRAIL_WEEK; w <= cur; w = addDays(w, 7)) weekSet.add(w);
+  for (const e of events) if (weekOf(e.at) <= cur) weekSet.add(weekOf(e.at));
+  const months = [...weekSet].sort();
 
   const nameOfVendor = (k: string) => active.get(k)?.name ?? k.toUpperCase();
-  const monthEnd = (m: string) => new Date(`${addMonths(m, 1)}T00:00:00+05:30`).getTime();
+  const monthEnd = (m: string) => new Date(`${addDays(m, 7)}T00:00:00+05:30`).getTime();
   /** Each vendor's most recent update on or before a moment. */
   const lastUpdateBy = (until: number) => {
     const out = new Map<string, Ev>();
@@ -1114,7 +1136,7 @@ export async function loadVendorCapacityBoard(
   const STALE_DAYS = 30;
   // The change trail starts 5 Oct 2026; before it only each vendor's latest update survives, so a
   // vendor with no record then may simply have been updated again later.
-  const TRAIL_FROM = '2026-10-01';
+  const TRAIL_FROM = TRAIL_WEEK;
 
   /** Vendors to look at: no update in 30+ days, declared well under signed, or nothing declared. */
   const vcAttention = (m: string): MonthDetailSection => {
@@ -1136,7 +1158,7 @@ export async function loadVendorCapacityBoard(
     return {
       kind: 'table',
       title: 'Needs attention',
-      hint: `Active vendors as of ${m === cur ? 'today' : `the end of ${long(m)}`}: never updated, not updated for ${STALE_DAYS}+ days, nothing declared, or under half the signed capacity.${
+      hint: `Active vendors as of ${m === cur ? 'today' : `the end of ${weekLong(m)}`}: never updated, not updated for ${STALE_DAYS}+ days, nothing declared, or under half the signed capacity.${
         m < TRAIL_FROM ? ' Before October 2026 only each vendor’s latest update was kept, so vendors updated again later do not show here.' : ''
       }`,
       columns: [{ label: 'Vendor' }, { label: 'Issue' }, { label: 'Detail' }],
@@ -1150,13 +1172,13 @@ export async function loadVendorCapacityBoard(
     };
   };
 
-  /** Declared capacity per vendor against the month before. */
+  /** Declared capacity per vendor against the week before. */
   const vcCompare = (m: string, latest: Map<string, Ev>): MonthDetailSection[] => {
-    const pm = addMonths(m, -1);
+    const pm = addDays(m, -7);
     const before = new Map<string, Ev>();
-    for (const e of events.filter((x) => istMonth(x.at) === pm).sort((a, b) => a.at.localeCompare(b.at))) before.set(e.vendor, e);
-    const title = `Compared with ${short(pm)}`;
-    if (!before.size && !latest.size) return [{ kind: 'bars', title, bars: [], empty: `No updates in ${long(pm)} or ${long(m)} to compare.` }];
+    for (const e of events.filter((x) => weekOf(x.at) === pm).sort((a, b) => a.at.localeCompare(b.at))) before.set(e.vendor, e);
+    const title = `Compared with ${weekLong(pm)}`;
+    if (!before.size && !latest.size) return [{ kind: 'bars', title, bars: [], empty: `No updates in ${weekLong(pm)} or ${weekLong(m)} to compare.` }];
     const sumCap = (mp: Map<string, Ev>) => [...mp.values()].reduce((t, e) => t + e.capacity, 0);
     const change = (a: number, b: number) => (b === 0 ? (a === 0 ? '—' : 'new') : `${a >= b ? '+' : '−'}${Math.abs(Math.round(((a - b) / b) * 100))}%`);
     const vendorRows = [...new Set([...before.keys(), ...latest.keys()])]
@@ -1176,21 +1198,21 @@ export async function loadVendorCapacityBoard(
       {
         kind: 'table',
         title,
-        hint: `Vendors updated and capacity declared in ${long(pm)} against ${long(m)}.${
-          pm < TRAIL_FROM ? ` Incomplete: before October 2026 only each vendor’s latest update was kept, so ${long(pm)} is missing updates that were later replaced.` : ''
+        hint: `Vendors updated and capacity declared in ${weekLong(pm)} against ${weekLong(m)}.${
+          pm < TRAIL_FROM ? ` Incomplete: before October 2026 only each vendor’s latest update was kept, so that week is missing updates that were later replaced.` : ''
         }`,
-        columns: [{ label: 'Measure' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }],
+        columns: [{ label: 'Measure' }, { label: weekShort(pm), num: true }, { label: weekShort(m), num: true }, { label: 'Change', num: true }],
         rows: [
           { cells: ['Vendors updated', String(before.size), String(latest.size), change(latest.size, before.size)] },
           { cells: ['Pcs / month declared', num(sumCap(before)), num(sumCap(latest)), change(sumCap(latest), sumCap(before))] },
-          { cells: ['Updates made', String(events.filter((x) => istMonth(x.at) === pm).length), String(events.filter((x) => istMonth(x.at) === m).length), '—'] },
+          { cells: ['Updates made', String(events.filter((x) => weekOf(x.at) === pm).length), String(events.filter((x) => weekOf(x.at) === m).length), '—'] },
         ],
       },
       {
         kind: 'table',
-        title: `Capacity changes vs ${short(pm)}`,
-        hint: 'Each vendor’s latest declared pcs / month in each month.',
-        columns: [{ label: 'Vendor' }, { label: short(pm), num: true }, { label: short(m), num: true }, { label: 'Change', num: true }, { label: '%', num: true }],
+        title: `Capacity changes vs ${weekLong(pm)}`,
+        hint: 'Each vendor’s latest declared pcs / month in each week.',
+        columns: [{ label: 'Vendor' }, { label: weekShort(pm), num: true }, { label: weekShort(m), num: true }, { label: 'Change', num: true }, { label: '%', num: true }],
         rows: vendorRows,
         filters: [
           { label: 'First update', tone: 'draft' },
@@ -1198,12 +1220,12 @@ export async function loadVendorCapacityBoard(
           { label: 'Cut', tone: 'pending' },
           { label: 'Same / not updated', tone: 'closed' },
         ],
-        empty: 'No capacity changes between the two months.',
+        empty: 'No capacity changes between the two weeks.',
       },
     ];
   };
 
-  /** Next month's card: who to chase first, from each vendor's last update. */
+  /** Next week's card: who to chase first, from each vendor's last update. */
   const vcUpcoming = (m: string): NonNullable<MonthBoardCard['detail']> => {
     const known = lastUpdateBy(Date.now());
     const rowsUp = activeVendors
@@ -1218,7 +1240,7 @@ export async function loadVendorCapacityBoard(
     const stale = rowsUp.filter((r) => r.tone !== 'live').length;
     return {
       kicker: 'Vendor Capacity',
-      lede: `${long(m)} has not started. Every active vendor will need a fresh update; the ones with the oldest figures are first.`,
+      lede: `${weekShort(m)} has not started. Every active vendor will need a fresh update; the ones with the oldest figures are first.`,
       tiles: [
         { label: 'Active vendors', value: String(total) },
         { label: 'Last known pcs / month', value: num(lastTotal) },
@@ -1243,7 +1265,7 @@ export async function loadVendorCapacityBoard(
   };
 
   const cards: MonthBoardCard[] = months.map((m) => {
-    const mine = events.filter((e) => istMonth(e.at) === m).sort((a, b) => a.at.localeCompare(b.at));
+    const mine = events.filter((e) => weekOf(e.at) === m).sort((a, b) => a.at.localeCompare(b.at));
     const latest = new Map<string, Ev>();
     for (const e of mine) latest.set(e.vendor, e);
     const updatedActive = [...latest.keys()].filter((k) => active.has(k));
@@ -1253,10 +1275,11 @@ export async function loadVendorCapacityBoard(
     const lastAt = mine.length ? mine[mine.length - 1].at : null;
     const status = m > cur ? 'draft' : m === cur ? (updated === 0 ? 'draft' : updated >= total ? 'live' : 'pending') : 'closed';
     const facts: string[] = [];
-    if (m > cur) facts.push(`Opens 1 ${short(m).split(' ')[0]}`);
+    facts.push(`Week ${isoWeekNo(m)} · Monday to Sunday`);
+    if (m > cur) facts.push(`Opens Monday ${dayMon(m)}`);
     else if (lastAt) facts.push(`Last update ${day(lastAt)}`);
     if (m === cur && updated < total) facts.push(`${total - updated} vendor${total - updated === 1 ? '' : 's'} still to update`);
-    if (m < '2026-10-01') facts.push('Before Oct 2026 only each vendor’s latest update is known');
+    if (m < TRAIL_FROM) facts.push('Before Oct 2026 only each vendor’s latest update is known');
 
     /* ---- overview ---- */
     const nameOf = (k: string) => active.get(k)?.name ?? k.toUpperCase();
@@ -1290,17 +1313,17 @@ export async function loadVendorCapacityBoard(
       {
         kind: 'bars',
         title: 'Largest declared capacity',
-        hint: 'Pieces per month each vendor declared in this month’s update.',
+        hint: 'Pieces per month each vendor declared in this week’s update.',
         bars: [...latest.values()]
           .sort((a, b) => b.capacity - a.capacity)
           .slice(0, 10)
           .map((e) => ({ label: nameOf(e.vendor), value: `${num(e.capacity)} pcs`, pct: pct(e.capacity, Math.max(...[...latest.values()].map((x) => x.capacity), 1)), tone: 'live' as Tone })),
-        empty: 'No vendor updated capacity in this month.',
+        empty: 'No vendor updated capacity in this week.',
       },
       {
         kind: 'table',
         title: 'Vendors',
-        hint: m <= cur ? 'Who updated this month, and the active vendors still to update.' : undefined,
+        hint: m <= cur ? 'Who updated this week, and the active vendors still to update.' : undefined,
         columns: [
           { label: 'Vendor' },
           { label: 'Updated' },
@@ -1312,7 +1335,7 @@ export async function loadVendorCapacityBoard(
         ],
         rows: vendorRows,
         filters: m <= cur ? [{ label: 'Updated', tone: 'live' }, { label: 'Not updated', tone: 'pending' }] : undefined,
-        empty: 'Nothing to show for this month.',
+        empty: 'Nothing to show for this week.',
       },
       ...vcCompare(m, latest),
     ];
@@ -1320,12 +1343,12 @@ export async function loadVendorCapacityBoard(
     return {
       id: `vc-${m}`,
       month: m,
-      label: short(m),
+      label: weekShort(m),
       status,
       big: { value: updated ? num(capacity) : '—', label: 'Pcs / month declared' },
       progress: m > cur ? undefined : { left: `${updated} / ${total} vendors updated`, right: `${pct(updated, total)}%`, pct: pct(updated, total) },
       facts,
-      warn: m <= cur && updated === 0 ? { text: 'No vendor updated capacity in this month.', tone: 'pending' as const } : undefined,
+      warn: m <= cur && updated === 0 ? { text: 'No vendor updated capacity in this week.', tone: 'pending' as const } : undefined,
       actions: [{ label: m === cur ? 'Update vendors' : 'Open', href: '/vendor-capacity?view=vendors', primary: true }],
       list: [`${updated} / ${total}`, updated ? num(capacity) : '—'],
       detail:
@@ -1333,7 +1356,7 @@ export async function loadVendorCapacityBoard(
           ? vcUpcoming(m)
           : {
               kicker: 'Vendor Capacity',
-              lede: `Capacity updates made in ${long(m)}.${m < '2026-10-01' ? ' Before October 2026 only each vendor’s latest update was kept.' : ''}`,
+              lede: `Capacity updates made in ${weekLong(m)}.${m < TRAIL_FROM ? ' Before October 2026 only each vendor’s latest update was kept.' : ''}`,
               ring: { pct: pct(updated, total), label: 'updated', caption: 'Active vendors who updated', sub: `${updated} of ${total} vendors` },
               tiles: [
                 { label: 'Declared pcs / month', value: updated ? num(capacity) : '—' },
@@ -1352,14 +1375,15 @@ export async function loadVendorCapacityBoard(
       { key: 'draft', label: 'Not started', tone: 'draft', hint: 'No vendor updated yet' },
       { key: 'pending', label: 'In progress', tone: 'pending', hint: 'Some vendors updated' },
       { key: 'live', label: 'Complete', tone: 'live', hint: 'Every active vendor updated' },
-      { key: 'closed', label: 'Past months', tone: 'closed', hint: 'Kept for history' },
+      { key: 'closed', label: 'Past weeks', tone: 'closed', hint: 'Kept for history' },
     ],
     cards,
     totals: [
-      { value: now?.list[0] ?? `0 / ${total}`, label: 'Updated this month' },
+      { value: now?.list[0] ?? `0 / ${total}`, label: 'Updated this week' },
       { value: now?.list[1] ?? '—', label: 'Pcs / month declared' },
     ],
-    unit: 'months',
+    unit: 'weeks',
+    noun: 'week',
     listColumns: [{ label: 'Vendors updated', num: true }, { label: 'Pcs / month', num: true }],
   };
 }
