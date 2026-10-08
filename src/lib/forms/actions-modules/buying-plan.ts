@@ -347,6 +347,89 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
   return done(`Approved ${lineIds.length} line(s); ${stillPending} still pending.`);
 }
 
+/**
+ * Reject single plan lines (per-product decision on the plan page). A rejected line is out
+ * of every total and does not hold the plan open: once the remaining non-zero lines are all
+ * approved the plan is approved; if every line is rejected the plan is rejected. A reason is
+ * required and kept on the line.
+ */
+export async function rejectBuyingPlanLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const planId = Number(formData.get('plan_id'));
+  const note = String(formData.get('note') ?? '').trim();
+  if (!planId) return fail('Invalid plan.');
+  if (!note) return fail('Give a reason for rejecting the line.');
+  let lineIds: number[] = [];
+  try {
+    lineIds = (JSON.parse(String(formData.get('line_ids') ?? '[]')) as unknown[])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  } catch {
+    lineIds = [];
+  }
+  if (!lineIds.length) return fail('Select at least one line to reject.');
+
+  const supabase = await supa();
+  const { data: plan } = await supabase
+    .from('sd_buying_plan')
+    .select('id, plan_month, status')
+    .eq('id', planId)
+    .maybeSingle();
+  if (!plan) return fail('Plan not found.');
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over.`);
+  const from = plan.status as SdStatus;
+  if (from !== 'submitted' && from !== 'pending_l2') return fail('Only a plan awaiting approval can have lines rejected.');
+  if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
+
+  const { data: touched, error: lineErr } = await supabase
+    .from('sd_buying_plan_line')
+    .update({ line_status: 'rejected', rework_notes: note })
+    .eq('plan_id', planId)
+    .in('id', lineIds)
+    .select('id');
+  if (lineErr) return fail(lineErr.message);
+  if (!touched?.length) return fail('Those lines no longer exist — the plan was re-saved. Reload and review the current lines.');
+
+  // paging-ok: one plan's lines, at most a few hundred
+  const { data: allLines } = await supabase
+    .from('sd_buying_plan_line')
+    .select('job_work_qty, fob_qty, efob_qty, line_status')
+    .eq('plan_id', planId);
+  const nonZero = ((allLines ?? []) as Record<string, unknown>[]).filter(
+    (l) => Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0) > 0,
+  );
+  const stillPending = nonZero.filter((l) => l.line_status !== 'approved' && l.line_status !== 'rejected').length;
+  const anyApproved = nonZero.some((l) => l.line_status === 'approved');
+  const label = `Buying plan ${String(plan.plan_month).slice(0, 7)}`;
+  const summary = `${lineIds.length} line(s) rejected: ${note}`;
+
+  if (stillPending === 0) {
+    const now = new Date().toISOString();
+    const to: SdStatus = anyApproved ? 'approved' : 'rejected';
+    const { data: hdr, error: hdrErr } = await supabase
+      .from('sd_buying_plan')
+      .update(
+        to === 'approved'
+          ? { status: to, approved_by: user.email, approved_at: now }
+          : { status: to, rejection_notes: note },
+      )
+      .eq('id', planId)
+      .eq('status', from)
+      .select('id');
+    if (hdrErr) return fail(hdrErr.message);
+    if (hdr?.length) await writeLog('buying_plan', String(planId), label, from, to, user.email, summary);
+    revalidatePath('/approvals');
+    revalidatePath('/buying-plan');
+    return done(to === 'approved' ? `Rejected ${lineIds.length} line(s) — the rest are approved, plan approved.` : 'Every line rejected — plan rejected.');
+  }
+
+  await writeLog('buying_plan', String(planId), label, from, from, user.email, summary);
+  revalidatePath('/approvals');
+  revalidatePath('/buying-plan');
+  return done(`Rejected ${lineIds.length} line(s); ${stillPending} still pending.`);
+}
+
 /* ================================================================== */
 /* Vendor capacity — no approval; one live row per vendor, saved singly */
 /* ================================================================== */
