@@ -977,11 +977,8 @@ export async function loadInwardPlanBoard(): Promise<MonthBoardData> {
       { key: 'closed', label: 'Closed', tone: 'closed', hint: 'Month over · received vs planned final' },
     ],
     cards,
-    totals: [
-      { value: String(rows.length), label: 'Lines' },
-      { value: num(rows.reduce((s, r) => s + n(r.inward_qty), 0)), label: 'Pcs planned' },
-      { value: inrShort(rows.reduce((s, r) => s + n(r.inward_qty) * n(r.cost_per_piece), 0)), label: 'Planned value' },
-    ],
+    // Header totals removed on request (2026-10-08); each month card carries its own figures.
+    totals: [],
     unit: 'months',
     listColumns: [
       { label: 'Lines', num: true },

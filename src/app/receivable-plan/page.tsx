@@ -62,12 +62,9 @@ export default async function ReceivablePlanPage({
         <MonthBoard
           data={board}
           pageBar={
-            <>
-              <Link className="wf-btn wf-btn-ghost wf-btn-sm" href="/receivable-plan?tab=arrivals">Arrivals</Link>
-              {canEdit(user.role, 'draft') && (
-                <Link className="wf-btn wf-btn-primary wf-btn-sm" href="/receivable-plan?tab=input">Input inward plan</Link>
-              )}
-            </>
+            canEdit(user.role, 'draft') ? (
+              <Link className="wf-btn wf-btn-primary wf-btn-sm" href="/receivable-plan?tab=input">Input inward plan</Link>
+            ) : null
           }
         />
       </FormLayout>
