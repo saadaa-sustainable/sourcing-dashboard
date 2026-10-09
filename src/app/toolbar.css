@@ -214,3 +214,10 @@
    (flex-basis max-content = each group asks for its full one-line width.) */
 .tb-find { flex: 1 1 max-content; }
 .tb-see { flex: 0 1 max-content; justify-content: flex-end; }
+
+/* Widths that keep a full filter set on one line at a normal laptop width: dropdowns at most 180px
+   (a long choice is shortened in the closed box — the open list shows it whole), search 260px. */
+.tb select { max-width: 180px; text-overflow: ellipsis; }
+.tb .tb-field select { max-width: 160px; }
+.tb input:not([type="checkbox"]):not([type="radio"]) { flex-basis: 260px; width: 260px !important; }
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) { flex-basis: 260px; width: 260px; }
