@@ -198,7 +198,7 @@ export async function standardCostVariation(cost: StandardCost): Promise<Variati
     ],
     tiles: byType
       .filter((b) => std[b.t] != null || b.actual != null)
-      .map((b) => ({ label: `${label[b.t]} rate`, planned: std[b.t], actual: b.actual, unit: 'rate' as const })),
+      .map((b) => ({ label: `${label[b.t]} rate`, planned: std[b.t], actual: b.actual, unit: 'rate' as const, words: { over: 'Above standard', short: 'Below standard', onPlan: 'At standard', unplanned: 'No standard' } })),
     sections: [
       {
         title: 'Rate by PO type',
@@ -260,7 +260,16 @@ export function vendorCapacityVariation(
       'Capacity used is written as “100% Over Utilised” once a vendor is past capacity.',
       ...(noCap ? [`${noCap} vendor${noCap === 1 ? ' has' : 's have'} quantity on order but no capacity entered.`] : []),
     ],
-    tiles: [{ label: 'Capacity vs on order (pcs)', planned: cap, actual: ord, unit: 'pcs', pctMode: 'utilisation' }],
+    tiles: [
+      {
+        label: 'Capacity vs on order (pcs)',
+        planned: cap,
+        actual: ord,
+        unit: 'pcs',
+        pctMode: 'utilisation',
+        words: { over: 'Over capacity', short: 'Within capacity', onPlan: 'At capacity' },
+      },
+    ],
     sections: [
       {
         title: 'By vendor',

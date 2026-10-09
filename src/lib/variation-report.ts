@@ -45,6 +45,7 @@ export type VariationTile = {
   actual: number | null;
   unit: VariationUnit;
   pctMode?: 'variance' | 'utilisation';
+  words?: VariationSection['words'];
 };
 
 export type VariationReport = {
@@ -164,7 +165,7 @@ export async function downloadVariationPdf(r: VariationReport) {
       head: [['Summary', 'Planned', 'Actual', 'Variation', '%', 'Status']],
       body: r.tiles.map((t) => {
         const v = variance(t.planned, t.actual, t.pctMode);
-        return [t.label, fmtValue(t.planned, t.unit, true), fmtValue(t.actual, t.unit, true), fmtDiff(v, t.unit, true), fmtPct(v, t.pctMode), statusWord(v.status)];
+        return [t.label, fmtValue(t.planned, t.unit, true), fmtValue(t.actual, t.unit, true), fmtDiff(v, t.unit, true), fmtPct(v, t.pctMode), statusWord(v.status, t.words)];
       }),
       styles: { fontSize: 8.5, cellPadding: 4 },
       headStyles: { fillColor: [22, 21, 19], textColor: 255 },

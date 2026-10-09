@@ -83,7 +83,7 @@ export function VariationReportPanel({ report }: { report: VariationReport }) {
                 <span className="vr-tile-var">
                   {fmtDiff(v, t.unit)}
                   {v.pct != null && <em> · {fmtPct(v, t.pctMode)}</em>}
-                  <span className="vr-status">{statusWord(v.status)}</span>
+                  <span className="vr-status">{statusWord(v.status, t.words)}</span>
                 </span>
               </div>
             );
