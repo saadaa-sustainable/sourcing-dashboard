@@ -2872,6 +2872,7 @@ tr.iw-picked > td { background: #fffbea; }
 
 /* ---- Main Dashboard · Objectives (redesign 2026-10-09): one KPI strip, then three titled rows ---- */
 .metric-grid.dashboard-metrics.dashboard-kpis, .ui-shopify .metric-grid.dashboard-metrics.dashboard-kpis { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 4px; }
+.dashboard-kpis .metric-label, .ui-shopify .dashboard-kpis .metric-label { white-space: normal; text-overflow: clip; overflow: visible; line-height: 1.25; }
 .dash-sec { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
 .dash-sec-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .dash-sec-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; color: var(--ink-1, #161513); }
