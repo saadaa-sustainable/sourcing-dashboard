@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { ExternalLink, FileText, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Fragment, useState, useTransition } from 'react';
+import { ExternalLink, FileText, Paperclip, Plus, Save, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { addCostDocument, deleteCostDocument, saveCostLinks, signCostDocument, startCostDocumentUpload } from '@/lib/forms/actions';
-import { canEdit } from '@/lib/forms/approval';
-import { Notice } from '@/components/forms/form-layout';
-import { InfoDot } from '@/components/info-dot';
+import { Field, Notice } from '@/components/forms/form-layout';
 import { confirmDelete } from '@/lib/confirm';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import {
@@ -39,91 +37,38 @@ async function uploadFile(productCode: string, file: File): Promise<{ ok: true; 
 }
 
 /**
- * Standard Cost → Documents tab (2026-10-09): every document of the cost in one place — the
- * RFP sheet and CAD links, and the CAD plan library (four primary headers: single piece; full
- * layer single size per width, 58″ and 56″ separate; standard ratio; 1:1 size ratio), each
- * with Add + remark. No approval on documents.
+ * Standard Cost → Documents tab (2026-10-09): the RFP sheet link and the CAD plan library —
+ * four primary headers (single piece; full layer single size per width, 58″ and 56″
+ * separate; standard ratio; 1:1 size ratio), each with Add + remark. Laid out like the other
+ * cost tabs; everything changes only under the page's Edit cost (editable).
  */
 export function CostDocumentsSection({
   costId,
-  cadLink,
   rfpLink,
-  frozen,
   productCode,
   docs,
   ready,
+  editable,
   role,
   userEmail,
 }: {
   costId: number;
-  cadLink: string | null;
   rfpLink: string | null;
-  frozen: boolean;
   productCode: string;
   docs: CostDocument[];
   ready: boolean;
+  editable: boolean;
   role: SdRole;
   userEmail: string;
 }) {
-  const editor = canEdit(role, 'draft');
+  const [rfp, setRfp] = useState(rfpLink ?? '');
+  const [busy, start] = useTransition();
   const me = userEmail.toLowerCase();
   const byGroup = (g: CostDocGroup) => docs.filter((d) => d.doc_group === g);
 
-  return (
-    <section className="cd-section" aria-label="Documents">
-      <LinksBlock costId={costId} cadLink={cadLink} rfpLink={rfpLink} editable={editor && !frozen} />
-      {!ready ? (
-        <Notice tone="warn">
-          The CAD plan library needs the database update <code>20261009100000_cost_documents.sql</code> — run it in the Supabase SQL editor, then reload.
-        </Notice>
-      ) : (
-        <div className="cd-library">
-          <div className="cd-library-head">
-            <h3>
-              CAD plan library
-              <InfoDot text={"WHAT: the CAD plans (markers) for this product.\n\nHOW: add each plan under its group with a remark; click a file to open it.\n\nUSE: one place to find the right CAD for the lay being cut."} />
-            </h3>
-            <p className="cd-sop">
-              <b>SOP</b> CAD plans are plotted on the 8 m table.
-            </p>
-          </div>
-          {CAD_HEADERS.map((h) => (
-            <div className="cd-group" key={h.key}>
-              <div className="cd-group-head">
-                <h4>{h.title}</h4>
-                <span>{h.hint}</span>
-              </div>
-              <div className={`cd-slots${h.slots.length > 1 ? ' split' : ''}`}>
-                {h.slots.map((slot) => (
-                  <Slot
-                    key={slot.group}
-                    group={slot.group}
-                    label={h.slots.length > 1 ? slot.label : null}
-                    docs={byGroup(slot.group)}
-                    productCode={productCode}
-                    editor={editor}
-                    isAdmin={role === 'admin'}
-                    me={me}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function LinksBlock({ costId, cadLink, rfpLink, editable }: { costId: number; cadLink: string | null; rfpLink: string | null; editable: boolean }) {
-  const [editing, setEditing] = useState(false);
-  const [cad, setCad] = useState(cadLink ?? '');
-  const [rfp, setRfp] = useState(rfpLink ?? '');
-  const [pending, start] = useTransition();
-  function save() {
+  function saveRfp() {
     const fd = new FormData();
     fd.set('id', String(costId));
-    fd.set('cad_link', cad);
     fd.set('rfp_link', rfp);
     start(async () => {
       const r = await saveCostLinks(fd);
@@ -131,96 +76,126 @@ function LinksBlock({ costId, cadLink, rfpLink, editable }: { costId: number; ca
       else toastError(r.error);
     });
   }
-  const link = (label: string, url: string | null) => (
-    <div className="cd-link">
-      <span className="cd-link-label">{label}</span>
-      {url ? (
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          Open <ExternalLink size={12} aria-hidden="true" />
-        </a>
-      ) : (
-        <span className="wf-subtle">Not linked yet</span>
-      )}
-    </div>
-  );
+
   return (
-    <div className="cd-links">
-      <div className="cd-links-head">
-        <h3>Links</h3>
-        {editable && !editing && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setEditing(true)}>
-            <Pencil size={12} /> Edit links
-          </button>
-        )}
+    <div className="wf-final-view">
+      <div className="wf-form-grid">
+        <Field label="RFP sheet link">
+          {editable ? (
+            <input value={rfp} placeholder="https://…" onChange={(e) => setRfp(e.target.value)} />
+          ) : rfpLink ? (
+            <a className="cd-open" href={rfpLink} target="_blank" rel="noopener noreferrer">
+              Open the RFP sheet <ExternalLink size={12} aria-hidden="true" />
+            </a>
+          ) : (
+            <span className="wf-subtle">Not linked yet</span>
+          )}
+        </Field>
       </div>
-      {editing ? (
-        <div className="cd-links-edit">
-          <label>
-            RFP sheet
-            <input value={rfp} onChange={(e) => setRfp(e.target.value)} placeholder="https://…" />
-          </label>
-          <label>
-            CAD link
-            <input value={cad} onChange={(e) => setCad(e.target.value)} placeholder="https://…" />
-          </label>
-          <div className="cd-picker-actions">
-            <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={save}>{pending ? 'Saving…' : 'Save links'}</button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setEditing(false); setCad(cadLink ?? ''); setRfp(rfpLink ?? ''); }}>Cancel</button>
-          </div>
-        </div>
+
+      {!ready ? (
+        <Notice tone="warn">
+          The CAD plan library needs the database update <code>20261009100000_cost_documents.sql</code> — run it in the Supabase SQL editor, then reload.
+        </Notice>
       ) : (
-        <div className="cd-links-row">
-          {link('RFP sheet', rfpLink)}
-          {link('CAD link', cadLink)}
+        <div className="table-scroll">
+          <table className="wf-grid wf-cost-lines cd-table">
+            <thead>
+              <tr>
+                <th>CAD plan</th>
+                <th>File</th>
+                <th>Remark</th>
+                <th>Added</th>
+                {editable && <th aria-label="Remove" />}
+              </tr>
+            </thead>
+            <tbody>
+              {CAD_HEADERS.map((h) => (
+                <Fragment key={h.key}>
+                  <tr className="cd-group-row">
+                    <td colSpan={editable ? 5 : 4}>
+                      <b>{h.title}</b> <span className="wf-subtle">{h.hint}</span>
+                    </td>
+                  </tr>
+                  {h.slots.map((slot) => (
+                    <SlotRows
+                      key={slot.group}
+                      group={slot.group}
+                      label={slot.label}
+                      docs={byGroup(slot.group)}
+                      productCode={productCode}
+                      editable={editable}
+                      canRemove={(d) => role === 'admin' || (d.created_by ?? '').toLowerCase() === me}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="wf-subtle">
+        <b>SOP:</b> CAD plans are plotted on the 8 m table.
+      </p>
+
+      {editable && (
+        <div className="wf-cost-detail-foot">
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={saveRfp} disabled={busy}>
+            <Save size={13} /> {busy ? 'Saving…' : 'Save'}
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-function Slot({
+function SlotRows({
   group,
   label,
   docs,
   productCode,
-  editor,
-  isAdmin,
-  me,
+  editable,
+  canRemove,
 }: {
   group: CostDocGroup;
-  label: string | null;
+  label: string;
   docs: CostDocument[];
   productCode: string;
-  editor: boolean;
-  isAdmin: boolean;
-  me: string;
+  editable: boolean;
+  canRemove: (d: CostDocument) => boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const cols = editable ? 5 : 4;
   return (
-    <div className="cd-slot">
-      {label && <div className="cd-slot-label">{label}</div>}
+    <>
       {docs.length ? (
-        <ul className="cd-docs">
-          {docs.map((d) => (
-            <DocRow key={d.id} d={d} productCode={productCode} canRemove={isAdmin || (editor && (d.created_by ?? '').toLowerCase() === me)} />
-          ))}
-        </ul>
+        docs.map((d, i) => <DocRow key={d.id} d={d} label={i === 0 ? label : ''} productCode={productCode} editable={editable} canRemove={canRemove(d)} />)
       ) : (
-        <p className="cd-empty">No CAD plan yet.</p>
+        <tr>
+          <td className="cd-slot">{label}</td>
+          <td colSpan={cols - 1} className="wf-subtle">No CAD plan yet</td>
+        </tr>
       )}
-      {editor &&
-        (adding ? (
-          <AddPicker productCode={productCode} group={group} onCancel={() => setAdding(false)} />
-        ) : (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm cd-add" onClick={() => setAdding(true)}>
-            <Plus size={13} /> Add {label ? `${label} plan` : 'plan'}
-          </button>
-        ))}
-    </div>
+      {editable && (
+        <tr className="cd-add-row">
+          <td />
+          <td colSpan={cols - 1}>
+            {adding ? (
+              <AddPicker productCode={productCode} group={group} onCancel={() => setAdding(false)} />
+            ) : (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setAdding(true)}>
+                <Plus size={13} /> Add {label} plan
+              </button>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
-function DocRow({ d, productCode, canRemove }: { d: CostDocument; productCode: string; canRemove: boolean }) {
+function DocRow({ d, label, productCode, editable, canRemove }: { d: CostDocument; label: string; productCode: string; editable: boolean; canRemove: boolean }) {
   const [pending, start] = useTransition();
 
   function open() {
@@ -247,22 +222,26 @@ function DocRow({ d, productCode, canRemove }: { d: CostDocument; productCode: s
   }
 
   return (
-    <li className="cd-doc">
-      <div className="cd-doc-main">
+    <tr>
+      <td className="cd-slot">{label}</td>
+      <td>
         <button type="button" className="cd-doc-name" onClick={open} disabled={pending} title="Open the file">
-          <FileText size={14} aria-hidden="true" /> {d.file_name}
+          <FileText size={13} aria-hidden="true" /> {d.file_name}
         </button>
-        {canRemove && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={remove} aria-label={`Remove ${d.file_name}`} title="Remove">
-            <Trash2 size={12} />
-          </button>
-        )}
-      </div>
-      <div className="cd-doc-meta">
-        {d.remark && <span className="cd-doc-remark">“{d.remark}”</span>}
-        <span>{kb(d.file_size)}{d.file_size ? ' · ' : ''}added {day(d.created_at)}{d.created_by ? ` by ${d.created_by}` : ''}</span>
-      </div>
-    </li>
+        {d.file_size ? <span className="wf-subtle"> · {kb(d.file_size)}</span> : null}
+      </td>
+      <td>{d.remark || <span className="wf-subtle">—</span>}</td>
+      <td className="wf-subtle">{day(d.created_at)}{d.created_by ? ` · ${d.created_by}` : ''}</td>
+      {editable && (
+        <td>
+          {canRemove && (
+            <button type="button" className="wf-icon-btn" disabled={pending} onClick={remove} aria-label={`Remove ${d.file_name}`} title="Remove">
+              <Trash2 size={14} />
+            </button>
+          )}
+        </td>
+      )}
+    </tr>
   );
 }
 
@@ -307,14 +286,12 @@ function AddPicker({ productCode, group, onCancel }: { productCode: string; grou
         />
       </label>
       <input className="cd-remark" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark (e.g. marker efficiency, lay length)" aria-label="Remark" />
-      <div className="cd-picker-actions">
-        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !file} onClick={go}>
-          {pending ? 'Uploading…' : 'Add'}
-        </button>
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+      <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !file} onClick={go}>
+        {pending ? 'Uploading…' : 'Add'}
+      </button>
+      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={onCancel}>
+        Cancel
+      </button>
       {err && <p className="cd-err">{err}</p>}
     </div>
   );

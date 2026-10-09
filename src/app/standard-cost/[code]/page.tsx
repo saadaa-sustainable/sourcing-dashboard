@@ -18,7 +18,6 @@ import {
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostDetailClient } from './cost-detail-client';
-import { CostDocumentsSection } from './cost-documents-section';
 import { loadCostDocuments } from '@/lib/forms/queries-modules/cost-documents';
 import type { StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
@@ -175,22 +174,9 @@ export default async function StandardCostDetailPage({
         role={user.role}
         marginPct={rules.margin_pct / 100}
         track={track}
-        // Documents tab between Fabric Cost and Final Cost (FG only): RFP / CAD links + CAD plan library.
-        documents={
-          track !== 'material' ? (
-            <CostDocumentsSection
-              costId={cost.id}
-              cadLink={cost.cad_link ?? null}
-              rfpLink={cost.rfp_link ?? null}
-              frozen={!!cost.frozen}
-              productCode={cost.product_code}
-              docs={costDocs.docs}
-              ready={costDocs.ready}
-              role={user.role}
-              userEmail={user.email}
-            />
-          ) : undefined
-        }
+        // Documents tab between Fabric Cost and Final Cost (FG only).
+        costDocs={track !== 'material' ? costDocs : null}
+        userEmail={user.email}
       />
     </FormLayout>
   );

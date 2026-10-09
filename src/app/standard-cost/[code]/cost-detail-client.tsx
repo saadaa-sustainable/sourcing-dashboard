@@ -1,5 +1,7 @@
 'use client';
 
+import { CostDocumentsSection } from './cost-documents-section';
+import type { CostDocument } from '@/lib/cost-documents';
 import { confirmDelete } from '@/lib/confirm';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -68,7 +70,8 @@ export function StandardCostDetailClient({
   marginPct,
   track = 'fg',
   extraFabrics = [],
-  documents,
+  costDocs,
+  userEmail = '',
 }: {
   cost: StandardCost;
   productName: string | null;
@@ -90,8 +93,9 @@ export function StandardCostDetailClient({
   role: SdRole;
   marginPct: number;
   track?: 'fg' | 'material';
-  /** The CAD plan library, shown as the Documents tab of the cost detail. */
-  documents?: React.ReactNode;
+  /** CAD plan library rows (FG only) — the Documents tab; null hides the tab. */
+  costDocs?: { ready: boolean; docs: CostDocument[] } | null;
+  userEmail?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const stageKey = cost.neg_stage ?? '';
@@ -229,7 +233,21 @@ export function StandardCostDetailClient({
           editable={canChange}
           marginPct={marginPct}
           extraFabrics={extraFabrics}
-          documents={documents}
+          // Documents tab (FG): RFP sheet link + CAD plan library, changed under Edit cost.
+          documents={
+            costDocs ? (
+              <CostDocumentsSection
+                costId={cost.id}
+                rfpLink={cost.rfp_link ?? null}
+                productCode={cost.product_code}
+                docs={costDocs.docs}
+                ready={costDocs.ready}
+                editable={canChange}
+                role={role}
+                userEmail={userEmail}
+              />
+            ) : undefined
+          }
         />
         )}
       </section>

@@ -9,7 +9,7 @@ import { COST_DOC_BUCKET, costDocFileError, fileExt, isCostDocGroup } from '@/li
 import { done, fail, supa, type ActionResult } from './_shared';
 
 /*
- * Standard Cost → Documents tab (2026-10-09): CAD plans in four groups + the RFP / CAD links.
+ * Standard Cost → Documents tab (2026-10-09): CAD plans in four groups + the RFP sheet link.
  *   1. startCostDocumentUpload → a one-time signed upload URL for a server-chosen path
  *   2. the browser uploads the file straight to storage (no Vercel request-size limit)
  *   3. addCostDocument → confirms the file landed and files it under its group with its remark.
@@ -101,26 +101,25 @@ export async function deleteCostDocument(formData: FormData): Promise<ActionResu
   return done('Document removed.');
 }
 
-/** The cost's CAD and RFP links (sd_standard_cost.cad_link / rfp_link), saved from the Documents tab. */
+/** The cost's RFP sheet link (sd_standard_cost.rfp_link), saved from the Documents tab. CAD
+ *  plans live in the CAD plan library, not in a link. */
 export async function saveCostLinks(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
-  if (!canEdit(user.role, 'draft')) return fail('Only team and admin users can change these links.');
+  if (!canEdit(user.role, 'draft')) return fail('Only team and admin users can change the RFP sheet link.');
   const id = Number(formData.get('id'));
   if (!id) return fail('Invalid cost.');
-  const cad = String(formData.get('cad_link') ?? '').trim();
   const rfp = String(formData.get('rfp_link') ?? '').trim();
-  const bad = [cad, rfp].find((l) => l && !/^https?:\/\/\S+$/i.test(l));
-  if (bad) return fail('Paste the full link, starting with https://');
+  if (rfp && !/^https?:\/\/\S+$/i.test(rfp)) return fail('Paste the full link, starting with https://');
   const supabase = await supa();
   const { data: row } = await supabase.from('sd_standard_cost').select('frozen').eq('id', id).maybeSingle();
   if (!row) return fail('Cost not found.');
   if ((row as { frozen: boolean | null }).frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
   const { error } = await supabase
     .from('sd_standard_cost')
-    .update({ cad_link: cad || null, rfp_link: rfp || null, updated_at: new Date().toISOString() })
+    .update({ rfp_link: rfp || null, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) return fail(error.message);
   revalidatePath('/standard-cost');
-  return done('Links saved.');
+  return done('RFP sheet link saved.');
 }
