@@ -2837,3 +2837,20 @@ tr.iw-picked > td { background: #fffbea; }
 .sc-npd-row small { font-size: 11px; color: var(--ink-3, #5f5a50); }
 .sc-npd-why { grid-column: 2; font-style: normal; font-size: 11px; color: #8a4b00; }
 .sc-npd-empty { margin: 8px 0; }
+/* The NPD rows are buttons: undo the dashboard's fixed button height / single-line text so each
+   row grows to its content (name can wrap; details line and the reason sit inside the border). */
+.sc-add .sc-npd-row {
+  height: auto !important;
+  min-height: 0 !important;
+  white-space: normal !important;
+  line-height: 1.35 !important;
+  align-items: start;
+  align-content: start;
+  justify-content: stretch;
+  padding: 10px 12px !important;
+}
+.sc-add .sc-npd-row > * { display: block; min-width: 0; }
+.sc-add .sc-npd-row .mono { padding-top: 1px; }
+.sc-add .sc-npd-row b { line-height: 1.3; }
+.sc-add .sc-npd-row small { margin-top: 2px; line-height: 1.35; }
+.sc-npd-list { gap: 8px; }
