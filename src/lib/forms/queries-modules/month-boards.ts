@@ -1013,11 +1013,14 @@ type CapacityRowJson = {
   entry_date?: string | null;
   submitted_at?: string | null;
 };
-type CapacityEvent = { at: string; vendor: string; capacity: number; machines: number | null; karigar: number | null };
+export type CapacityEvent = { at: string; vendor: string; capacity: number; machines: number | null; karigar: number | null };
 
-/** Every capacity update we know of: each vendor's live row plus the change trail. */
-async function loadCapacityEvents(): Promise<CapacityEvent[]> {
-  const supabase = await client();
+/**
+ * Every capacity update we know of: each vendor's live row plus the change trail. `db` lets the
+ * month-close cron (no user session) read with the service-role client.
+ */
+export async function loadCapacityEvents(db?: Awaited<ReturnType<typeof client>>): Promise<CapacityEvent[]> {
+  const supabase = db ?? (await client());
   const [logs, trail] = await Promise.all([
     pageAll<{ vendor_code: string | null; capacity_per_month: number | null; machines_allocated: number | null; active_karigar: number | null; entry_date: string | null; submitted_at: string | null }>(() =>
       supabase.from('sd_vendor_capacity_log').select('vendor_code, capacity_per_month, machines_allocated, active_karigar, entry_date, submitted_at').order('id'),

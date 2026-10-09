@@ -16,7 +16,10 @@ import {
 import { capacityRulesFrom, eeVendorActive, vendorCapacityModel } from '@/lib/business-logic';
 import { vendorCapacityVariation } from '@/lib/forms/queries-modules/variation-reports';
 import { VariationReportPanel } from '@/components/variation-report';
-import { capacityWeekStart } from '@/lib/forms/approval';
+import { capacityWeekStart, monthStart } from '@/lib/forms/approval';
+import Link from 'next/link';
+import { loadVendorCapacityMonth, loadVendorCapacityReportStatus } from '@/lib/vendor-capacity-month';
+import { VendorCapacityMonthView } from './vendor-capacity-month-view';
 import { VendorCapacityClient } from './vendor-capacity-client';
 import { MonthBoard } from '@/components/month-board';
 import { WeekHeader, type HeaderWeek } from './week-header';
@@ -28,7 +31,7 @@ const key = (value: string | null | undefined) => (value ?? '').trim().toLowerCa
 export default async function VendorCapacityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; week?: string }>;
+  searchParams: Promise<{ view?: string; week?: string; month?: string }>;
 }) {
   const params = await searchParams;
   let user;
@@ -114,7 +117,27 @@ export default async function VendorCapacityPage({
         userEmail={user.email}
         allowedPages={user.allowed_pages ?? null}
       >
-        <MonthBoard data={board} searchPlaceholder="Search week…" />
+        <MonthBoard
+          data={board}
+          searchPlaceholder="Search week…"
+          pageBar={<Link className="wf-btn wf-btn-primary wf-btn-sm" href={`/vendor-capacity?view=month&month=${monthStart()}`}>Monthly analysis</Link>}
+        />
+      </FormLayout>
+    );
+  }
+
+  // Monthly analysis (?view=month&month=YYYY-MM-01): the weekly input rolled up for a month, and
+  // the month's mandatory report to management.
+  if (params.view === 'month') {
+    const month = /^\d{4}-\d{2}-01$/.test(params.month ?? '') && (params.month as string) <= monthStart() ? (params.month as string) : monthStart();
+    const board = await loadVendorCapacityBoard(
+      vendors.map((v) => ({ code: v.vendor_code, name: v.vendor_name, signed: Number(v.capacitySigned) || 0 })),
+    );
+    const months = Array.from(new Set([...board.cards.map((c) => `${c.month.slice(0, 7)}-01`), monthStart(), month])).sort();
+    const [data, report] = await Promise.all([loadVendorCapacityMonth(month), loadVendorCapacityReportStatus(month)]);
+    return (
+      <FormLayout title="Vendor Capacity" active="/vendor-capacity" role={user.role} userEmail={user.email} allowedPages={user.allowed_pages ?? null}>
+        <VendorCapacityMonthView data={data} report={report} months={months} isAdmin={user.role === 'admin'} />
       </FormLayout>
     );
   }
