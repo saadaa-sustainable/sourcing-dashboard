@@ -2644,7 +2644,9 @@ tr[hidden] { display: none !important; }
 
 
 /* Standard Cost → Documents tab (cost-documents-section.tsx): reuses the CMTP card layout. */
-.cd-heads { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cd-heads { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .cd-heads { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .cd-heads { grid-template-columns: 1fr; } }
 .cd-rfp a { display: inline-flex; gap: 4px; align-items: center; color: var(--ink-1, #161513); font-size: 13px; }
 .cd-rfp input { flex: 1; max-width: 520px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 5px 9px; font: inherit; font-weight: 400; font-size: 12.5px; background: #fff; }
 .cd-rfp .cd-none { font-weight: 500; color: var(--ink-4, #9a9384); }
