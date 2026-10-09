@@ -392,8 +392,14 @@ export function FilterTable<T>({
             active={anyFilter}
             onClear={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
           />
+          {/* The how-to used to stand under every table; it now sits behind this icon (same words). */}
+          <InfoDot
+            label="How to use this table"
+            text={`Type in Search to find a word anywhere. Click a column heading to sort. To narrow one column, use Filter columns. Download saves the rows you're seeing.${legendSources.length > 0 ? ' The coloured line under each heading is its data source — see the legend on the right.' : ''}`}
+          />
         </div>
         <div className="tb-see">
+          {legendSources.length > 0 && <SourceLegend sources={legendSources} compact />}
           <div className="wf-chip">{fmt.format(sorted.length)} {unit}</div>
           {download && <span className="tb-divider" />}
           {download && (
@@ -439,18 +445,9 @@ export function FilterTable<T>({
         </div>
       </div>
 
-      <p className="wf-table-hint">
-        Type in <strong>Search</strong> to find a word anywhere. Click a column heading to
-        sort. To narrow one column, use <strong>Filter columns</strong>.{' '}
-        <strong>Download</strong>{' '}saves the rows you&rsquo;re seeing.
-        {legendSources.length > 0 && ' Each column heading carries a source-coloured bar — see the legend.'}
-      </p>
-
-      {legendSources.length > 0 && <SourceLegend sources={legendSources} />}
-
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
-          <table className="wf-grid">
+          <table className="wf-grid ft-grid">
             <thead>
               <tr>
                 {meta.map(({ col }) => {
@@ -464,13 +461,16 @@ export function FilterTable<T>({
                       onClick={sortable ? () => toggleSort(col.key) : undefined}
                       title={sortable ? 'Click to sort' : undefined}
                     >
-                      {col.label}
-                      {sortable && (
-                        <span className={`wf-sort-ind${active ? ' is-active' : ''}`} aria-hidden="true">
-                          {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}
-                        </span>
-                      )}
-                      {col.info ? <InfoDot text={col.info} label={`About ${col.label}`} /> : <HeaderInfo label={col.label} />}
+                      {/* Label, sort arrow and ⓘ stay on one line; the source line is pinned under it. */}
+                      <span className="ft-th">
+                        {col.label}
+                        {sortable && (
+                          <span className={`wf-sort-ind${active ? ' is-active' : ''}`} aria-hidden="true">
+                            {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}
+                          </span>
+                        )}
+                        {col.info ? <InfoDot text={col.info} label={`About ${col.label}`} /> : <HeaderInfo label={col.label} />}
+                      </span>
                       {(col.source ?? defaultSource) && <SourceBar source={(col.source ?? defaultSource)!} />}
                     </th>
                   );

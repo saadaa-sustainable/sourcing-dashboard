@@ -9,14 +9,17 @@ import { DATA_SOURCES, type DataSourceKey } from '@/lib/data-source';
 export function SourceLegend({
   sources,
   label = 'Data source',
+  compact = false,
 }: {
   sources: DataSourceKey[];
   label?: string;
+  /** Small dot legend for a toolbar (no box, no label). */
+  compact?: boolean;
 }) {
   if (!sources.length) return null;
   return (
-    <div className="src-legend" role="note" aria-label="Data source legend">
-      <span className="src-legend-label">{label}</span>
+    <div className={`src-legend${compact ? ' is-compact' : ''}`} role="note" aria-label="Data source legend">
+      {!compact && <span className="src-legend-label">{label}</span>}
       {sources.map((k) => {
         const s = DATA_SOURCES[k];
         return (

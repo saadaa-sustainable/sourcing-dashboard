@@ -2913,3 +2913,14 @@ tr.iw-picked > td { background: #fffbea; }
   .ui-shopify .ana-tabs.dash-groups button { flex: 0 0 auto; white-space: nowrap; }
   .ui-shopify .ana-tabs.dash-groups button:last-child { grid-column: auto; }
 }
+
+/* ---- Shared table frame (FilterTable, 26 tables) — less stacked chrome, aligned headings (2026-10-09) ---- */
+.ft-th { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.wf-grid.ft-grid th { position: relative; padding-bottom: 11px; vertical-align: middle; }
+.wf-grid.ft-grid th > .src-bar { position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; margin: 0; }
+.ui-shopify .wf-grid.ft-grid th { font-size: 10px; }
+.ui-shopify .wf-grid.ft-grid td { height: 40px; font-size: 12px; }
+.ui-shopify .wf-grid.ft-grid tbody tr:hover { background: var(--bg-tint, #f6f3f1); }
+.src-legend.is-compact { margin: 0; padding: 0; background: none; border: 0; gap: 10px; font-size: 11.5px; }
+.src-legend.is-compact .src-legend-item { font-weight: 500; color: var(--ink-3, #6e695e); }
+.src-legend.is-compact .src-legend-item i { width: 8px; height: 8px; border-radius: 50%; }
