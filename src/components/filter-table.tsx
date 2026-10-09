@@ -368,10 +368,10 @@ export function FilterTable<T>({
 
   return (
     <>
-      <div className="wf-toolbar">
-        <div className="wf-toolbar-left">
-          <label className="field">
-            <span>Search</span>
+      <div className="tb">
+        <div className="tb-find">
+          <label className="field tb-search-wrap">
+            <span className="tb-sr">Search</span>
             <input
               placeholder={searchPlaceholder}
               value={search}
@@ -388,6 +388,14 @@ export function FilterTable<T>({
             <ListFilter size={13} /> Filter columns{activeColCount ? ` (${activeColCount})` : ''}
           </button>
           {toolbarExtra}
+          <ClearFiltersButton
+            active={anyFilter}
+            onClear={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
+          />
+        </div>
+        <div className="tb-see">
+          <div className="wf-chip">{fmt.format(sorted.length)} {unit}</div>
+          {download && <span className="tb-divider" />}
           {download && (
             <button
               type="button"
@@ -428,12 +436,7 @@ export function FilterTable<T>({
               <Download size={13} /> {pdfBusy ? 'PDF…' : 'PDF'}
             </button>
           )}
-          <ClearFiltersButton
-            active={anyFilter}
-            onClear={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
-          />
         </div>
-        <div className="wf-chip">{fmt.format(sorted.length)} {unit}</div>
       </div>
 
       <p className="wf-table-hint">

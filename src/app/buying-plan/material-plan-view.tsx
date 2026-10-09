@@ -353,36 +353,40 @@ export function MaterialPlanView({
         {/* Filters */}
         <div className="bp-sticky">
           <div className="bp-card bp-toolbar-card">
-            <div className="bp-toolbar bp-filter-toolbar bp-filter-toolbar-view plan-filterbar">
-              <input
-                className="bp-search"
-                aria-label="Search material"
-                placeholder="Search code, fabric, colour…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <select aria-label="Material type" value={typeF} onChange={(e) => setTypeF(e.target.value as typeof typeF)}>
-                <option value="">Type: All</option>
-                {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
-              </select>
-              <select aria-label="Route" value={routeF} onChange={(e) => setRouteF(e.target.value as typeof routeF)}>
-                <option value="">Route: All</option>
-                <option value="job">Job Work</option>
-                <option value="purchase">Purchase</option>
-              </select>
-              <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
-                <option value="type">Group by: Material type</option>
-                <option value="base">Group by: Base fabric</option>
-                <option value="uom">Group by: Unit</option>
-                <option value="code">Group by: Material code</option>
-              </select>
-              <ClearFiltersButton
-                active={hasFilters}
-                onClear={() => { setSearch(''); setTypeF(''); setRouteF(''); }}
-              />
-              <span className="bp-toolbar-count plan-end">
-                {rows.length} of {planned.length} shown
-              </span>
+            <div className="tb tb-flat">
+              <div className="tb-find">
+                <input
+                  className="bp-search"
+                  aria-label="Search material"
+                  placeholder="Search code, fabric, colour…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <select aria-label="Material type" value={typeF} onChange={(e) => setTypeF(e.target.value as typeof typeF)}>
+                  <option value="">Type: All</option>
+                  {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
+                </select>
+                <select aria-label="Route" value={routeF} onChange={(e) => setRouteF(e.target.value as typeof routeF)}>
+                  <option value="">Route: All</option>
+                  <option value="job">Job Work</option>
+                  <option value="purchase">Purchase</option>
+                </select>
+                <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
+                  <option value="type">Group by: Material type</option>
+                  <option value="base">Group by: Base fabric</option>
+                  <option value="uom">Group by: Unit</option>
+                  <option value="code">Group by: Material code</option>
+                </select>
+                <ClearFiltersButton
+                  active={hasFilters}
+                  onClear={() => { setSearch(''); setTypeF(''); setRouteF(''); }}
+                />
+              </div>
+              <div className="tb-see">
+                <span className="tb-count">
+                  {rows.length} of {planned.length} shown
+                </span>
+              </div>
             </div>
           </div>
         </div>

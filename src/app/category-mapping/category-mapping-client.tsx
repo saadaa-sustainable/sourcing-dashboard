@@ -55,31 +55,35 @@ export function CategoryMappingClient({
         EasyEcom-derived value; where nothing is set yet, the row is flagged below.
       </Notice>
 
-      <div className="chip-row" style={{ margin: '10px 0' }}>
-        {missingCount > 0 ? (
-          <span className="wf-sub-banner is-pending">
-            <CircleAlert size={15} /> {missingCount} product{missingCount === 1 ? '' : 's'} missing category
-          </span>
-        ) : (
-          <span className="wf-sub-banner is-done">
-            <Check size={15} /> Every product has a category
-          </span>
-        )}
-        <input
-          placeholder="Search code or name"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--line-2,#e4e0d5)' }}
-        />
-        <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, fontWeight: 650 }}>
-          <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
-          Missing only
-        </label>
-        <span className="wf-subtle">{shown.length} of {rows.length}</span>
-        <ClearFiltersButton
-          active={search !== '' || missingOnly}
-          onClear={() => { setSearch(''); setMissingOnly(false); }}
-        />
+      <div className="tb">
+        <div className="tb-find">
+          {missingCount > 0 ? (
+            <span className="wf-sub-banner is-pending">
+              <CircleAlert size={15} /> {missingCount} product{missingCount === 1 ? '' : 's'} missing category
+            </span>
+          ) : (
+            <span className="wf-sub-banner is-done">
+              <Check size={15} /> Every product has a category
+            </span>
+          )}
+          <input
+            placeholder="Search code or name"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--line-2,#e4e0d5)' }}
+          />
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, fontWeight: 650 }}>
+            <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
+            Missing only
+          </label>
+          <ClearFiltersButton
+            active={search !== '' || missingOnly}
+            onClear={() => { setSearch(''); setMissingOnly(false); }}
+          />
+        </div>
+        <div className="tb-see">
+          <span className="wf-subtle tb-count">{shown.length} of {rows.length}</span>
+        </div>
       </div>
 
 

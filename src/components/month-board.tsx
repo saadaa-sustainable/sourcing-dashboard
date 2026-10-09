@@ -79,50 +79,61 @@ export function MonthBoard({
 
   return (
     <div className="mb">
-      <div className="mb-statusrow">
-        <div className="mb-pills" role="group" aria-label="Filter by status">
-          <button type="button" className="mb-pill" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-            All <span className="mb-pill-n">{data.cards.length}</span>
-          </button>
-          {data.columns.map((c) => (
-            <button key={c.key} type="button" className="mb-pill" aria-pressed={filter === c.key} onClick={() => setFilter(c.key)}>
-              <span className={`mb-dot mb-t-${c.tone}`} aria-hidden="true" />
-              {c.label} <span className="mb-pill-n">{data.cards.filter((x) => x.status === c.key).length}</span>
-            </button>
-          ))}
+      {data.totals.length > 0 && (
+        <div className="mb-statusrow">
+          <div className="mb-totals" style={{ marginLeft: 'auto' }}>
+            {data.totals.map((t) => (
+              <div key={t.label}>
+                <b>{t.value}</b>
+                <span>{t.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        {(data.totals.length > 0 || pageBar) && <div className="mb-totals">
-          {data.totals.map((t) => (
-            <div key={t.label}>
-              <b>{t.value}</b>
-              <span>{t.label}</span>
-            </div>
-          ))}
-          {pageBar}
-        </div>}
-      </div>
+      )}
 
-      <div className="mb-toolbar">
-        <label className="mb-search">
-          <Search size={15} aria-hidden="true" />
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
-        </label>
-        <select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')} aria-label="Sort">
-          <option value="new">Newest {noun} first</option>
-          <option value="old">Oldest {noun} first</option>
-        </select>
-        <div className="segment mb-view" role="group" aria-label="View">
-          {(['kanban', 'cards', 'list'] as View[]).map((v) => (
-            <button key={v} type="button" className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => setView(v)}>
-              {v === 'kanban' ? 'Kanban' : v === 'cards' ? 'Cards' : 'List'}
+      <div className="tb">
+        <div className="tb-find">
+          <div className="segment" role="group" aria-label="Filter by status">
+            <button type="button" className={filter === 'all' ? 'active' : ''} aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+              All <span className="mb-pill-n">{data.cards.length}</span>
             </button>
-          ))}
+            {data.columns.map((c) => (
+              <button key={c.key} type="button" className={filter === c.key ? 'active' : ''} aria-pressed={filter === c.key} onClick={() => setFilter(c.key)}>
+                <span className={`mb-dot mb-t-${c.tone}`} aria-hidden="true" />
+                {c.label} <span className="mb-pill-n">{data.cards.filter((x) => x.status === c.key).length}</span>
+              </button>
+            ))}
+          </div>
+          <label className="mb-search tb-search-wrap">
+            <Search size={15} aria-hidden="true" />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+          </label>
+          <select value={sort} onChange={(e) => setSort(e.target.value as 'new' | 'old')} aria-label="Sort">
+            <option value="new">Newest {noun} first</option>
+            <option value="old">Oldest {noun} first</option>
+          </select>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
-        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        <div className="tb-see">
+          <span className="tb-count">
+            Showing <b>{shown.length}</b> of {data.cards.length} {data.unit}
+          </span>
+          <div className="segment" role="group" aria-label="View">
+            {(['kanban', 'cards', 'list'] as View[]).map((v) => (
+              <button key={v} type="button" className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => setView(v)}>
+                {v === 'kanban' ? 'Kanban' : v === 'cards' ? 'Cards' : 'List'}
+              </button>
+            ))}
+          </div>
+          {pageBar && (
+            <>
+              <span className="tb-divider" />
+              {pageBar}
+            </>
+          )}
+        </div>
       </div>
-      <p className="mb-showing">
-        Showing <b>{shown.length}</b> of {data.cards.length} {data.unit}
-      </p>
 
       {view === 'kanban' ? (
         <div className="mb-kanban" style={{ ['--mb-cols' as string]: cols.length }}>

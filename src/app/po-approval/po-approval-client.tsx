@@ -690,27 +690,30 @@ export function PoApprovalClient({
 
       {/* The form takes the page in place of the list — sidebar and header stay. */}
       {!(editable && drawerOpen) && (<>
-      <div className="poa-pagebar">
-        <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
-          {FILTERS.map((f) => {
-            const n = f.key === 'all' ? null : pos.filter(f.test).length;
-            return (
-              <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
-                {f.label}{n != null && <span className="c">{n}</span>}
-              </button>
-            );
-          })}
+      <div className="tb">
+        <div className="tb-find">
+          <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
+            {FILTERS.map((f) => {
+              const n = f.key === 'all' ? null : pos.filter(f.test).length;
+              return (
+                <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
+                  {f.label}{n != null && <span className="c">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <label className="poa-search tb-search-wrap">
+            <Search size={13} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
+          </label>
+          <ClearFiltersButton active={filter !== 'mine' || q !== ''} onClear={() => { setFilter('mine'); setQ(''); }} />
         </div>
-        <div className="spacer" />
-        <label className="poa-search">
-          <Search size={13} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
-        </label>
-        <ClearFiltersButton active={filter !== 'mine' || q !== ''} onClear={() => { setFilter('mine'); setQ(''); }} />
         {editable && (
-          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
-            <Plus size={14} /> Raise a PO
-          </button>
+          <div className="tb-see">
+            <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
+              <Plus size={14} /> Raise a PO
+            </button>
+          </div>
         )}
       </div>
 
@@ -1605,14 +1608,16 @@ function PoSubmissionTable({
         </h3>
         <span>{submissions.length} open PO(s) · row-wise close</span>
       </div>
-      <div className="wf-toolbar">
-        <input
-          className="wf-search"
-          placeholder="Filter PO / vendor / product…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <ClearFiltersButton active={q !== ''} onClear={() => setQ('')} />
+      <div className="tb tb-flat">
+        <div className="tb-find">
+          <input
+            className="wf-search"
+            placeholder="Filter PO / vendor / product…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <ClearFiltersButton active={q !== ''} onClear={() => setQ('')} />
+        </div>
       </div>
       <div className="table-panel">
         <div className="table-scroll">

@@ -144,37 +144,41 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
         fewer than {minPos} POs are listed separately as thin data.
       </Notice>
 
-      <div className="wf-toolbar wf-filter-bar">
-        <input
-          className="wf-search"
-          placeholder="Filter vendor / code…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <label className="wf-inline-field">
-          Sort
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
-            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
-              <option key={k} value={k}>{SORT_LABEL[k]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="wf-inline-field">
-          Min POs
+      <div className="tb">
+        <div className="tb-find">
           <input
-            type="number"
-            min={1}
-            value={minPos}
-            onChange={(e) => setMinPos(Math.max(1, Number(e.target.value) || 1))}
-            style={{ width: 64 }}
+            className="wf-search"
+            placeholder="Filter vendor / code…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
           />
-        </label>
-        <span className="wf-chip">{ranked.length} ranked</span>
-        <label className="wf-check">
-          <input type="checkbox" checked={showThin} onChange={(e) => setShowThin(e.target.checked)} />
-          Show thin data ({thin.length})
-        </label>
-        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+          <label className="wf-inline-field">
+            Sort
+            <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
+              {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+                <option key={k} value={k}>{SORT_LABEL[k]}</option>
+              ))}
+            </select>
+          </label>
+          <label className="wf-inline-field">
+            Min POs
+            <input
+              type="number"
+              min={1}
+              value={minPos}
+              onChange={(e) => setMinPos(Math.max(1, Number(e.target.value) || 1))}
+              style={{ width: 64 }}
+            />
+          </label>
+          <label className="wf-check">
+            <input type="checkbox" checked={showThin} onChange={(e) => setShowThin(e.target.checked)} />
+            Show thin data ({thin.length})
+          </label>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        </div>
+        <div className="tb-see">
+          <span className="wf-chip">{ranked.length} ranked</span>
+        </div>
       </div>
 
       <div className="table-panel wf-grid-panel">

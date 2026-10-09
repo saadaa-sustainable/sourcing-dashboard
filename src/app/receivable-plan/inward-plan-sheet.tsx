@@ -70,6 +70,11 @@ export function InwardPlanSheet({
   // Lines as a List (the table), Cards or Kanban by status; the choice is remembered per browser.
   const [layout, setLayout] = useState<'list' | 'cards' | 'kanban'>('kanban');
   const [query, setQuery] = useState('');
+  // The "+ Add line" and "Load month from CSV" forms open BELOW their toolbar (not inside it), so
+  // their open state lives here. Add line is tied to the month it was opened for (it closes when
+  // the month changes, as the old key={month} did).
+  const [addLineMonth, setAddLineMonth] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   // Lines ticked for a bulk action (ids), and the rows the list currently shows (for "select all shown").
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [listRows, setListRows] = useState<InwardPlanSheetRow[]>([]);
@@ -193,24 +198,31 @@ export function InwardPlanSheet({
         what has actually landed against each PO inside the month, from goods receipts.
       </Notice>
 
-      <div className="wf-toolbar" style={{ alignItems: 'flex-end', gap: 16 }}>
-        <label className="wf-field">
-          <span>Plan month</span>
-          <select value={month} onChange={(e) => { setMonth(e.target.value); setStatusFilter('all'); setSelected(new Set()); }}>
-            {monthOptions.map((m) => {
-              const n = rows.filter((r) => r.plan_month === m).length;
-              return <option key={m} value={m}>{monthLabel(m)}{n ? ` · ${n} lines` : ' · empty'}</option>;
-            })}
-          </select>
-        </label>
-        <div className="segment wf-segment">
-          <button type="button" className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>All ({monthRows.length})</button>
-          {STATUSES.map((s) => (
-            <button type="button" key={s} className={statusFilter === s ? 'active' : ''} onClick={() => setStatusFilter(s)}>{s === 'Approved' ? 'Approved' : sheetStatusText(s)} ({totals.by[s] ?? 0})</button>
-          ))}
+      <div className="tb">
+        <div className="tb-find">
+          <label className="wf-field">
+            <span className="tb-sr">Plan month</span>
+            <select value={month} onChange={(e) => { setMonth(e.target.value); setStatusFilter('all'); setSelected(new Set()); }}>
+              {monthOptions.map((m) => {
+                const n = rows.filter((r) => r.plan_month === m).length;
+                return <option key={m} value={m}>{monthLabel(m)}{n ? ` · ${n} lines` : ' · empty'}</option>;
+              })}
+            </select>
+          </label>
+          <div className="segment wf-segment">
+            <button type="button" className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>All ({monthRows.length})</button>
+            {STATUSES.map((s) => (
+              <button type="button" key={s} className={statusFilter === s ? 'active' : ''} onClick={() => setStatusFilter(s)}>{s === 'Approved' ? 'Approved' : sheetStatusText(s)} ({totals.by[s] ?? 0})</button>
+            ))}
+          </div>
         </div>
-        {editor && <ImportSheet month={month} monthOptions={monthOptions} />}
+        {editor && !importOpen && (
+          <div className="tb-see">
+            <ImportSheet month={month} monthOptions={monthOptions} open={false} setOpen={setImportOpen} />
+          </div>
+        )}
       </div>
+      {editor && importOpen && <ImportSheet month={month} monthOptions={monthOptions} open setOpen={setImportOpen} />}
 
       <div className="iw-tiles">
         <div className="iw-tile">
@@ -259,8 +271,8 @@ HOW: count of lines with status Pending. Decide them line by line in Lines (tick
       )}
 
       {monthRows.length > 0 && board === 'lines' && (
-        <div className="ip-viewrow iw-linesbar">
-          <div className="iw-linesbar-left">
+        <div className="tb">
+          <div className="tb-find">
             {layout !== 'list' && (
               <input
                 className="wf-search"
@@ -276,27 +288,39 @@ HOW: count of lines with status Pending. Decide them line by line in Lines (tick
                 onClear={() => { setQuery(''); setStatusFilter('all'); }}
               />
             )}
-            {editor && <AddLine key={month} month={month} />}
           </div>
-          <div className="iw-linesbar-right">
-            {canBulk && (() => {
+          <div className="tb-see">
+            <div className="segment ip-layout-seg" role="group" aria-label="Layout">
+              {(['kanban', 'cards', 'list'] as const).map((l) => (
+                <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
+                  {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
+                </button>
+              ))}
+            </div>
+            {(() => {
               const visible = layout === 'list' ? listRows : layout === 'cards' ? searched : searchedAll;
               const all = visible.length > 0 && visible.every((r) => selected.has(r.id));
-              return visible.length > 0 ? (
+              const selectButton = canBulk && visible.length > 0 ? (
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => (all ? setSelected(new Set()) : selectMany(visible.map((r) => r.id), true))}>
                   {all ? 'Clear selection' : `Select all shown (${visible.length})`}
                 </button>
               ) : null;
+              const addButton = editor && addLineMonth !== month
+                ? <AddLine key={month} month={month} open={false} setOpen={(v) => setAddLineMonth(v ? month : null)} />
+                : null;
+              return (
+                <>
+                  {(selectButton || addButton) && <span className="tb-divider" />}
+                  {selectButton}
+                  {addButton}
+                </>
+              );
             })()}
-          <div className="segment ip-layout-seg" role="group" aria-label="Layout">
-            {(['kanban', 'cards', 'list'] as const).map((l) => (
-              <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
-                {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
-              </button>
-            ))}
-          </div>
           </div>
         </div>
+      )}
+      {monthRows.length > 0 && board === 'lines' && editor && addLineMonth === month && (
+        <AddLine key={month} month={month} open setOpen={(v) => setAddLineMonth(v ? month : null)} />
       )}
 
       {monthRows.length > 0 && board === 'lines' && canBulk && (
@@ -722,8 +746,7 @@ function LineForm({
 }
 
 /** Add one line to the month by hand (team / admin); it waits for approval like a CSV line. */
-function AddLine({ month }: { month: string }) {
-  const [open, setOpen] = useState(false);
+function AddLine({ month, open, setOpen }: { month: string; open: boolean; setOpen: (open: boolean) => void }) {
   const [pending, start] = useTransition();
   if (!open) {
     return (
@@ -751,8 +774,7 @@ function AddLine({ month }: { month: string }) {
 }
 
 /** Load a month from the sheet's CSV export (the same file the team already keeps). */
-function ImportSheet({ month, monthOptions }: { month: string; monthOptions: string[] }) {
-  const [open, setOpen] = useState(false);
+function ImportSheet({ month, monthOptions, open, setOpen }: { month: string; monthOptions: string[]; open: boolean; setOpen: (open: boolean) => void }) {
   const [target, setTarget] = useState(month);
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<string | null>(null);

@@ -539,14 +539,17 @@ function FilterSelect({
   value,
   options,
   onChange,
+  inBar = false,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
+  /** Inside a `.tb` toolbar: the name sits inside the box (`tb-field`) instead of above it. */
+  inBar?: boolean;
 }) {
   return (
-    <label className="field">
+    <label className={inBar ? "tb-field" : "field"}>
       <span>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">All</option>
@@ -1062,35 +1065,37 @@ function DashboardTab({
   const maxVariantOpen = Math.max(1, ...variants.map((v) => v.openCount));
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-      <div className="segment" style={{ marginBottom: 0 }}>
-        <button
-          className={bucket === "All" ? "active" : ""}
-          onClick={() => setBucket("All")}
-        >
-          All
-        </button>
-        <button
-          className={bucket === "Woven" ? "active" : ""}
-          onClick={() => setBucket("Woven")}
-        >
-          Woven
-        </button>
-        <button
-          className={bucket === "Knit" ? "active" : ""}
-          onClick={() => setBucket("Knit")}
-        >
-          Knitted
-        </button>
-        <button
-          className={bucket === "Other" ? "active" : ""}
-          onClick={() => setBucket("Other")}
-        >
-          Other
-        </button>
-      </div>
-      {/* Clear all filters: the vendor-type filter back to All. */}
-      <ClearFiltersButton active={bucket !== "All"} onClear={() => setBucket("All")} />
+      <div className="tb">
+        <div className="tb-find">
+          <div className="segment" style={{ marginBottom: 0 }}>
+            <button
+              className={bucket === "All" ? "active" : ""}
+              onClick={() => setBucket("All")}
+            >
+              All
+            </button>
+            <button
+              className={bucket === "Woven" ? "active" : ""}
+              onClick={() => setBucket("Woven")}
+            >
+              Woven
+            </button>
+            <button
+              className={bucket === "Knit" ? "active" : ""}
+              onClick={() => setBucket("Knit")}
+            >
+              Knitted
+            </button>
+            <button
+              className={bucket === "Other" ? "active" : ""}
+              onClick={() => setBucket("Other")}
+            >
+              Other
+            </button>
+          </div>
+          {/* Clear all filters: the vendor-type filter back to All. */}
+          <ClearFiltersButton active={bucket !== "All"} onClear={() => setBucket("All")} />
+        </div>
       </div>
       {section === "objectives" ? (
         <>
@@ -2087,92 +2092,98 @@ function TrackerTab({
           info={"WHAT: pieces still to arrive across all open lines.\n\nHOW: ordered − received, summed over every open line.\n\nUSE: the volume vendors still owe. Compare with monthly capacity on Vendor Performance."}
         />
       </div>
-      <div className="filter-bar tracker-filter-bar">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            placeholder="Search PO, product or vendor"
-            value={filters.search}
-            onChange={(e) => set({ ...filters, search: e.target.value })}
-          />
-        </label>
-        <FilterSelect
-          label="Vendor Code"
-          value={filters.vendorCode}
-          options={unique(all.map((r) => r.vendorCode))}
-          onChange={(v) => set({ ...filters, vendorCode: v })}
-        />
-        <FilterSelect
-          label="Vendor Type"
-          value={filters.vendorType}
-          options={["Woven", "Knit", "Other"]}
-          onChange={(v) => set({ ...filters, vendorType: v })}
-        />
-        <FilterSelect
-          label="PO type"
-          value={filters.type}
-          options={unique(all.map((r) => r.poType))}
-          onChange={(v) => set({ ...filters, type: v })}
-        />
-        <FilterSelect
-          label="Merchant"
-          value={filters.merchant}
-          options={unique(all.map((r) => r.merchant))}
-          onChange={(v) => set({ ...filters, merchant: v })}
-        />
-        <button
-          type="button"
-          className={moreFiltersOpen ? "tracker-more-button active" : "tracker-more-button"}
-          aria-expanded={moreFiltersOpen}
-          aria-controls="tracker-more-filters"
-          onClick={() => setMoreFiltersOpen((open) => !open)}
-        >
-          <MoreHorizontal size={15} aria-hidden="true" />
-          More filters
-          {moreFilterCount > 0 && (
-            <span className="tracker-more-count">{moreFilterCount}</span>
-          )}
-        </button>
-        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-        <div
-          id="tracker-more-filters"
-          className="tracker-more-filters"
-          role="group"
-          aria-label="More filters"
-          hidden={!moreFiltersOpen}
-        >
+      <div className="tb">
+        <div className="tb-find">
+          <label className="search-field tb-search-wrap">
+            <Search size={16} />
+            <input
+              placeholder="Search PO, product or vendor"
+              value={filters.search}
+              onChange={(e) => set({ ...filters, search: e.target.value })}
+            />
+          </label>
           <FilterSelect
-            label="Vendor"
-            value={filters.vendor}
-            options={unique(all.map((r) => r.vendorName))}
-            onChange={(v) => set({ ...filters, vendor: v })}
+            inBar
+            label="Vendor Code"
+            value={filters.vendorCode}
+            options={unique(all.map((r) => r.vendorCode))}
+            onChange={(v) => set({ ...filters, vendorCode: v })}
           />
           <FilterSelect
-            label="Product"
-            value={filters.product}
-            options={unique(all.map((r) => r.productCode))}
-            onChange={(v) => set({ ...filters, product: v })}
+            inBar
+            label="Vendor Type"
+            value={filters.vendorType}
+            options={["Woven", "Knit", "Other"]}
+            onChange={(v) => set({ ...filters, vendorType: v })}
           />
           <FilterSelect
-            label="EasyCom"
-            value={filters.easycom}
-            options={["Approved", "Partially Received", "Closure Pending"]}
-            onChange={(v) => set({ ...filters, easycom: v })}
+            inBar
+            label="PO type"
+            value={filters.type}
+            options={unique(all.map((r) => r.poType))}
+            onChange={(v) => set({ ...filters, type: v })}
           />
           <FilterSelect
-            label="Days Overdue"
-            value={filters.bucket}
-            options={[
-              "Not Due",
-              "0-7 Days",
-              "8-15 Days",
-              "16-30 Days",
-              "30+ Days",
-              "No EDD",
-            ]}
-            onChange={(v) => set({ ...filters, bucket: v })}
+            inBar
+            label="Merchant"
+            value={filters.merchant}
+            options={unique(all.map((r) => r.merchant))}
+            onChange={(v) => set({ ...filters, merchant: v })}
           />
+          <button
+            type="button"
+            className={moreFiltersOpen ? "tracker-more-button active" : "tracker-more-button"}
+            aria-expanded={moreFiltersOpen}
+            aria-controls="tracker-more-filters"
+            onClick={() => setMoreFiltersOpen((open) => !open)}
+          >
+            <MoreHorizontal size={15} aria-hidden="true" />
+            More filters
+            {moreFilterCount > 0 && (
+              <span className="tracker-more-count">{moreFilterCount}</span>
+            )}
+          </button>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
+      </div>
+      <div
+        id="tracker-more-filters"
+        className="tracker-more-filters"
+        role="group"
+        aria-label="More filters"
+        hidden={!moreFiltersOpen}
+      >
+        <FilterSelect
+          label="Vendor"
+          value={filters.vendor}
+          options={unique(all.map((r) => r.vendorName))}
+          onChange={(v) => set({ ...filters, vendor: v })}
+        />
+        <FilterSelect
+          label="Product"
+          value={filters.product}
+          options={unique(all.map((r) => r.productCode))}
+          onChange={(v) => set({ ...filters, product: v })}
+        />
+        <FilterSelect
+          label="EasyCom"
+          value={filters.easycom}
+          options={["Approved", "Partially Received", "Closure Pending"]}
+          onChange={(v) => set({ ...filters, easycom: v })}
+        />
+        <FilterSelect
+          label="Days Overdue"
+          value={filters.bucket}
+          options={[
+            "Not Due",
+            "0-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "30+ Days",
+            "No EDD",
+          ]}
+          onChange={(v) => set({ ...filters, bucket: v })}
+        />
       </div>
       <div className="segment tracker-status-tabs">
         <button
@@ -2484,93 +2495,96 @@ function VendorTable({
     <>
       {filename && (
         <div className={`table-meta${withFilters ? " has-filters" : ""}`}>
-          <div className="table-meta-filters">
-            <label className="search-field table-meta-search">
-              <Search size={14} />
-              <input
-                placeholder={searchPlaceholder}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              {query && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Clear filter"
-                  onClick={() => setQuery("")}
-                >
-                  <X size={13} />
-                </button>
+          <div className="tb tb-flat" style={{ flex: "1 1 auto" }}>
+            <div className="tb-find">
+              <label className="search-field table-meta-search tb-search-wrap">
+                <Search size={14} />
+                <input
+                  placeholder={searchPlaceholder}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Clear filter"
+                    onClick={() => setQuery("")}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </label>
+              {withFilters && (
+                <>
+                  <select
+                    className="meta-select"
+                    value={merchant}
+                    onChange={(e) => setMerchant(e.target.value)}
+                  >
+                    <option value="">All merchants</option>
+                    {unique(allRows.map((r) => r.merchant)).map((m) => (
+                      <option key={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="meta-select"
+                    value={bucket}
+                    onChange={(e) => setBucket(e.target.value)}
+                  >
+                    <option value="">All types</option>
+                    {unique(allRows.map((r) => r.vendorBucket)).map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="meta-select"
+                    value={utilBand}
+                    onChange={(e) => setUtilBand(e.target.value)}
+                  >
+                    <option value="">All utilization</option>
+                    {utilizationBands.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="meta-select"
+                    value={delayBand}
+                    onChange={(e) => setDelayBand(e.target.value)}
+                  >
+                    <option value="">All delays</option>
+                    {delayBands.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                </>
               )}
-            </label>
-            {withFilters && (
-              <>
-                <select
-                  className="meta-select"
-                  value={merchant}
-                  onChange={(e) => setMerchant(e.target.value)}
-                >
-                  <option value="">All merchants</option>
-                  {unique(allRows.map((r) => r.merchant)).map((m) => (
-                    <option key={m}>{m}</option>
-                  ))}
-                </select>
-                <select
-                  className="meta-select"
-                  value={bucket}
-                  onChange={(e) => setBucket(e.target.value)}
-                >
-                  <option value="">All types</option>
-                  {unique(allRows.map((r) => r.vendorBucket)).map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-                <select
-                  className="meta-select"
-                  value={utilBand}
-                  onChange={(e) => setUtilBand(e.target.value)}
-                >
-                  <option value="">All utilization</option>
-                  {utilizationBands.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-                <select
-                  className="meta-select"
-                  value={delayBand}
-                  onChange={(e) => setDelayBand(e.target.value)}
-                >
-                  <option value="">All delays</option>
-                  {delayBands.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-              </>
-            )}
-            <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-          </div>
-          <div className="table-meta-actions">
-            <span>
-              {filtered
-                ? `${fmt.format(rows.length)} of ${fmt.format(allRows.length)} rows`
-                : `${fmt.format(rows.length)} rows`}
-            </span>
-            <DownloadButton
-              filename={filename}
-              headers={vendorCsvHeaders}
-              rows={vendorCsvRows(rows)}
-            />
-            <PdfButton
-              filename={filename}
-              title={
-                filterSummary
-                  ? `${exportTitle} - filter: ${filterSummary}`
-                  : exportTitle
-              }
-              headers={vendorCsvHeaders}
-              rows={vendorCsvRows(rows)}
-              note={reportNote}
-            />
+              <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+            </div>
+            <div className="tb-see">
+              <span className="tb-count">
+                {filtered
+                  ? `${fmt.format(rows.length)} of ${fmt.format(allRows.length)} rows`
+                  : `${fmt.format(rows.length)} rows`}
+              </span>
+              <span className="tb-divider" />
+              <DownloadButton
+                filename={filename}
+                headers={vendorCsvHeaders}
+                rows={vendorCsvRows(rows)}
+              />
+              <PdfButton
+                filename={filename}
+                title={
+                  filterSummary
+                    ? `${exportTitle} - filter: ${filterSummary}`
+                    : exportTitle
+                }
+                headers={vendorCsvHeaders}
+                rows={vendorCsvRows(rows)}
+                note={reportNote}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -3458,57 +3472,65 @@ function ProductTab({ hub = null, initialView, data }: {
         hub ? <Product360Client data={hub} /> : <Empty text="This view is not available right now — the summary data did not load." />
       ) : (
       <>
-      <div className="filter-bar">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            placeholder="Search product, variant or SKU"
-            value={filters.search}
-            onChange={(e) => set({ ...filters, search: e.target.value })}
+      <div className="tb">
+        <div className="tb-find">
+          <label className="search-field tb-search-wrap">
+            <Search size={16} />
+            <input
+              placeholder="Search product, variant or SKU"
+              value={filters.search}
+              onChange={(e) => set({ ...filters, search: e.target.value })}
+            />
+          </label>
+          <FilterSelect
+            inBar
+            label="Merchant"
+            value={filters.merchant}
+            options={merchants}
+            onChange={(v) => set({ ...filters, merchant: v })}
           />
-        </label>
-        <FilterSelect
-          label="Merchant"
-          value={filters.merchant}
-          options={merchants}
-          onChange={(v) => set({ ...filters, merchant: v })}
-        />
-        <FilterSelect
-          label="Vendor"
-          value={filters.vendor}
-          options={unique(data.pendingPos.map((r) => r.vendor_name ?? ""))}
-          onChange={(v) => set({ ...filters, vendor: v })}
-        />
-        <FilterSelect
-          label="Vendor Code"
-          value={filters.vendorCode}
-          options={unique(data.pendingPos.map((r) => r.vendor_code ?? ""))}
-          onChange={(v) => set({ ...filters, vendorCode: v })}
-        />
-        <FilterSelect
-          label="PO type"
-          value={filters.type}
-          options={unique(data.pendingPos.map((r) => r.po_type ?? ""))}
-          onChange={(v) => set({ ...filters, type: v })}
-        />
-        <FilterSelect
-          label="Product"
-          value={filters.product}
-          options={allProducts}
-          onChange={(v) => set({ ...filters, product: v })}
-        />
-        <FilterSelect
-          label="Variant"
-          value={filters.variant}
-          options={allVariants}
-          onChange={(v) => set({ ...filters, variant: v })}
-        />
-        <ClearFiltersButton
-          active={Object.values(filters).some((v) => Boolean(v))}
-          onClear={() =>
-            set({ merchant: "", vendor: "", vendorCode: "", type: "", variant: "", product: "", search: "" })
-          }
-        />
+          <FilterSelect
+            inBar
+            label="Vendor"
+            value={filters.vendor}
+            options={unique(data.pendingPos.map((r) => r.vendor_name ?? ""))}
+            onChange={(v) => set({ ...filters, vendor: v })}
+          />
+          <FilterSelect
+            inBar
+            label="Vendor Code"
+            value={filters.vendorCode}
+            options={unique(data.pendingPos.map((r) => r.vendor_code ?? ""))}
+            onChange={(v) => set({ ...filters, vendorCode: v })}
+          />
+          <FilterSelect
+            inBar
+            label="PO type"
+            value={filters.type}
+            options={unique(data.pendingPos.map((r) => r.po_type ?? ""))}
+            onChange={(v) => set({ ...filters, type: v })}
+          />
+          <FilterSelect
+            inBar
+            label="Product"
+            value={filters.product}
+            options={allProducts}
+            onChange={(v) => set({ ...filters, product: v })}
+          />
+          <FilterSelect
+            inBar
+            label="Variant"
+            value={filters.variant}
+            options={allVariants}
+            onChange={(v) => set({ ...filters, variant: v })}
+          />
+          <ClearFiltersButton
+            active={Object.values(filters).some((v) => Boolean(v))}
+            onClear={() =>
+              set({ merchant: "", vendor: "", vendorCode: "", type: "", variant: "", product: "", search: "" })
+            }
+          />
+        </div>
       </div>
       <div className="metric-grid compact">
         <Card
@@ -3906,42 +3928,47 @@ function MatrixTab({ data }: { data: DashboardData }) {
           By Product Code
         </button>
       </div>
-      <div className="filter-bar">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            placeholder="Search product or vendor"
-            value={filters.search}
-            onChange={(e) => set({ ...filters, search: e.target.value })}
+      <div className="tb">
+        <div className="tb-find">
+          <label className="search-field tb-search-wrap">
+            <Search size={16} />
+            <input
+              placeholder="Search product or vendor"
+              value={filters.search}
+              onChange={(e) => set({ ...filters, search: e.target.value })}
+            />
+          </label>
+          <FilterSelect
+            inBar
+            label="Product"
+            value={filters.product}
+            options={allProducts}
+            onChange={(v) => set({ ...filters, product: v })}
           />
-        </label>
-        <FilterSelect
-          label="Product"
-          value={filters.product}
-          options={allProducts}
-          onChange={(v) => set({ ...filters, product: v })}
-        />
-        <FilterSelect
-          label="Vendor"
-          value={filters.vendor}
-          options={allVendorNames}
-          onChange={(v) => set({ ...filters, vendor: v })}
-        />
-        <FilterSelect
-          label="Vendor Code"
-          value={filters.vendorCode}
-          options={allVendorCodes}
-          onChange={(v) => set({ ...filters, vendorCode: v })}
-        />
-        <label className="matrix-empty-toggle">
-          <input
-            type="checkbox"
-            checked={hideEmptyVendors}
-            onChange={(e) => setHideEmptyVendors(e.target.checked)}
+          <FilterSelect
+            inBar
+            label="Vendor"
+            value={filters.vendor}
+            options={allVendorNames}
+            onChange={(v) => set({ ...filters, vendor: v })}
           />
-          Hide empty vendor columns
-        </label>
-        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+          <FilterSelect
+            inBar
+            label="Vendor Code"
+            value={filters.vendorCode}
+            options={allVendorCodes}
+            onChange={(v) => set({ ...filters, vendorCode: v })}
+          />
+          <label className="matrix-empty-toggle">
+            <input
+              type="checkbox"
+              checked={hideEmptyVendors}
+              onChange={(e) => setHideEmptyVendors(e.target.checked)}
+            />
+            Hide empty vendor columns
+          </label>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        </div>
       </div>
       <section className="panel table-panel">
         <div className="table-meta">

@@ -257,41 +257,50 @@ export function PlanLineViews({
   return (
     <>
       <div className="pl-views-bar">
-        <div className="segment wf-segment" role="group" aria-label="View lines as">
-          <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}>
-            <Columns3 size={14} aria-hidden="true" /> Kanban
-          </button>
-          <button type="button" className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
-            <LayoutGrid size={14} aria-hidden="true" /> Cards
-          </button>
-          <button type="button" className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setView('table')}>
-            <Table2 size={14} aria-hidden="true" /> Table
-          </button>
+        <div className="tb tb-flat" style={{ flex: '1 1 100%' }}>
+          <div className="tb-find">
+            {view === 'kanban' && kanban.length > 1 && (
+              <select aria-label="Kanban columns" value={option?.key} onChange={(e) => setBy(e.target.value)}>
+                {kanban.map((k) => (
+                  <option key={k.key} value={k.key}>Columns: {k.label}</option>
+                ))}
+              </select>
+            )}
+            {view !== 'table' && (
+              <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+                <option value="value">Sort: Plan value (high first)</option>
+                <option value="qty">Sort: Plan qty (high first)</option>
+                {items.some((i) => i.progress) && <option value="pct">Sort: Bought % (low first)</option>}
+                <option value="code">Sort: Code</option>
+              </select>
+            )}
+          </div>
+          <div className="tb-see">
+            <div className="segment wf-segment" role="group" aria-label="View lines as">
+              <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}>
+                <Columns3 size={14} aria-hidden="true" /> Kanban
+              </button>
+              <button type="button" className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
+                <LayoutGrid size={14} aria-hidden="true" /> Cards
+              </button>
+              <button type="button" className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setView('table')}>
+                <Table2 size={14} aria-hidden="true" /> Table
+              </button>
+            </div>
+            {bulk && pickableShown.length > 0 && (
+              <>
+                <span className="tb-divider" />
+                <button
+                  type="button"
+                  className="wf-btn wf-btn-ghost wf-btn-sm pl-pick-all"
+                  onClick={() => setPicked(pickedNow.length === pickableShown.length ? new Set() : new Set(pickableShown))}
+                >
+                  {pickedNow.length === pickableShown.length ? 'Untick all' : `Tick all to decide (${pickableShown.length})`}
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        {bulk && pickableShown.length > 0 && (
-          <button
-            type="button"
-            className="wf-btn wf-btn-ghost wf-btn-sm pl-pick-all"
-            onClick={() => setPicked(pickedNow.length === pickableShown.length ? new Set() : new Set(pickableShown))}
-          >
-            {pickedNow.length === pickableShown.length ? 'Untick all' : `Tick all to decide (${pickableShown.length})`}
-          </button>
-        )}
-        {view === 'kanban' && kanban.length > 1 && (
-          <select aria-label="Kanban columns" value={option?.key} onChange={(e) => setBy(e.target.value)}>
-            {kanban.map((k) => (
-              <option key={k.key} value={k.key}>Columns: {k.label}</option>
-            ))}
-          </select>
-        )}
-        {view !== 'table' && (
-          <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-            <option value="value">Sort: Plan value (high first)</option>
-            <option value="qty">Sort: Plan qty (high first)</option>
-            {items.some((i) => i.progress) && <option value="pct">Sort: Bought % (low first)</option>}
-            <option value="code">Sort: Code</option>
-          </select>
-        )}
       </div>
 
       {view === 'table' ? (

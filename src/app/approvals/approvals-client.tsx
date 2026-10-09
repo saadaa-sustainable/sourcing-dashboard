@@ -126,49 +126,51 @@ export function ApprovalsClient({
         </div>
       </div>
 
-      <div className="wf-toolbar">
-        <div className="segment wf-segment">
-          <button
-            type="button"
-            className={filter === 'mine' ? 'active' : ''}
-            onClick={() => setFilter('mine')}
-          >
-            Awaiting me
-          </button>
-          <button
-            type="button"
-            className={filter === 'all' ? 'active' : ''}
-            onClick={() => setFilter('all')}
-          >
-            Everything pending
-          </button>
+      <div className="tb">
+        <div className="tb-find">
+          <div className="segment wf-segment">
+            <button
+              type="button"
+              className={filter === 'mine' ? 'active' : ''}
+              onClick={() => setFilter('mine')}
+            >
+              Awaiting me
+            </button>
+            <button
+              type="button"
+              className={filter === 'all' ? 'active' : ''}
+              onClick={() => setFilter('all')}
+            >
+              Everything pending
+            </button>
+          </div>
+          <div className="segment wf-segment">
+            <button
+              type="button"
+              className={typeFilter === 'all' ? 'active' : ''}
+              onClick={() => setTypeFilter('all')}
+            >
+              All types ({byLevel.length})
+            </button>
+            {TYPE_TABS.map((t) => {
+              const count = byLevel.filter((item) => item.entityType === t.key).length;
+              return (
+                <button
+                  type="button"
+                  key={t.key}
+                  className={typeFilter === t.key ? 'active' : ''}
+                  onClick={() => setTypeFilter(t.key)}
+                >
+                  {t.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+          <ClearFiltersButton
+            active={filter !== 'mine' || typeFilter !== 'all'}
+            onClear={() => { setFilter('mine'); setTypeFilter('all'); }}
+          />
         </div>
-        <div className="segment wf-segment">
-          <button
-            type="button"
-            className={typeFilter === 'all' ? 'active' : ''}
-            onClick={() => setTypeFilter('all')}
-          >
-            All types ({byLevel.length})
-          </button>
-          {TYPE_TABS.map((t) => {
-            const count = byLevel.filter((item) => item.entityType === t.key).length;
-            return (
-              <button
-                type="button"
-                key={t.key}
-                className={typeFilter === t.key ? 'active' : ''}
-                onClick={() => setTypeFilter(t.key)}
-              >
-                {t.label} ({count})
-              </button>
-            );
-          })}
-        </div>
-        <ClearFiltersButton
-          active={filter !== 'mine' || typeFilter !== 'all'}
-          onClear={() => { setFilter('mine'); setTypeFilter('all'); }}
-        />
       </div>
 
       {role === 'admin' && shown.filter((i) => i.entityType === 'standard_cost' && i.costRecord?.neg_stage === 'proposed').length > 1 && (

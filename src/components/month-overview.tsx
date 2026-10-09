@@ -232,27 +232,29 @@ function TableSection({ s }: { s: Extract<MonthDetailSection, { kind: 'table' }>
   return (
     <>
       {(s.rows.length > 8 || s.filters) && (
-        <div className="mo-tabletools">
-          {s.rows.length > 8 && (
-            <label className="mb-search">
-              <Search size={14} aria-hidden="true" />
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" aria-label={`Search ${s.title}`} />
-            </label>
-          )}
-          {s.filters && (
-            <div className="mb-pills" role="group" aria-label="Filter rows">
-              <button type="button" className="mb-pill" aria-pressed={tone === 'all'} onClick={() => setTone('all')}>
-                All <span className="mb-pill-n">{s.rows.length}</span>
-              </button>
-              {s.filters.map((f) => (
-                <button key={f.tone} type="button" className="mb-pill" aria-pressed={tone === f.tone} onClick={() => setTone(f.tone)}>
-                  <span className={`mb-dot mb-t-${f.tone}`} aria-hidden="true" />
-                  {f.label} <span className="mb-pill-n">{s.rows.filter((r) => r.tone === f.tone).length}</span>
+        <div className="tb tb-flat">
+          <div className="tb-find">
+            {s.rows.length > 8 && (
+              <label className="mb-search tb-search-wrap">
+                <Search size={14} aria-hidden="true" />
+                <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" aria-label={`Search ${s.title}`} />
+              </label>
+            )}
+            {s.filters && (
+              <div className="mb-pills" role="group" aria-label="Filter rows">
+                <button type="button" className="mb-pill" aria-pressed={tone === 'all'} onClick={() => setTone('all')}>
+                  All <span className="mb-pill-n">{s.rows.length}</span>
                 </button>
-              ))}
-            </div>
-          )}
-          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+                {s.filters.map((f) => (
+                  <button key={f.tone} type="button" className="mb-pill" aria-pressed={tone === f.tone} onClick={() => setTone(f.tone)}>
+                    <span className={`mb-dot mb-t-${f.tone}`} aria-hidden="true" />
+                    {f.label} <span className="mb-pill-n">{s.rows.filter((r) => r.tone === f.tone).length}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+          </div>
         </div>
       )}
       <div className="mo-tablewrap">

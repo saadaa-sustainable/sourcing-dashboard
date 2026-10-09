@@ -653,36 +653,43 @@ export function StandardCostClient({
       {isMat ? (
         <>
 
-      <div className="wf-toolbar plan-filterbar">
-        <input
-          className="wf-search"
-          placeholder="Filter code…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        {/* Always-visible filter so approvers can jump straight to what needs them,
-            without scrolling the whole list. */}
-        <div className="segment fb-seg">
-          <button type="button" className={!mineOnly ? 'active' : ''} onClick={() => setMineOnly(false)}>
-            All
-          </button>
-          <button
-            type="button"
-            className={mineOnly ? 'active' : ''}
-            onClick={() => setMineOnly(true)}
-            title={role === 'admin' ? 'Only costs waiting on your approval' : 'Only costs waiting on your input'}
-          >
-            {role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})
-          </button>
+      <div className="tb">
+        <div className="tb-find">
+          <input
+            className="wf-search"
+            placeholder="Filter code…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          {/* Always-visible filter so approvers can jump straight to what needs them,
+              without scrolling the whole list. */}
+          <div className="segment fb-seg">
+            <button type="button" className={!mineOnly ? 'active' : ''} onClick={() => setMineOnly(false)}>
+              All
+            </button>
+            <button
+              type="button"
+              className={mineOnly ? 'active' : ''}
+              onClick={() => setMineOnly(true)}
+              title={role === 'admin' ? 'Only costs waiting on your approval' : 'Only costs waiting on your input'}
+            >
+              {role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})
+            </button>
+          </div>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
-        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-        <span className="wf-subtle plan-end">{shown.length} shown</span>
-        {viewSwitch}
-        {editable && (
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}>
-            <Plus size={14} /> Add Material to Input Standard Cost
-          </button>
-        )}
+        <div className="tb-see">
+          <span className="wf-subtle tb-count">{shown.length} shown</span>
+          {viewSwitch}
+          {editable && (
+            <>
+              <span className="tb-divider" />
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}>
+                <Plus size={14} /> Add Material to Input Standard Cost
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Material codes get the same three views as Finished Goods. Rate entry happens on the
@@ -710,38 +717,41 @@ export function StandardCostClient({
                 {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}><Plus size={14} /> Add Product to Input Standard Cost</button>}
               </div>
             </div>
-            <div className="sc-fg-toolbar plan-filterbar">
-              <label className="sc-fg-search"><Search size={15} aria-hidden="true" /><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search product code or name" aria-label="Search product code or name" /></label>
-              <select aria-label="Filter by status" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
-                <option value="all">All statuses</option>
-                <option value="not_started">Not started</option>
-                <option value="proposed">Approval Pending · Proposal</option>
-                <option value="target_set">Target set · with the team</option>
-                <option value="rate_submitted">Approval Pending · Vendor rate</option>
-                <option value="signed_off">Approved</option>
-                <option value="renegotiate">Rework / Reassign</option>
-                <option value="rejected">Rejected / Discarded</option>
-                <option value="not_in_easyecom">Not in EasyEcom</option>
-              </select>
-              <select
-                aria-label="Sort products"
-                value={cardSort}
-                onChange={(e) => setCardSort(e.target.value as typeof cardSort)}
-              >
-                <option value="code">Sort: Product code</option>
-                <option value="updated">Sort: Recently updated</option>
-                <option value="stage">Sort: Status</option>
-                <option value="job">Sort: Job rate (high first)</option>
-                <option value="fob">Sort: FOB rate (high first)</option>
-                <option value="efob">Sort: E-FOB rate (high first)</option>
-              </select>
-              <div className="segment fb-seg" aria-label="Quick filter">
-                <button type="button" className={!mineOnly ? 'active' : ''} aria-pressed={!mineOnly} onClick={() => setMineOnly(false)}>All products</button>
-                <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
+            <div className="tb tb-flat" style={{ padding: '0 16px 14px' }}>
+              <div className="tb-find">
+                <label className="sc-fg-search tb-search-wrap"><Search size={15} aria-hidden="true" /><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search product code or name" aria-label="Search product code or name" /></label>
+                <select aria-label="Filter by status" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
+                  <option value="all">All statuses</option>
+                  <option value="not_started">Not started</option>
+                  <option value="proposed">Approval Pending · Proposal</option>
+                  <option value="target_set">Target set · with the team</option>
+                  <option value="rate_submitted">Approval Pending · Vendor rate</option>
+                  <option value="signed_off">Approved</option>
+                  <option value="renegotiate">Rework / Reassign</option>
+                  <option value="rejected">Rejected / Discarded</option>
+                  <option value="not_in_easyecom">Not in EasyEcom</option>
+                </select>
+                <select
+                  aria-label="Sort products"
+                  value={cardSort}
+                  onChange={(e) => setCardSort(e.target.value as typeof cardSort)}
+                >
+                  <option value="code">Sort: Product code</option>
+                  <option value="updated">Sort: Recently updated</option>
+                  <option value="stage">Sort: Status</option>
+                  <option value="job">Sort: Job rate (high first)</option>
+                  <option value="fob">Sort: FOB rate (high first)</option>
+                  <option value="efob">Sort: E-FOB rate (high first)</option>
+                </select>
+                <div className="segment fb-seg" aria-label="Quick filter">
+                  <button type="button" className={!mineOnly ? 'active' : ''} aria-pressed={!mineOnly} onClick={() => setMineOnly(false)}>All products</button>
+                  <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
+                </div>
+                <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
               </div>
-              <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-              <span className="plan-end" />
-              {viewSwitch}
+              <div className="tb-see">
+                {viewSwitch}
+              </div>
             </div>
             {role === 'admin' && mineOnly && (
               <ListBulkDecide items={shown} track={isMat ? 'material' : 'fg'} picked={picked} setPicked={setPicked} pickable={pickable} />

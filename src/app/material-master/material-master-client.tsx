@@ -202,15 +202,19 @@ export function MaterialMasterClient({
         </div>
       )}
 
-      <div className="wf-toolbar">
-        <input
-          className="wf-search"
-          placeholder="Filter code / name / colour…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <span className="wf-subtle">{shown.length} shown</span>
-        <ClearFiltersButton active={filter !== ''} onClear={() => setFilter('')} />
+      <div className="tb">
+        <div className="tb-find">
+          <input
+            className="wf-search"
+            placeholder="Filter code / name / colour…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <ClearFiltersButton active={filter !== ''} onClear={() => setFilter('')} />
+        </div>
+        <div className="tb-see">
+          <span className="wf-subtle tb-count">{shown.length} shown</span>
+        </div>
       </div>
 
       <div className="table-panel wf-grid-panel">

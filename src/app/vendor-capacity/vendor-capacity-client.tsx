@@ -508,31 +508,38 @@ function EntryTab({
             </button>
           ))}
         </div>
-        <div className="vc2-toolbar plan-filterbar">
-          <label className="vc2-search">
-            <Search size={14} aria-hidden="true" />
-            <input type="search" value={search} placeholder="Search vendor name or code" aria-label="Search vendors" onChange={(e) => setSearch(e.target.value)} />
-          </label>
-          <select className={`vc2-chip${merchant ? ' is-on' : ''}`} aria-label="Merchandiser" value={merchant} onChange={(e) => setMerchant(e.target.value)}>
-            <option value="">Merchandiser</option>
-            {merchants.map((m) => <option key={m}>{m}</option>)}
-          </select>
-          <select className={`vc2-chip${vType ? ' is-on' : ''}`} aria-label="PO type" value={vType} onChange={(e) => setVType(e.target.value)}>
-            <option value="">PO type</option>
-            {vTypes.map((t) => <option key={t} value={t}>{typeConfig(t)?.label ?? t}</option>)}
-          </select>
-          {allocatedProducts.length > 0 && (
-            <select className={`vc2-chip${product ? ' is-on' : ''}`} aria-label="Product" value={product} onChange={(e) => setProduct(e.target.value)}>
-              <option value="">Product</option>
-              {allocatedProducts.map((code) => {
-                const name = catalog.find((c) => c.product_code === code)?.product_name;
-                return <option key={code} value={code}>{code}{name ? ` · ${name}` : ''}</option>;
-              })}
-            </select>
-          )}
-          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-          <span className="vc2-count plan-end">{filtered.length} of {decorated.length} vendors</span>
-          <button type="button" className="vc2-btn" onClick={exportRows}><Download size={14} /> Export</button>
+        <div className="vc2-toolbar">
+          <div className="tb tb-flat" style={{ flex: '1 1 100%' }}>
+            <div className="tb-find">
+              <label className="vc2-search tb-search-wrap">
+                <Search size={14} aria-hidden="true" />
+                <input type="search" value={search} placeholder="Search vendor name or code" aria-label="Search vendors" onChange={(e) => setSearch(e.target.value)} />
+              </label>
+              <select className={`vc2-chip${merchant ? ' is-on' : ''}`} aria-label="Merchandiser" value={merchant} onChange={(e) => setMerchant(e.target.value)}>
+                <option value="">Merchandiser</option>
+                {merchants.map((m) => <option key={m}>{m}</option>)}
+              </select>
+              <select className={`vc2-chip${vType ? ' is-on' : ''}`} aria-label="PO type" value={vType} onChange={(e) => setVType(e.target.value)}>
+                <option value="">PO type</option>
+                {vTypes.map((t) => <option key={t} value={t}>{typeConfig(t)?.label ?? t}</option>)}
+              </select>
+              {allocatedProducts.length > 0 && (
+                <select className={`vc2-chip${product ? ' is-on' : ''}`} aria-label="Product" value={product} onChange={(e) => setProduct(e.target.value)}>
+                  <option value="">Product</option>
+                  {allocatedProducts.map((code) => {
+                    const name = catalog.find((c) => c.product_code === code)?.product_name;
+                    return <option key={code} value={code}>{code}{name ? ` · ${name}` : ''}</option>;
+                  })}
+                </select>
+              )}
+              <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+            </div>
+            <div className="tb-see">
+              <span className="tb-count">{filtered.length} of {decorated.length} vendors</span>
+              <span className="tb-divider" />
+              <button type="button" className="vc2-btn" onClick={exportRows}><Download size={14} /> Export</button>
+            </div>
+          </div>
         </div>
         <div className="table-scroll">
           <table className="vc2-table">
@@ -838,15 +845,16 @@ function LiveEntryTab({
         </Notice>
       )}
 
-      <div className="wf-toolbar vc-toolbar">
-        <div className="wf-toolbar-left plan-filterbar">
-          <Field label="Search vendor">
+      <div className="tb">
+        <div className="tb-find">
+          <label className="tb-search-wrap">
+            <span className="tb-sr">Search vendor</span>
             <input
               value={search}
               placeholder="Search vendor name or code"
               onChange={(event) => setSearch(event.target.value)}
             />
-          </Field>
+          </label>
           <select className="meta-select" value={merchant} onChange={(e) => setMerchant(e.target.value)}>
             <option value="">All merchandisers</option>
             {merchants.map((m) => (
@@ -887,11 +895,8 @@ function LiveEntryTab({
           </label>
           <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
-        <div className="wf-toolbar-right">
-          <span className="vc-result-count">{filtered.length} of {decorated.length} shown</span>
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}>
-            <Download size={13} /> Download CSV
-          </button>
+        <div className="tb-see">
+          <span className="tb-count">{filtered.length} of {decorated.length} shown</span>
           <span className="wf-chip">
             {decorated.length} vendors
             {staleCount > 0 && (
@@ -905,6 +910,10 @@ function LiveEntryTab({
               </em>
             )}
           </span>
+          <span className="tb-divider" />
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}>
+            <Download size={13} /> Download CSV
+          </button>
         </div>
       </div>
 

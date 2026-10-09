@@ -355,76 +355,80 @@ export function ReceivablePlanClient({
 
       {message && <Notice tone="ok">{message}</Notice>}
 
-      <div className="wf-toolbar wf-filter-bar plan-filterbar">
-        {decides && (
-          <div className="segment fb-seg" role="group" aria-label="Show">
-            <button type="button" className={needsMine ? 'active' : ''} aria-pressed={needsMine} onClick={() => setNeedsMine(true)}>
-              Needs approval ({submittedCount})
-            </button>
-            <button type="button" className={!needsMine ? 'active' : ''} aria-pressed={!needsMine} onClick={() => setNeedsMine(false)}>
-              All rows
-            </button>
-          </div>
-        )}
-        <input
-          className="wf-search"
-          placeholder="Search PO, product or vendor…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select value={vendor} onChange={(e) => setVendor(e.target.value)} aria-label="Vendor">
-          <option value="">All vendors</option>
-          <option value={BLANK}>—</option>
-          {vendors.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-        <select value={state} onChange={(e) => setState(e.target.value)} aria-label="Product state">
-          <option value="">All states</option>
-          <option value={BLANK}>—</option>
-          {states.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <select value={risk} onChange={(e) => setRisk(e.target.value)} aria-label="TNA risk status">
-          <option value="">All statuses</option>
-          <option value="Overdue">Overdue</option>
-          <option value="High Risk">High Risk</option>
-          <option value="On Track">On Track</option>
-        </select>
-        <select value={edd} onChange={(e) => setEdd(e.target.value as 'all' | 'has' | 'week')} aria-label="Delivery">
-          <option value="all">Any delivery</option>
-          <option value="has">Has EDD</option>
-          <option value="week">Arriving this week</option>
-        </select>
-        <label className="wf-check">
-          <input type="checkbox" checked={oosOnly} onChange={(e) => setOosOnly(e.target.checked)} />
-          OOS only
-        </label>
-        <ClearFiltersButton
-          active={Boolean(search || vendor || state || risk || oosOnly || edd !== 'all' || needsMine)}
-          onClear={() => {
-            setSearch('');
-            setVendor('');
-            setState('');
-            setRisk('');
-            setOosOnly(false);
-            setEdd('all');
-            setNeedsMine(false);
-          }}
-        />
-        <span className="wf-chip plan-end">
-          {shown.length} rows
-          {oosCount > 0 && (
-            <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
+      <div className="tb">
+        <div className="tb-find">
+          {decides && (
+            <div className="segment fb-seg" role="group" aria-label="Show">
+              <button type="button" className={needsMine ? 'active' : ''} aria-pressed={needsMine} onClick={() => setNeedsMine(true)}>
+                Needs approval ({submittedCount})
+              </button>
+              <button type="button" className={!needsMine ? 'active' : ''} aria-pressed={!needsMine} onClick={() => setNeedsMine(false)}>
+                All rows
+              </button>
+            </div>
           )}
-        </span>
-        <div className="segment ip-layout-seg" role="group" aria-label="Layout">
-          {(['kanban', 'cards', 'list'] as LinesLayout[]).map((l) => (
-            <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
-              {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
-            </button>
-          ))}
+          <input
+            className="wf-search"
+            placeholder="Search PO, product or vendor…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select value={vendor} onChange={(e) => setVendor(e.target.value)} aria-label="Vendor">
+            <option value="">All vendors</option>
+            <option value={BLANK}>—</option>
+            {vendors.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+          <select value={state} onChange={(e) => setState(e.target.value)} aria-label="Product state">
+            <option value="">All states</option>
+            <option value={BLANK}>—</option>
+            {states.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select value={risk} onChange={(e) => setRisk(e.target.value)} aria-label="TNA risk status">
+            <option value="">All statuses</option>
+            <option value="Overdue">Overdue</option>
+            <option value="High Risk">High Risk</option>
+            <option value="On Track">On Track</option>
+          </select>
+          <select value={edd} onChange={(e) => setEdd(e.target.value as 'all' | 'has' | 'week')} aria-label="Delivery">
+            <option value="all">Any delivery</option>
+            <option value="has">Has EDD</option>
+            <option value="week">Arriving this week</option>
+          </select>
+          <label className="wf-check">
+            <input type="checkbox" checked={oosOnly} onChange={(e) => setOosOnly(e.target.checked)} />
+            OOS only
+          </label>
+          <ClearFiltersButton
+            active={Boolean(search || vendor || state || risk || oosOnly || edd !== 'all' || needsMine)}
+            onClear={() => {
+              setSearch('');
+              setVendor('');
+              setState('');
+              setRisk('');
+              setOosOnly(false);
+              setEdd('all');
+              setNeedsMine(false);
+            }}
+          />
+        </div>
+        <div className="tb-see">
+          <span className="wf-chip tb-count">
+            {shown.length} rows
+            {oosCount > 0 && (
+              <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
+            )}
+          </span>
+          <div className="segment ip-layout-seg" role="group" aria-label="Layout">
+            {(['kanban', 'cards', 'list'] as LinesLayout[]).map((l) => (
+              <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
+                {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

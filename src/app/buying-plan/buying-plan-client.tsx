@@ -965,58 +965,68 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
 
   // Shared filter toolbar (sticky card). Group-by only applies to the grouped View.
   const toolbar = (
-    <div className={`bp-toolbar bp-filter-toolbar bp-filter-toolbar-${mode} plan-filterbar`}>
-      <input
-        className="bp-search"
-        aria-label="Search product code"
-        placeholder="Search product code…"
-        value={inputSearch}
-        onChange={(e) => setInputSearch(e.target.value)}
-      />
-      <select aria-label="Category" value={inputCategory} onChange={(e) => setInputCategory(e.target.value)}>
-        <option value="">Category: All</option>
-        {categoryOptions.map((c) => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-      </select>
-      <select aria-label="Product state" value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
-        <option value="">State: All</option>
-        {statusOptions.map((s) => (
-          <option key={s} value={s}>{s}</option>
-        ))}
-      </select>
-      {mode === 'view' && (
-        <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}>
-          <option value="category">Group by: Category</option>
-          <option value="subcategory">Group by: Sub-category</option>
-          <option value="weave">Group by: Woven / Knitted</option>
-          <option value="code">Group by: Product code</option>
-        </select>
-      )}
-      <button
-        type="button"
-        className={moreFiltersOpen ? 'bp-more-button active' : 'bp-more-button'}
-        aria-expanded={moreFiltersOpen}
-        aria-controls="buying-plan-more-filters"
-        onClick={() => setMoreFiltersOpen((open) => !open)}
-      >
-        <MoreHorizontal size={15} aria-hidden="true" />
-        More filters
-        {hiddenFilterCount > 0 && <span className="bp-more-count">{hiddenFilterCount}</span>}
-      </button>
-      <ClearFiltersButton active={hasFilters || inputSearch !== ''} onClear={clearFilters} />
-      {mode === 'input' && editable && (
-        <button type="button" className="wf-btn wf-btn-primary bp-add-products" onClick={() => setProductPickerOpen(true)}>
-          <Plus size={15} aria-hidden="true" />
-          Add products
-        </button>
-      )}
-      <span className="bp-toolbar-count plan-end">
-        {shownCount} of {totalCount} shown
-      </span>
+    <>
+      <div className="tb tb-flat">
+        <div className="tb-find">
+          <input
+            className="bp-search"
+            aria-label="Search product code"
+            placeholder="Search product code…"
+            value={inputSearch}
+            onChange={(e) => setInputSearch(e.target.value)}
+          />
+          <select aria-label="Category" value={inputCategory} onChange={(e) => setInputCategory(e.target.value)}>
+            <option value="">Category: All</option>
+            {categoryOptions.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select aria-label="Product state" value={inputStatus} onChange={(e) => setInputStatus(e.target.value)}>
+            <option value="">State: All</option>
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          {mode === 'view' && (
+            <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}>
+              <option value="category">Group by: Category</option>
+              <option value="subcategory">Group by: Sub-category</option>
+              <option value="weave">Group by: Woven / Knitted</option>
+              <option value="code">Group by: Product code</option>
+            </select>
+          )}
+          <button
+            type="button"
+            className={moreFiltersOpen ? 'bp-more-button active' : 'bp-more-button'}
+            aria-expanded={moreFiltersOpen}
+            aria-controls="buying-plan-more-filters"
+            onClick={() => setMoreFiltersOpen((open) => !open)}
+          >
+            <MoreHorizontal size={15} aria-hidden="true" />
+            More filters
+            {hiddenFilterCount > 0 && <span className="bp-more-count">{hiddenFilterCount}</span>}
+          </button>
+          <ClearFiltersButton active={hasFilters || inputSearch !== ''} onClear={clearFilters} />
+        </div>
+        <div className="tb-see">
+          <span className="tb-count">
+            {shownCount} of {totalCount} shown
+          </span>
+          {mode === 'input' && editable && (
+            <>
+              <span className="tb-divider" />
+              <button type="button" className="wf-btn wf-btn-primary bp-add-products" onClick={() => setProductPickerOpen(true)}>
+                <Plus size={15} aria-hidden="true" />
+                Add products
+              </button>
+            </>
+          )}
+        </div>
+      </div>
       <div
         id="buying-plan-more-filters"
         className="bp-more-filters"
+        style={{ marginTop: 8 }}
         role="group"
         aria-label="More filters"
         hidden={!moreFiltersOpen}
@@ -1034,7 +1044,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
           <option value="efob">E-FOB</option>
         </select>
       </div>
-    </div>
+    </>
   );
 
   return (
