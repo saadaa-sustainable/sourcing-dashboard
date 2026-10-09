@@ -2691,7 +2691,18 @@ tr[hidden] { display: none !important; }
 .iw-weeks { display: grid; gap: 12px; }
 .iw-week { display: flex; flex-direction: column; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; min-width: 0; }
 .iw-week.is-now { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
-.iw-week-top { padding: 12px 14px; border-bottom: 1px solid #e7e4dc; }
+.iw-week-top { display: block; width: 100%; padding: 12px 14px; border: 0; border-bottom: 1px solid #e7e4dc; border-radius: 12px 12px 0 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.iw-week-top:hover { background: #faf9f6; }
+.iw-week-top:focus-visible, .iw-line:focus-visible, .iw-more-btn:focus-visible { outline: 2px solid var(--ink-1, #161513); outline-offset: 2px; }
+.iw-week.is-open { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 2px var(--ink-1, #161513); }
+.iw-more-btn { border: 0; background: transparent; font: inherit; font-size: 12px; color: var(--ink-1, #161513); text-decoration: underline; cursor: pointer; }
+.iw-detail { margin-top: 14px; padding: 14px 16px; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; display: flex; flex-direction: column; gap: 12px; }
+.iw-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.iw-detail-head h3 { margin: 0 0 2px; font-size: 15px; font-weight: 650; }
+.iw-detail-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.iw-detail-day { border: 1px solid #e7e4dc; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; font-size: 11px; color: var(--ink-3, #5f5a50); }
+.iw-detail-day b { font-size: 14px; color: var(--ink-1, #161513); font-variant-numeric: tabular-nums; }
+.iw-detail-day.is-out { opacity: .5; }
 .iw-figs { margin-top: 10px; font-size: 12px; color: var(--ink-3, #5f5a50); }
 .iw-figs b { color: var(--ink-1, #161513); font-variant-numeric: tabular-nums; }
 .iw-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; align-items: end; height: 36px; margin-top: 10px; }
@@ -2700,7 +2711,8 @@ tr[hidden] { display: none !important; }
 .iw-day.is-future, .iw-day.is-out { background: #ece9e2; }
 .iw-daynames { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; font-size: 10px; color: var(--ink-3, #5f5a50); text-align: center; }
 .iw-week-lines { display: flex; flex-direction: column; gap: 8px; padding: 10px; flex: 1; background: #faf9f6; border-radius: 0 0 12px 12px; }
-.iw-line { background: #fff; border: 1px solid #e7e4dc; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.iw-line { display: block; width: 100%; background: #fff; border: 1px solid #e7e4dc; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 12px; color: inherit; text-align: left; cursor: pointer; }
+.iw-line:hover { border-color: #c9cccf; }
 .iw-line .mono { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .iw-line .iw-bar { height: 4px; }
 .iw-more { text-align: center; padding: 4px; }

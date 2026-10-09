@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { STATUS_LABEL } from '@/lib/forms/approval';
+import type { SdStatus } from '@/lib/forms/types';
 import { InfoDot } from '@/components/info-dot';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
@@ -52,6 +54,11 @@ export function InwardWeekBoard({
   /** YYYY-MM-DD, from the server. */
   today: string;
 }) {
+  // The week opened below the board (its key = the Monday), or none.
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (open) document.getElementById('iw-week-detail')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [open]);
   const monthStart = utc(month);
   const monthEnd = Date.UTC(new Date(monthStart).getUTCFullYear(), new Date(monthStart).getUTCMonth() + 1, 0);
   const daysInMonth = Math.round((monthEnd - monthStart) / DAY) + 1;
@@ -124,6 +131,8 @@ export function InwardWeekBoard({
       .sort((a, b) => (b.planned - b.received) - (a.planned - a.received));
   }, [rows, elapsed, daysInMonth]);
 
+  const openWeek = weeks.list.find((w) => w.key === open) ?? null;
+
   if (!rows.length) return null;
 
   if (board === 'vendors') {
@@ -166,8 +175,14 @@ export function InwardWeekBoard({
       <div className="iw-weeks-scroll">
         <div className="iw-weeks" style={{ gridTemplateColumns: `repeat(${weeks.list.length}, minmax(220px, 1fr))` }}>
           {weeks.list.map((w) => (
-            <article key={w.key} className={`iw-week${w.state === 'now' ? ' is-now' : ''}`}>
-              <div className="iw-week-top">
+            <article key={w.key} className={`iw-week${w.state === 'now' ? ' is-now' : ''}${open === w.key ? ' is-open' : ''}`}>
+              <button
+                type="button"
+                className="iw-week-top"
+                aria-expanded={open === w.key}
+                aria-controls="iw-week-detail"
+                onClick={() => setOpen(open === w.key ? null : w.key)}
+              >
                 <div className="iw-row">
                   <b>{w.name}</b>
                   <span className={`iw-pill ${w.state === 'now' ? 'iw-info' : 'iw-grey'}`}>{w.state === 'done' ? 'Done' : w.state === 'now' ? 'This week' : 'Upcoming'}</span>
@@ -189,22 +204,98 @@ export function InwardWeekBoard({
                   ))}
                 </div>
                 <div className="iw-daynames" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
-              </div>
+              </button>
               <div className="iw-week-lines">
                 {w.lines.slice(0, 4).map((a) => (
-                  <div key={a.row_key} className="iw-line">
+                  <button key={a.row_key} type="button" className="iw-line" onClick={() => setOpen(w.key)}>
                     <div className="iw-row"><b className="mono">{a.product_variant || a.product_code}</b><span className="wf-subtle">{a.vendor_name ?? '—'}</span></div>
                     <div className="iw-row wf-subtle"><span>{fmt.format(a.received_qty)} / {fmt.format(a.expected_qty ?? 0)} pcs</span><span>{a.po_ref_num?.split('/')[1] ?? ''}</span></div>
                     <Progress got={a.received_qty} of={a.expected_qty ?? 0} />
-                  </div>
+                  </button>
                 ))}
-                {w.lines.length > 4 && <div className="wf-subtle iw-more">+ {w.lines.length - 4} more line{w.lines.length - 4 === 1 ? '' : 's'}</div>}
+                {w.lines.length > 4 && (
+                  <button type="button" className="iw-more iw-more-btn" onClick={() => setOpen(w.key)}>
+                    + {w.lines.length - 4} more line{w.lines.length - 4 === 1 ? '' : 's'}
+                  </button>
+                )}
                 {!w.lines.length && <div className="wf-subtle iw-more">No receiving week set for this week</div>}
               </div>
             </article>
           ))}
         </div>
       </div>
+      {openWeek && <WeekDetail week={openWeek} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
+
+type Week = {
+  key: string;
+  name: string;
+  range: string;
+  expected: number;
+  received: number;
+  lines: ArrivalRow[];
+  days: { d: string; q: number; inMonth: boolean; future: boolean }[];
+};
+
+/** Everything in one week: receipts by day, and every line the team expects that week. */
+function WeekDetail({ week, onClose }: { week: Week; onClose: () => void }) {
+  const status = (s: string | null) => (s ? STATUS_LABEL[s as SdStatus] ?? s : '—');
+  return (
+    <section id="iw-week-detail" className="iw-detail" aria-label={`${week.name} in detail`}>
+      <div className="iw-detail-head">
+        <div>
+          <h3>{week.name} · {week.range}</h3>
+          <span className="wf-subtle">
+            Expected {fmt.format(week.expected)} pcs · received {fmt.format(week.received)} pcs on this month&rsquo;s POs
+          </span>
+        </div>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={onClose}>Close</button>
+      </div>
+      <div className="iw-detail-days">
+        {week.days.map((d) => (
+          <div key={d.d} className={`iw-detail-day${!d.inMonth ? ' is-out' : ''}`}>
+            <span>{new Date(utc(d.d)).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
+            <b>{!d.inMonth ? '—' : d.future ? 'upcoming' : fmt.format(d.q)}</b>
+          </div>
+        ))}
+      </div>
+      {week.lines.length ? (
+        <div className="table-scroll">
+          <table className="wide-table">
+            <thead>
+              <tr>
+                <th>Product / colour</th>
+                <th>PO ref</th>
+                <th>Vendor</th>
+                <th>Expected on</th>
+                <th className="num">Expected</th>
+                <th className="num">Received so far</th>
+                <th>Plan status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {week.lines.map((a) => (
+                <tr key={a.row_key}>
+                  <td className="mono">{a.product_variant || a.product_code || '—'}</td>
+                  <td className="mono">{a.po_ref_num ?? a.po_number ?? '—'}</td>
+                  <td>{a.vendor_name ?? '—'}</td>
+                  <td>{a.expected_date ? short(a.expected_date) : '—'}</td>
+                  <td className="num">{fmt.format(a.expected_qty ?? 0)}</td>
+                  <td className="num">
+                    {fmt.format(a.received_qty)}
+                    {a.expected_qty != null && a.received_qty > a.expected_qty && <span className="iw-over">over by {fmt.format(a.received_qty - a.expected_qty)}</span>}
+                  </td>
+                  <td>{status(a.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="wf-subtle" style={{ margin: 0 }}>No line on this month&rsquo;s POs has its receiving week set to this week.</p>
+      )}
     </section>
   );
 }
