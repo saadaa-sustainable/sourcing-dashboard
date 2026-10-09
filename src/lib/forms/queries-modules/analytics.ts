@@ -588,18 +588,19 @@ export async function loadAnalyticsExtras(
   try {
     const pending = (t: string) =>
       supabase.from(t).select('*', { count: 'exact', head: true }).in('status', ['submitted', 'pending_l2']);
-    const [bp, po, dc, vd, iw, pd] = await Promise.all([
+    const [bp, po, dc, vd, iw, pd, vc] = await Promise.all([
       pending('sd_buying_plan'),
       pending('sd_po_approval'),
       pending('sd_discontinue_request'),
       pending('sd_vendor_deboarding_request'),
       pending('sd_receivable_input'),
       pending('sd_po_delete_request'),
+      pending('sd_vendor_commercial_request'),
     ]);
     const n = (r: { count: number | null }) => r.count ?? 0;
     extras.approvalRequisitions = {
-      buyingPlans: n(bp), pos: n(po), poDeletes: n(pd), discontinue: n(dc), deboarding: n(vd), inward: n(iw),
-      total: n(bp) + n(po) + n(pd) + n(dc) + n(vd) + n(iw),
+      buyingPlans: n(bp), pos: n(po), poDeletes: n(pd), discontinue: n(dc), deboarding: n(vd), inward: n(iw), commercial: n(vc),
+      total: n(bp) + n(po) + n(pd) + n(dc) + n(vd) + n(iw) + n(vc),
     };
   } catch { /* stays null */ }
   })());

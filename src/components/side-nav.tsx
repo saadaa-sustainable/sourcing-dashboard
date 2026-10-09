@@ -7,6 +7,7 @@ import { useNavOverrides } from '@/components/nav-overrides';
 import {
   Activity,
   UserX,
+  BadgeIndianRupee,
   Award,
   Ban,
   Boxes,
@@ -109,6 +110,7 @@ const GOVERNANCE_LINKS: NavLink[] = [
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
   { href: '/issues', label: 'Issue Tracker', Icon: ClipboardList },
   { href: '/vendor-deboarding', label: 'Vendor De-Boarding', Icon: UserX },
+  { href: '/vendor-commercial', label: 'Vendor Commercial Approval', Icon: BadgeIndianRupee },
 ];
 
 // MASTER DATA & DATASETS — the Master hub, the raw datasets, and each master on its own

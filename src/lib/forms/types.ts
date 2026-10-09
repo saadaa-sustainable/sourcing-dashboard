@@ -268,7 +268,7 @@ export type AnalyticsExtras = {
     byClass: { cls: 'A' | 'B' | 'C' | 'D'; variants: number; oosNow: number; atRisk: number; avgDoh: number | null }[];
   } | null;
   /** Everything waiting for someone's decision, by kind. */
-  approvalRequisitions: { total: number; buyingPlans: number; pos: number; poDeletes: number; discontinue: number; deboarding: number; inward: number } | null;
+  approvalRequisitions: { total: number; buyingPlans: number; pos: number; poDeletes: number; discontinue: number; deboarding: number; inward: number; commercial?: number } | null;
   /** Inward-to-sales ratio: pieces received vs pieces sold over the same four complete weeks. */
   isr: { from: string; to: string; inwardQty: number; inwardPos: number; soldQty: number; skus: number } | null;
   /** Buying Plan synopsis for the current month (set by the dashboard page from the plan analysis). */
@@ -319,7 +319,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding' | 'inward_plan';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding' | 'vendor_commercial' | 'inward_plan';
   label: string;
   sublabel: string;
   status: SdStatus;
@@ -890,6 +890,42 @@ export type VendorDeboardingReason =
   | 'process_gap'
   | 'other';
 
+/** One row of sd_vendor_commercial_request — the team's Commercial Approval form, field for field. */
+export type VendorCommercialRequest = {
+  id: number;
+  business_type: import('./commercial').CommercialBusinessType;
+  vendor_code: string;
+  vendor_name: string | null;
+  po_numbers: string;
+  request_type: import('./commercial').CommercialRequestType;
+  hold_qty: number | null;
+  hold_days: number | null;
+  ready_date: string | null;
+  hold_reason: string | null;
+  cost_reason: string | null;
+  cost_reason_other: string | null;
+  increment_amount: number | null;
+  owner_name: string | null;
+  owner_contact: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  invoice_amount: number | null;
+  rg_pending: string | null;
+  debit_note_number: string | null;
+  credit_amount: number | null;
+  remarks: string;
+  attachments: import('./commercial').CommercialAttachment[];
+  status: SdStatus;
+  requested_by: string | null;
+  requested_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
+  rework_notes: string | null;
+  edited_before_approval: boolean;
+  approver_edited?: boolean | null;
+};
+
 /** One row of sd_vendor_deboarding_request — the team's de-boarding form, field for field. */
 export type VendorDeboardingRequest = {
   id: number;
@@ -996,6 +1032,8 @@ export type ApprovalEntity =
   | 'receivable_plan'
   | 'inward_plan'
   | 'vendor_deboarding'
+  /** Vendor Commercial Approval — hold waiver, cost increment, CD, DN removal, credit note. */
+  | 'vendor_commercial'
   /** Spec 7.9 — a cost / quantity / time change to a PO already issued in EasyEcom. */
   | 'po_amendment';
 

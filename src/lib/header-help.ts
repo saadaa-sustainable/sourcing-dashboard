@@ -483,6 +483,16 @@ const PAGE: Record<string, Record<string, string>> = {
     'status in ee': 'The vendor\'s status in EasyEcom as noted on the sheet at the time.',
     'note': 'The sheet\'s own unlabelled last column, kept as written (usually the month it took effect).',
   },
+  '/vendor-commercial': {
+    'status': 'Approval Pending → Approved (Edited & Approved / First time Approved), Rework / Reassign or Rejected / Discarded. Every commercial request needs an admin.',
+    'request': 'What is asked for: hold waiver, cost increment, cash discount, DN removal or credit note.',
+    'vendor': 'The firm the request is for, with its vendor code.',
+    'details': 'The figures the form asked for on this type of request.',
+    'remarks': 'The reason or remarks given with the request.',
+    'files': 'Invoice copy or proof attached to the request.',
+    'requested by': 'Who raised the request, and when.',
+    'decision': 'Approve, edit & approve, send back or reject — or who decided it, once done.',
+  },
   '/standard-cost': {
     'status': 'Where the cost stands in negotiation: proposed → target set → rate submitted → approved.',
     'size': 'The size the cost applies to, where costs differ by size.',

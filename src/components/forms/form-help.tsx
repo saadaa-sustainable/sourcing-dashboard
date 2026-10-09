@@ -163,6 +163,13 @@ const HELP: Record<string, HelpItem[]> = {
     { field: 'Open POs with this vendor now', source: 'PO pipeline', detail: 'How many approved POs are still in process with the vendor — what de-boarding would strand. Shown for the approver’s judgement; it does not block the request.' },
     { field: 'Status', source: 'Workflow', detail: 'Submitted → Approved / Rejected / Rework. De-boarding always needs an admin. Once approved the vendor is flagged “De-boarded dd/mm” on PO Approval, Vendor Capacity, Vendor Master and Vendor Overview — still listed, never hidden, so open POs can be finished knowingly. Switching the vendor off in EasyEcom is a separate step.' },
   ],
+  '/vendor-commercial': [
+    { field: 'Business type', source: 'You choose', detail: 'Garment manufacturer (Job / E-FOB / FOB) or fabric processing / supplier (greige supplier / dyer) — the same first question as the Google Form. It decides which reasons a cost increment offers.' },
+    { field: 'Firm, vendor code, PO number', source: 'Vendor master / you type', detail: 'Pick the vendor from the master or type a fabric supplier that is not on it. Several POs can be listed, separated by commas.' },
+    { field: 'Type of request', source: 'You choose', detail: 'Waiver for goods / fabric held by SAADAA, commercial approval / cost increment, cash discount (CD), debit note (DN) removal or credit note — each asks the same questions as its section of the Google Form.' },
+    { field: 'Files', source: 'You attach', detail: 'Invoice copy for a cash discount; proof or related documents for a DN removal or credit note. PDF, images, Excel, Word or ZIP, up to 25 MB each.' },
+    { field: 'Status', source: 'Workflow', detail: 'Approval Pending → Approved (Edited & Approved / First time Approved), Rework / Reassign or Rejected / Discarded, with remarks. Every commercial request needs an admin. Until it is approved every field can be amended.' },
+  ],
   '/issues': [
     { field: 'What this is', source: 'Workflow', detail: 'The team’s issue tracker. Anyone raises an issue to anyone — a PO coming wrong, a vendor problem, a missing timeline — and the dashboard raises its own from the checks it already runs. Separate from Feedback & Issues, which is the developer’s inbox for the dashboard itself.' },
     { field: 'Raised by the dashboard (robot icon)', source: 'Automatic', formula: 'one issue per: open PO with no TNA timeline · open PO with no delivery date · discontinued product still on order · feed older than the stale threshold', detail: 'Raised the first time the check finds it, routed by category, and closed by the dashboard itself with “No longer detected” when the condition goes away — so the days it stayed open are a real measure.' },

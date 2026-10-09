@@ -59,6 +59,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   receivable_plan: 'sd_receivable_input',
   inward_plan: 'sd_inward_plan_entry',
   vendor_deboarding: 'sd_vendor_deboarding_request',
+  vendor_commercial: 'sd_vendor_commercial_request',
   po_amendment: 'sd_po_amendment',
 };
 
@@ -69,6 +70,7 @@ const WAITING_SINCE: Partial<Record<ApprovalEntity, string>> = {
   po_approval: 'submitted_for_approval_at',
   po_delete: 'requested_at',
   vendor_deboarding: 'requested_at',
+  vendor_commercial: 'requested_at',
   po_amendment: 'requested_at',
 };
 
@@ -87,6 +89,7 @@ const ITEM_LINK: Partial<Record<ApprovalEntity, (id: number) => string>> = {
   standard_cost: () => '/standard-cost',
   material_cost: () => '/standard-cost?track=material',
   vendor_deboarding: () => '/vendor-deboarding',
+  vendor_commercial: () => '/vendor-commercial',
   po_amendment: () => '/po-amendment',
 };
 
@@ -285,6 +288,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
   revalidatePath('/vendor-deboarding');
+  revalidatePath('/vendor-commercial');
   revalidatePath('/po-amendment');
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');

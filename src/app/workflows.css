@@ -2861,3 +2861,11 @@ tr.iw-picked > td { background: #fffbea; }
 /* PO SKU grid: the note shown when a product's colours come from NPD Tracker V7. */
 .pl-npd-note { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #b9cdea; border-radius: 8px; background: #eaf1fb; color: #1d3f6e; font-size: 12.5px; line-height: 1.45; }
 .pl-npd-note .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: #fff; border: 1px solid #d2dff0; border-radius: 4px; padding: 0 4px; }
+
+/* ---- Vendor Commercial Approval ---- */
+.vcom-files { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.vcom-files-label { font-size: 12.5px; font-weight: 600; color: var(--ink-2, #3d3a33); width: 100%; }
+.vcom-file { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; padding: 3px 4px 3px 9px; border: 1px solid var(--line, #e6e1d3); border-radius: 999px; background: #fff; }
+.vcom-file.is-new { background: #fffaf0; border-color: #f1d9a2; }
+.vcom-meta-actions { display: inline-flex; gap: 8px; align-items: center; }
+.vcom-open { margin: 0 4px 4px 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

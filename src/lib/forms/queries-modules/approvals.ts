@@ -16,6 +16,7 @@ import { loadInProcessByVendor, loadLatestVendorCapacity } from './vendor';
 import { loadAnalyticsRules } from './analytics';
 import { capacityRulesFrom, vendorCapacityModel } from '@/lib/business-logic';
 import { DEBOARDING_REASON_LABEL, DEBOARDING_SCORES } from '../deboarding';
+import { commercialSummary, requestTypeLabel, type CommercialBusinessType, type CommercialRequestType } from '../commercial';
 import type {
   ApprovalMatrixMember,
   ApprovalNotification,
@@ -32,6 +33,7 @@ import type {
   PoApproval,
   PoDeleteRequest,
   VendorDeboardingRequest,
+  VendorCommercialRequest,
 } from '../types';
 
 /**
@@ -77,7 +79,7 @@ export async function countPendingApprovals(): Promise<number> {
   // are the admin's turn (the bell renders for admins only).
   const costPending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
-  const [a, b, c, d, e, f, g, h, inward] = await Promise.all([
+  const [a, b, c, d, e, f, g, h, vc, inward] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
@@ -86,6 +88,7 @@ export async function countPendingApprovals(): Promise<number> {
     pending('sd_vendor_deboarding_request'),
     pending('sd_po_delete_request'),
     pending('sd_po_amendment'),
+    pending('sd_vendor_commercial_request'),
     // Monthly inward-plan sheet: one queue card per month with Pending rows.
     // paging-ok: a handful of month rows, distinct-counted below
     supabase.from('sd_inward_plan_entry').select('plan_month').eq('approval_status', 'Pending'),
@@ -93,7 +96,7 @@ export async function countPendingApprovals(): Promise<number> {
   const inwardMonths = new Set(((inward.data ?? []) as { plan_month: string }[]).map((r) => r.plan_month)).size;
   return (
     (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) +
-    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0) + inwardMonths
+    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0) + (vc.count ?? 0) + inwardMonths
   );
 }
 
@@ -114,7 +117,7 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
           .select('id, product_code, status, neg_stage, updated_at')
           .in('neg_stage', ['proposed', 'rate_submitted'])
       : Promise.resolve({ data: [] as never[] });
-  const [plans, discontinues, pos, fgCosts, matCosts, deboardings, poDeletes, poAmendments] = await Promise.all([
+  const [plans, discontinues, pos, fgCosts, matCosts, deboardings, poDeletes, poAmendments, commercials] = await Promise.all([
     supabase
       .from('sd_buying_plan')
       .select('id, plan_month, plan_type, status, submitted_by, submitted_at')
@@ -142,9 +145,30 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
       .from('sd_po_amendment')
       .select('id, po_ref_num, amendment_type, status, requested_by, requested_at')
       .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_vendor_commercial_request' as never)
+      .select('id, vendor_code, vendor_name, business_type, request_type, status, requested_by, requested_at')
+      .in('status', ['submitted', 'pending_l2']),
   ]);
 
   const items: ApprovalNotification[] = [];
+
+  for (const c of ((commercials.data ?? []) as unknown) as Array<{
+    id: number; vendor_code: string; vendor_name: string | null; business_type: CommercialBusinessType; request_type: CommercialRequestType;
+    status: SdStatus; requested_by: string | null; requested_at: string | null;
+  }>) {
+    if (!canApprove(role, c.status)) continue;
+    items.push({
+      key: `vc-${c.id}`,
+      kind: 'vendor_commercial',
+      label: `${requestTypeLabel(c.request_type, c.business_type)} — ${c.vendor_code}${c.vendor_name ? ` ${c.vendor_name}` : ''}`,
+      sublabel: 'Commercial approval awaiting your decision',
+      status: c.status,
+      href: '/approvals',
+      submittedBy: c.requested_by,
+      submittedAt: c.requested_at,
+    });
+  }
 
   // Monthly inward-plan sheet — an admin decision, one notification per pending month.
   if (role === 'admin') {
@@ -389,6 +413,7 @@ export async function loadApprovalQueue(): Promise<{
     { data: deboardings },
     { data: poDeletes },
     { data: poAmendments },
+    { data: commercials },
   ] = await Promise.all([
     supabase.from('sd_buying_plan').select('*').in('status', ['submitted', 'pending_l2']),
     supabase
@@ -421,6 +446,10 @@ export async function loadApprovalQueue(): Promise<{
       .in('status', ['submitted', 'pending_l2']),
     supabase
       .from('sd_po_amendment')
+      .select('*')
+      .in('status', ['submitted', 'pending_l2']),
+    supabase
+      .from('sd_vendor_commercial_request' as never)
       .select('*')
       .in('status', ['submitted', 'pending_l2']),
   ]);
@@ -554,6 +583,24 @@ export async function loadApprovalQueue(): Promise<{
       submittedAt: req.requested_at,
       submitNote: req.remarks,
       href: '/vendor-deboarding',
+    });
+  }
+
+  // Commercial approval: the request type, vendor and the figures the form asked for on the card,
+  // the reason / remarks as the note.
+  for (const req of ((commercials ?? []) as unknown) as VendorCommercialRequest[]) {
+    items.push({
+      entityType: 'vendor_commercial',
+      entityId: String(req.id),
+      label: `${requestTypeLabel(req.request_type, req.business_type)} — ${req.vendor_code}${req.vendor_name ? ` ${req.vendor_name}` : ''}`,
+      sublabel: commercialSummary({ ...req, attachments: Array.isArray(req.attachments) ? req.attachments : [] }),
+      status: req.status,
+      quantity: 0,
+      requiredRole: routeApproval('vendor_commercial'),
+      submittedBy: req.requested_by,
+      submittedAt: req.requested_at,
+      submitNote: req.remarks,
+      href: '/vendor-commercial',
     });
   }
 

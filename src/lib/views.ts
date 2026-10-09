@@ -59,6 +59,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/cash-flow', label: 'Cash Flow', group: 'PO Workflow', adminOnly: true },
   { path: '/discontinue', label: 'Discontinued Products View', group: 'Governance & Data' },
   { path: '/vendor-deboarding', label: 'Vendor De-Boarding', group: 'Governance & Data' },
+  { path: '/vendor-commercial', label: 'Vendor Commercial Approval', group: 'Governance & Data' },
   // Not admin-only: routine items (small FG buying plans / POs) route to the TEAM
   // level, and this queue is the only place PO decisions are taken.
   { path: '/approvals', label: 'Approvals', group: 'Governance & Data' },

@@ -29,6 +29,7 @@ export * from './queries-modules/po-lines-context';
 export * from './queries-modules/approvals';
 export * from './queries-modules/discontinue';
 export * from './queries-modules/vendor-deboarding';
+export * from './queries-modules/vendor-commercial';
 export * from './queries-modules/po-amendment';
 export * from './queries-modules/misc';
 export * from './queries-modules/vendor-invoice';

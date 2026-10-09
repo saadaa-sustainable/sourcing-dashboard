@@ -2063,6 +2063,7 @@ export function ObjectiveSynopsisCards({
             <li><span>Inward Plan</span><span className="ana-list-val">{fmt.format(ap.inward)}</span></li>
             <li><span>Discontinue</span><span className="ana-list-val">{fmt.format(ap.discontinue)}</span></li>
             <li><span>Vendor de-boarding</span><span className="ana-list-val">{fmt.format(ap.deboarding)}</span></li>
+            <li><span>Commercial approvals</span><span className="ana-list-val">{fmt.format(ap.commercial ?? 0)}</span></li>
           </ul>
         )}
       </AnaCard>

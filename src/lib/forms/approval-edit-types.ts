@@ -35,6 +35,7 @@ export const EDITABLE_APPROVALS = [
   'po_amendment',
   'discontinue',
   'vendor_deboarding',
+  'vendor_commercial',
   'inward_plan',
   'receivable_plan',
 ] as const;
