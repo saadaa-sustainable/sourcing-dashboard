@@ -8,7 +8,7 @@ import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { Notice } from '@/components/forms/form-layout';
 import { canApprove, canEdit, sheetStatusText } from '@/lib/forms/approval';
-import { decideInwardPlanRow, deleteInwardPlanRow, editAndApproveInwardRow, importInwardPlanSheet } from '@/lib/forms/actions';
+import { decideInwardPlanRow, decideInwardPlanRows, deleteInwardPlanRow, deleteInwardPlanRows, editAndApproveInwardRow, importInwardPlanSheet } from '@/lib/forms/actions';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import type { SdRole } from '@/lib/forms/types';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
@@ -61,6 +61,25 @@ export function InwardPlanSheet({
   // Lines as a List (the table), Cards or Kanban by status; the choice is remembered per browser.
   const [layout, setLayout] = useState<'list' | 'cards' | 'kanban'>('list');
   const [query, setQuery] = useState('');
+  // Lines ticked for a bulk action (ids), and the rows the list currently shows (for "select all shown").
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [listRows, setListRows] = useState<InwardPlanSheetRow[]>([]);
+  const toggle = (id: number) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selectMany = (ids: number[], on: boolean) =>
+    setSelected((cur) => {
+      const next = new Set(cur);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
   useEffect(() => {
     try {
       const saved = localStorage.getItem('ip-sheet-layout');
@@ -104,6 +123,7 @@ export function InwardPlanSheet({
   const approver = canApprove(role, 'pending_l2');
   const editor = canEdit(role, 'draft');
 
+  const canBulk = approver || editor;
   const columns: Column<InwardPlanSheetRow>[] = [
     { key: 'product_code', label: 'Product', kind: 'mono', filter: 'text', source: 'form', accessor: (r) => r.product_code,
       info: 'The product code on the sheet — one style across all its colours and sizes.' },
@@ -139,6 +159,14 @@ export function InwardPlanSheet({
     { key: 'updated_by', label: 'Last change', kind: 'text', source: 'supabase', accessor: (r) => r.updated_at, render: (r) => <span className="wf-subtle">{dateLabel(r.updated_at)}</span>,
       info: 'When the line was last loaded or decided.' },
   ];
+  if (canBulk) {
+    columns.unshift({
+      key: 'pick', label: '', kind: 'text', filter: 'none', sortable: false, source: 'supabase',
+      render: (r) => (
+        <input type="checkbox" aria-label={`Select ${r.product_code} ${r.po_no ?? ''}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+      ),
+    });
+  }
   if (approver || editor) {
     columns.push({
       key: 'actions', label: 'Action', kind: 'text', filter: 'none', sortable: false, source: 'supabase',
@@ -159,7 +187,7 @@ export function InwardPlanSheet({
       <div className="wf-toolbar" style={{ alignItems: 'flex-end', gap: 16 }}>
         <label className="wf-field">
           <span>Plan month</span>
-          <select value={month} onChange={(e) => { setMonth(e.target.value); setStatusFilter('all'); }}>
+          <select value={month} onChange={(e) => { setMonth(e.target.value); setStatusFilter('all'); setSelected(new Set()); }}>
             {monthOptions.map((m) => {
               const n = rows.filter((r) => r.plan_month === m).length;
               return <option key={m} value={m}>{monthLabel(m)}{n ? ` · ${n} lines` : ' · empty'}</option>;
@@ -259,12 +287,23 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
         </div>
       )}
 
+      {monthRows.length > 0 && board === 'lines' && canBulk && (
+        <BulkBar
+          selected={monthRows.filter((r) => selected.has(r.id))}
+          visible={layout === 'list' ? listRows : layout === 'cards' ? searched : searchedAll}
+          approver={approver}
+          editor={editor}
+          onSelectAll={(ids) => selectMany(ids, true)}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
+
       {monthRows.length > 0 && board !== 'lines' ? (
         <InwardWeekBoard board={board} month={month} rows={monthRows} arrivals={arrivals} today={today} />
       ) : monthRows.length > 0 && layout === 'cards' ? (
         searched.length ? (
           <div className="ip-cards">
-            {searched.map((r) => <SheetCard key={r.id} row={r} approver={approver} editor={editor} />)}
+            {searched.map((r) => <SheetCard key={r.id} row={r} approver={approver} editor={editor} picked={canBulk ? selected.has(r.id) : undefined} onPick={() => toggle(r.id)} />)}
           </div>
         ) : (
           <div className="ip-empty wf-subtle">No lines match.</div>
@@ -276,10 +315,20 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
             return (
               <section key={s} className="ip-kcol" aria-label={sheetStatusText(s)}>
                 <div className="ip-kcol-head">
-                  <StatusPill status={s} />
+                  {canBulk && items.length > 0 ? (
+                    <label className="iw-colpick">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select every ${sheetStatusText(s)} line`}
+                        checked={items.every((r) => selected.has(r.id))}
+                        onChange={(e) => selectMany(items.map((r) => r.id), e.target.checked)}
+                      />
+                      <StatusPill status={s} />
+                    </label>
+                  ) : <StatusPill status={s} />}
                   <span className="ip-kcol-n">{items.length}</span>
                 </div>
-                {items.map((r) => <SheetCard key={r.id} row={r} approver={approver} editor={editor} compact />)}
+                {items.map((r) => <SheetCard key={r.id} row={r} approver={approver} editor={editor} compact picked={canBulk ? selected.has(r.id) : undefined} onPick={() => toggle(r.id)} />)}
                 {!items.length && <div className="ip-kcol-more">No lines</div>}
               </section>
             );
@@ -290,7 +339,8 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
         rows={shown}
         columns={columns}
         rowKey={(r) => String(r.id)}
-        rowClass={(r) => (r.approval_status === 'Rejected' ? 'wf-row-muted' : undefined)}
+        rowClass={(r) => [r.approval_status === 'Rejected' ? 'wf-row-muted' : '', selected.has(r.id) ? 'iw-picked' : ''].filter(Boolean).join(' ') || undefined}
+        onVisibleRows={setListRows}
         searchPlaceholder="Product, PO ref, vendor…"
         emptyText={monthRows.length ? 'No lines with that status.' : `Nothing loaded for ${monthLabel(month)} yet${editor ? ' — load the sheet CSV above.' : '.'}`}
         unit="lines"
@@ -303,13 +353,35 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
 }
 
 /** One line as a card (Cards / Kanban), with the same actions as the list row. */
-function SheetCard({ row: r, approver, editor, compact = false }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean; compact?: boolean }) {
+function SheetCard({
+  row: r,
+  approver,
+  editor,
+  compact = false,
+  picked,
+  onPick,
+}: {
+  row: InwardPlanSheetRow;
+  approver: boolean;
+  editor: boolean;
+  compact?: boolean;
+  /** Ticked for a bulk action; undefined = no checkbox (nothing the viewer can do in bulk). */
+  picked?: boolean;
+  onPick?: () => void;
+}) {
   const planned = r.inward_qty ?? 0;
   const pct = planned > 0 ? Math.min(100, Math.round((r.received_in_month / planned) * 100)) : 0;
   return (
-    <article className={`ip-card${r.approval_status === 'Rejected' ? ' wf-row-muted' : ''}`}>
+    <article className={`ip-card${r.approval_status === 'Rejected' ? ' wf-row-muted' : ''}${picked ? ' iw-picked' : ''}`}>
       <div className="ip-card-top">
-        <span className="ip-card-po mono">{r.po_no ?? '—'}</span>
+        {picked !== undefined ? (
+          <label className="iw-cardpick">
+            <input type="checkbox" checked={picked} onChange={onPick} aria-label={`Select ${r.product_code} ${r.po_no ?? ''}`} />
+            <span className="ip-card-po mono">{r.po_no ?? '—'}</span>
+          </label>
+        ) : (
+          <span className="ip-card-po mono">{r.po_no ?? '—'}</span>
+        )}
         {!compact && <StatusPill status={r.approval_status} approverEdited={r.approver_edited} />}
       </div>
       <div className="ip-card-name">{r.product_code}</div>
@@ -331,6 +403,111 @@ function SheetCard({ row: r, approver, editor, compact = false }: { row: InwardP
       {r.remarks && <div className="ip-card-meta">Team: {r.remarks}</div>}
       {(approver || editor) && <RowActions row={r} approver={approver} editor={editor} />}
     </article>
+  );
+}
+
+/**
+ * Bulk actions on the ticked lines: the approver decides them in one go (a remark is needed to
+ * send back or reject); team or admin removes them (the team only still-pending lines).
+ */
+function BulkBar({
+  selected,
+  visible,
+  approver,
+  editor,
+  onSelectAll,
+  onClear,
+}: {
+  selected: InwardPlanSheetRow[];
+  visible: InwardPlanSheetRow[];
+  approver: boolean;
+  editor: boolean;
+  onSelectAll: (ids: number[]) => void;
+  onClear: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [mode, setMode] = useState<'' | 'RE-WORK' | 'Rejected'>('');
+  const [note, setNote] = useState('');
+  const n = selected.length;
+  const ids = JSON.stringify(selected.map((r) => r.id));
+
+  function decide(status: string, notes: string) {
+    const fd = new FormData();
+    fd.set('ids', ids);
+    fd.set('status', status);
+    fd.set('notes', notes);
+    start(async () => {
+      const res = await decideInwardPlanRows(fd);
+      if (!res.ok) toastError(res.error);
+      else reloadWithToast(res.message ?? 'Saved.');
+    });
+  }
+  async function remove() {
+    const ok = await confirmDelete({
+      title: `Delete ${n} inward plan line${n === 1 ? '' : 's'}?`,
+      body: approver
+        ? 'The selected lines are removed from the month\'s inward plan. This cannot be undone from the screen.'
+        : 'The selected still-pending lines are removed from the month\'s inward plan; lines already decided are kept. This cannot be undone from the screen.',
+    });
+    if (!ok) return;
+    const fd = new FormData();
+    fd.set('ids', ids);
+    start(async () => {
+      const res = await deleteInwardPlanRows(fd);
+      if (!res.ok) toastError(res.error);
+      else reloadWithToast(res.message ?? 'Removed.');
+    });
+  }
+
+  const qty = selected.reduce((s, r) => s + (r.inward_qty ?? 0), 0);
+  return (
+    <div className={`iw-bulk${n ? ' is-on' : ''}`} role="region" aria-label="Selected lines">
+      <div className="iw-bulk-left">
+        <b>{n ? `${n} selected` : 'Tick lines to act on several at once'}</b>
+        {n > 0 && <span className="wf-subtle">{fmt.format(qty)} pcs</span>}
+        {visible.length > 0 && n < visible.length && (
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => onSelectAll(visible.map((r) => r.id))}>
+            Select all shown ({visible.length})
+          </button>
+        )}
+        {n > 0 && <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { onClear(); setMode(''); setNote(''); }}>Clear</button>}
+      </div>
+      {n > 0 && (
+        mode ? (
+          <div className="iw-bulk-actions">
+            <input
+              className="iw-bulk-note"
+              placeholder={mode === 'Rejected' ? 'Remark for Reject / Discard (required)' : 'Remark for Rework / Reassign (required)'}
+              aria-label="Remark"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !note.trim()} onClick={() => decide(mode, note.trim())}>
+              {pending ? 'Saving…' : `${mode === 'Rejected' ? 'Reject' : 'Send back'} ${n}`}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
+          </div>
+        ) : (
+          <div className="iw-bulk-actions">
+            {approver && (
+              <>
+                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={() => decide('Approved', '')}>
+                  {pending ? 'Saving…' : `Approve ${n}`}
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('RE-WORK')}>Rework / Reassign</button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('Rejected')}>Reject / Discard</button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Pending', '')}>Reopen</button>
+              </>
+            )}
+            {editor && (
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={remove}>
+                <Trash2 size={13} /> Delete
+              </button>
+            )}
+          </div>
+        )
+      )}
+    </div>
   );
 }
 

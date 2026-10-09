@@ -2728,3 +2728,16 @@ tr[hidden] { display: none !important; }
 .iw-linesbar { margin: 0 0 12px; }
 .iw-linesbar .wf-search { min-width: 260px; }
 .ip-kcol .ip-card .wf-inline-actions { gap: 4px; }
+
+/* ---- Standard Cost · Trim History tab ---- */
+.th-filter { margin-bottom: 10px; }
+.th-section { margin: 14px 0 6px; }
+/* Monthly plan → Lines: multi-select and the bulk-action bar. */
+.iw-bulk { position: sticky; top: 104px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; padding: 10px 14px; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; }
+.iw-bulk.is-on { border-color: var(--ink-1, #161513); box-shadow: 0 4px 14px rgba(0, 0, 0, .08); background: #fffbea; }
+.iw-bulk-left, .iw-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.iw-bulk-note { min-width: 260px; height: 32px; padding: 0 10px; border: 1px solid #c9cccf; border-radius: 8px; font: inherit; font-size: 12px; }
+.iw-cardpick, .iw-colpick { display: inline-flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
+.iw-cardpick input, .iw-colpick input { width: 16px; height: 16px; flex: none; }
+.ip-card.iw-picked { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
+tr.iw-picked > td { background: #fffbea; }

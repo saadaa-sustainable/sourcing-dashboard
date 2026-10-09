@@ -245,3 +245,102 @@ export async function deleteInwardPlanRow(formData: FormData): Promise<ActionRes
   revalidate();
   return done('Line removed.');
 }
+
+/** The ids posted by a multi-select: a JSON array of positive whole numbers, at most 500. */
+function idsFrom(formData: FormData): number[] | null {
+  try {
+    const raw = JSON.parse(String(formData.get('ids') ?? '[]'));
+    if (!Array.isArray(raw)) return null;
+    const ids = [...new Set(raw.map(Number))].filter((n) => Number.isInteger(n) && n > 0);
+    return ids.length && ids.length <= 500 ? ids : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decide several selected lines at once (admin): the same decision and remark on each,
+ * one log entry per plan month naming the lines.
+ */
+export async function decideInwardPlanRows(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canApprove(user.role, 'pending_l2')) return fail('Only an admin can decide inward-plan lines.');
+  const ids = idsFrom(formData);
+  const status = String(formData.get('status') ?? '');
+  const notes = String(formData.get('notes') ?? '').trim();
+  if (!ids) return fail('Select at least one line.');
+  if (!INWARD_PLAN_STATUSES.includes(status)) return fail('Invalid status.');
+  if ((status === 'Rejected' || status === 'RE-WORK') && !notes) return fail('A remark is mandatory for Rework / Reassign and Reject / Discard.');
+
+  const supabase = await supa();
+  // paging-ok: filtered to the selected ids, at most 500 lines
+  const { data: rows, error: readErr } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('id, plan_month, product_code, po_no, approval_status')
+    .in('id', ids);
+  if (readErr) return fail(readErr.message);
+  // A line already in the chosen status is left alone (no empty log entries).
+  const targets = (rows ?? []).filter((r) => r.approval_status !== status);
+  if (!targets.length) return fail(`Every selected line is already ${status}.`);
+  const { error } = await supabase
+    .from('sd_inward_plan_entry')
+    .update({ approval_status: status, mt_comments: notes || null, updated_by: user.email, updated_at: new Date().toISOString() })
+    .in('id', targets.map((r) => r.id as number));
+  if (error) return fail(error.message);
+
+  const to: SdStatus = status === 'Approved' ? 'approved' : status === 'RE-WORK' ? 'rework' : status === 'Rejected' ? 'rejected' : 'pending_l2';
+  const byMonth = new Map<string, typeof targets>();
+  for (const r of targets) byMonth.set(String(r.plan_month), [...(byMonth.get(String(r.plan_month)) ?? []), r]);
+  for (const [month, list] of byMonth) {
+    const names = list.slice(0, 6).map((r) => `${r.product_code} · ${r.po_no ?? '—'}`).join('; ');
+    await writeLog(
+      'inward_plan',
+      month,
+      `Inward plan — ${monthLabel(month)} · ${list.length} selected line(s)`,
+      null,
+      to,
+      user.email,
+      `${names}${list.length > 6 ? ` and ${list.length - 6} more` : ''}${notes ? `. ${notes}` : ''}`,
+    );
+  }
+  revalidate();
+  const skipped = (rows ?? []).length - targets.length;
+  return done(`${targets.length} line(s) marked ${status}.${skipped ? ` ${skipped} were already ${status}.` : ''}`);
+}
+
+/** Remove several selected lines (team: still-Pending lines only; admin: any). */
+export async function deleteInwardPlanRows(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('Only team and admin users can edit the inward plan.');
+  const ids = idsFrom(formData);
+  if (!ids) return fail('Select at least one line.');
+  const supabase = await supa();
+  // paging-ok: filtered to the selected ids, at most 500 lines
+  const { data: rows, error: readErr } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('id, plan_month, product_code, po_no, approval_status')
+    .in('id', ids);
+  if (readErr) return fail(readErr.message);
+  const allowed = (rows ?? []).filter((r) => r.approval_status === 'Pending' || user.role === 'admin');
+  if (!allowed.length) return fail('Only an admin can remove lines that have already been decided.');
+  const { error } = await supabase.from('sd_inward_plan_entry').delete().in('id', allowed.map((r) => r.id as number));
+  if (error) return fail(error.message);
+  const byMonth = new Map<string, typeof allowed>();
+  for (const r of allowed) byMonth.set(String(r.plan_month), [...(byMonth.get(String(r.plan_month)) ?? []), r]);
+  for (const [month, list] of byMonth) {
+    await writeLog(
+      'inward_plan',
+      month,
+      `Inward plan — ${monthLabel(month)} · ${list.length} line(s) removed`,
+      'pending_l2',
+      'rejected',
+      user.email,
+      `Removed from the sheet: ${list.slice(0, 6).map((r) => `${r.product_code} · ${r.po_no ?? '—'}`).join('; ')}${list.length > 6 ? ` and ${list.length - 6} more` : ''}`,
+    );
+  }
+  revalidate();
+  const kept = (rows ?? []).length - allowed.length;
+  return done(`${allowed.length} line(s) removed.${kept ? ` ${kept} already-decided line(s) were kept — only an admin can remove those.` : ''}`);
+}
