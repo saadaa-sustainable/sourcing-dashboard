@@ -108,7 +108,10 @@ export default async function ReceivablePlanPage({
     >
       <Link className="mb-back" href="/receivable-plan">← All months</Link>
       {variation && <VariationReportPanel report={variation} />}
+      {/* Keyed by the screen and tab in the URL: switching View ↔ Input through a link reuses this
+          client otherwise, keeping the old tab with the other screen's data (Input does not load the sheet). */}
       <ReceivablePlanClient
+        key={`${initialTab}|${initialMonth ?? ''}`}
         rows={rows}
         arrivals={arrivals.rows}
         editable={canEdit(user.role, 'draft')}
