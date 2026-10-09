@@ -478,7 +478,7 @@ export async function submitStandardCost(formData: FormData): Promise<ActionResu
       rejection_notes: null,
     })
     .eq('id', id)
-    .in('status', ['draft', 'rework'])
+    .in('status', ['draft', 'rework', 'rejected'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
@@ -579,7 +579,7 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
       rejection_notes: null,
     })
     .eq('id', id)
-    .in('status', ['draft', 'rework'])
+    .in('status', ['draft', 'rework', 'rejected'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');

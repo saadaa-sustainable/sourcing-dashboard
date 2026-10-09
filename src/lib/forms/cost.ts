@@ -81,8 +81,10 @@ export function nextActor(stage: string | null): string {
 
 // A signed-off cost can be re-proposed to start a fresh negotiation round — the
 // current accepted rate stays live (from history) until the new one is accepted.
+// Until approved, everything is amendable: a proposal still awaiting the admin
+// ('proposed') can be revised — it stays Approval Pending with the new figures.
 export const canPropose = (role: SdRole, stage: string | null) =>
-  isTeam(role) && (!stage || stage === 'rejected' || stage === 'signed_off');
+  isTeam(role) && (!stage || stage === 'proposed' || stage === 'rejected' || stage === 'signed_off');
 /** The approver may set or change a target, for any rate type, at any stage (a frozen cost
  *  is refused by the action). The team is notified and owes a vendor rate against it. */
 export const canSetTarget = (role: SdRole, _stage?: string | null) => isAdmin(role);
@@ -94,8 +96,10 @@ export const isAdminTurn = (stage: string | null) =>
   stage === 'proposed' || stage === 'rate_submitted';
 export const isTeamTurn = (stage: string | null) =>
   stage === 'target_set' || stage === 'renegotiate';
+/** The team enters the vendor rate against a target, and may revise it while it still awaits
+ *  approval ('rate_submitted') — the revised rate stays Approval Pending. */
 export const canSubmitRate = (role: SdRole, stage: string | null) =>
-  isTeam(role) && (stage === 'target_set' || stage === 'renegotiate');
+  isTeam(role) && (stage === 'target_set' || stage === 'renegotiate' || stage === 'rate_submitted');
 export const canSignOff = (role: SdRole, stage: string | null) =>
   isAdmin(role) && stage === 'rate_submitted';
 /** Edit & approve: the admin changes the rates on a cost awaiting approval and approves in one step. */

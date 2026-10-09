@@ -166,8 +166,15 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   // round's fabric/CM confirmations linger and the admin can never sign off again.
   if (track === 'fg') Object.assign(patch, resetConfirmations());
 
-  const { error } = await supabase.from(table).update(patch).eq('id', id);
+  // Guarded on the stage the guard saw, so a proposal approved/rejected meanwhile is never
+  // silently overwritten (a pending proposal is revised in place; approved = locked).
+  const stageNow = row.neg_stage;
+  let q = supabase.from(table).update(patch, { count: 'exact' }).eq('id', id);
+  q = stageNow ? q.eq('neg_stage', stageNow) : q.is('neg_stage', null);
+  const { error, count } = await q;
   if (error) return fail(error.message);
+  if (count === 0) return fail('This cost changed meanwhile — reload and try again.');
+  const revising = stageNow === 'proposed';
   // Rate labels differ by track (material: FOB Fabric / Billing / Standard Fabric).
   const rateSummary = [
     job != null ? `${track === 'material' ? 'FOB Fabric' : 'Job'} ${job}` : null,
@@ -179,9 +186,9 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   const detail = [rateSummary, proposed != null ? `expected ${proposed}` : null]
     .filter(Boolean)
     .join(' · ');
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `Proposed${detail ? ` (${detail})` : ''}`);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `${revising ? 'Proposal revised' : 'Proposed'}${detail ? ` (${detail})` : ''}`);
   revalidatePath('/standard-cost');
-  return done('Proposed for costing.');
+  return done(revising ? 'Proposal updated — still awaiting approval.' : 'Proposed for costing.');
 }
 
 /**
@@ -303,11 +310,18 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
   // New actual rates must be confirmed afresh (fabric, then CM).
   if (track === 'fg') Object.assign(patch, resetConfirmations());
 
-  const { error } = await supabase.from(table).update(patch).eq('id', id);
+  // Guarded on the stage the guard saw, so a rate approved meanwhile is never reopened here.
+  const { error, count } = await supabase
+    .from(table)
+    .update(patch, { count: 'exact' })
+    .eq('id', id)
+    .eq('neg_stage', row.neg_stage as string);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, 'Actual rate submitted');
+  if (count === 0) return fail('This cost changed meanwhile — reload and try again.');
+  const revising = row.neg_stage === 'rate_submitted';
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, revising ? 'Actual rate revised' : 'Actual rate submitted');
   revalidatePath('/standard-cost');
-  return done('Actual rate submitted for approval.');
+  return done(revising ? 'Rate updated — still awaiting approval.' : 'Actual rate submitted for approval.');
 }
 
 /** The approver (admin) signs off — the actual rate becomes the approved Standard Cost. */

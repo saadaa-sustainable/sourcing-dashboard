@@ -42,13 +42,13 @@ export async function submitReceivablePlan(remarks?: string): Promise<ActionResu
   const note = String(remarks ?? '').trim() || null;
   const now = new Date().toISOString();
   const supabase = await supa();
-  // Draft AND reworked rows go up (a row the approver sent back must be
+  // Draft, reworked and rejected rows go up (a row the approver sent back must be
   // re-submittable), and only rows that actually carry a plan (a qty or a
   // receiving week/month) — a row whose inputs were cleared has nothing to approve.
   const { data, error } = await supabase
     .from('sd_receivable_input')
     .update({ status: 'submitted', submitted_by: user.email, submitted_at: now, submit_notes: note })
-    .in('status', ['draft', 'rework'])
+    .in('status', ['draft', 'rework', 'rejected'])
     .or('qty_expected_this_week.not.is.null,delivery_date_this_week.not.is.null')
     .select('row_key');
   if (error) return fail(error.message);
@@ -85,8 +85,9 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
 
   // Approval rule: once a row's MONTH is approved, the team may switch to any week
   // inside that month with no re-approval. Anything else — a new month, a week
-  // outside the approved month, or a quantity change — drops it back to draft so
-  // it must be submitted and approved again.
+  // outside the approved month, or a quantity change — needs approval again: the
+  // row goes straight back to Approval Pending (house rule: until approved, every
+  // field is amendable; amending a sent-back / rejected / approved row resubmits it).
   const { data: existing } = await supabase
     .from('sd_receivable_input')
     .select('status, approved_month, qty_expected_this_week')
@@ -113,7 +114,18 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
   // month (quantity untouched); otherwise the edit needs approval afresh.
   const keepApproved =
     existing?.status === 'approved' && weekWithinApprovedMonth && qtyUnchanged;
-  const status: SdStatus = keepApproved ? 'approved' : 'draft';
+  // A row that has been through approval (pending, sent back, rejected or approved) goes
+  // back to Approval Pending when amended — no separate Submit. A brand-new or draft row
+  // stays a draft, and so does a row whose plan was cleared (nothing left to approve).
+  const prevStatus = (existing?.status as SdStatus | undefined) ?? null;
+  const hasPlan = qty != null || deliveryDate != null;
+  const resubmit =
+    !keepApproved &&
+    hasPlan &&
+    (prevStatus === 'submitted' || prevStatus === 'pending_l2' || prevStatus === 'rework' ||
+      prevStatus === 'rejected' || prevStatus === 'approved');
+  const status: SdStatus = keepApproved ? 'approved' : resubmit ? 'submitted' : 'draft';
+  const now = new Date().toISOString();
 
   const { error } = await supabase.from('sd_receivable_input').upsert(
     {
@@ -128,18 +140,32 @@ export async function saveReceivableInput(formData: FormData): Promise<ActionRes
       // otherwise it would keep unlocking free week changes in a month the approver
       // never looked at after a later re-approval on a different week/month.
       approved_month: keepApproved ? approvedMonth : null,
+      ...(resubmit ? { submitted_by: user.email, submitted_at: now } : {}),
       updated_by: user.email,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     },
     { onConflict: 'row_key' },
   );
   if (error) return fail(`Could not save: ${error.message}`);
+  // An amendment that went back for approval is logged with what changed.
+  if (resubmit && prevStatus) {
+    const prevQty = numOrNull(existing?.qty_expected_this_week);
+    const changed = [
+      !qtyUnchanged ? `qty ${prevQty ?? '—'} → ${qty ?? '—'}` : null,
+      `${granularity} ${deliveryDate ?? '—'}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    await writeLog('receivable_plan', row_key, `Receivable plan — ${row_key}`, prevStatus, 'submitted', user.email, `Amended (${changed})`);
+  }
   revalidatePath('/receivable-plan');
   revalidatePath('/approvals');
   return done(
     keepApproved
       ? 'Saved — week updated within the approved month, no re-approval needed.'
-      : 'Saved as draft — submit for approval.',
+      : resubmit
+        ? 'Saved — sent for approval again.'
+        : 'Saved as draft — submit for approval.',
   );
 }
 

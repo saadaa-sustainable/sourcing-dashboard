@@ -81,12 +81,12 @@ describe('cost negotiation — role gating', () => {
 });
 
 describe('cost negotiation — stage transitions (happy path)', () => {
-  it('team proposes only from an idle/rejected/signed-off stage', () => {
+  it('team proposes from an idle/rejected/signed-off stage, and revises a pending proposal', () => {
     assert.equal(canPropose('team', ''), true);
     assert.equal(canPropose('team', null), true);
     assert.equal(canPropose('team', 'rejected'), true);
     assert.equal(canPropose('team', 'signed_off'), true); // re-propose to revise
-    assert.equal(canPropose('team', 'proposed'), false);
+    assert.equal(canPropose('team', 'proposed'), true); // until approved, amendable
     assert.equal(canPropose('team', 'target_set'), false);
     assert.equal(canPropose('team', 'rate_submitted'), false);
     assert.equal(canPropose('team', 'renegotiate'), false);
@@ -100,11 +100,12 @@ describe('cost negotiation — stage transitions (happy path)', () => {
       assert.equal(canAcceptProposal('admin', stage), false, `accept@${stage}`);
     }
   });
-  it('team submits the rate only after a target is set or a renegotiation', () => {
+  it('team submits the rate after a target or a renegotiation, and revises it while pending', () => {
     assert.equal(canSubmitRate('team', 'target_set'), true);
     assert.equal(canSubmitRate('team', 'renegotiate'), true);
+    assert.equal(canSubmitRate('team', 'rate_submitted'), true); // until approved, amendable
     for (const stage of STAGES) {
-      if (stage === 'target_set' || stage === 'renegotiate') continue;
+      if (stage === 'target_set' || stage === 'renegotiate' || stage === 'rate_submitted') continue;
       assert.equal(canSubmitRate('team', stage), false, `submitRate@${stage}`);
     }
   });

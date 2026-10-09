@@ -940,7 +940,8 @@ export function CostRow({
     fob: cost.fob_cost?.toString() ?? '',
     efob: cost.efob_cost?.toString() ?? '',
   });
-  const [proposed, setProposed] = useState('');
+  // A pending proposal is revised in place, so its expected figure starts filled in.
+  const [proposed, setProposed] = useState(stage === 'proposed' ? (cost.proposed_cost?.toString() ?? '') : '');
   const [targets, setTargets] = useState<Partial<Record<RateKey, string>>>({});
   const [noteMode, setNoteMode] = useState<'renegotiate' | 'reject' | null>(null);
   const [note, setNote] = useState('');
@@ -965,10 +966,16 @@ export function CostRow({
   }
 
   // Rates are fillable both when the team proposes (so a proposal can name its PO
-  // type) and when it later submits the actual vendor rate.
-  const rateEditable = (canPropose(role, stage) || canSubmitRate(role, stage)) && !cost.frozen;
+  // type) and when it later submits the actual vendor rate — and, until approved, while
+  // either is still awaiting the admin (house rule: everything is amendable until approved).
+  // While a cost waits on the admin, the admin changes figures through Edit & approve; open
+  // inputs next to Approve would read as if Approve took the typed figures.
+  const reviseHere = !(role === 'admin' && isAdminTurn(stage));
+  const mayPropose = canPropose(role, stage) && !cost.frozen && reviseHere;
+  const maySubmitRate = canSubmitRate(role, stage) && reviseHere;
+  const rateEditable = (mayPropose || maySubmitRate) && !cost.frozen;
   const targetEditable = canSetTarget(role, stage) && !cost.frozen;
-  const showExpected = (canPropose(role, stage) && !cost.frozen) || cost.proposed_cost != null;
+  const showExpected = mayPropose || cost.proposed_cost != null;
   const rateRow = stage === 'rate_submitted' ? 'Vendor rate' : stage === 'signed_off' ? 'Standard' : 'Proposed';
   const typedTarget = keys.some((k) => cost[`target_${k}` as const] != null);
   const legacyTarget = !typedTarget && cost.target_cost != null;
@@ -1039,7 +1046,7 @@ export function CostRow({
               ))}
               {showExpected && (
                 <td className="num input-col">
-                  {canPropose(role, stage) && !cost.frozen ? (
+                  {mayPropose ? (
                     <input
                       type="number"
                       min={0}
@@ -1097,7 +1104,7 @@ export function CostRow({
         <div className="sc-entry-actions">
         {err && <small className="wf-line-error">{err}</small>}
 
-        {canPropose(role, stage) && !cost.frozen && (
+        {mayPropose && (
           <button
             type="button"
             className="wf-btn wf-btn-primary wf-btn-sm"
@@ -1105,7 +1112,7 @@ export function CostRow({
             title={`Fill the ${labels.job} / ${labels.fob} / ${labels.efob} rate(s) that apply, then Propose. The expected figure is optional.`}
             onClick={() => act(proposeCost, { proposed_cost: proposed, ...rateFields })}
           >
-            Propose
+            {stage === 'proposed' ? 'Update proposal' : 'Propose'}
           </button>
         )}
 
@@ -1140,14 +1147,14 @@ export function CostRow({
           </>
         )}
 
-        {canSubmitRate(role, stage) && (
+        {maySubmitRate && (
           <button
             type="button"
             className="wf-btn wf-btn-primary wf-btn-sm"
             disabled={busy}
             onClick={() => act(submitActualRate, rateFields)}
           >
-            <Save size={13} /> Submit rate
+            <Save size={13} /> {stage === 'rate_submitted' ? 'Update rate' : 'Submit rate'}
           </button>
         )}
 
