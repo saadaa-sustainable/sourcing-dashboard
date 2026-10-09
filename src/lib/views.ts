@@ -77,6 +77,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/fabric-master', label: 'Fabric Master', group: 'Master Data & Datasets' },
   { path: '/material-master', label: 'Material Master', group: 'Master Data & Datasets' },
   { path: '/fabric-cost', label: 'Fabric Cost', group: 'Master Data & Datasets' },
+  { path: '/npd-products', label: 'NPD Products', group: 'Master Data & Datasets' },
   { path: '/users', label: 'User Panel', group: 'Admin', adminOnly: true },
   { path: '/adoption', label: 'Adoption & Activity', group: 'Admin', adminOnly: true },
   { path: '/rules-master', label: 'Rules Master', group: 'Admin', adminOnly: true },
@@ -137,4 +138,5 @@ export const MASTER_ROUTES = [
   '/fabric-master',
   '/material-master',
   '/fabric-cost',
+  '/npd-products',
 ];

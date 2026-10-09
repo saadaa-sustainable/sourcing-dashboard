@@ -13,6 +13,7 @@ export type DataSourceKey =
   | 'gcp'
   | 'form'
   | 'supabase'
+  | 'npd'
   | 'computed';
 
 export const DATA_SOURCES: Record<
@@ -43,6 +44,11 @@ export const DATA_SOURCES: Record<
     label: 'Entered in dashboard',
     color: '#c0397b', // magenta
     description: 'Typed into the dashboard itself (Supabase sd_* tables) — buying plan, standard cost, approvals, capacity, receivable & inward plans.',
+  },
+  npd: {
+    label: 'NPD Tracker V7',
+    color: '#8a6d1f', // olive
+    description: 'Read live from NPD Tracker V7 (its own app) — new products before they reach EasyEcom.',
   },
   computed: {
     label: 'Computed',

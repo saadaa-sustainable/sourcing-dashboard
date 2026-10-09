@@ -22,4 +22,6 @@ export const MASTER_TABS: MasterTab[] = [
   { id: 'fabric', label: 'Fabric', route: '/fabric-master' },
   { id: 'material', label: 'Material', route: '/material-master' },
   { id: 'fabric-cost', label: 'Fabric Cost', route: '/fabric-cost' },
+  // The record of new products: NPD Tracker V7, read live (2026-10-09).
+  { id: 'npd', label: 'NPD Products', route: '/npd-products' },
 ];

@@ -144,3 +144,52 @@ export async function loadNpdSkuSource(
     return null;
   }
 }
+
+/** One row of Master → NPD Products: an NPD Tracker V7 product and where it stands here. */
+export type NpdMasterRow = NpdProduct & {
+  /** The product code it has (added) or would get (upper-cased item code). */
+  code: string | null;
+  /** Added = on Standard Cost through "From NPD Tracker V7"; linked = since linked to its EasyEcom code. */
+  stage: 'added' | 'linked' | 'can_add' | 'blocked' | 'launched';
+  /** Plain words for the stage (the blocked reason, who added it, the EasyEcom code). */
+  note: string;
+  added_by: string | null;
+  added_at: string | null;
+  linked_to: string | null;
+};
+
+/**
+ * Every live NPD Tracker V7 product (launched ones included, for the record) with where it stands
+ * on the dashboard. `registered` = sd_temp_product rows with source 'npd', by NPD id.
+ */
+export async function loadNpdMaster(ctx: {
+  registered: Map<number, { code: string; status: string; merged_into: string | null; created_by: string | null; created_at: string | null }>;
+  onSheet: Set<string>;
+  inEasyEcom: Set<string>;
+}): Promise<NpdMasterRow[]> {
+  const db = npdClient();
+  const all = (await pageAll<Raw>(() => db.from('products').select(SELECT).is('deleted_at', null).order('id'))).map(shape);
+  const live = all.filter((r) => !launched(r.status));
+  const codeCount = new Map<string, number>();
+  for (const r of live) {
+    const c = (r.item_code ?? '').toUpperCase();
+    if (CODE_RE.test(c)) codeCount.set(c, (codeCount.get(c) ?? 0) + 1);
+  }
+  return all.map((r): NpdMasterRow => {
+    const c = (r.item_code ?? '').toUpperCase();
+    const reg = ctx.registered.get(r.id);
+    const base = { ...r, added_by: reg?.created_by ?? null, added_at: reg?.created_at ?? null, linked_to: reg?.merged_into ?? null };
+    if (reg && reg.status === 'merged') {
+      return { ...base, code: reg.code, stage: 'linked', note: `Linked to EasyEcom product ${reg.merged_into ?? ''}`.trim() };
+    }
+    if (reg) return { ...base, code: reg.code, stage: 'added', note: 'On Standard Cost' };
+    if (launched(r.status)) return { ...base, code: CODE_RE.test(c) ? c : null, stage: 'launched', note: 'Launched — add it From Product Master' };
+    let blocked: string | null = null;
+    if (!r.item_code) blocked = 'No item code on NPD Tracker V7 yet';
+    else if (!CODE_RE.test(c)) blocked = 'Item code is not one code — fix it on NPD Tracker V7';
+    else if ((codeCount.get(c) ?? 0) > 1) blocked = `Item code used by ${codeCount.get(c)} NPD products — fix it on NPD Tracker V7`;
+    else if (ctx.onSheet.has(c)) blocked = `${c} is already on Standard Cost`;
+    else if (ctx.inEasyEcom.has(c)) blocked = `${c} is already in EasyEcom — add it From Product Master`;
+    return { ...base, code: CODE_RE.test(c) ? c : null, stage: blocked ? 'blocked' : 'can_add', note: blocked ?? 'Can be added on Standard Cost' };
+  });
+}
