@@ -76,8 +76,6 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   const patch: Record<string, unknown> = {
     product_code,
     total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
-    cad_link: textOrNull(formData.get('cad_link')),
-    rfp_link: textOrNull(formData.get('rfp_link')),
     fabric_code: textOrNull(formData.get('fabric_code')),
     // Saving is the act of documenting — clears the "data gap" flag.
     documented: true,
@@ -86,6 +84,10 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   // How the fabric is consumed (per metre / per kg). Only the cost sheet sends it, so a
   // rate-only save never resets a chosen unit.
   if (formData.has('fabric_uom')) patch.fabric_uom = fabricUom(formData.get('fabric_uom'));
+  // The CAD / RFP links are saved from the Documents tab (saveCostLinks); only touch them
+  // when a caller sends them, so a cost-sheet save never blanks a saved link.
+  if (formData.has('cad_link')) patch.cad_link = textOrNull(formData.get('cad_link'));
+  if (formData.has('rfp_link')) patch.rfp_link = textOrNull(formData.get('rfp_link'));
   // Rate columns are owned by the negotiation flow — only touch them when a caller
   // explicitly sends them, so a documentation save never nulls a signed-off rate.
   if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));

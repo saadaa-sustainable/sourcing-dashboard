@@ -1367,8 +1367,6 @@ export function CostDetail({
     }
     return m;
   });
-  const [cad, setCad] = useState(cost.cad_link ?? '');
-  const [rfp, setRfp] = useState(cost.rfp_link ?? '');
   const [busy, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
 
@@ -1466,15 +1464,14 @@ export function CostDetail({
   }
 
   // Both the Fabric and Final tabs persist the same record (fabric link, per-size
-  // consumption, doc links, and the computed PO-average final price).
+  // consumption and the computed PO-average final price). The CAD / RFP links are saved
+  // from the Documents tab.
   function save() {
     setErr(null);
     const header = new FormData();
     header.set('product_code', cost.product_code);
     header.set('fabric_code', fabricCode);
     header.set('fabric_uom', fabricUom);
-    header.set('cad_link', cad);
-    header.set('rfp_link', rfp);
     if (poAvgFinal != null) header.set('total_po_avg_cost', String(poAvgFinal));
 
     const detail = new FormData();
@@ -1770,10 +1767,7 @@ export function CostDetail({
             {cmtpTotal == null && ' · CMTP not filled yet — fill the CMTP tab.'}
           </p>
 
-          <div className="wf-form-grid">
-            <Field label="CAD link"><input value={cad} disabled={!editable} placeholder="https://…" onChange={(e) => setCad(e.target.value)} /></Field>
-            <Field label="RFP link"><input value={rfp} disabled={!editable} placeholder="https://…" onChange={(e) => setRfp(e.target.value)} /></Field>
-          </div>
+          {/* CAD and RFP links live on the Documents tab now (user, 2026-10-09). */}
 
           {editable && (
             <div className="wf-cost-detail-foot">

@@ -175,10 +175,14 @@ export default async function StandardCostDetailPage({
         role={user.role}
         marginPct={rules.margin_pct / 100}
         track={track}
-        // CAD plan library — the Documents tab between Fabric Cost and Final Cost (FG only).
+        // Documents tab between Fabric Cost and Final Cost (FG only): RFP / CAD links + CAD plan library.
         documents={
           track !== 'material' ? (
             <CostDocumentsSection
+              costId={cost.id}
+              cadLink={cost.cad_link ?? null}
+              rfpLink={cost.rfp_link ?? null}
+              frozen={!!cost.frozen}
               productCode={cost.product_code}
               docs={costDocs.docs}
               ready={costDocs.ready}
