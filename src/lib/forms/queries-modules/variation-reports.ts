@@ -19,6 +19,9 @@ const ym = (month: string) => month.slice(0, 7);
 /** Buying Plan (Finished Goods), a month that is over: approved plan vs POs issued in it. */
 export async function buyingPlanVariation(planMonth: string): Promise<VariationReport> {
   const a = await loadBuyingPlanAnalysis(planMonth);
+  // A plan the month closed on without approving anything compares the plan AS SUBMITTED, said
+  // so plainly — otherwise every product would read "not planned".
+  if (a.hasPlan && a.approvedLines === 0 && a.totalLines > 0) return submittedPlanVariation(planMonth, a);
   const m = a.metrics;
   const products: VariationRow[] = a.products
     .filter((p) => p.plannedQty > 0 || p.issuedQty > 0)
@@ -59,9 +62,59 @@ export async function buyingPlanVariation(planMonth: string): Promise<VariationR
   };
 }
 
+type PlanLineQty = { product_code: string; job_work_qty: number | null; fob_qty: number | null; efob_qty: number | null };
+
+async function submittedPlanVariation(planMonth: string, a: Awaited<ReturnType<typeof loadBuyingPlanAnalysis>>): Promise<VariationReport> {
+  const supabase = await client();
+  const { data: plan } = await supabase.from('sd_buying_plan').select('id').eq('plan_month', planMonth).eq('plan_type', 'fg').maybeSingle();
+  const lines = plan
+    ? await pageAll<PlanLineQty>(() =>
+        supabase.from('sd_buying_plan_line').select('product_code, job_work_qty, fob_qty, efob_qty').eq('plan_id', (plan as { id: number }).id).order('id'),
+      )
+    : [];
+  const planned = new Map<string, number>();
+  for (const l of lines) {
+    const code = String(l.product_code ?? '').trim().toUpperCase();
+    if (!code) continue;
+    planned.set(code, (planned.get(code) ?? 0) + (Number(l.job_work_qty) || 0) + (Number(l.fob_qty) || 0) + (Number(l.efob_qty) || 0));
+  }
+  const issued = new Map(a.products.map((p) => [p.product_code.toUpperCase(), p]));
+  const codes = new Set([...planned.keys(), ...issued.keys()]);
+  const rows: VariationRow[] = Array.from(codes)
+    .map((code) => {
+      const p = issued.get(code);
+      return { key: code, name: code, sub: p?.poCount ? `${p.poCount} PO${p.poCount === 1 ? '' : 's'}` : null, planned: planned.get(code) ?? null, actual: p?.issuedQty ?? 0 };
+    })
+    .filter((r) => (r.planned ?? 0) > 0 || (r.actual ?? 0) > 0)
+    .sort((x, y) => Math.abs((y.actual ?? 0) - (y.planned ?? 0)) - Math.abs((x.actual ?? 0) - (x.planned ?? 0)));
+  const pQty = rows.reduce((t, r) => t + (r.planned ?? 0), 0);
+  const iQty = rows.reduce((t, r) => t + (r.actual ?? 0), 0);
+  return {
+    title: `Buying Plan · Finished Goods · ${monthLabel(planMonth)}`,
+    period: monthLabel(planMonth),
+    closedNote: `Month closed on ${day(addMonths(planMonth, 1))} — never approved`,
+    basis: [
+      'The month closed before the plan was approved, so Planned = the plan as submitted (Job Work + FOB + E-FOB quantity on every line), not an approved budget.',
+      'Actual = EasyEcom POs issued in the month (SAADAA warehouse, approved or completed), by PO date.',
+      'Value is left out: a plan that was never approved has no approved value to compare.',
+    ],
+    tiles: [
+      { label: 'Quantity (pcs) · as submitted', planned: pQty, actual: iQty, unit: 'pcs' },
+      { label: 'POs', planned: null, actual: a.metrics.actualPoCount, unit: 'pcs' },
+    ],
+    sections: [{ title: 'Quantity by product', unit: 'pcs', plannedLabel: 'Submitted', actualLabel: 'Issued', rows, empty: 'Nothing planned or issued this month.' }],
+    missing: 'This plan was never approved. The comparison uses the quantities as submitted.',
+    generatedAt: now(),
+    fileName: `variation-buying-plan-fg-${ym(planMonth)}`,
+  };
+}
+
 /** Buying Plan (Fabric / Material), a month that is over. No material POs reach the dashboard. */
 export function materialPlanVariation(planMonth: string, lines: BuyingPlanLine[]): VariationReport {
-  const approved = lines.filter((l) => l.line_status === 'approved');
+  const approvedOnly = lines.filter((l) => l.line_status === 'approved');
+  // Nothing approved by month end: compare the plan as submitted, and say so.
+  const asSubmitted = approvedOnly.length === 0 && lines.length > 0;
+  const approved = asSubmitted ? lines : approvedOnly;
   const rows: VariationRow[] = approved
     .map((l) => ({
       key: String(l.id),
@@ -74,13 +127,15 @@ export function materialPlanVariation(planMonth: string, lines: BuyingPlanLine[]
   return {
     title: `Buying Plan · Fabric / Material · ${monthLabel(planMonth)}`,
     period: monthLabel(planMonth),
-    closedNote: `Month closed on ${day(addMonths(planMonth, 1))}`,
+    closedNote: `Month closed on ${day(addMonths(planMonth, 1))}${asSubmitted ? ' — never approved' : ''}`,
     basis: [
-      'Planned = approved material plan lines (Job Work + Purchase quantity, in each line’s unit).',
-      `${approved.length} of ${lines.length} plan lines were approved.`,
+      asSubmitted
+        ? 'The month closed before the plan was approved, so Planned = the plan as submitted (Job Work + Purchase quantity, in each line’s unit).'
+        : 'Planned = approved material plan lines (Job Work + Purchase quantity, in each line’s unit).',
+      `${approvedOnly.length} of ${lines.length} plan lines were approved.`,
     ],
-    tiles: [{ label: 'Approved quantity', planned: rows.reduce((t, r) => t + (r.planned ?? 0), 0), actual: null, unit: 'pcs' }],
-    sections: [{ title: 'Approved lines', unit: 'pcs', plannedLabel: 'Approved', actualLabel: 'Issued', rows, empty: 'No approved material lines this month.' }],
+    tiles: [{ label: asSubmitted ? 'Quantity · as submitted' : 'Approved quantity', planned: rows.reduce((t, r) => t + (r.planned ?? 0), 0), actual: null, unit: 'pcs' }],
+    sections: [{ title: asSubmitted ? 'Plan lines (as submitted)' : 'Approved lines', unit: 'pcs', plannedLabel: asSubmitted ? 'Submitted' : 'Approved', actualLabel: 'Issued', rows, empty: 'No approved material lines this month.' }],
     missing: 'Actual is not available: material POs are not in the EasyEcom feed the dashboard reads, so issued quantity cannot be compared yet.',
     generatedAt: now(),
     fileName: `variation-buying-plan-material-${ym(planMonth)}`,
