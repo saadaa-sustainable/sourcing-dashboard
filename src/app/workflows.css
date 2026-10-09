@@ -2905,3 +2905,11 @@ tr.iw-picked > td { background: #fffbea; }
 @media (max-width: 760px) {
   .metric-grid.dashboard-metrics.dashboard-kpis3, .ui-shopify .metric-grid.dashboard-metrics.dashboard-kpis3 { grid-template-columns: 1fr; }
 }
+
+/* ---- Main Dashboard tab strip: all six tabs on one line (scrolls sideways when narrow) ---- */
+.ui-shopify .ana-tabs.dash-groups { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .ui-shopify .ana-tabs.dash-groups { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+  .ui-shopify .ana-tabs.dash-groups button { flex: 0 0 auto; white-space: nowrap; }
+  .ui-shopify .ana-tabs.dash-groups button:last-child { grid-column: auto; }
+}
