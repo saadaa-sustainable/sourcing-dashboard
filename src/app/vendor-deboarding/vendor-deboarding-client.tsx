@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { Download, UserX } from 'lucide-react';
+import { Download, Pencil, UserX } from 'lucide-react';
 import { downloadCsv } from '@/lib/download';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { createVendorDeboardingRequest } from '@/lib/forms/actions';
+import { createVendorDeboardingRequest, updateVendorDeboardingRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -83,14 +83,21 @@ export function VendorDeboardingClient({
   const [rejectionPct, setRejectionPct] = useState('');
   const [resolvable, setResolvable] = useState<'yes' | 'no' | ''>('');
   const [remarks, setRemarks] = useState('');
+  // The request being amended; null = raising a new one.
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   const vendor = useMemo(() => vendors.find((v) => v.vendor_code === vendorCode) ?? null, [vendors, vendorCode]);
   const liveRequestFor = useMemo(
-    () => new Set(requests.filter((r) => r.status !== 'rejected').map((r) => r.vendor_code.toUpperCase())),
-    [requests],
+    () =>
+      new Set(
+        requests
+          .filter((r) => r.status !== 'rejected' && r.id !== editingId)
+          .map((r) => r.vendor_code.toUpperCase()),
+      ),
+    [requests, editingId],
   );
   // Vendors already de-boarded on the old form — shown on the picker so nobody raises a
   // second request for a vendor the team stopped working with a year ago.
@@ -132,6 +139,45 @@ export function VendorDeboardingClient({
     setRejectionPct(v?.rejectionPct == null ? '' : String(Math.round(v.rejectionPct * 100) / 100));
   }
 
+  function resetForm() {
+    setEditingId(null);
+    setVendorCode('');
+    setReason('');
+    setReasonOther('');
+    setScores(EMPTY_SCORES);
+    setPosDone('');
+    setLate15('');
+    setLate1m('');
+    setLateOver1m('');
+    setRejectionPct('');
+    setResolvable('');
+    setRemarks('');
+  }
+
+  /** Open a request in the form with what was submitted (not re-filled from data). */
+  function startEdit(r: VendorDeboardingRequest) {
+    setError(null);
+    setMessage(null);
+    setEditingId(r.id);
+    setVendorCode(r.vendor_code);
+    setReason(r.reason);
+    setReasonOther(r.reason_other ?? '');
+    setScores({
+      behaviour_score: r.behaviour_score,
+      work_style_score: r.work_style_score,
+      quality_score: r.quality_score,
+      process_score: r.process_score,
+    });
+    setPosDone(String(r.pos_done));
+    setLate15(String(r.pos_late_15d));
+    setLate1m(String(r.pos_late_1m));
+    setLateOver1m(String(r.pos_late_over_1m));
+    setRejectionPct(r.rejection_pct == null ? '' : String(Number(r.rejection_pct)));
+    setResolvable(r.resolvable ? 'yes' : 'no');
+    setRemarks(r.remarks);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   const canSend =
     !!vendorCode &&
     !!reason &&
@@ -146,7 +192,7 @@ export function VendorDeboardingClient({
     setMessage(null);
     const payload = new FormData();
     payload.set('vendor_code', vendorCode);
-    payload.set('vendor_name', vendor?.vendor_name ?? '');
+    payload.set('vendor_name', vendor?.vendor_name ?? requests.find((r) => r.id === editingId)?.vendor_name ?? '');
     payload.set('reason', reason);
     payload.set('reason_other', reasonOther);
     for (const s of DEBOARDING_SCORES) payload.set(s.key, String(scores[s.key] ?? ''));
@@ -157,22 +203,16 @@ export function VendorDeboardingClient({
     payload.set('rejection_pct', rejectionPct);
     payload.set('resolvable', resolvable);
     payload.set('remarks', remarks);
+    if (editingId != null) payload.set('id', String(editingId));
     start(async () => {
-      const result = await createVendorDeboardingRequest(payload);
+      const result =
+        editingId != null
+          ? await updateVendorDeboardingRequest(payload)
+          : await createVendorDeboardingRequest(payload);
       if (result.ok) {
         setMessage(result.message ?? 'Submitted.');
-        setVendorCode('');
-        setReason('');
-        setReasonOther('');
-        setScores(EMPTY_SCORES);
-        setPosDone('');
-        setLate15('');
-        setLate1m('');
-        setLateOver1m('');
-        setRejectionPct('');
-        setResolvable('');
-        setRemarks('');
-        reloadWithToast();
+        resetForm();
+        reloadWithToast(result.message);
       } else setError(toastError(result.error));
     });
   }
@@ -193,7 +233,7 @@ export function VendorDeboardingClient({
       {editable && (
         <div className="panel wf-form-panel">
           <div className="panel-title">
-            <h3>Raise a de-boarding request</h3>
+            <h3>{editingId != null ? `Amend request #${editingId}` : 'Raise a de-boarding request'}</h3>
           </div>
 
           <div className="wf-form-grid">
@@ -305,8 +345,16 @@ export function VendorDeboardingClient({
 
           <div className="wf-footer-actions">
             <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !canSend}>
-              <UserX size={15} /> {pending ? 'Submitting…' : 'Submit for approval'}
+              <UserX size={15} />{' '}
+              {pending
+                ? editingId != null ? 'Saving…' : 'Submitting…'
+                : editingId != null ? 'Save changes' : 'Submit for approval'}
             </button>
+            {editingId != null && (
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={resetForm} disabled={pending}>
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -361,6 +409,20 @@ export function VendorDeboardingClient({
                     )}
                     {r.status === 'rework' && r.rework_notes && (
                       <small className="wf-subtle">{r.rework_notes}</small>
+                    )}
+                    {canEdit(role, r.status) && (
+                      <button
+                        type="button"
+                        className="wf-btn wf-btn-ghost wf-btn-sm"
+                        onClick={() => startEdit(r)}
+                        title={
+                          r.status === 'rework' || r.status === 'rejected'
+                            ? 'Amend and send back for approval'
+                            : 'Amend — it stays in the approval queue'
+                        }
+                      >
+                        <Pencil size={12} /> Edit
+                      </button>
                     )}
                   </td>
                   <td className="wf-subtle">{r.requested_by ?? '—'}</td>

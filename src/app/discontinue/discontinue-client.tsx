@@ -3,8 +3,8 @@
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { Ban } from 'lucide-react';
-import { createDiscontinueRequest } from '@/lib/forms/actions';
+import { Ban, Pencil } from 'lucide-react';
+import { createDiscontinueRequest, updateDiscontinueRequest } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -28,6 +28,8 @@ export function DiscontinueClient({
   const [variant, setVariant] = useState('');
   const [size, setSize] = useState('');
   const [reason, setReason] = useState('');
+  // The request being amended; null = raising a new one.
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -36,14 +38,34 @@ export function DiscontinueClient({
     () => [...new Set(variants.map((v) => v.product_code))].sort(),
     [variants],
   );
-  const variantOptions = useMemo(
-    () =>
-      variants
-        .filter((v) => v.product_code === productCode)
-        .map((v) => v.product_variant)
-        .sort(),
-    [variants, productCode],
-  );
+  const variantOptions = useMemo(() => {
+    const list = variants
+      .filter((v) => v.product_code === productCode)
+      .map((v) => v.product_variant);
+    // An amended request keeps its colour even if it has left the active list.
+    if (variant && !list.includes(variant)) list.push(variant);
+    return list.sort();
+  }, [variants, productCode, variant]);
+
+  function resetForm() {
+    setEditingId(null);
+    setProductCode('');
+    setVariant('');
+    setSize('');
+    setReason('');
+  }
+
+  function startEdit(request: DiscontinueRequest) {
+    setError(null);
+    setMessage(null);
+    setEditingId(request.id);
+    setScope(request.scope);
+    setProductCode(request.product_code);
+    setVariant(request.product_variant ?? '');
+    setSize(request.size ?? '');
+    setReason(request.reason ?? '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   const canSubmit =
     !!productCode &&
@@ -59,14 +81,19 @@ export function DiscontinueClient({
     payload.set('product_variant', scope === 'product' ? '' : variant);
     payload.set('size', scope === 'size' ? size : '');
     payload.set('reason', reason);
+    if (editingId != null) payload.set('id', String(editingId));
     start(async () => {
-      const result = await createDiscontinueRequest(payload);
+      const result =
+        editingId != null
+          ? await updateDiscontinueRequest(payload)
+          : await createDiscontinueRequest(payload);
       if (result.ok) {
+        if (editingId != null) {
+          reloadWithToast(result.message ?? 'Saved.');
+          return;
+        }
         setMessage(result.message ?? 'Submitted.');
-        setProductCode('');
-        setVariant('');
-        setSize('');
-        setReason('');
+        resetForm();
       } else setError(toastError(result.error));
     });
   }
@@ -87,7 +114,7 @@ export function DiscontinueClient({
         <div className="panel wf-form-panel">
           <div className="panel-title">
             <h3>
-              Raise a discontinue request
+              {editingId != null ? `Amend request #${editingId}` : 'Raise a discontinue request'}
               <InfoDot text={"WHAT: stop buying and selling a size, a colour, or a whole product.\n\nHOW: pick the scope, give the reason, submit. The request goes to Approvals and always needs an admin. Once approved the size/colour/product drops out of the active list and stops counting as in-process.\n\nUSE: this is about the PRODUCT STATE. It is separate from the sales class (A/B/C/D) — a slow D-class product is not discontinued unless someone approves it here."} />
             </h3>
           </div>
@@ -170,8 +197,16 @@ export function DiscontinueClient({
               onClick={submit}
               disabled={pending || !canSubmit}
             >
-              <Ban size={15} /> {pending ? 'Submitting…' : 'Submit for approval'}
+              <Ban size={15} />{' '}
+              {pending
+                ? editingId != null ? 'Saving…' : 'Submitting…'
+                : editingId != null ? 'Save changes' : 'Submit for approval'}
             </button>
+            {editingId != null && (
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={resetForm} disabled={pending}>
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -213,6 +248,20 @@ export function DiscontinueClient({
                     <StatusBadge status={request.status} edited={request.edited_before_approval} approverEdited={request.approver_edited} />
                     {request.status === 'rejected' && request.rejection_notes && (
                       <small className="wf-subtle">{request.rejection_notes}</small>
+                    )}
+                    {canEdit(role, request.status) && (
+                      <button
+                        type="button"
+                        className="wf-btn wf-btn-ghost wf-btn-sm"
+                        onClick={() => startEdit(request)}
+                        title={
+                          request.status === 'rework' || request.status === 'rejected'
+                            ? 'Amend and send back for approval'
+                            : 'Amend — it stays in the approval queue'
+                        }
+                      >
+                        <Pencil size={12} /> Edit
+                      </button>
                     )}
                   </td>
                   <td className="wf-subtle">{request.requested_by ?? '—'}</td>
