@@ -100,7 +100,7 @@ async function submittedPlanVariation(planMonth: string, a: Awaited<ReturnType<t
     ],
     tiles: [
       { label: 'Quantity (pcs) · as submitted', planned: pQty, actual: iQty, unit: 'pcs' },
-      { label: 'POs', planned: null, actual: a.metrics.actualPoCount, unit: 'pcs' },
+      { label: 'POs issued', planned: null, actual: a.metrics.actualPoCount, unit: 'pcs', words: { over: '', short: '', unplanned: 'Issued' } },
     ],
     sections: [{ title: 'Quantity by product', unit: 'pcs', plannedLabel: 'Submitted', actualLabel: 'Issued', rows, empty: 'Nothing planned or issued this month.' }],
     missing: 'This plan was never approved. The comparison uses the quantities as submitted.',
