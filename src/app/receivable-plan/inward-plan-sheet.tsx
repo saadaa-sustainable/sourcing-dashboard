@@ -4,7 +4,6 @@ import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Check, Pencil, RotateCcw, Upload, Trash2, X } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
-import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { Notice } from '@/components/forms/form-layout';
 import { canApprove, canEdit, sheetStatusText } from '@/lib/forms/approval';
@@ -244,28 +243,11 @@ HOW: planned − received, never below zero." /></span>
         <div className={`iw-tile${pendingCount ? ' is-warn' : ''}`}>
           <span>Waiting for approval <InfoDot text="WHAT: lines the admin has not decided yet.
 
-HOW: count of lines with status Pending. The whole month can be decided at once below or on Approvals." /></span>
+HOW: count of lines with status Pending. Decide them line by line in Lines (tick several to decide them together), or the whole month on Approvals." /></span>
           <strong>{pendingCount}</strong>
           <small>{pendingCount ? 'line(s) pending · admin decides' : 'nothing pending'}</small>
         </div>
       </div>
-
-      {approver && pendingCount > 0 && (
-        <section className="wf-queue-card wf-queue-card-wide sc-decision" aria-label="Your decision" style={{ marginBottom: 16 }}>
-          <div className="wf-queue-head">
-            <div>
-              <h3>Decide {monthLabel(month)} — {pendingCount} pending line(s)</h3>
-              <p className="wf-subtle">Approve, send back or reject every pending line of the month at once. Your note is kept on each line as the management comment.</p>
-            </div>
-          </div>
-          <ApprovalBar
-            entityType="inward_plan"
-            entityId={month}
-            entityLabel={`Inward plan — ${monthLabel(month)}`}
-            onDone={(result) => { if (result.ok) reloadWithToast(result.message ?? 'Saved.'); }}
-          />
-        </section>
-      )}
 
       {monthRows.length > 0 && (
         <div className="segment iw-boardseg" role="group" aria-label="Show the month as">
