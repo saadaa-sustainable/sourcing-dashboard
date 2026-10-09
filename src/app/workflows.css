@@ -2742,3 +2742,14 @@ tr.iw-picked > td { background: #fffbea; }
 .ip-card .bp-line-decision { white-space: normal; }
 .ip-card .bp-line-decision.asking input { flex: 1; width: auto; min-width: 0; }
 
+/* Inward lines: amend any field until approved (house rule), and add a line by hand. */
+.iw-linesbar-left { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.iw-lineform { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; white-space: normal; }
+.iw-lineform label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--ink-3, #5f5a50); }
+.iw-lineform input { width: 110px; height: 30px; padding: 0 8px; border: 1px solid #c9cccf; border-radius: 7px; font: inherit; font-size: 12px; color: var(--ink-1, #161513); }
+.iw-lineform input.iw-lf-wide { width: 190px; }
+.iw-lineform input.iw-lf-num { width: 80px; }
+.iw-lf-actions { display: inline-flex; gap: 6px; }
+.bp-line-decision.iw-amend { white-space: normal; min-width: 520px; }
+.ip-card .bp-line-decision.iw-amend { min-width: 0; }
+.iw-addline { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; }

@@ -230,7 +230,7 @@ export async function deleteInwardPlanRow(formData: FormData): Promise<ActionRes
     .eq('id', id)
     .maybeSingle();
   if (!row) return fail('Line not found.');
-  if (row.approval_status !== 'Pending' && user.role !== 'admin') return fail('Only an admin can remove a line that has already been decided.');
+  if (row.approval_status === 'Approved' && user.role !== 'admin') return fail('This line is approved, so it is locked. Only an admin can remove an approved line.');
   const { error } = await supabase.from('sd_inward_plan_entry').delete().eq('id', id);
   if (error) return fail(error.message);
   await writeLog(
@@ -244,6 +244,110 @@ export async function deleteInwardPlanRow(formData: FormData): Promise<ActionRes
   );
   revalidate();
   return done('Line removed.');
+}
+
+/** The editable fields of a sheet line, read and checked from a form. */
+function lineFields(formData: FormData):
+  | { ok: true; v: { product_code: string; po_no: string | null; vendor_name: string | null; inward_qty: number; cost_per_piece: number | null; remarks: string | null } }
+  | { ok: false; error: string } {
+  const product = String(formData.get('product_code') ?? '').trim().toUpperCase();
+  const po = String(formData.get('po_no') ?? '').trim();
+  const vendor = String(formData.get('vendor_name') ?? '').trim();
+  const qtyRaw = String(formData.get('inward_qty') ?? '').trim();
+  const costRaw = String(formData.get('cost_per_piece') ?? '').trim();
+  const remarks = String(formData.get('remarks') ?? '').trim();
+  const qty = Number(qtyRaw);
+  const cost = costRaw === '' ? null : Number(costRaw);
+  if (!product) return { ok: false, error: 'Product code is required.' };
+  if (qtyRaw === '' || !Number.isInteger(qty) || qty < 0) return { ok: false, error: 'Inward qty must be a whole number of 0 or more.' };
+  if (cost != null && (!Number.isFinite(cost) || cost < 0)) return { ok: false, error: '₹ per piece must be a number of 0 or more.' };
+  return { ok: true, v: { product_code: product, po_no: po || null, vendor_name: vendor || null, inward_qty: qty, cost_per_piece: cost, remarks: remarks || null } };
+}
+
+/**
+ * Amend a line (team / admin). HOUSE RULE: until a line is approved, every field can be changed.
+ * A line that was sent back or rejected goes back to Approval Pending when it is amended
+ * (resubmitted). An approved line is locked — the approver reopens it first.
+ */
+export async function updateInwardPlanRow(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('Only team and admin users can edit the inward plan.');
+  const id = Number(formData.get('id'));
+  if (!id) return fail('Invalid line.');
+  const f = lineFields(formData);
+  if (!f.ok) return fail(f.error);
+
+  const supabase = await supa();
+  const { data: row } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('id, plan_month, product_code, po_no, vendor_name, inward_qty, cost_per_piece, remarks, approval_status')
+    .eq('id', id)
+    .maybeSingle();
+  if (!row) return fail('Line not found.');
+  if (row.approval_status === 'Approved') return fail('This line is approved, so it is locked. Ask the approver to reopen it to change it.');
+
+  const labels: Record<string, string> = { product_code: 'Product', po_no: 'PO ref', vendor_name: 'Vendor', inward_qty: 'Inward qty', cost_per_piece: '₹ / pc', remarks: 'Remark' };
+  const old = row as Record<string, unknown>;
+  const changes = (Object.keys(f.v) as (keyof typeof f.v)[])
+    .filter((k) => String(old[k] ?? '') !== String(f.v[k] ?? ''))
+    .map((k) => `${labels[k]} ${old[k] ?? '—'} → ${f.v[k] ?? '—'}`);
+  if (!changes.length) return fail('Nothing was changed.');
+
+  const resubmit = row.approval_status !== 'Pending';
+  const { error } = await supabase
+    .from('sd_inward_plan_entry')
+    .update({ ...f.v, approval_status: 'Pending', updated_by: user.email, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .neq('approval_status', 'Approved');
+  if (error) return fail(error.message);
+
+  const from: SdStatus = row.approval_status === 'RE-WORK' ? 'rework' : row.approval_status === 'Rejected' ? 'rejected' : 'pending_l2';
+  await writeLog(
+    'inward_plan',
+    String(row.plan_month),
+    `Inward plan — ${monthLabel(String(row.plan_month))} · ${f.v.product_code} · ${f.v.po_no ?? '—'}`,
+    from,
+    'pending_l2',
+    user.email,
+    `Amended: ${changes.join('; ')}${resubmit ? ' — resubmitted for approval' : ''}`,
+  );
+  revalidate();
+  return done(`${f.v.product_code} · ${f.v.po_no ?? '—'} saved${resubmit ? ' and sent back for approval' : ''}.`);
+}
+
+/** Add one line to a month by hand (team / admin) — lands as Approval Pending like a CSV line. */
+export async function addInwardPlanRow(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('Only team and admin users can edit the inward plan.');
+  const month = String(formData.get('plan_month') ?? '').trim();
+  if (!MONTH_RE.test(month)) return fail('Pick the plan month.');
+  const f = lineFields(formData);
+  if (!f.ok) return fail(f.error);
+  const supabase = await supa();
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('sd_inward_plan_entry').insert({
+    plan_month: month,
+    ...f.v,
+    approval_status: 'Pending',
+    created_by: user.email,
+    updated_by: user.email,
+    created_at: now,
+    updated_at: now,
+  });
+  if (error) return fail(error.message);
+  await writeLog(
+    'inward_plan',
+    month,
+    `Inward plan — ${monthLabel(month)} · ${f.v.product_code} · ${f.v.po_no ?? '—'}`,
+    null,
+    'pending_l2',
+    user.email,
+    `Line added: ${f.v.inward_qty.toLocaleString('en-IN')} pcs`,
+  );
+  revalidate();
+  return done(`${f.v.product_code} · ${f.v.po_no ?? '—'} added — waiting for approval.`);
 }
 
 /** The ids posted by a multi-select: a JSON array of positive whole numbers, at most 500. */
@@ -309,7 +413,7 @@ export async function decideInwardPlanRows(formData: FormData): Promise<ActionRe
   return done(`${targets.length} line(s) marked ${status}.${skipped ? ` ${skipped} were already ${status}.` : ''}`);
 }
 
-/** Remove several selected lines (team: still-Pending lines only; admin: any). */
+/** Remove several selected lines (team: any line not yet approved; admin: any). */
 export async function deleteInwardPlanRows(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -323,8 +427,8 @@ export async function deleteInwardPlanRows(formData: FormData): Promise<ActionRe
     .select('id, plan_month, product_code, po_no, approval_status')
     .in('id', ids);
   if (readErr) return fail(readErr.message);
-  const allowed = (rows ?? []).filter((r) => r.approval_status === 'Pending' || user.role === 'admin');
-  if (!allowed.length) return fail('Only an admin can remove lines that have already been decided.');
+  const allowed = (rows ?? []).filter((r) => r.approval_status !== 'Approved' || user.role === 'admin');
+  if (!allowed.length) return fail('Approved lines are locked. Only an admin can remove them.');
   const { error } = await supabase.from('sd_inward_plan_entry').delete().in('id', allowed.map((r) => r.id as number));
   if (error) return fail(error.message);
   const byMonth = new Map<string, typeof allowed>();
@@ -342,5 +446,5 @@ export async function deleteInwardPlanRows(formData: FormData): Promise<ActionRe
   }
   revalidate();
   const kept = (rows ?? []).length - allowed.length;
-  return done(`${allowed.length} line(s) removed.${kept ? ` ${kept} already-decided line(s) were kept — only an admin can remove those.` : ''}`);
+  return done(`${allowed.length} line(s) removed.${kept ? ` ${kept} approved line(s) were kept — approved lines are locked, only an admin can remove them.` : ''}`);
 }

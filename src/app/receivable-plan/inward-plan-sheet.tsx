@@ -8,7 +8,16 @@ import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
 import { Notice } from '@/components/forms/form-layout';
 import { canApprove, canEdit, sheetStatusText } from '@/lib/forms/approval';
-import { decideInwardPlanRow, decideInwardPlanRows, deleteInwardPlanRow, deleteInwardPlanRows, editAndApproveInwardRow, importInwardPlanSheet } from '@/lib/forms/actions';
+import {
+  addInwardPlanRow,
+  decideInwardPlanRow,
+  decideInwardPlanRows,
+  deleteInwardPlanRow,
+  deleteInwardPlanRows,
+  editAndApproveInwardRow,
+  importInwardPlanSheet,
+  updateInwardPlanRow,
+} from '@/lib/forms/actions';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import type { SdRole } from '@/lib/forms/types';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
@@ -268,15 +277,18 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
 
       {monthRows.length > 0 && board === 'lines' && (
         <div className="ip-viewrow iw-linesbar">
-          {layout !== 'list' ? (
-            <input
-              className="wf-search"
-              placeholder="Search product, PO ref, vendor…"
-              aria-label="Search lines"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          ) : <span />}
+          <div className="iw-linesbar-left">
+            {layout !== 'list' && (
+              <input
+                className="wf-search"
+                placeholder="Search product, PO ref, vendor…"
+                aria-label="Search lines"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            )}
+            {editor && <AddLine key={month} month={month} />}
+          </div>
           <div className="iw-linesbar-right">
             {canBulk && (() => {
               const visible = layout === 'list' ? listRows : layout === 'cards' ? searched : searchedAll;
@@ -462,7 +474,7 @@ function BulkBar({
       title: `Delete ${n} inward plan line${n === 1 ? '' : 's'}?`,
       body: approver
         ? 'The ticked lines are removed from the month\'s inward plan. This cannot be undone from the screen.'
-        : 'The ticked still-pending lines are removed from the month\'s inward plan; lines already decided are kept. This cannot be undone from the screen.',
+        : 'The ticked lines are removed from the month\'s inward plan; approved lines are locked and kept. This cannot be undone from the screen.',
     });
     if (!ok) return;
     const fd = new FormData();
@@ -539,7 +551,7 @@ function BulkBar({
  */
 function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean; inRow?: boolean }) {
   const [pending, start] = useTransition();
-  const [asking, setAsking] = useState<null | 'RE-WORK' | 'Rejected' | 'EDIT'>(null);
+  const [asking, setAsking] = useState<null | 'RE-WORK' | 'Rejected' | 'EDIT' | 'AMEND'>(null);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [qty, setQty] = useState(row.inward_qty?.toString() ?? '');
@@ -584,6 +596,25 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
   }
   const cancel = () => { setAsking(null); setNote(''); setError(null); };
 
+  // House rule: until a line is approved, the team can change every field of it.
+  if (asking === 'AMEND') {
+    return (
+      <span className="bp-line-decision asking iw-amend">
+        <LineForm
+          row={row}
+          pending={pending}
+          submitLabel={row.approval_status === 'Pending' ? 'Save' : 'Save & resubmit'}
+          onCancel={cancel}
+          onSubmit={(fd) => {
+            setError(null);
+            fd.set('id', String(row.id));
+            start(async () => finish(await updateInwardPlanRow(fd)));
+          }}
+        />
+        {error && <span className="bp-line-decision-error">{error}</span>}
+      </span>
+    );
+  }
   if (asking === 'EDIT') {
     return (
       <span className="bp-line-decision asking">
@@ -619,9 +650,15 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
     );
   }
 
-  const canRemove = editor && (row.approval_status === 'Pending' || approver);
+  const canRemove = editor && (row.approval_status !== 'Approved' || approver);
+  const canAmend = editor && row.approval_status !== 'Approved';
   return (
     <span className="bp-line-decision">
+      {canAmend && (
+        <button type="button" className="bp-ld-btn" disabled={pending} onClick={() => setAsking('AMEND')} title={`Change any field of ${label}`} aria-label={`Edit ${label}`}>
+          Edit
+        </button>
+      )}
       {approver && decided && (
         <>
           <span className={`bp-badge ${row.approval_status === 'Approved' ? 'green' : 'red'}`}>
@@ -655,6 +692,72 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
       )}
       {error && <span className="bp-line-decision-error">{error}</span>}
     </span>
+  );
+}
+
+/** Every field of a sheet line — used to amend a line (until approved) and to add one. */
+function LineForm({
+  row,
+  pending,
+  submitLabel,
+  onSubmit,
+  onCancel,
+}: {
+  row?: InwardPlanSheetRow;
+  pending: boolean;
+  submitLabel: string;
+  onSubmit: (fd: FormData) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form
+      className="iw-lineform"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(new FormData(e.currentTarget));
+      }}
+      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+    >
+      <label>Product<input name="product_code" required defaultValue={row?.product_code ?? ''} /></label>
+      <label>PO ref<input name="po_no" defaultValue={row?.po_no ?? ''} className="iw-lf-wide" /></label>
+      <label>Vendor<input name="vendor_name" defaultValue={row?.vendor_name ?? ''} /></label>
+      <label>Inward qty<input name="inward_qty" type="number" min={0} required defaultValue={row?.inward_qty ?? ''} className="iw-lf-num" /></label>
+      <label>₹ / pc<input name="cost_per_piece" type="number" min={0} step="0.01" defaultValue={row?.cost_per_piece ?? ''} className="iw-lf-num" /></label>
+      <label>Remark<input name="remarks" defaultValue={row?.remarks ?? ''} className="iw-lf-wide" /></label>
+      <span className="iw-lf-actions">
+        <button type="submit" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending}>{pending ? 'Saving…' : submitLabel}</button>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={onCancel}>Cancel</button>
+      </span>
+    </form>
+  );
+}
+
+/** Add one line to the month by hand (team / admin); it waits for approval like a CSV line. */
+function AddLine({ month }: { month: string }) {
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  if (!open) {
+    return (
+      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setOpen(true)}>+ Add line</button>
+    );
+  }
+  return (
+    <div className="iw-addline">
+      <b>Add a line to {monthLabel(month)}</b>
+      <LineForm
+        pending={pending}
+        submitLabel="Add line"
+        onCancel={() => setOpen(false)}
+        onSubmit={(fd) => {
+          fd.set('plan_month', month);
+          start(async () => {
+            const res = await addInwardPlanRow(fd);
+            if (res.ok) reloadWithToast(res.message ?? 'Added.');
+            else toastError(res.error);
+          });
+        }}
+      />
+    </div>
   );
 }
 
