@@ -49,29 +49,41 @@ function weekRangeLabel(mondayIso: string): string {
 function monthLabelOf(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
-function buildWeekOptions(thisMonday: string, back = 6, ahead = 20): { value: string; label: string }[] {
-  const base = new Date(`${thisMonday}T00:00:00Z`);
+/** Last day (YYYY-MM-DD) of the month after the one `iso` falls in. */
+function endOfNextMonth(iso: string): string {
+  const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) + 1, 0));
+  return d.toISOString().slice(0, 10);
+}
+/**
+ * Receiving weeks to pick from: this week up to the week holding the last day of next month —
+ * only the current and the coming month. A row already saved on an older week keeps it (the
+ * row adds its own value to the list).
+ */
+function buildWeekOptions(thisMonday: string, today: string): { value: string; label: string }[] {
+  const last = endOfNextMonth(today);
   const out: { value: string; label: string }[] = [];
-  for (let i = -back; i <= ahead; i++) {
-    const d = new Date(base);
+  for (let i = 0; ; i++) {
+    const d = new Date(`${thisMonday}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + i * 7);
     const value = d.toISOString().slice(0, 10);
-    out.push({ value, label: weekRangeLabel(value) + (i === 0 ? ' · this week' : '') });
+    if (value > last) break;
+    out.push({ value, label: weekRangeLabel(value) + (i === 0 ? ' · this week' : i === 1 ? ' · next week' : '') });
   }
   return out;
 }
 function firstOfMonth(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
-function buildMonthOptions(thisMonday: string, back = 1, ahead = 8): { value: string; label: string }[] {
-  const base = new Date(`${firstOfMonth(thisMonday)}T00:00:00Z`);
-  const thisMonthValue = firstOfMonth(thisMonday);
+/** Whole months to pick from: this month and the next, each with its dates. */
+function buildMonthOptions(today: string): { value: string; label: string }[] {
   const out: { value: string; label: string }[] = [];
-  for (let i = -back; i <= ahead; i++) {
-    const d = new Date(base);
+  for (let i = 0; i <= 1; i++) {
+    const d = new Date(`${firstOfMonth(today)}T00:00:00Z`);
     d.setUTCMonth(d.getUTCMonth() + i);
     const value = d.toISOString().slice(0, 10);
-    out.push({ value, label: monthLabelOf(value) + (value === thisMonthValue ? ' · this month' : '') });
+    const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const mon = d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' });
+    out.push({ value, label: `${monthLabelOf(value)} (1 – ${lastDay} ${mon})${i === 0 ? ' · this month' : ' · next month'}` });
   }
   return out;
 }
@@ -184,8 +196,8 @@ export function ReceivablePlanClient({
   }, [search, vendor, state, risk, oosOnly, edd, needsMine]);
   const [submitting, startSubmit] = useTransition();
 
-  const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
-  const monthOptions = useMemo(() => buildMonthOptions(weekStart), [weekStart]);
+  const weekOptions = useMemo(() => buildWeekOptions(weekStart, today), [weekStart, today]);
+  const monthOptions = useMemo(() => buildMonthOptions(today), [today]);
 
   function submitAll() {
     startSubmit(async () => {
