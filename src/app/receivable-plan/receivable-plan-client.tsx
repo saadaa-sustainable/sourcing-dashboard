@@ -186,6 +186,13 @@ export function ReceivablePlanClient({
   };
   /** Cards and Kanban are for reading; "Edit" opens the row in the list, filtered to it. */
   const editInList = (r: ReceivablePlanRow) => {
+    // Clear the other filters so the row cannot be hidden by them, then find it by PO + colour.
+    setVendor('');
+    setState('');
+    setRisk('');
+    setOosOnly(false);
+    setEdd('all');
+    setNeedsMine(false);
     setSearch(`${r.po_ref_num || r.po_number} ${r.product_variant}`.trim());
     chooseLayout('list');
   };
@@ -217,14 +224,15 @@ export function ReceivablePlanClient({
   );
 
   const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    // Every word must appear somewhere on the row, in any order — "Edit in list" searches
+    // "<PO ref> <colour>", which are not next to each other in the row's text.
+    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return rows.filter((r) => {
       if (needsMine && r.input_status !== 'submitted') return false;
-      if (q &&
-        !`${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`
-          .toLowerCase()
-          .includes(q)
-      ) return false;
+      if (terms.length) {
+        const hay = `${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`.toLowerCase();
+        if (!terms.every((t) => hay.includes(t))) return false;
+      }
       if (vendor && (vendor === BLANK ? Boolean(r.vendor_name) : r.vendor_name !== vendor)) return false;
       if (state && (state === BLANK ? Boolean(r.product_state) : r.product_state !== state)) return false;
       if (risk && r.internal_status !== risk) return false;
