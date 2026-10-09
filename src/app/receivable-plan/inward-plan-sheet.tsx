@@ -2,7 +2,7 @@
 
 import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { Upload, Trash2 } from 'lucide-react';
+import { Check, Pencil, RotateCcw, Upload, Trash2, X } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { ApprovalBar } from '@/components/forms/approval-bar';
 import { InfoDot } from '@/components/info-dot';
@@ -242,7 +242,7 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
       </div>
 
       {approver && pendingCount > 0 && (
-        <section className="wf-queue-card wf-queue-card-wide" style={{ marginBottom: 16 }}>
+        <section className="wf-queue-card wf-queue-card-wide sc-decision" aria-label="Your decision" style={{ marginBottom: 16 }}>
           <div className="wf-queue-head">
             <div>
               <h3>Decide {monthLabel(month)} — {pendingCount} pending line(s)</h3>
@@ -277,6 +277,16 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
               onChange={(e) => setQuery(e.target.value)}
             />
           ) : <span />}
+          <div className="iw-linesbar-right">
+            {canBulk && (() => {
+              const visible = layout === 'list' ? listRows : layout === 'cards' ? searched : searchedAll;
+              const all = visible.length > 0 && visible.every((r) => selected.has(r.id));
+              return visible.length > 0 ? (
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => (all ? setSelected(new Set()) : selectMany(visible.map((r) => r.id), true))}>
+                  {all ? 'Clear selection' : `Select all shown (${visible.length})`}
+                </button>
+              ) : null;
+            })()}
           <div className="segment ip-layout-seg" role="group" aria-label="Layout">
             {(['list', 'cards', 'kanban'] as const).map((l) => (
               <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
@@ -284,16 +294,15 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
               </button>
             ))}
           </div>
+          </div>
         </div>
       )}
 
       {monthRows.length > 0 && board === 'lines' && canBulk && (
         <BulkBar
           selected={monthRows.filter((r) => selected.has(r.id))}
-          visible={layout === 'list' ? listRows : layout === 'cards' ? searched : searchedAll}
           approver={approver}
           editor={editor}
-          onSelectAll={(ids) => selectMany(ids, true)}
           onClear={() => setSelected(new Set())}
         />
       )}
@@ -407,142 +416,161 @@ function SheetCard({
 }
 
 /**
- * Bulk actions on the ticked lines: the approver decides them in one go (a remark is needed to
- * send back or reject); team or admin removes them (the team only still-pending lines).
+ * Decide or remove the ticked lines at once — the Buying Plan bulk bar: floats at the bottom of
+ * the screen while lines are ticked. The approver approves, reworks, rejects (one remark, recorded
+ * on each line) or reopens; team or admin deletes (the team only still-pending lines).
  */
 function BulkBar({
   selected,
-  visible,
   approver,
   editor,
-  onSelectAll,
   onClear,
 }: {
   selected: InwardPlanSheetRow[];
-  visible: InwardPlanSheetRow[];
   approver: boolean;
   editor: boolean;
-  onSelectAll: (ids: number[]) => void;
   onClear: () => void;
 }) {
-  const [pending, start] = useTransition();
-  const [mode, setMode] = useState<'' | 'RE-WORK' | 'Rejected'>('');
+  const [asking, setAsking] = useState<null | 'RE-WORK' | 'Rejected'>(null);
   const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
   const n = selected.length;
+  if (!n) return null;
   const ids = JSON.stringify(selected.map((r) => r.id));
+  const qty = selected.reduce((s, r) => s + (r.inward_qty ?? 0), 0);
+  const value = selected.reduce((s, r) => s + r.value, 0);
 
-  function decide(status: string, notes: string) {
+  function decide(status: string) {
+    setError(null);
+    if ((status === 'RE-WORK' || status === 'Rejected') && !note.trim()) {
+      setError('A remark is mandatory — it is recorded on each line.');
+      return;
+    }
     const fd = new FormData();
     fd.set('ids', ids);
     fd.set('status', status);
-    fd.set('notes', notes);
+    fd.set('notes', status === 'RE-WORK' || status === 'Rejected' ? note.trim() : '');
     start(async () => {
       const res = await decideInwardPlanRows(fd);
-      if (!res.ok) toastError(res.error);
-      else reloadWithToast(res.message ?? 'Saved.');
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+      else setError(toastError(res.error));
     });
   }
   async function remove() {
     const ok = await confirmDelete({
       title: `Delete ${n} inward plan line${n === 1 ? '' : 's'}?`,
       body: approver
-        ? 'The selected lines are removed from the month\'s inward plan. This cannot be undone from the screen.'
-        : 'The selected still-pending lines are removed from the month\'s inward plan; lines already decided are kept. This cannot be undone from the screen.',
+        ? 'The ticked lines are removed from the month\'s inward plan. This cannot be undone from the screen.'
+        : 'The ticked still-pending lines are removed from the month\'s inward plan; lines already decided are kept. This cannot be undone from the screen.',
     });
     if (!ok) return;
     const fd = new FormData();
     fd.set('ids', ids);
     start(async () => {
       const res = await deleteInwardPlanRows(fd);
-      if (!res.ok) toastError(res.error);
-      else reloadWithToast(res.message ?? 'Removed.');
+      if (res.ok) reloadWithToast(res.message ?? 'Removed.');
+      else setError(toastError(res.error));
     });
   }
 
-  const qty = selected.reduce((s, r) => s + (r.inward_qty ?? 0), 0);
   return (
-    <div className={`iw-bulk${n ? ' is-on' : ''}`} role="region" aria-label="Selected lines">
-      <div className="iw-bulk-left">
-        <b>{n ? `${n} selected` : 'Tick lines to act on several at once'}</b>
-        {n > 0 && <span className="wf-subtle">{fmt.format(qty)} pcs</span>}
-        {visible.length > 0 && n < visible.length && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => onSelectAll(visible.map((r) => r.id))}>
-            Select all shown ({visible.length})
+    <div className="bp-bulk-bar" role="region" aria-label="Act on the ticked lines">
+      <span className="bp-bulk-count">
+        <b>{n}</b> line{n === 1 ? '' : 's'} ticked · {fmt.format(qty)} pcs · {money.format(value)}
+      </span>
+      {asking ? (
+        <>
+          <input
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={asking === 'RE-WORK' ? 'Remark for Rework / Reassign (required) — recorded on each line' : 'Remark for Reject / Discard (required) — recorded on each line'}
+            aria-label={`Reason to ${asking === 'RE-WORK' ? 'rework' : 'reject'} the ticked lines`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') decide(asking);
+              if (e.key === 'Escape') setAsking(null);
+            }}
+          />
+          <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => decide(asking)}>
+            {pending ? 'Saving…' : asking === 'RE-WORK' ? `Rework / Reassign ${n}` : `Reject / Discard ${n}`}
           </button>
-        )}
-        {n > 0 && <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { onClear(); setMode(''); setNote(''); }}>Clear</button>}
-      </div>
-      {n > 0 && (
-        mode ? (
-          <div className="iw-bulk-actions">
-            <input
-              className="iw-bulk-note"
-              placeholder={mode === 'Rejected' ? 'Remark for Reject / Discard (required)' : 'Remark for Rework / Reassign (required)'}
-              aria-label="Remark"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-            <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !note.trim()} onClick={() => decide(mode, note.trim())}>
-              {pending ? 'Saving…' : `${mode === 'Rejected' ? 'Reject' : 'Send back'} ${n}`}
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
-          </div>
-        ) : (
-          <div className="iw-bulk-actions">
-            {approver && (
-              <>
-                <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={() => decide('Approved', '')}>
-                  {pending ? 'Saving…' : `Approve ${n}`}
-                </button>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('RE-WORK')}>Rework / Reassign</button>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('Rejected')}>Reject / Discard</button>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Pending', '')}>Reopen</button>
-              </>
-            )}
-            {editor && (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={remove}>
-                <Trash2 size={13} /> Delete
+          <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setAsking(null); setError(null); }}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          {approver && (
+            <>
+              <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => decide('Approved')}>
+                <Check size={13} /> {pending ? 'Saving…' : `Approve ${n}`}
               </button>
-            )}
-          </div>
-        )
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setAsking('RE-WORK')}>
+                <RotateCcw size={13} /> Rework / Reassign
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setAsking('Rejected')}>
+                <X size={13} /> Reject / Discard
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => decide('Pending')}>
+                Reopen
+              </button>
+            </>
+          )}
+          {editor && (
+            <button type="button" className="bp-bulk-btn" disabled={pending} onClick={remove}>
+              <Trash2 size={13} /> Delete
+            </button>
+          )}
+          <button type="button" className="bp-bulk-btn" disabled={pending} onClick={onClear}>
+            Clear
+          </button>
+        </>
       )}
+      {error && <span className="bp-bulk-error">{error}</span>}
     </div>
   );
 }
 
-/** Per-line decision (admin) and removal (team / admin) — the odd PO handled on its own. */
-function RowActions({ row, approver, editor, inRow = false }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean; inRow?: boolean }) {
-  const cls = `wf-inline-actions${inRow ? ' iw-row-actions' : ''}`;
+/**
+ * One line's decision — the Buying Plan line decision: ✓ Approve, ✎ Edit & approve, ↺ Rework,
+ * ✕ Reject, the remark asked inline (Enter saves, Esc cancels). A decided line shows its status
+ * with Reopen; the team can remove a still-pending line.
+ */
+function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean; inRow?: boolean }) {
   const [pending, start] = useTransition();
-  const [mode, setMode] = useState<'' | 'RE-WORK' | 'Rejected' | 'EDIT'>('');
+  const [asking, setAsking] = useState<null | 'RE-WORK' | 'Rejected' | 'EDIT'>(null);
   const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [qty, setQty] = useState(row.inward_qty?.toString() ?? '');
   const [cost, setCost] = useState(row.cost_per_piece?.toString() ?? '');
+  const label = `${row.product_code} · ${row.po_no ?? '—'}`;
+  const decided = row.approval_status === 'Approved' || row.approval_status === 'Rejected';
 
+  function finish(res: { ok: boolean; message?: string; error?: string }) {
+    if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+    else setError(toastError(res.error ?? 'Could not save.'));
+  }
+  function decide(status: string) {
+    setError(null);
+    if ((status === 'RE-WORK' || status === 'Rejected') && !note.trim()) {
+      setError('A remark is mandatory.');
+      return;
+    }
+    const fd = new FormData();
+    fd.set('id', String(row.id));
+    fd.set('status', status);
+    fd.set('notes', status === 'RE-WORK' || status === 'Rejected' ? note.trim() : '');
+    start(async () => finish(await decideInwardPlanRow(fd)));
+  }
   function editApprove() {
+    setError(null);
     const fd = new FormData();
     fd.set('id', String(row.id));
     fd.set('inward_qty', qty);
     fd.set('cost_per_piece', cost);
-    fd.set('notes', note);
-    start(async () => {
-      const res = await editAndApproveInwardRow(fd);
-      if (!res.ok) toastError(res.error);
-      else reloadWithToast(res.message ?? 'Edited & Approved.');
-    });
-  }
-
-  function decide(status: string, notes: string) {
-    const fd = new FormData();
-    fd.set('id', String(row.id));
-    fd.set('status', status);
-    fd.set('notes', notes);
-    start(async () => {
-      const res = await decideInwardPlanRow(fd);
-      if (!res.ok) toastError(res.error);
-      else reloadWithToast(res.message ?? 'Saved.');
-    });
+    fd.set('notes', note.trim());
+    start(async () => finish(await editAndApproveInwardRow(fd)));
   }
   async function remove() {
     const ok = await confirmDelete({
@@ -552,61 +580,80 @@ function RowActions({ row, approver, editor, inRow = false }: { row: InwardPlanS
     if (!ok) return;
     const fd = new FormData();
     fd.set('id', String(row.id));
-    start(async () => {
-      const res = await deleteInwardPlanRow(fd);
-      if (!res.ok) toastError(res.error);
-      else reloadWithToast(res.message ?? 'Removed.');
-    });
+    start(async () => finish(await deleteInwardPlanRow(fd)));
   }
+  const cancel = () => { setAsking(null); setNote(''); setError(null); };
 
-  if (mode === 'EDIT') {
+  if (asking === 'EDIT') {
     return (
-      <span className={cls}>
-        <input type="number" min={0} style={{ width: 80 }} aria-label="Inward qty" title="Inward qty" value={qty} onChange={(e) => setQty(e.target.value)} />
-        <input type="number" min={0} step="0.01" style={{ width: 80 }} aria-label="₹ per piece" title="₹ per piece" value={cost} onChange={(e) => setCost(e.target.value)} />
-        <input style={{ width: 140 }} placeholder="Comment (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={editApprove}>{pending ? 'Saving…' : 'Save & approve'}</button>
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
+      <span className="bp-line-decision asking">
+        <input type="number" min={0} className="iw-ld-num" aria-label={`Inward qty for ${label}`} title="Inward qty" value={qty} onChange={(e) => setQty(e.target.value)} />
+        <input type="number" min={0} step="0.01" className="iw-ld-num" aria-label={`₹ per piece for ${label}`} title="₹ per piece" value={cost} onChange={(e) => setCost(e.target.value)} />
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Comment (optional)" aria-label={`Comment for ${label}`} onKeyDown={(e) => { if (e.key === 'Escape') cancel(); }} />
+        <button type="button" className="wf-btn wf-btn-sm wf-btn-primary" disabled={pending} onClick={editApprove}>{pending ? '…' : 'Edit & approve'}</button>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={cancel}>Cancel</button>
+        {error && <span className="bp-line-decision-error">{error}</span>}
       </span>
     );
   }
-  if (mode) {
+  if (asking) {
     return (
-      <span className={cls}>
+      <span className="bp-line-decision asking">
         <input
-         
-          style={{ width: 160 }}
-          placeholder={mode === 'Rejected' ? 'Remark for Reject / Discard (required)' : 'Remark for Rework / Reassign (required)'}
+          autoFocus
           value={note}
           onChange={(e) => setNote(e.target.value)}
+          placeholder={asking === 'RE-WORK' ? 'Remark for Rework / Reassign (required)' : 'Remark for Reject / Discard (required)'}
+          aria-label={`Reason to ${asking === 'RE-WORK' ? 'rework' : 'reject'} ${label}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') decide(asking);
+            if (e.key === 'Escape') cancel();
+          }}
         />
-        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !note.trim()} onClick={() => decide(mode, note)}>Save</button>
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
+        <button type="button" className={`wf-btn wf-btn-sm ${asking === 'Rejected' ? 'wf-btn-danger' : 'wf-btn-primary'}`} disabled={pending} onClick={() => decide(asking)}>
+          {pending ? '…' : asking === 'RE-WORK' ? 'Rework / Reassign' : 'Reject / Discard'}
+        </button>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={cancel}>Cancel</button>
+        {error && <span className="bp-line-decision-error">{error}</span>}
       </span>
     );
   }
+
+  const canRemove = editor && (row.approval_status === 'Pending' || approver);
   return (
-    <span className={cls}>
-      {approver && row.approval_status !== 'Approved' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Approved', '')}>Approve</button>
+    <span className="bp-line-decision">
+      {approver && decided && (
+        <>
+          <span className={`bp-badge ${row.approval_status === 'Approved' ? 'green' : 'red'}`}>
+            {sheetStatusText(row.approval_status, { approverEdited: row.approver_edited })}
+          </span>
+          <button type="button" className="bp-ld-btn" disabled={pending} onClick={() => decide('Pending')} title={`Reopen ${label}`}>Reopen</button>
+        </>
       )}
-      {approver && row.approval_status !== 'Approved' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} title="Change the qty or ₹ per piece and approve in one step" onClick={() => setMode('EDIT')}>Edit &amp; approve</button>
+      {approver && !decided && (
+        <>
+          <button type="button" className="bp-ld-btn approve" disabled={pending} onClick={() => decide('Approved')} title={`Approve ${label}`} aria-label={`Approve ${label}`}>
+            <Check size={13} /> Approve
+          </button>
+          <button type="button" className="bp-ld-btn" disabled={pending} onClick={() => setAsking('EDIT')} title={`Change the qty or ₹ per piece of ${label} and approve it`} aria-label={`Edit and approve ${label}`}>
+            <Pencil size={13} />
+          </button>
+          {row.approval_status !== 'RE-WORK' && (
+            <button type="button" className="bp-ld-btn" disabled={pending} onClick={() => setAsking('RE-WORK')} title={`Rework / Reassign ${label}`} aria-label={`Rework / Reassign ${label}`}>
+              <RotateCcw size={13} />
+            </button>
+          )}
+          <button type="button" className="bp-ld-btn reject" disabled={pending} onClick={() => setAsking('Rejected')} title={`Reject / Discard ${label}`} aria-label={`Reject / Discard ${label}`}>
+            <X size={13} />
+          </button>
+        </>
       )}
-      {approver && row.approval_status !== 'RE-WORK' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('RE-WORK')}>Rework / Reassign</button>
-      )}
-      {approver && row.approval_status !== 'Rejected' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('Rejected')}>Reject / Discard</button>
-      )}
-      {approver && row.approval_status !== 'Pending' && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Pending', '')}>Reopen</button>
-      )}
-      {editor && (row.approval_status === 'Pending' || approver) && (
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" title="Remove this line" disabled={pending} onClick={remove}>
+      {canRemove && (
+        <button type="button" className="bp-ld-btn reject" disabled={pending} onClick={remove} title={`Remove ${label}`} aria-label={`Remove ${label}`}>
           <Trash2 size={13} />
         </button>
       )}
+      {error && <span className="bp-line-decision-error">{error}</span>}
     </span>
   );
 }
