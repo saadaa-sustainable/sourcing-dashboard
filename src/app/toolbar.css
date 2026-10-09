@@ -221,3 +221,9 @@
 .tb .tb-field select { max-width: 160px; }
 .tb input:not([type="checkbox"]):not([type="radio"]) { flex-basis: 260px; width: 260px !important; }
 .tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) { flex-basis: 260px; width: 260px; }
+
+/* Search starts at 220px and grows (to 320px) into whatever room the line has left. */
+.tb input:not([type="checkbox"]):not([type="radio"]) { flex: 1 0 220px; width: 220px !important; max-width: 320px; }
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) { flex: 1 0 220px; width: 220px; max-width: 320px; }
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) input:not([type="checkbox"]):not([type="radio"]) { max-width: none; }
+.tb input[type="number"] { flex: 0 0 90px; width: 90px !important; }
