@@ -7,9 +7,10 @@ import { pageAll } from '@/lib/forms/queries-modules/_shared';
  * products for Standard Cost (user, 2026-10-09). Read server-side with the NPD project's
  * service key: NPD_SUPABASE_URL + NPD_SUPABASE_SERVICE_ROLE (Vercel env, never sent to the browser).
  *
- * Eligible = live (not deleted) and not LAUNCHED. The product code is the NPD SKU code, so a
- * row can only be added when that code is one clean code, unique on the tracker, and not already
- * on Standard Cost or in EasyEcom; otherwise it is listed with the reason it cannot be added.
+ * Eligible = live (not deleted) and not LAUNCHED. The product code is the NPD ITEM CODE
+ * (upper-cased, e.g. K-WBW-SC-011-V1), so a row can only be added when it has one, unique on the
+ * tracker, and not already on Standard Cost or in EasyEcom; otherwise it is listed with the reason
+ * it cannot be added. The SKU code travels with it for PO Approval (SKU quantities).
  */
 
 export type NpdProduct = {
@@ -24,13 +25,13 @@ export type NpdProduct = {
 };
 
 export type NpdOption = NpdProduct & {
-  /** The product code it would get (upper-cased SKU code), or null when the SKU code is unusable. */
+  /** The product code it would get (upper-cased item code), or null when the item code is unusable. */
   code: string | null;
   /** Why it cannot be added; null = can be added. */
   blocked: string | null;
 };
 
-const CODE_RE = /^[A-Z0-9]{3,30}$/;
+const CODE_RE = /^[A-Z0-9][A-Z0-9-]{2,39}$/;
 
 export class NpdNotConfiguredError extends Error {}
 
@@ -99,22 +100,22 @@ export async function loadNpdOptions(ctx: {
   const rows = await loadEligibleRows();
   const codeCount = new Map<string, number>();
   for (const r of rows) {
-    const c = r.sku_code.toUpperCase();
+    const c = (r.item_code ?? '').toUpperCase();
     if (CODE_RE.test(c)) codeCount.set(c, (codeCount.get(c) ?? 0) + 1);
   }
   return rows
     .map((r): NpdOption => {
-      const c = r.sku_code.toUpperCase();
+      const c = (r.item_code ?? '').toUpperCase();
       let blocked: string | null = null;
-      if (!r.sku_code) blocked = 'No SKU code on NPD Tracker V7';
-      else if (!CODE_RE.test(c)) blocked = 'SKU code is not one product code (it holds several codes, spaces or symbols) — fix it on NPD Tracker V7';
-      else if ((codeCount.get(c) ?? 0) > 1) blocked = `SKU code ${c} is used by ${codeCount.get(c)} NPD products — fix it on NPD Tracker V7`;
+      if (!r.item_code) blocked = 'No item code on NPD Tracker V7 yet';
+      else if (!CODE_RE.test(c)) blocked = 'Item code is not one code (spaces or symbols) — fix it on NPD Tracker V7';
+      else if ((codeCount.get(c) ?? 0) > 1) blocked = `Item code ${c} is used by ${codeCount.get(c)} NPD products — fix it on NPD Tracker V7`;
       else if (ctx.npdRegistered.has(r.id)) blocked = 'Already on Standard Cost';
       else if (ctx.onSheet.has(c)) blocked = `${c} is already on Standard Cost`;
       else if (ctx.inEasyEcom.has(c)) blocked = `${c} is already in EasyEcom — add it From Product Master`;
       return { ...r, code: CODE_RE.test(c) ? c : null, blocked };
     })
-    .sort((a, b) => Number(Boolean(a.blocked)) - Number(Boolean(b.blocked)) || (a.code ?? a.sku_code).localeCompare(b.code ?? b.sku_code));
+    .sort((a, b) => Number(Boolean(a.blocked)) - Number(Boolean(b.blocked)) || (a.code ?? a.item_code ?? '').localeCompare(b.code ?? b.item_code ?? ''));
 }
 
 /** One NPD product, re-read on the server when it is added (never trust the browser's copy). */
@@ -122,7 +123,7 @@ export async function loadNpdProduct(id: number): Promise<{ row: NpdProduct; dup
   const rows = await loadEligibleRows();
   const row = rows.find((r) => r.id === id);
   if (!row) return null;
-  const c = row.sku_code.toUpperCase();
-  const duplicates = rows.filter((r) => r.sku_code.toUpperCase() === c).length;
+  const c = (row.item_code ?? '').toUpperCase();
+  const duplicates = c ? rows.filter((r) => (r.item_code ?? '').toUpperCase() === c).length : 0;
   return { row, duplicates };
 }

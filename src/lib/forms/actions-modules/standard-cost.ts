@@ -647,9 +647,9 @@ export async function listNpdProducts(): Promise<{ ok: true; options: NpdOption[
 }
 
 /**
- * Add an NPD Tracker V7 product to Standard Cost under its NPD SKU code. The NPD row is re-read
- * here (never trusted from the browser); the registry keeps the NPD id, item code, category,
- * status and type as the record of where the product came from.
+ * Add an NPD Tracker V7 product to Standard Cost under its NPD ITEM CODE (upper-cased). The NPD row
+ * is re-read here (never trusted from the browser); the registry keeps the NPD id, SKU code (for
+ * PO Approval's SKU quantities), category, status and type as the record of where it came from.
  */
 export async function addNpdProduct(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
@@ -666,14 +666,15 @@ export async function addNpdProduct(formData: FormData): Promise<ActionResult> {
   }
   if (!found) return fail('That product is not on NPD Tracker V7 any more, or it is already launched.');
   const { row, duplicates } = found;
-  if (duplicates > 1) return fail(`SKU code ${row.sku_code} is used by ${duplicates} NPD products. Fix it on NPD Tracker V7 first.`);
+  if (!row.item_code) return fail('This NPD product has no item code yet. Add it on NPD Tracker V7 first.');
+  if (duplicates > 1) return fail(`Item code ${row.item_code} is used by ${duplicates} NPD products. Fix it on NPD Tracker V7 first.`);
 
   const supabase = await supa();
   const { data: code, error } = await supabase.rpc('sd_register_npd_product', {
-    p_code: row.sku_code,
-    p_name: row.product_name ?? row.sku_code,
-    p_npd_id: row.id,
     p_item_code: row.item_code,
+    p_sku_code: row.sku_code,
+    p_name: row.product_name ?? row.item_code,
+    p_npd_id: row.id,
     p_category: row.category,
     p_status: row.status,
     p_type: row.product_type,
@@ -696,7 +697,7 @@ export async function addNpdProduct(formData: FormData): Promise<ActionResult> {
     null,
     'draft',
     user.email,
-    `Added from NPD Tracker V7: ${row.product_name ?? code}${row.item_code ? ` · item ${row.item_code}` : ''}${row.category ? ` · ${row.category}` : ''}`,
+    `Added from NPD Tracker V7: ${row.product_name ?? code}${row.sku_code ? ` · SKU ${row.sku_code}` : ''}${row.category ? ` · ${row.category}` : ''}`,
   );
   revalidatePath('/standard-cost');
   return { ok: true, message: `Added ${code} — “${row.product_name ?? code}” from NPD Tracker V7. Fill its cost next.` };

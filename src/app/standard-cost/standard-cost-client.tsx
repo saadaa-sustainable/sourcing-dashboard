@@ -593,7 +593,7 @@ export function StandardCostClient({
             </button>
             <button type="button" role="radio" aria-checked={addMode === 'npd'} className="sc-add-option" onClick={() => openNpd()}>
               <span className="sc-add-radio" aria-hidden="true" />
-              <span><b>From NPD Tracker V7</b><small>A new product not in EasyEcom yet, under its NPD SKU code</small></span>
+              <span><b>From NPD Tracker V7</b><small>A new product not in EasyEcom yet, under its NPD item code</small></span>
             </button>
           </div>
 
@@ -629,7 +629,7 @@ export function StandardCostClient({
                 className="wf-search"
                 autoFocus
                 value={npdQuery}
-                placeholder="Search SKU code, name, item code or category…"
+                placeholder="Search item code, name, SKU code or category…"
                 aria-label="Search NPD Tracker V7"
                 autoComplete="off"
                 onChange={(e) => setNpdQuery(e.target.value)}
@@ -650,10 +650,10 @@ export function StandardCostClient({
                       onClick={() => setNpdPicked(o.id)}
                       title={o.blocked ?? undefined}
                     >
-                      <span className="mono">{o.code ?? (o.sku_code || '—')}</span>
+                      <span className="mono">{o.code ?? (o.item_code || 'No item code')}</span>
                       <b>{o.product_name ?? 'No name on NPD'}</b>
                       <small>
-                        {[o.category, o.product_type, o.status || 'No status', o.item_code, o.launch && `launch ${o.launch}`].filter(Boolean).join(' · ')}
+                        {[o.category, o.product_type, o.status || 'No status', o.sku_code && `SKU ${o.sku_code}`, o.launch && `launch ${o.launch}`].filter(Boolean).join(' · ')}
                       </small>
                       {o.blocked && <em className="sc-npd-why">{o.blocked}</em>}
                     </button>
@@ -662,8 +662,8 @@ export function StandardCostClient({
                 </div>
               )}
               <small>
-                Only products on NPD Tracker V7 that are not launched yet. The product code is its NPD SKU code; link it to
-                its EasyEcom product later from its cost page.
+                Only products on NPD Tracker V7 that are not launched yet. The product code is its NPD item code (the SKU
+                code is kept for PO Approval&rsquo;s SKU quantities); link it to its EasyEcom product later from its cost page.
               </small>
             </div>
           )}
