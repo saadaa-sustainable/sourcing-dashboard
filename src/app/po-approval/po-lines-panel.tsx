@@ -266,6 +266,19 @@ export function PoLinesPanel({
         </div>
       )}
 
+      {/* A product added from NPD Tracker V7: its colours come from the NPD SKU-code cell. */}
+      {ctx?.npd && (
+        <p className="pl-npd-note">
+          <b>Colours from NPD Tracker V7.</b> This product is not in EasyEcom yet, so its colour codes are read from its
+          NPD SKU code <span className="mono">{ctx.npd.skuText || '(blank)'}</span>
+          {ctx.npd.sizesFromNpd ? ' and its sizes from NPD' : ''}. Check them before saving
+          {ctx.npd.unread.length > 0 && (
+            <> — could not read <span className="mono">{ctx.npd.unread.join(', ')}</span> as a code</>
+          )}
+          . A code that is wrong can be fixed on NPD Tracker V7, or paste your own colours and quantities.
+        </p>
+      )}
+
       {editable && mode === 'matrix' && (
         <div className="table-scroll pl-matrix">
           {!ctx ? (
@@ -326,7 +339,9 @@ export function PoLinesPanel({
                 {!matrix.variants.length && (
                   <tr>
                     <td colSpan={matrix.sizes.length + 4} className="wf-empty-cell">
-                      No colours on record for {productCode ?? 'this product'} in the product master — use Paste instead.
+                      {ctx.npd
+                        ? `No colour code could be read from the NPD SKU code of ${productCode ?? 'this product'} — use Paste instead, or fix the SKU code on NPD Tracker V7.`
+                        : `No colours on record for ${productCode ?? 'this product'} in the product master — use Paste instead.`}
                     </td>
                   </tr>
                 )}

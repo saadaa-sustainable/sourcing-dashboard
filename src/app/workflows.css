@@ -2858,3 +2858,6 @@ tr.iw-picked > td { background: #fffbea; }
 .sc-add .sc-npd-list > .sc-npd-row { flex: 0 0 auto !important; }
 .sc-add .sc-npd-list { overflow-x: hidden; }
 .sc-add .sc-npd-row { grid-template-columns: 132px minmax(0, 1fr); box-sizing: border-box; max-width: 100%; }
+/* PO SKU grid: the note shown when a product's colours come from NPD Tracker V7. */
+.pl-npd-note { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #b9cdea; border-radius: 8px; background: #eaf1fb; color: #1d3f6e; font-size: 12.5px; line-height: 1.45; }
+.pl-npd-note .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: #fff; border: 1px solid #d2dff0; border-radius: 4px; padding: 0 4px; }

@@ -127,3 +127,20 @@ export async function loadNpdProduct(id: number): Promise<{ row: NpdProduct; dup
   const duplicates = c ? rows.filter((r) => (r.item_code ?? '').toUpperCase() === c).length : 0;
   return { row, duplicates };
 }
+
+/**
+ * What PO Approval's SKU grid needs from NPD for a product added from the tracker: its SKU-code
+ * cell (colour codes), sizes and colour names. Read live so a fix made on the tracker shows up.
+ * Null when NPD is not connected or the row is gone.
+ */
+export async function loadNpdSkuSource(
+  npdId: number,
+): Promise<{ sku_code: string | null; sizes: string | null; colors_by_code: string | null } | null> {
+  try {
+    const db = npdClient();
+    const { data } = await db.from('products').select('sku_code, sizes, colors_by_code').eq('id', npdId).maybeSingle();
+    return (data as { sku_code: string | null; sizes: string | null; colors_by_code: string | null } | null) ?? null;
+  } catch {
+    return null;
+  }
+}
