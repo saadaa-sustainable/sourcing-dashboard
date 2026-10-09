@@ -1337,6 +1337,7 @@ export function CostDetail({
   marginPct,
   extraFabrics = [],
   documents,
+  trimHistory,
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
@@ -1353,8 +1354,10 @@ export function CostDetail({
   extraFabrics?: StandardCostExtraFabric[];
   /** The CAD plan library (product page only) — shown as the Documents tab. */
   documents?: React.ReactNode;
+  /** Trim History (product page only) — every trim value change, its own tab after Rate History. */
+  trimHistory?: React.ReactNode;
 }) {
-  const [view, setView] = useState<'cmtp' | 'fabric' | 'documents' | 'final' | 'history'>('cmtp');
+  const [view, setView] = useState<'cmtp' | 'fabric' | 'documents' | 'final' | 'history' | 'trims'>('cmtp');
   // Default the fabric from Product Master when the sheet hasn't set one and the
   // product maps to a single fabric; multi-fabric products stay blank for manual pick.
   const autoFabric = masterFabric && !masterFabric.multi ? masterFabric.fabricCode ?? '' : '';
@@ -1534,6 +1537,9 @@ export function CostDetail({
           <button type="button" className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>
             Rate History{history.length > 0 ? ` (${history.length})` : ''}
           </button>
+          {trimHistory && (
+            <button type="button" className={view === 'trims' ? 'active' : ''} onClick={() => setView('trims')}>Trim History</button>
+          )}
         </div>
         <span className="wf-subtle wf-two-entity-note">
           Final = Fabric + CMTP (computed). Two owners: Fabric — the Fabric Cost master · CMTP — the costing team.
@@ -1778,6 +1784,8 @@ export function CostDetail({
             </div>
           )}
         </div>
+      ) : view === 'trims' && trimHistory ? (
+        trimHistory
       ) : (
         <RateHistoryPanel history={history} revisions={revisions} />
       )}

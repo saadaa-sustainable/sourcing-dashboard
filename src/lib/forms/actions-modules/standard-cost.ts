@@ -383,6 +383,24 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
     );
   }
 
+  // Trim History — every change to a trim line (Product / Brand Trims, any "trim" head), the
+  // first entry too, kept apart from the general CMTP revision log (best-effort).
+  const trimChanges = changes.filter((c) => /trim/i.test(c.category));
+  if (trimChanges.length) {
+    await supabase.from('sd_trim_history' as never).insert(
+      trimChanges.map((c) => ({
+        product_code,
+        trim_head: c.category,
+        item: c.label,
+        old_amount: c.old,
+        new_amount: c.next,
+        change_kind: c.old == null ? 'added' : c.next == null ? 'removed' : 'changed',
+        reason: reason || (existingFilled.length ? null : 'First entry'),
+        changed_by: user.email,
+      })) as never,
+    );
+  }
+
   // CMTP total is the CM cost. Saving is documenting — clears the data-gap flag.
   const { error: upErr } = await supabase.from('sd_standard_cost').upsert(
     {

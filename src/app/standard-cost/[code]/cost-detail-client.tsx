@@ -1,6 +1,8 @@
 'use client';
 
 import { CostDocumentsSection } from './cost-documents-section';
+import { TrimHistoryPanel, type TrimSpread } from './trim-history-panel';
+import type { TrimChange } from '@/lib/forms/queries-modules/trim-history';
 import type { CostDocument } from '@/lib/cost-documents';
 import { confirmDelete } from '@/lib/confirm';
 import { useState, useTransition } from 'react';
@@ -71,6 +73,7 @@ export function StandardCostDetailClient({
   track = 'fg',
   extraFabrics = [],
   costDocs,
+  trims,
   userEmail = '',
 }: {
   cost: StandardCost;
@@ -95,6 +98,8 @@ export function StandardCostDetailClient({
   track?: 'fg' | 'material';
   /** CAD plan library rows (FG only) — the Documents tab; null hides the tab. */
   costDocs?: { ready: boolean; linksReady: boolean; docs: CostDocument[] } | null;
+  /** Trim History (FG only): this product's trim changes + each trim's spread across products. */
+  trims?: { ready: boolean; changes: TrimChange[]; spread: Record<string, TrimSpread> } | null;
   userEmail?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -249,6 +254,7 @@ export function StandardCostDetailClient({
               />
             ) : undefined
           }
+          trimHistory={trims ? <TrimHistoryPanel ready={trims.ready} changes={trims.changes} spread={trims.spread} /> : undefined}
         />
         )}
       </section>

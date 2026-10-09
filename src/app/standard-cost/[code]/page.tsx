@@ -19,6 +19,7 @@ import {
 } from '@/lib/forms/queries';
 import { StandardCostDetailClient } from './cost-detail-client';
 import { loadCostDocuments } from '@/lib/forms/queries-modules/cost-documents';
+import { loadTrimHistory } from '@/lib/forms/queries-modules/trim-history';
 import type { StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 import { loadProductFabricMap } from '@/lib/product-fabric.server';
@@ -117,6 +118,26 @@ export default async function StandardCostDetailPage({
         ]);
   // CAD plan library (Finished Goods only) — the Documents tab.
   const costDocs = track === 'material' ? { ready: false, linksReady: false, docs: [] } : await loadCostDocuments(cost.product_code);
+  // Trim History (Finished Goods only): this product's trim changes, and each trim's spread
+  // across every costed product's CMTP lines (trims are the most variable cost line).
+  const trimChanges = track === 'material' ? { ready: false, changes: [] } : await loadTrimHistory(cost.product_code);
+  const trimValues = new Map<string, number[]>();
+  if (track !== 'material') {
+    for (const c of cmtp) {
+      if (!/trim/i.test(c.category) || c.amount == null) continue;
+      const k = `${c.category} :: ${c.label ?? ''}`;
+      const list = trimValues.get(k) ?? [];
+      list.push(Number(c.amount));
+      trimValues.set(k, list);
+    }
+  }
+  const trimSpread = Object.fromEntries(
+    Array.from(trimValues, ([k, vs]) => {
+      const s = [...vs].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return [k, { min: s[0], max: s[s.length - 1], median: s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2, products: s.length }];
+    }),
+  );
 
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -176,6 +197,7 @@ export default async function StandardCostDetailPage({
         track={track}
         // Documents tab between Fabric Cost and Final Cost (FG only).
         costDocs={track !== 'material' ? costDocs : null}
+        trims={track !== 'material' ? { ...trimChanges, spread: trimSpread } : null}
         userEmail={user.email}
       />
     </FormLayout>
