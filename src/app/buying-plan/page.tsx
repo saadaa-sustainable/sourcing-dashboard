@@ -24,6 +24,8 @@ import { NpdBudgetCard } from './npd-budget-card';
 import { type PlanType } from './plan-type-tabs';
 import { PlanHeader, planFacts, type PlanMonthStatus } from './plan-header';
 import { MonthBoard } from '@/components/month-board';
+import { VariationReportPanel } from '@/components/variation-report';
+import { buyingPlanVariation, materialPlanVariation } from '@/lib/forms/queries-modules/variation-reports';
 
 export const dynamic = 'force-dynamic';
 
@@ -148,13 +150,20 @@ async function FgTrack({ planMonth, role, startInInput, planMonths }: { planMont
   const pickerItems = restrictToStandardCost ? await loadStandardCostProductOptions() : catalog;
   // First admin decision on the plan — the approval deadline measures this, not approval alone.
   const firstActionAt = plan?.id ? await loadPlanFirstActionAt(plan.id) : null;
+  // A month that is over opens with its Variation Report: approved plan vs POs issued.
+  const variation = isPlanFrozen(planMonth) ? await buyingPlanVariation(planMonth) : null;
   return (
     <BuyingPlanClient
       planMonth={planMonth}
       planMonths={planMonths}
       // NPD budget shows only when a cap exists (the "not set" banner was dropped, 2026-10-08);
       // on a month that is over it is read-only. It sits under the header.
-      afterHeader={npdBudget.cap != null ? <NpdBudgetCard budget={npdBudget} role={isPlanFrozen(planMonth) ? 'viewer' : role} /> : null}
+      afterHeader={
+        <>
+          {variation && <VariationReportPanel report={variation} />}
+          {npdBudget.cap != null ? <NpdBudgetCard budget={npdBudget} role={isPlanFrozen(planMonth) ? 'viewer' : role} /> : null}
+        </>
+      }
       startInInput={startInInput}
       plan={plan}
       lines={lines}
@@ -176,6 +185,7 @@ async function FgTrack({ planMonth, role, startInInput, planMonths }: { planMont
 
 async function MaterialTrack({ planMonth, role, startInInput, planMonths }: { planMonth: string; role: 'viewer' | 'team' | 'admin'; startInInput: boolean; planMonths: PlanMonthStatus[] }) {
   const { plan, lines, materialCodes, colours, materialCosts } = await loadMaterialPlan(planMonth);
+  const variation = isPlanFrozen(planMonth) ? materialPlanVariation(planMonth, lines) : null;
   return (
     <MaterialPlanClient
       planMonth={planMonth}
@@ -187,6 +197,7 @@ async function MaterialTrack({ planMonth, role, startInInput, planMonths }: { pl
       colours={colours}
       materialCosts={materialCosts}
       role={role}
+      afterHeader={variation ? <VariationReportPanel report={variation} /> : null}
     />
   );
 }

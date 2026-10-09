@@ -13,7 +13,9 @@ import {
   loadDeboardedVendors,
   NotConfiguredError,
 } from '@/lib/forms/queries';
-import { capacityRulesFrom, eeVendorActive } from '@/lib/business-logic';
+import { capacityRulesFrom, eeVendorActive, vendorCapacityModel } from '@/lib/business-logic';
+import { vendorCapacityVariation } from '@/lib/forms/queries-modules/variation-reports';
+import { VariationReportPanel } from '@/components/variation-report';
 import { capacityWeekStart } from '@/lib/forms/approval';
 import { VendorCapacityClient } from './vendor-capacity-client';
 import { MonthBoard } from '@/components/month-board';
@@ -125,6 +127,7 @@ export default async function VendorCapacityPage({
       : null;
   let asOf: { week: string; label: string; inProcessKept: boolean } | null = null;
   let shown = vendors;
+  let variation: ReturnType<typeof vendorCapacityVariation> | null = null;
   if (week && week < capacityWeekStart()) {
     const [snap, inProcessThen] = await Promise.all([loadVendorCapacityAsOfWeek(week), loadInProcessForWeek(week)]);
     shown = vendors.map((v) => {
@@ -141,6 +144,18 @@ export default async function VendorCapacityPage({
     const day = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
     const end = new Date(Date.parse(`${week}T00:00:00Z`) + 6 * 86_400_000).toISOString().slice(0, 10);
     asOf = { week, label: `Mon ${day(week)} – Sun ${day(end)}`, inProcessKept: inProcessThen != null };
+    // A closed week opens with its Variation Report: PO capacity vs quantity on order.
+    const capRules = capacityRulesFrom(rules);
+    variation = vendorCapacityVariation(
+      asOf,
+      shown.map((v) => {
+        const m = vendorCapacityModel(
+          { machines: v.current?.machines_allocated ?? null, karigar: v.current?.active_karigar ?? null, vendorType: v.vendor_type, inProcessQty: v.inProcessQty },
+          capRules,
+        );
+        return { code: v.vendor_code, name: v.vendor_name, type: v.vendor_type || null, poCapacity: m.entered ? m.poCapacity : null, onOrder: Number(v.inProcessQty) || 0 };
+      }),
+    );
   }
 
   // Week header: statuses and the list of weeks come from the board itself, so the header and
@@ -163,6 +178,7 @@ export default async function VendorCapacityPage({
       allowedPages={user.allowed_pages ?? null}
     >
       <WeekHeader weeks={headerWeeks} shown={asOf?.week ?? curWeek} current={curWeek} />
+      {variation && <VariationReportPanel report={variation} />}
       <VendorCapacityClient
         vendors={shown}
         asOf={asOf}

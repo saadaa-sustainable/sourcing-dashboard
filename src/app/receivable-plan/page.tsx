@@ -10,7 +10,9 @@ import {
   loadReceivablePlan,
   NotConfiguredError,
 } from '@/lib/forms/queries';
-import { canEdit, weekStart } from '@/lib/forms/approval';
+import { canEdit, monthStart, weekStart } from '@/lib/forms/approval';
+import { inwardPlanVariation } from '@/lib/forms/queries-modules/variation-reports';
+import { VariationReportPanel } from '@/components/variation-report';
 import { ReceivablePlanClient } from './receivable-plan-client';
 import { MonthBoard } from '@/components/month-board';
 
@@ -88,6 +90,8 @@ export default async function ReceivablePlanPage({
   ]);
   const week = weekRange();
   const initialMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '') ? (params.month as string) : null;
+  // A month that is over opens with its Variation Report: approved inward qty vs GRN received.
+  const variation = !isInput && initialMonth && initialMonth < monthStart() ? inwardPlanVariation(initialMonth, sheet) : null;
 
   return (
     <FormLayout
@@ -103,6 +107,7 @@ export default async function ReceivablePlanPage({
       allowedPages={user.allowed_pages ?? null}
     >
       <Link className="mb-back" href="/receivable-plan">← All months</Link>
+      {variation && <VariationReportPanel report={variation} />}
       <ReceivablePlanClient
         rows={rows}
         arrivals={arrivals.rows}

@@ -121,6 +121,7 @@ export function MaterialPlanClient({
   role,
   startInInput = false,
   planMonths = [],
+  afterHeader = null,
 }: {
   planMonth: string;
   /** Every month's status on both tracks, for the header's month picker and tab dots. */
@@ -133,6 +134,8 @@ export function MaterialPlanClient({
   role: SdRole;
   /** Open on the Input view (and scroll to it) - set by ?mode=input. */
   startInInput?: boolean;
+  /** Under the header: the Variation Report on a month that is over. */
+  afterHeader?: React.ReactNode;
 }) {
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
@@ -565,6 +568,7 @@ export function MaterialPlanClient({
           ) : null
         }
       />
+      {afterHeader}
 
       {!isPlanWindowOpen(planMonth) && (
         <Notice tone="warn">

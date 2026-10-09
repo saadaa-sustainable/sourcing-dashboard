@@ -20,7 +20,9 @@ import {
 import { StandardCostDetailClient } from './cost-detail-client';
 import { loadCostDocuments } from '@/lib/forms/queries-modules/cost-documents';
 import { loadTrimHistory } from '@/lib/forms/queries-modules/trim-history';
-import type { StandardCostRateHistory } from '@/lib/forms/types';
+import { standardCostVariation } from '@/lib/forms/queries-modules/variation-reports';
+import { VariationReportPanel } from '@/components/variation-report';
+import type { StandardCost, StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 import { loadProductFabricMap } from '@/lib/product-fabric.server';
 import { loadTempProductMap } from '@/lib/temp-product.server';
@@ -139,6 +141,10 @@ export default async function StandardCostDetailPage({
     }),
   );
 
+  // A frozen cost (a PO was issued against it) opens with its Variation Report: standard rate
+  // vs the PO line prices (Finished Goods; material costs are never frozen).
+  const variation = track !== 'material' && cost.frozen ? await standardCostVariation(cost as StandardCost) : null;
+
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
   const fabricCodes: string[] = [];
@@ -168,6 +174,7 @@ export default async function StandardCostDetailPage({
       allowedPages={user.allowed_pages ?? null}
       accent="purple"
     >
+      {variation && <VariationReportPanel report={variation} />}
       <StandardCostDetailClient
         cost={cost}
         productName={productName}

@@ -2753,3 +2753,34 @@ tr.iw-picked > td { background: #fffbea; }
 .bp-line-decision.iw-amend { white-space: normal; min-width: 520px; }
 .ip-card .bp-line-decision.iw-amend { min-width: 0; }
 .iw-addline { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; }
+
+/* ---- Variation Report (closed documents: Buying Plan, Standard Cost, Vendor Capacity, Inward Plan) ---- */
+.vr { background: #fff; border: 1px solid var(--line, #e6e1d3); border-left: 4px solid var(--purple, #f0c61e); border-radius: 12px; padding: 16px 18px; margin: 0 0 18px; display: flex; flex-direction: column; gap: 12px; }
+.vr-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.vr-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.vr-title h2 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink-1, #161513); }
+.vr-closed { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: #efeee9; color: var(--ink-2, #3d3a33); align-self: center; }
+.vr-period { font-size: 12.5px; color: var(--ink-3, #6e695e); }
+.vr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.vr-tile { border: 1px solid var(--line, #e6e1d3); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: #fcfbf8; }
+.vr-tile-label { font-size: 11.5px; font-weight: 600; color: var(--ink-3, #6e695e); text-transform: uppercase; letter-spacing: .03em; }
+.vr-tile-pair { display: flex; gap: 16px; }
+.vr-tile-pair span { display: flex; flex-direction: column; }
+.vr-tile-pair small { font-size: 11px; color: var(--ink-4, #9a9384); }
+.vr-tile-pair b { font-size: 17px; font-variant-numeric: tabular-nums; color: var(--ink-1, #161513); }
+.vr-tile-var { font-size: 12.5px; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.vr-tile-var em { font-style: normal; color: var(--ink-3, #6e695e); }
+.vr-status { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: #efeee9; color: var(--ink-2, #3d3a33); white-space: nowrap; }
+.vr-status.is-ok, .vr-tile.is-ok .vr-status { background: #e3f4e8; color: #1e6b3a; }
+.vr-status.is-over, .vr-tile.is-over .vr-status { background: #fde8e4; color: #a3301c; }
+.vr-status.is-short, .vr-tile.is-short .vr-status { background: #fff1d6; color: #8a5a00; }
+.vr-missing { margin: 0; padding: 8px 12px; border-radius: 8px; background: #fff6e0; color: #7a5200; font-size: 12.5px; }
+.vr-basis { margin: 0; padding-left: 18px; font-size: 12px; color: var(--ink-3, #6e695e); display: flex; flex-direction: column; gap: 2px; }
+.vr-section { border-top: 1px solid var(--line, #e6e1d3); padding-top: 10px; }
+.vr-section > summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--ink-1, #161513); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.vr-count { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: #efeee9; color: var(--ink-3, #6e695e); }
+.vr-table td { vertical-align: top; }
+.vr-row-name { display: block; font-weight: 500; }
+.vr-row-sub { display: block; font-size: 11.5px; color: var(--ink-3, #6e695e); }
+.vr-more { margin-top: 8px; }
+@media (max-width: 640px) { .vr { padding: 12px; } .vr-tile-pair b { font-size: 15px; } }
