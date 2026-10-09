@@ -70,6 +70,7 @@ import {
 import { downloadCsv, downloadPdf, type CsvValue } from "@/lib/download";
 import { MATRIX_DEFAULT_MODE } from "@/lib/matrix-defaults";
 import { FilterTable } from "@/components/filter-table";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { VendorHistoryButton } from "@/components/vendor-history-modal";
 import type {
   DashboardData,
@@ -1061,7 +1062,8 @@ function DashboardTab({
   const maxVariantOpen = Math.max(1, ...variants.map((v) => v.openCount));
   return (
     <>
-      <div className="segment">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+      <div className="segment" style={{ marginBottom: 0 }}>
         <button
           className={bucket === "All" ? "active" : ""}
           onClick={() => setBucket("All")}
@@ -1086,6 +1088,9 @@ function DashboardTab({
         >
           Other
         </button>
+      </div>
+      {/* Clear all filters: the vendor-type filter back to All. */}
+      <ClearFiltersButton active={bucket !== "All"} onClear={() => setBucket("All")} />
       </div>
       {section === "objectives" ? (
         <>
@@ -1991,6 +1996,26 @@ function TrackerTab({
   const rows = activeTab ? preStatus.filter(activeTab.test) : preStatus;
   const missingTnaCount = all.filter((r) => r.tnaMissing).length;
   const paged = usePaged(rows);
+  // Clear all filters: search, every select (incl. More filters), the status tab and
+  // Missing TNA. A vendor code seeded from a vendor-chart click is cleared to All too.
+  const filtersActive =
+    Object.values(filters).some((v) => Boolean(v)) || missingOnly;
+  const clearFilters = () => {
+    set({
+      vendor: "",
+      vendorCode: "",
+      vendorType: "",
+      type: "",
+      product: "",
+      merchant: "",
+      bucket: "",
+      status: "",
+      search: "",
+      easycom: "",
+    });
+    setMissingOnly(false);
+    paged.setPage(0);
+  };
 
   // Measure each header cell's left offset so frozen columns stack correctly,
   // whatever their (content-driven) widths are. Re-measured on page/data/resize.
@@ -2108,6 +2133,7 @@ function TrackerTab({
             <span className="tracker-more-count">{moreFilterCount}</span>
           )}
         </button>
+        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         <div
           id="tracker-more-filters"
           className="tracker-more-filters"
@@ -2444,6 +2470,16 @@ function VendorTable({
     .filter(Boolean)
     .join(", ");
   const paged = usePaged(rows);
+  // Clear all filters: search, merchant, type, utilisation and delay back to All, page 1.
+  const filtersActive = query !== "" || merchant !== "" || bucket !== "" || utilBand !== "" || delayBand !== "";
+  const clearFilters = () => {
+    setQuery("");
+    setMerchant("");
+    setBucket("");
+    setUtilBand("");
+    setDelayBand("");
+    paged.setPage(0);
+  };
   return (
     <>
       {filename && (
@@ -2511,6 +2547,7 @@ function VendorTable({
                 </select>
               </>
             )}
+            <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
           </div>
           <div className="table-meta-actions">
             <span>
@@ -3466,6 +3503,12 @@ function ProductTab({ hub = null, initialView, data }: {
           options={allVariants}
           onChange={(v) => set({ ...filters, variant: v })}
         />
+        <ClearFiltersButton
+          active={Object.values(filters).some((v) => Boolean(v))}
+          onClear={() =>
+            set({ merchant: "", vendor: "", vendorCode: "", type: "", variant: "", product: "", search: "" })
+          }
+        />
       </div>
       <div className="metric-grid compact">
         <Card
@@ -3839,6 +3882,14 @@ function MatrixTab({ data }: { data: DashboardData }) {
   const allVendorNames = unique(tracker.map((r) => r.vendorName));
   const allVendorCodes = unique(tracker.map((r) => r.vendorCode));
   const pagedRowNames = usePaged(rowNames);
+  // Clear all filters: search, product, vendor, vendor code and the hide-empty toggle back
+  // to their defaults, page 1 (the By Variant / By Product Code switch is a view, kept).
+  const filtersActive = Object.values(filters).some((v) => Boolean(v)) || !hideEmptyVendors;
+  const clearFilters = () => {
+    set({ product: "", vendor: "", vendorCode: "", search: "" });
+    setHideEmptyVendors(true);
+    pagedRowNames.setPage(0);
+  };
   return (
     <>
       <div className="segment">
@@ -3890,6 +3941,7 @@ function MatrixTab({ data }: { data: DashboardData }) {
           />
           Hide empty vendor columns
         </label>
+        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
       </div>
       <section className="panel table-panel">
         <div className="table-meta">

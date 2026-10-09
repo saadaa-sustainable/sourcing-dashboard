@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import type { MonthBoardCard, MonthBoardColumn, MonthBoardData } from '@/lib/month-board';
 import { MonthOverview } from './month-overview';
+import { ClearFiltersButton } from './clear-filters-button';
 
 type View = 'kanban' | 'cards' | 'list';
 
@@ -28,6 +29,12 @@ export function MonthBoard({
   const [filter, setFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'new' | 'old'>('new');
+  // Clear all filters: the search and the status pill (sort and layout are kept).
+  const filtersActive = query !== '' || filter !== 'all';
+  const clearFilters = () => {
+    setQuery('');
+    setFilter('all');
+  };
   // The open month overview, kept in the URL (?open=<card id>) so a link reopens it.
   const [openId, setOpenId] = useState<string | null>(null);
   useEffect(() => {
@@ -111,6 +118,7 @@ export function MonthBoard({
             </button>
           ))}
         </div>
+        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
       </div>
       <p className="mb-showing">
         Showing <b>{shown.length}</b> of {data.cards.length} {data.unit}

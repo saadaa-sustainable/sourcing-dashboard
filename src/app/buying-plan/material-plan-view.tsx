@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { PlanLineViews, approvalColumn, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import { InfoDot } from '@/components/info-dot';
 import { addMonths, statusText } from '@/lib/forms/approval';
@@ -377,12 +378,11 @@ export function MaterialPlanView({
               </select>
               <span className="bp-toolbar-count">
                 {rows.length} of {planned.length} shown
-                {hasFilters && (
-                  <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setSearch(''); setTypeF(''); setRouteF(''); }}>
-                    Clear
-                  </button>
-                )}
               </span>
+              <ClearFiltersButton
+                active={hasFilters}
+                onClear={() => { setSearch(''); setTypeF(''); setRouteF(''); }}
+              />
             </div>
           </div>
         </div>

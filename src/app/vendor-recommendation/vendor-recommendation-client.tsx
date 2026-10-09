@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { HeaderInfo } from '@/components/header-info';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
@@ -98,6 +99,13 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
   const [showThin, setShowThin] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [minPos, setMinPos] = useState(MIN_POS);
+  // Clear all filters: search, Min POs and Show thin data back to their defaults (sort is kept).
+  const filtersActive = q !== '' || minPos !== MIN_POS || showThin;
+  const clearFilters = () => {
+    setQ('');
+    setMinPos(MIN_POS);
+    setShowThin(false);
+  };
 
   const scored = useMemo(() => rows.map(scoreOf), [rows]);
   const filtered = useMemo(() => {
@@ -166,6 +174,7 @@ export function VendorRecommendationClient({ rows }: { rows: VendorRecommendatio
           <input type="checkbox" checked={showThin} onChange={(e) => setShowThin(e.target.checked)} />
           Show thin data ({thin.length})
         </label>
+        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
       </div>
 
       <div className="table-panel wf-grid-panel">

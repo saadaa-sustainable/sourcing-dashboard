@@ -23,6 +23,7 @@ import {
 import { requestPlanAmendment, saveAnalyticsRule, saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import {
   addMonths,
   canApprove,
@@ -1011,12 +1012,8 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
       )}
       <span className="bp-toolbar-count">
         {shownCount} of {totalCount} shown
-        {hasFilters && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={clearFilters}>
-            Clear
-          </button>
-        )}
       </span>
+      <ClearFiltersButton active={hasFilters || inputSearch !== ''} onClear={clearFilters} />
       <div
         id="buying-plan-more-filters"
         className="bp-more-filters"

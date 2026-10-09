@@ -14,6 +14,7 @@ import { canEdit } from '@/lib/forms/approval';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import {
   DEFAULT_CAPACITY_RULES,
@@ -277,6 +278,15 @@ function EntryTab({
   const [vType, setVType] = useState('');
   const [product, setProduct] = useState('');
   const [filter, setFilter] = useState<EntryFilter>('all');
+  // Clear all filters: search (even one opened from a vendor link), every chip and the status tab.
+  const filtersActive = search !== '' || merchant !== '' || vType !== '' || product !== '' || filter !== 'all';
+  const clearFilters = () => {
+    setSearch('');
+    setMerchant('');
+    setVType('');
+    setProduct('');
+    setFilter('all');
+  };
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -522,6 +532,7 @@ function EntryTab({
           )}
           <span className="vc2-count">{filtered.length} of {decorated.length} vendors</span>
           <button type="button" className="vc2-btn" onClick={exportRows}><Download size={14} /> Export</button>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
         <div className="table-scroll">
           <table className="vc2-table">
@@ -675,6 +686,15 @@ function LiveEntryTab({
   const [vType, setVType] = useState('');
   // Third filter alongside merchandiser and type: which vendors are committed to a product.
   const [product, setProduct] = useState('');
+  // Clear all filters: search (even one opened from a vendor link), every select and Stale only.
+  const filtersActive = search !== '' || staleOnly || merchant !== '' || vType !== '' || product !== '';
+  const clearFilters = () => {
+    setSearch('');
+    setStaleOnly(false);
+    setMerchant('');
+    setVType('');
+    setProduct('');
+  };
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     // Client-only "now", set once after mount so the server render never disagrees
@@ -865,6 +885,7 @@ function LiveEntryTab({
             />
             Stale only ({staleCount})
           </label>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
         <div className="wf-toolbar-right">
           <span className="vc-result-count">{filtered.length} of {decorated.length} shown</span>

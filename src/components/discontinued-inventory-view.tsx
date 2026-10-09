@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { HeaderInfo } from '@/components/header-info';
 import {
   Bar,
@@ -74,6 +75,15 @@ export function DiscontinuedInventoryView({
   const [color, setColor] = useState('');
   const [bucket, setBucket] = useState('');
   const [action, setAction] = useState('');
+  // Clear all filters: search and every select (the action chips share the action filter).
+  const filtersActive = search !== '' || category !== '' || color !== '' || bucket !== '' || action !== '';
+  const clearFilters = () => {
+    setSearch('');
+    setCategory('');
+    setColor('');
+    setBucket('');
+    setAction('');
+  };
 
   const categories = useMemo(() => uniq(rollups.map((r) => r.category)), [rollups]);
   const colors = useMemo(() => uniq(rollups.map((r) => r.color)), [rollups]);
@@ -290,6 +300,7 @@ export function DiscontinuedInventoryView({
         <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!shown.length}>
           <Download size={14} /> CSV
         </button>
+        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
       </div>
 
       {actionCounts.length > 0 && (

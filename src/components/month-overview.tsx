@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Download, Search, X } from 'lucide-react';
 import type { MonthBoardCard, MonthBoardColumn, MonthDetailSection } from '@/lib/month-board';
 import { downloadOverviewCsv, downloadOverviewPdf } from '@/lib/month-overview-export';
+import { ClearFiltersButton } from './clear-filters-button';
 
 /**
  * A month's overview, opened from its board card: status and headline ring, key facts as tiles,
@@ -217,6 +218,12 @@ function Section({ s }: { s: MonthDetailSection }) {
 function TableSection({ s }: { s: Extract<MonthDetailSection, { kind: 'table' }> }) {
   const [q, setQ] = useState('');
   const [tone, setTone] = useState<string>('all');
+  // Clear all filters: the search and the tone pill.
+  const filtersActive = q !== '' || tone !== 'all';
+  const clearFilters = () => {
+    setQ('');
+    setTone('all');
+  };
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
     return s.rows.filter((r) => (tone === 'all' || r.tone === tone) && (!t || r.cells.join(' ').toLowerCase().includes(t)));
@@ -245,6 +252,7 @@ function TableSection({ s }: { s: Extract<MonthDetailSection, { kind: 'table' }>
               ))}
             </div>
           )}
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
       )}
       <div className="mo-tablewrap">

@@ -56,6 +56,7 @@ import { targetFields } from '@/components/forms/target-inputs';
 import { canEdit } from '@/lib/forms/approval';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import type {
   CmtpComponent,
   CostStandards,
@@ -196,6 +197,13 @@ export function StandardCostClient({
     () => costs.filter((c) => myTurn(c.neg_stage)).length,
     [costs, myTurn],
   );
+  // "Clear all filters": search, status and the Needs-approval quick filter back to All.
+  const filtersActive = filter !== '' || stageFilter !== 'all' || mineOnly;
+  const clearFilters = () => {
+    setFilter('');
+    setStageFilter('all');
+    setMineOnly(false);
+  };
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -669,6 +677,7 @@ export function StandardCostClient({
         </div>
         {viewSwitch}
         <span className="wf-subtle">{shown.length} shown</span>
+        <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         {editable && (
           <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}>
             <Plus size={14} /> Add Material to Input Standard Cost
@@ -731,6 +740,7 @@ export function StandardCostClient({
                 <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
               </div>
               {viewSwitch}
+              <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
             </div>
             {role === 'admin' && mineOnly && (
               <ListBulkDecide items={shown} track={isMat ? 'material' : 'fg'} picked={picked} setPicked={setPicked} pickable={pickable} />
