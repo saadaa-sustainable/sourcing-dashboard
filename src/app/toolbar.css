@@ -208,3 +208,9 @@
   padding-left: 4px !important;
   max-width: 220px;
 }
+
+/* Wrapping order: when the two groups don't fit on one line, the RIGHT group drops below as a
+   whole first; the filters only wrap among themselves when they alone are wider than the bar.
+   (flex-basis max-content = each group asks for its full one-line width.) */
+.tb-find { flex: 1 1 max-content; }
+.tb-see { flex: 0 1 max-content; justify-content: flex-end; }
