@@ -2856,3 +2856,5 @@ tr.iw-picked > td { background: #fffbea; }
 .sc-npd-list { gap: 8px; }
 /* …and never shrink to fit the list's max height: the list scrolls instead. */
 .sc-add .sc-npd-list > .sc-npd-row { flex: 0 0 auto !important; }
+.sc-add .sc-npd-list { overflow-x: hidden; }
+.sc-add .sc-npd-row { grid-template-columns: 132px minmax(0, 1fr); box-sizing: border-box; max-width: 100%; }
