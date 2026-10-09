@@ -583,6 +583,19 @@ const DASH_GROUPS = [
 
 type DashGroup = (typeof DASH_GROUPS)[number][0];
 
+/** A titled row on the Open orders today tab (layout redesign, 2026-10-09): same charts, grouped. */
+function DashSection({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
+  return (
+    <section className="dash-sec dash-sec-orders">
+      <div className="dash-sec-head">
+        <h2>{title}</h2>
+        <p>{sub}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function DashboardTab({
   capacityRules = DEFAULT_CAPACITY_RULES,
   data,
@@ -1227,7 +1240,7 @@ function DashboardTab({
         </>
       ) : (
       <>
-      <div className="metric-grid dashboard-metrics">
+      <div className="metric-grid dashboard-metrics dashboard-kpis3">
         <Card
           label="Open POs"
           value={fmt.format(openRefs.length)}
@@ -1252,6 +1265,7 @@ function DashboardTab({
           info={"WHAT: the money committed on open POs — pending pieces × item price, shown per PO type.\n\nHOW: for every open line, pending quantity × the price on the PO, summed by type. Job Work lines are priced at the job-work (stitching) rate, not a full garment price, so the three types are shown side by side rather than added into one misleading total. Reversed or cancelled lines carry negative quantities and are netted off, not dropped.\n\nUSE: what is tied up with vendors right now. A rising FOB figure with flat arrivals means goods are being ordered faster than they land. Compare with the Buying Plan's approved value for the month."}
         />
       </div>
+      <DashSection title="Are deliveries keeping pace" sub="Due against delivered, week by week, and where every open PO sits in production.">
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
@@ -1352,6 +1366,8 @@ function DashboardTab({
           )}
         </section>
       </div>
+      </DashSection>
+      <DashSection title="How late is the book" sub="Open POs by days past their delivery date, and today&apos;s execution checkpoints.">
       <div className="bento-grid">
         <ChartCard
           title="PO ageing"
@@ -1428,7 +1444,9 @@ function DashboardTab({
           </div>
         </section>
       </div>
-      <div className="bento-grid">
+      </DashSection>
+      <DashSection title="Where the work slips" sub="Average days late at each TNA stage, and the product codes with the most delayed POs.">
+      <div className="bento-grid bento-even">
         <ChartCard
           title="Stage turnaround — avg days late"
           kicker="TNA discipline"
@@ -1504,6 +1522,8 @@ function DashboardTab({
           )}
         </ChartCard>
       </div>
+      </DashSection>
+      <DashSection title="Who and what it sits with" sub="Open and delayed POs by vendor, and the codes and variants with the most on order.">
       <div className="chart-grid">
         <ChartCard
           title="Vendor PO status and delay percentage"
@@ -1658,6 +1678,8 @@ function DashboardTab({
           )}
         </section>
       </div>
+      </DashSection>
+      <DashSection title="What lands when" sub="Pieces due by vendor and week, and the planned TNA path of the POs that need watching.">
       {/* EDD scatter last: a full-width, tall panel (not a half bento cell) so every
           vendor gets vertical room — labels never collide, date axis stays in view.
           Removing it from the top row let Expected-vs-actual + Production pipeline
@@ -1852,6 +1874,7 @@ function DashboardTab({
           <Empty text="No open PO has a TNA timeline to plot" />
         )}
       </ChartCard>
+      </DashSection>
       </>
       )}
     </>

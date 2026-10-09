@@ -2896,3 +2896,12 @@ tr.iw-picked > td { background: #fffbea; }
   .metric-grid.dashboard-metrics.dashboard-kpis, .ui-shopify .metric-grid.dashboard-metrics.dashboard-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ana-span3, .ana-span8, .dash-money-slot .ana-card { grid-column: span 12; }
 }
+
+/* ---- Main Dashboard · sub-tab layout (2026-10-09): titled rows, same cards ---- */
+.metric-grid.dashboard-metrics.dashboard-kpis3, .ui-shopify .metric-grid.dashboard-metrics.dashboard-kpis3 { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 4px; }
+.dash-sec > .bento-grid, .dash-sec > .chart-grid, .dash-sec > .chart-panel { margin-bottom: 0; }
+.dash-sec > .chart-panel + .chart-panel { margin-top: 12px; }
+@media (min-width: 1181px) { .bento-grid.bento-even { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .metric-grid.dashboard-metrics.dashboard-kpis3, .ui-shopify .metric-grid.dashboard-metrics.dashboard-kpis3 { grid-template-columns: 1fr; }
+}
