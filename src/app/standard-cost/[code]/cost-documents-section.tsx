@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { ExternalLink, Paperclip, Plus, Save, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { addCostDocument, addCostWidthLink, deleteCostDocument, saveCostLinks, signCostDocument, startCostDocumentUpload } from '@/lib/forms/actions';
+import { addCostDocument, addCostLink, deleteCostDocument, saveCostLinks, signCostDocument, startCostDocumentUpload } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
 import { confirmDelete } from '@/lib/confirm';
 import { reloadWithToast, toastError } from '@/lib/toast';
@@ -41,8 +41,8 @@ async function uploadFile(productCode: string, file: File): Promise<{ ok: true; 
 /**
  * Standard Cost → Documents tab (2026-10-09). Same layout as the CMTP tab (wf-cmtp-*): a
  * short intro, the RFP sheet in the summary bar, one card per CAD header with the entry count
- * as its pill. Single piece / standard ratio / 1:1 size ratio hold uploaded files; Full layer ·
- * single size per width holds one width + shared link per entry, as many widths as needed.
+ * as its pill. Every card takes files (several at once) and/or shared links; Full layer · single
+ * size per width also asks for the fabric width, as many widths as needed.
  * Changes only under Edit cost.
  */
 export function CostDocumentsSection({
@@ -117,11 +117,15 @@ export function CostDocumentsSection({
                   <span className="wf-cmtp-head-name" title={h.hint}>{h.title}</span>
                   <span className="wf-cmtp-sub wf-cell-calc">{entries.length || '—'}</span>
                 </div>
-                {h.kind === 'width_link' ? (
-                  <WidthLinkLines docs={entries} productCode={productCode} editable={editable} linksReady={linksReady} canRemove={canRemove} />
-                ) : (
-                  <SlotLines group={h.key} docs={entries} productCode={productCode} editable={editable} canRemove={canRemove} />
-                )}
+                <PlanLines
+                  group={h.key}
+                  byWidth={h.byWidth}
+                  docs={entries}
+                  productCode={productCode}
+                  editable={editable}
+                  linksReady={linksReady}
+                  canRemove={canRemove}
+                />
               </div>
             );
           })}
@@ -143,49 +147,26 @@ export function CostDocumentsSection({
   );
 }
 
-function SlotLines({
-  group,
-  docs,
-  productCode,
-  editable,
-  canRemove,
-}: {
-  group: CostDocGroup;
-  docs: CostDocument[];
-  productCode: string;
-  editable: boolean;
-  canRemove: (d: CostDocument) => boolean;
-}) {
-  const [adding, setAdding] = useState(false);
-  return (
-    <>
-      {docs.map((d) => (
-        <DocLine key={d.id} d={d} productCode={productCode} editable={editable && canRemove(d)} />
-      ))}
-      {!docs.length && <small className="wf-subtle">{editable ? 'No plan yet — add one below.' : 'No plan yet.'}</small>}
-      {editable && (
-        <div className="wf-cmtp-add">
-          {adding ? (
-            <AddPicker productCode={productCode} group={group} onCancel={() => setAdding(false)} />
-          ) : (
-            <button type="button" className="wf-chip-btn" onClick={() => setAdding(true)}>
-              <Plus size={12} /> Add plan
-            </button>
-          )}
-        </div>
-      )}
-    </>
-  );
+/** A link's host, shown as its name ("docs.google.com"). */
+function linkHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'Link';
+  }
 }
 
-/** Full layer · single size per width: one line per width, each opening its shared link. */
-function WidthLinkLines({
+function PlanLines({
+  group,
+  byWidth,
   docs,
   productCode,
   editable,
   linksReady,
   canRemove,
 }: {
+  group: CostDocGroup;
+  byWidth: boolean;
   docs: CostDocument[];
   productCode: string;
   editable: boolean;
@@ -193,23 +174,31 @@ function WidthLinkLines({
   canRemove: (d: CostDocument) => boolean;
 }) {
   const [adding, setAdding] = useState(false);
-  const sorted = [...docs].sort((a, b) => (parseFloat(a.width ?? '') || 0) - (parseFloat(b.width ?? '') || 0));
+  const sorted = byWidth ? [...docs].sort((a, b) => (parseFloat(a.width ?? '') || 0) - (parseFloat(b.width ?? '') || 0) || a.id - b.id) : docs;
+  const blocked = byWidth && !linksReady;
   return (
     <>
       {sorted.map((d) => (
         <DocLine key={d.id} d={d} productCode={productCode} editable={editable && canRemove(d)} />
       ))}
-      {!docs.length && <small className="wf-subtle">{editable ? 'No width yet — add one below.' : 'No width yet.'}</small>}
+      {!docs.length && <small className="wf-subtle">{editable ? 'No plan yet — add one below.' : 'No plan yet.'}</small>}
       {editable &&
-        (!linksReady ? (
+        (blocked ? (
           <small className="cd-err">Adding widths needs the database update 20261009130000_cost_document_width_links.sql.</small>
         ) : (
           <div className="wf-cmtp-add">
             {adding ? (
-              <WidthLinkPicker productCode={productCode} taken={docs.map((d) => d.width ?? '')} onCancel={() => setAdding(false)} />
+              <AddPicker
+                productCode={productCode}
+                group={group}
+                byWidth={byWidth}
+                linksReady={linksReady}
+                taken={docs.map((d) => d.width ?? '')}
+                onCancel={() => setAdding(false)}
+              />
             ) : (
               <button type="button" className="wf-chip-btn" onClick={() => setAdding(true)}>
-                <Plus size={12} /> Add width
+                <Plus size={12} /> {byWidth ? 'Add width' : 'Add plan'}
               </button>
             )}
           </div>
@@ -218,70 +207,11 @@ function WidthLinkLines({
   );
 }
 
-function WidthLinkPicker({ productCode, taken, onCancel }: { productCode: string; taken: string[]; onCancel: () => void }) {
-  const [width, setWidth] = useState('');
-  const [link, setLink] = useState('');
-  const [remark, setRemark] = useState('');
-  const [err, setErr] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const listId = `cd-widths-${productCode}`;
-
-  function go() {
-    setErr(null);
-    const w = width.trim();
-    if (!w) return setErr('Type or pick the fabric width.');
-    if (!LINK_RE.test(link.trim())) return setErr('Paste the full link, starting with https://');
-    const fd = new FormData();
-    fd.set('product_code', productCode);
-    fd.set('width', w);
-    fd.set('link_url', link.trim());
-    fd.set('remark', remark.trim());
-    start(async () => {
-      const r = await addCostWidthLink(fd);
-      if (r.ok) reloadWithToast(r.message ?? 'Added.');
-      else setErr(r.error);
-    });
-  }
-
-  return (
-    <div className="cd-picker">
-      <div className="cd-width-row">
-        <input
-          className="cd-width"
-          value={width}
-          list={listId}
-          inputMode="decimal"
-          placeholder="Width, e.g. 58"
-          aria-label="Fabric width (inches)"
-          onChange={(e) => setWidth(e.target.value)}
-        />
-        <datalist id={listId}>
-          {COMMON_WIDTHS.filter((w) => !taken.includes(w)).map((w) => (
-            <option key={w} value={w}>
-              {widthLabel(w)}
-            </option>
-          ))}
-        </datalist>
-        <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Link to the plan — https://…" aria-label="Plan link" />
-      </div>
-      <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark" aria-label="Remark" />
-      <span className="cd-picker-actions">
-        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !width.trim() || !link.trim()} onClick={go}>
-          {pending ? 'Adding…' : 'Add'}
-        </button>
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={onCancel}>
-          Cancel
-        </button>
-      </span>
-      {err && <small className="cd-err">{err}</small>}
-    </div>
-  );
-}
-
 function DocLine({ d, productCode, editable }: { d: CostDocument; productCode: string; editable: boolean }) {
   const [pending, start] = useTransition();
-  const name = d.width ? `${widthLabel(d.width)} width` : (d.file_name ?? 'Document');
-  const sub = d.width ? [d.link_url ? null : d.file_name, d.remark].filter(Boolean).join(' · ') : d.remark;
+  const source = d.link_url ? linkHost(d.link_url) : (d.file_name ?? 'Document');
+  const name = d.width ? `${widthLabel(d.width)} width` : source;
+  const sub = [d.width ? source : null, d.remark].filter(Boolean).join(' · ');
 
   function open() {
     if (d.link_url) {
@@ -322,8 +252,8 @@ function DocLine({ d, productCode, editable }: { d: CostDocument; productCode: s
         title={`${name}${sub ? ` — ${sub}` : ''} · open`}
       >
         <span className="cd-file-name">
+          {d.link_url ? <ExternalLink size={11} aria-hidden="true" /> : <Paperclip size={11} aria-hidden="true" />}
           {name}
-          {d.link_url && <ExternalLink size={11} aria-hidden="true" />}
         </span>
         {sub && <span className="cd-file-remark">{sub}</span>}
       </button>
@@ -337,49 +267,130 @@ function DocLine({ d, productCode, editable }: { d: CostDocument; productCode: s
   );
 }
 
-function AddPicker({ productCode, group, onCancel }: { productCode: string; group: CostDocGroup; onCancel: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
+/**
+ * Add to one card: any number of files and/or a link in one go (each becomes its own entry,
+ * all with the same remark — and, on Full layer, the same width).
+ */
+function AddPicker({
+  productCode,
+  group,
+  byWidth,
+  linksReady,
+  taken,
+  onCancel,
+}: {
+  productCode: string;
+  group: CostDocGroup;
+  byWidth: boolean;
+  linksReady: boolean;
+  taken: string[];
+  onCancel: () => void;
+}) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [width, setWidth] = useState('');
+  const [link, setLink] = useState('');
   const [remark, setRemark] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const listId = `cd-widths-${productCode}`;
+  const nothing = !files.length && !link.trim();
+
+  function pick(list: FileList | null) {
+    const picked = Array.from(list ?? []);
+    const bad = picked.map((f) => costDocFileError(f.name, f.size) && `${f.name}: ${costDocFileError(f.name, f.size)}`).find(Boolean);
+    setErr(bad || null);
+    setFiles((prev) => [...prev, ...picked.filter((f) => !costDocFileError(f.name, f.size) && !prev.some((p) => p.name === f.name && p.size === f.size))]);
+  }
 
   function go() {
     setErr(null);
-    if (!file) return setErr('Choose the file first.');
-    start(async () => {
-      const up = await uploadFile(productCode, file);
-      if (!up.ok) return setErr(up.error);
+    const w = width.trim();
+    if (byWidth && !w) return setErr('Type or pick the fabric width.');
+    if (nothing) return setErr('Choose a file or paste a link.');
+    if (link.trim() && !LINK_RE.test(link.trim())) return setErr('Paste the full link, starting with https://');
+    const base = () => {
       const fd = new FormData();
       fd.set('product_code', productCode);
       fd.set('doc_group', group);
-      fd.set('file_path', up.path);
-      fd.set('file_name', file.name);
-      fd.set('file_size', String(file.size));
       fd.set('remark', remark.trim());
-      const r = await addCostDocument(fd);
-      if (r.ok) reloadWithToast(r.message ?? 'Added.');
-      else setErr(r.error);
+      if (byWidth) fd.set('width', w);
+      return fd;
+    };
+    start(async () => {
+      let added = 0;
+      for (const file of files) {
+        const up = await uploadFile(productCode, file);
+        if (!up.ok) return void (added ? reloadWithToast(`${added} added; ${file.name}: ${up.error}`) : setErr(`${file.name}: ${up.error}`));
+        const fd = base();
+        fd.set('file_path', up.path);
+        fd.set('file_name', file.name);
+        fd.set('file_size', String(file.size));
+        const r = await addCostDocument(fd);
+        if (!r.ok) return void (added ? reloadWithToast(`${added} added; ${file.name}: ${r.error}`) : setErr(r.error));
+        added++;
+      }
+      if (link.trim()) {
+        const fd = base();
+        fd.set('link_url', link.trim());
+        const r = await addCostLink(fd);
+        if (!r.ok) return void (added ? reloadWithToast(`${added} added; the link: ${r.error}`) : setErr(r.error));
+        added++;
+      }
+      reloadWithToast(added === 1 ? '1 plan added.' : `${added} plans added.`);
     });
   }
 
   return (
     <div className="cd-picker">
+      {byWidth && (
+        <>
+          <input
+            className="cd-width"
+            value={width}
+            list={listId}
+            inputMode="decimal"
+            placeholder="Fabric width, e.g. 58"
+            aria-label="Fabric width (inches)"
+            onChange={(e) => setWidth(e.target.value)}
+          />
+          <datalist id={listId}>
+            {COMMON_WIDTHS.filter((w) => !taken.includes(w)).map((w) => (
+              <option key={w} value={w}>
+                {widthLabel(w)}
+              </option>
+            ))}
+          </datalist>
+        </>
+      )}
       <label className="cd-file">
         <Paperclip size={12} aria-hidden="true" />
-        <span>{file ? file.name : 'Choose a file'}</span>
+        <span>{files.length ? 'Add more files' : 'Choose files'}</span>
         <input
           type="file"
+          multiple
           accept={ACCEPT}
           onChange={(e) => {
-            const f = e.target.files?.[0] ?? null;
-            setErr(f ? costDocFileError(f.name, f.size) : null);
-            setFile(f);
+            pick(e.target.files);
+            e.target.value = '';
           }}
         />
       </label>
+      {files.length > 0 && (
+        <ul className="cd-picked">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${f.size}`}>
+              <span>{f.name}</span>
+              <button type="button" className="wf-icon-btn" aria-label={`Take ${f.name} off the list`} title="Take off the list" onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {linksReady && <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="and / or paste a link — https://…" aria-label="Plan link" />}
       <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark" aria-label="Remark" />
       <span className="cd-picker-actions">
-        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !file} onClick={go}>
+        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || nothing || (byWidth && !width.trim())} onClick={go}>
           {pending ? 'Adding…' : 'Add'}
         </button>
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={onCancel}>
