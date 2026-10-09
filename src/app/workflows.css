@@ -2823,3 +2823,5 @@ tr.iw-picked > td { background: #fffbea; }
 .plan-filterbar.plan-filterbar > .plan-end { margin-left: auto !important; }
 .plan-filterbar.plan-filterbar > .bp-more-filters { flex: 1 1 100% !important; }
 .plan-filterbar.plan-filterbar > .wf-check, .plan-filterbar.plan-filterbar > .wf-check-field { flex: none !important; white-space: nowrap; }
+/* Vendor Capacity's search carries a label above it: line the bar up on the bottom edge. */
+.vc-toolbar .plan-filterbar.plan-filterbar { align-items: flex-end; }
