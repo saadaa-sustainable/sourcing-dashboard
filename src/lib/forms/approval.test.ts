@@ -8,6 +8,7 @@ import {
   sheetStatusText,
   statusText,
   canSubmit,
+  canSubmitPlan,
   isEscalated,
   levelForStatus,
   statusOnSubmit,
@@ -22,6 +23,9 @@ describe('approval workflow v2', () => {
     assert.equal(canSubmit('team', 'submitted'), false);
     assert.equal(canSubmit('team', 'rejected'), true);
     assert.equal(canSubmit('team', 'approved'), false);
+    // Buying Plan is outside the amend-until-approved rule: a rejected plan is not resubmitted.
+    assert.equal(canSubmitPlan('team', 'rejected'), false);
+    assert.equal(canSubmitPlan('team', 'rework'), true);
     assert.equal(canSubmit('viewer', 'rework'), false);
   });
   it('gates Rework/Reassign exactly like Approve', () => {

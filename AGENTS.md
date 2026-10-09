@@ -52,3 +52,7 @@ all count as "not approved".
 - Enforce it on the server (the action refuses an approved record), not only by hiding buttons.
 - Do not invent extra locks before approval ("pending lines can't be edited", "only the CSV can
   change it"). If a module cannot follow this rule, record the reason in `docs/PENDENCY.md`.
+- **Exception — Buying Plan** (FG and Fabric / Material) is NOT under this rule (user decision,
+  2026-10-09). It keeps its own lifecycle: a plan awaiting approval is edited only after the
+  approver sends it back for rework, only draft / rework plans are submitted (`canSubmitPlan`),
+  and approved plans change through amendments. Every other tab follows the rule.

@@ -31,8 +31,7 @@ export async function submitPlanCore(
     .maybeSingle();
   if (!plan) return { ok: false, error: 'Plan not found.', code: 'not_found' };
   const from = plan.status as SdStatus;
-  // Until approved, everything is amendable (AGENTS.md): a rejected plan is fixed and resubmitted.
-  if (from !== 'draft' && from !== 'rework' && from !== 'rejected') {
+  if (from !== 'draft' && from !== 'rework') {
     return { ok: false, error: 'This plan cannot be submitted from its current state.', code: 'wrong_state' };
   }
 
@@ -68,7 +67,7 @@ export async function submitPlanCore(
       rejection_notes: null,
     })
     .eq('id', planId)
-    .in('status', ['draft', 'rework', 'rejected'])
+    .in('status', ['draft', 'rework'])
     .select('id');
   if (error) return { ok: false, error: error.message, code: 'db' };
   if (!updated?.length) return { ok: false, error: 'Already submitted by someone else.', code: 'race' };

@@ -11,7 +11,7 @@ import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { canApprove, canEdit, canSubmitPlan, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -74,10 +74,12 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
         : 'You do not have permission to edit the buying plan.',
     );
   }
-  // Until approved, everything is amendable (AGENTS.md). A plan awaiting approval can be
-  // amended in place: it stays awaiting approval, unchanged lines keep the approver's line
-  // decisions, and changed / new lines go back to undecided so the approver sees the new figures.
-  const awaiting = status === 'submitted' || status === 'pending_l2';
+  // A plan sitting in the approval queue is what the approver is reading — saving
+  // over it would replace every line (new ids) under them and void line approvals.
+  // Edits go through Rework, which hands the plan back to the team.
+  if (status === 'submitted' || status === 'pending_l2') {
+    return fail('This plan is awaiting approval. Ask the approver to send it back for rework to edit it.');
+  }
 
   let planId = existing?.id as number | undefined;
   if (!planId) {
@@ -96,10 +98,9 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
   // product_code and all three quantities are unchanged keeps its line_status
   // (so an already-approved Woven line stays approved while the planner fixes the
   // Knitted lines). Any changed or new line resets to pending (null).
-  // paging-ok: one plan's lines, at most a few hundred
   const { data: prior } = await supabase
     .from('sd_buying_plan_line')
-    .select('product_code, job_work_qty, fob_qty, efob_qty, colour, uom, material_type, line_status, rework_notes, standard_value, approver_edited')
+    .select('product_code, job_work_qty, fob_qty, efob_qty, colour, uom, material_type, line_status, rework_notes')
     .eq('plan_id', planId);
   const priorByCode = new Map<
     string,
@@ -107,7 +108,6 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
       job: number; fob: number; efob: number;
       colour: string | null; uom: string | null; material_type: string | null;
       line_status: SdStatus | null; rework_notes: string | null;
-      standard_value: number | null; approver_edited: boolean;
     }
   >();
   for (const p of (prior ?? []) as Record<string, unknown>[]) {
@@ -120,26 +120,8 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
       material_type: (p.material_type ?? null) as string | null,
       line_status: (p.line_status ?? null) as SdStatus | null,
       rework_notes: (p.rework_notes ?? null) as string | null,
-      standard_value: p.standard_value == null ? null : Number(p.standard_value),
-      approver_edited: Boolean(p.approver_edited),
     });
   }
-
-  // While awaiting approval the plan's values are frozen (submitPlanCore). An amended line is
-  // re-frozen here from the CURRENT accepted rates, the same way a submission does it.
-  const fgCosts: Record<string, { job: number; fob: number; efob: number }> =
-    awaiting && planType === 'fg' ? await loadApprovedStandardCosts(supabase) : {};
-  const matCosts: Record<string, { job: number; fob: number }> =
-    awaiting && planType === 'material' ? await loadApprovedMaterialCosts(supabase) : {};
-  const freezeValue = (code: string, job: number, fob: number, efob: number): number | null => {
-    if (planType === 'material') {
-      const c = matCosts[code];
-      return c ? job * c.job + fob * c.fob || null : null;
-    }
-    const c = fgCosts[code];
-    return c ? job * c.job + fob * c.fob + efob * c.efob || null : null;
-  };
-  const amended: string[] = [];
 
   const { error: delError } = await supabase
     .from('sd_buying_plan_line')
@@ -163,21 +145,6 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
       const unchanged =
         before && before.job === job && before.fob === fob && before.efob === efob &&
         before.colour === colour && before.uom === uom && before.material_type === materialType;
-      const clientValue =
-        line.standard_value === '' || line.standard_value == null ? null : Number(line.standard_value);
-      // Awaiting approval: an unchanged line keeps its frozen value and the approver's decision
-      // (and Edited & Approved flag); a changed / new line with a quantity goes back to
-      // Approval Pending (the plan's own status) with a freshly frozen value.
-      let lineStatus: SdStatus | null = unchanged ? before!.line_status : null;
-      let standardValue = clientValue;
-      if (awaiting) {
-        if (unchanged) standardValue = before!.standard_value;
-        else {
-          if (job + fob + efob > 0) lineStatus = status;
-          standardValue = freezeValue(code, job, fob, efob);
-          amended.push(code);
-        }
-      }
       return {
         plan_id: planId,
         product_code: code,
@@ -190,11 +157,13 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
         job_work_qty: job,
         fob_qty: fob,
         efob_qty: efob,
-        standard_value: standardValue,
+        standard_value:
+          line.standard_value === '' || line.standard_value == null
+            ? null
+            : Number(line.standard_value),
         uom,
-        line_status: lineStatus,
+        line_status: unchanged ? before!.line_status : null,
         rework_notes: unchanged ? before!.rework_notes : null,
-        approver_edited: unchanged ? before!.approver_edited : false,
         // Material track only (FG leaves these null): Job-Work rate, free remark,
         // and which material type (raw/dyed/trim) the line belongs to.
         job_rate:
@@ -214,23 +183,6 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
     }
   }
 
-  // Log an amendment made while the plan sits with the approver, naming what changed.
-  if (awaiting) {
-    const kept = new Set(payload.map((l) => l.product_code));
-    const removed = [...priorByCode.keys()].filter((code) => !kept.has(code));
-    if (amended.length || removed.length) {
-      const list = (codes: string[]) => `${codes.slice(0, 10).join(', ')}${codes.length > 10 ? ` +${codes.length - 10} more` : ''}`;
-      const parts = [
-        amended.length ? `${amended.length} line(s) changed or added: ${list(amended)}` : '',
-        removed.length ? `${removed.length} line(s) removed: ${list(removed)}` : '',
-      ].filter(Boolean);
-      await writeLog(
-        'buying_plan', String(planId), `Buying plan ${planMonth.slice(0, 7)}`, status, status, user.email,
-        `Amended while awaiting approval: ${parts.join('; ')}`,
-      );
-    }
-  }
-
   // A product added to the Buying Plan is automatically added to Standard Cost —
   // seed a row for each code (on conflict do nothing, so existing costs untouched).
   const codes = [...new Set(payload.map((l) => l.product_code).filter(Boolean))];
@@ -246,14 +198,7 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
 
   revalidatePath('/buying-plan');
   revalidatePath('/standard-cost');
-  revalidatePath('/approvals');
-  return {
-    ok: true,
-    message: awaiting
-      ? `Saved ${payload.length} product lines — the plan is still awaiting approval with the changes.`
-      : `Saved ${payload.length} product lines.`,
-    id: planId,
-  };
+  return { ok: true, message: `Saved ${payload.length} product lines.`, id: planId };
 }
 
 export async function submitBuyingPlan(formData: FormData): Promise<ActionResult> {
@@ -271,7 +216,7 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
   if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
-  if (!canSubmit(user.role, plan.status as SdStatus)) {
+  if (!canSubmitPlan(user.role, plan.status as SdStatus)) {
     return fail('This plan cannot be submitted from its current state.');
   }
 

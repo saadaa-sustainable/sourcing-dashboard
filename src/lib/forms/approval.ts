@@ -71,6 +71,14 @@ export function canSubmit(role: SdRole, status: SdStatus) {
   return (status === 'draft' || status === 'rework' || status === 'rejected') && RANK[role] >= RANK.team;
 }
 
+/**
+ * Buying Plan keeps its own lifecycle and is NOT under the amend-until-approved rule (user,
+ * 2026-10-09): only a draft or a reworked plan can be submitted.
+ */
+export function canSubmitPlan(role: SdRole, status: SdStatus) {
+  return (status === 'draft' || status === 'rework') && RANK[role] >= RANK.team;
+}
+
 export function canApprove(role: SdRole, status: SdStatus) {
   // Routine items (status 'submitted') can be signed off by the team; anything
   // escalated to 'pending_l2' needs an admin (founder).

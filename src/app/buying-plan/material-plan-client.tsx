@@ -9,7 +9,7 @@ import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
   canApprove,
   canEdit,
-  canSubmit,
+  canSubmitPlan,
   isPlanFrozen,
   isPlanWindowOpen,
   monthLabel,
@@ -140,9 +140,6 @@ export function MaterialPlanClient({
   const status: SdStatus = plan?.status ?? 'draft';
   // Submitted / awaiting approval / approved: values are frozen at submission.
   const planLocked = status === 'submitted' || status === 'pending_l2' || status === 'approved';
-  // Until approved, everything is amendable (AGENTS.md): a plan awaiting approval can still be
-  // changed; it stays with the approver and changed lines go back to undecided.
-  const awaitingApproval = status === 'submitted' || status === 'pending_l2';
   // A month that is over is VIEW ONLY (user rule, 2026-10-08) — same as the FG track.
   const frozen = isPlanFrozen(planMonth);
   const editable = canEdit(role, status) && !frozen;
@@ -469,9 +466,8 @@ export function MaterialPlanClient({
       const result = await saveBuyingPlan(payload);
       if (result.ok) {
         setMessage(result.message ?? 'Saved.');
-        // First save of a month creates the plan — refresh so Submit becomes available. An
-        // amendment while awaiting approval replaces the lines (new ids) — refresh too.
-        if (!plan?.id || awaitingApproval) reloadWithToast(result.message ?? 'Saved.');
+        // First save of a month creates the plan — refresh so Submit becomes available.
+        if (!plan?.id) reloadWithToast(result.message ?? 'Saved.');
       } else setError(toastError(result.error));
     });
   }
@@ -512,7 +508,7 @@ export function MaterialPlanClient({
             <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
               <Download size={15} /> Export
             </button>
-            {canSubmit(role, status) && !frozen && (
+            {canSubmitPlan(role, status) && !frozen && (
               <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
                 <Send size={15} /> Submit for approval
               </button>
@@ -534,12 +530,7 @@ export function MaterialPlanClient({
         inputBar={
           editable && mode === 'input' ? (
             <>
-              <span>
-                <b>Input</b> ·{' '}
-                {awaitingApproval
-                  ? 'the plan is awaiting approval — saved changes go straight to the approver, changed lines back to undecided.'
-                  : 'changes stay a draft until you submit for approval.'}
-              </span>
+              <span><b>Input</b> · changes stay a draft until you submit for approval.</span>
               <span className="bph-inputbar-actions">
                 <input
                   ref={fileRef}
@@ -570,7 +561,7 @@ export function MaterialPlanClient({
                   <ExternalLink size={14} /> Add new {TYPE_LABEL[type].toLowerCase()}
                 </a>
                 <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={save} disabled={pending}>
-                  <Save size={14} /> {pending ? 'Saving…' : awaitingApproval ? 'Save changes' : 'Save draft'}
+                  <Save size={14} /> {pending ? 'Saving…' : 'Save draft'}
                 </button>
               </span>
             </>
@@ -850,10 +841,10 @@ export function MaterialPlanClient({
               <div className="bp-actions">
               {editable && (
                 <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
-                  <Save size={15} /> {pending ? 'Saving…' : awaitingApproval ? 'Save changes' : 'Save draft'}
+                  <Save size={15} /> {pending ? 'Saving…' : 'Save draft'}
                 </button>
               )}
-              {canSubmit(role, status) && !frozen && (
+              {canSubmitPlan(role, status) && !frozen && (
                 <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id}>
                   <Send size={15} /> Submit for approval
                 </button>
