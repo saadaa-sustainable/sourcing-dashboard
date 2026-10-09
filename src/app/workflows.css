@@ -2916,7 +2916,7 @@ tr.iw-picked > td { background: #fffbea; }
 
 /* ---- Shared table frame (FilterTable, 26 tables) — less stacked chrome, aligned headings (2026-10-09) ---- */
 .ft-th { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.wf-grid.ft-grid th { position: relative; padding-bottom: 11px; vertical-align: middle; }
+.wf-grid.ft-grid th { padding-bottom: 11px; vertical-align: middle; }
 .wf-grid.ft-grid th > .src-bar { position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; margin: 0; }
 .ui-shopify .wf-grid.ft-grid th { font-size: 10px; }
 .ui-shopify .wf-grid.ft-grid td { height: 40px; font-size: 12px; }
