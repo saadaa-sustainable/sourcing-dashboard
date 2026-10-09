@@ -2869,3 +2869,29 @@ tr.iw-picked > td { background: #fffbea; }
 .vcom-file.is-new { background: #fffaf0; border-color: #f1d9a2; }
 .vcom-meta-actions { display: inline-flex; gap: 8px; align-items: center; }
 .vcom-open { margin: 0 4px 4px 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Main Dashboard · Objectives (redesign 2026-10-09): one KPI strip, then three titled rows ---- */
+.metric-grid.dashboard-metrics.dashboard-kpis { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-bottom: 4px; }
+.dash-sec { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+.dash-sec-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dash-sec-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; color: var(--ink-1, #161513); }
+.dash-sec-head p { margin: 0; font-size: 12.5px; color: var(--ink-3, #6e695e); }
+.ana-span3 { grid-column: span 3; }
+.ana-span8 { grid-column: span 8; }
+.ana-span3 .ana-plan-hero { flex-direction: column; align-items: stretch; gap: 12px; }
+.ana-span3 .ana-plan-values { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ana-span3 .ana-plan-values span { min-width: 0; }
+/* Cost Variance comes in through AnalyticsCards; its wrappers step aside so the card joins this row. */
+.dash-money-slot, .dash-money-slot .ana-board, .dash-money-slot .ana-tab-panel, .dash-money-slot .ana-grid { display: contents; }
+.dash-money-slot .ana-card { grid-column: span 4; }
+@media (max-width: 1280px) {
+  .metric-grid.dashboard-metrics.dashboard-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .ana-span3, .dash-money-slot .ana-card { grid-column: span 6; }
+  .ana-span8 { grid-column: span 12; }
+}
+@media (max-width: 760px) {
+  .metric-grid.dashboard-metrics.dashboard-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ana-span3, .ana-span8, .dash-money-slot .ana-card { grid-column: span 12; }
+}

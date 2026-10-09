@@ -202,9 +202,11 @@ function CountUp({ text }: { text: string }) {
 
   useEffect(() => {
     if (!m || Number.isNaN(target)) return;
-    // Reduced motion: jump straight to the final value — intentional set-in-effect.
+    // Reduced motion, or a tab that is not on screen: jump straight to the final value. Browsers
+    // pause animation frames in hidden tabs, so a count-up started there stayed at 0 until the
+    // tab was looked at (a page opened in the background read "0 Overdue POs").
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (reduced) { setDisplay(target); return; }
+    if (reduced || document.visibilityState !== "visible") { setDisplay(target); return; }
     let raf = 0;
     let start = 0;
     const dur = 700;
@@ -593,6 +595,7 @@ function DashboardTab({
   section,
   expectedVsActual = null,
   extras = null,
+  moneySlot = null,
 }: {
   capacityRules?: CapacityRules;
   data: DashboardData;
@@ -611,6 +614,8 @@ function DashboardTab({
   expectedVsActual?: AnalyticsExtras["expectedVsActual"];
   /** Server-computed sections — the stock and OTIF objectives read from these. */
   extras?: AnalyticsExtras | null;
+  /** Cost Variance (rendered by AnalyticsCards), placed in the Plan & approvals row. */
+  moneySlot?: React.ReactNode;
 }) {
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
@@ -997,6 +1002,8 @@ function DashboardTab({
       tracker.filter((row) => row.delayBucket === name).map((row) => row.poRef),
     ).length,
   }));
+  // The PO-book figures the Objectives synopsis rows share.
+  const book = { open: openRefs.length, overdue: delayedRefs.length, highRisk: highRiskRefs, ageing };
   const products = Object.values(
     tracker.reduce<Record<string, { name: string; qty: number }>>(
       (acc, row) => {
@@ -1099,7 +1106,7 @@ function DashboardTab({
       </div>
       {section === "objectives" ? (
         <>
-          <div className="metric-grid dashboard-metrics">
+          <div className="metric-grid dashboard-metrics dashboard-kpis">
             <Card
               label="Overdue POs"
               value={fmt.format(delayedRefs.length)}
@@ -1144,13 +1151,11 @@ function DashboardTab({
               info={"WHAT: how many issues are open on the Issue Tracker right now — raised by people to each other, and raised by the dashboard from its own checks.\n\nHOW: issues in Open or In progress. The dashboard raises one per open PO with no TNA timeline, per open PO with no delivery date, per discontinued product still on order, and per stale feed; it closes them itself when the condition is gone.\n\nUSE: click to open the tracker. This number should trend down; days from raise to resolve are tracked there."}
               onClick={() => router.push("/issues")}
             />
-          </div>
-          {/* Spec 1.10 — the four the team asked to see on the main dashboard. Coverage %
-              (buying plan + inward) is the pair already on the "Buying to plan" view. */}
-          <div className="metric-grid dashboard-metrics">
+            {/* Spec 1.10 — the four the team asked to see on the main dashboard. Coverage %
+                (buying plan + inward) is the pair already on the "Buying to plan" view. The
+                seven objectives sit in one even strip (redesign, 2026-10-09). */}
             <Card
               label="Sales leakage"
-              big
               value={extras?.salesLeakage ? money.format(extras.salesLeakage.amount) : "—"}
               note={
                 extras?.salesLeakage
@@ -1189,12 +1194,36 @@ function DashboardTab({
               onClick={() => router.push("/issues")}
             />
           </div>
-          <ObjectiveStockCards extras={extras} onTab={onTab} />
-          <ObjectiveSynopsisCards
-            extras={extras}
-            book={{ open: openRefs.length, overdue: delayedRefs.length, highRisk: highRiskRefs, ageing }}
-            onTab={onTab}
-          />
+          {/* Redesign (2026-10-09): the same cards, grouped by the question they answer. */}
+          <section className="dash-sec" aria-labelledby="dash-sec-stock">
+            <div className="dash-sec-head">
+              <h2 id="dash-sec-stock">Will we run out</h2>
+              <p>Variants to reorder now, fast sellers on the edge, and what is already at zero.</p>
+            </div>
+            <div className="ana-grid ana-tab-grid">
+              <ObjectiveStockCards extras={extras} onTab={onTab} bare />
+              <ObjectiveSynopsisCards extras={extras} book={book} onTab={onTab} part="stock" bare />
+            </div>
+          </section>
+          <section className="dash-sec" aria-labelledby="dash-sec-orders">
+            <div className="dash-sec-head">
+              <h2 id="dash-sec-orders">Open orders</h2>
+              <p>What is on order, how late it is, and whether receipts follow the inward plan.</p>
+            </div>
+            <div className="ana-grid ana-tab-grid">
+              <ObjectiveSynopsisCards extras={extras} book={book} onTab={onTab} part="orders" bare />
+            </div>
+          </section>
+          <section className="dash-sec" aria-labelledby="dash-sec-plan">
+            <div className="dash-sec-head">
+              <h2 id="dash-sec-plan">Plan &amp; approvals</h2>
+              <p>Buying against this month&apos;s plan, decisions waiting, and cost exceptions.</p>
+            </div>
+            <div className="ana-grid ana-tab-grid">
+              <ObjectiveSynopsisCards extras={extras} book={book} onTab={onTab} part="plan" bare />
+              {moneySlot && <div className="dash-money-slot">{moneySlot}</div>}
+            </div>
+          </section>
         </>
       ) : (
       <>
@@ -4205,20 +4234,22 @@ export function DashboardShell({
                     onOverdue={setOverdue}
                     onVendorSelect={openVendorPos}
                     expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
+                    // Cost Variance renders from AnalyticsCards, which owns the tracker maths
+                    // behind it — passing it in keeps that one implementation rather than
+                    // copying it; the Objectives tab places it in the Plan & approvals row.
+                    moneySlot={
+                      dashGroup === "objectives" ? (
+                        <AnalyticsCards
+                          data={data}
+                          rules={analyticsRules}
+                          extras={analyticsExtras}
+                          onTab={setTab}
+                          isAdmin={role === "admin"}
+                          only="money"
+                        />
+                      ) : null
+                    }
                   />
-                  {/* Capital at Risk and Cost Variance render from AnalyticsCards, which owns
-                      the tracker maths behind them — rendering them here keeps that one
-                      implementation rather than copying it. */}
-                  {dashGroup === "objectives" && (
-                    <AnalyticsCards
-                      data={data}
-                      rules={analyticsRules}
-                      extras={analyticsExtras}
-                      onTab={setTab}
-                      isAdmin={role === "admin"}
-                      only="money"
-                    />
-                  )}
                 </>
               ) : (
                 <AnalyticsCards

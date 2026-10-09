@@ -1703,9 +1703,12 @@ USE: if a feed is stale, every card built on it is showing yesterday's or older 
 export function ObjectiveStockCards({
   extras,
   onTab,
+  bare = false,
 }: {
   extras?: AnalyticsExtras | null;
   onTab: (id: TabId) => void;
+  /** Render the cards only, inside a grid the caller owns. */
+  bare?: boolean;
 }) {
   const gaps = extras?.stockoutGaps ?? null;
   const risk = gaps;
@@ -1744,8 +1747,8 @@ export function ObjectiveStockCards({
     );
   };
 
-  return (
-    <div className="ana-grid ana-tab-grid">
+  const cards = (
+    <>
 
       <AnaCard
         title="Stock Out Risk"
@@ -1821,7 +1824,7 @@ export function ObjectiveStockCards({
         tone={watch == null ? "neutral" : watch.length ? "amber" : "green"}
         status={watch == null ? "WAITING" : watch.length ? `${fmt.format(watch.length)} TO ORDER` : "CLEAR"}
         cta="Open urgent replenishment"
-        span={5}
+        span={4}
         onClick={() => onTab("urgent-replenish")}
         info={"WHAT: the fast sellers (class A and B) that run out within 30 days — the orders to place first.\n\nHOW: same population and rule as Stock Out Risk, on a 30-day horizon instead of 45, and only variants whose sales class is A or B (thresholds in Rules Master). D-class items rarely appear — they sell too slowly to run out fast.\n\nUSE: these cost real sales when empty. Place these POs before anything else on the Stock Out Risk list."}
       >
@@ -1874,7 +1877,7 @@ export function ObjectiveStockCards({
           tone={!oosSum ? "neutral" : oosSum.zeroStock > 0 ? "amber" : "green"}
           status={!oosSum ? "WAITING" : `${fmt.format(oosSum.zeroStock)} SKUS`}
           cta="Open DOQ Calculation"
-          span={6}
+          span={3}
           href="/oos-calculation"
           info={`SKUs in the DOQ Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
         >
@@ -1901,8 +1904,9 @@ export function ObjectiveStockCards({
             </div>
           )}
         </AnaCard>
-    </div>
+    </>
   );
+  return bare ? cards : <div className="ana-grid ana-tab-grid">{cards}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1921,8 +1925,14 @@ export function ObjectiveSynopsisCards({
   extras,
   book,
   onTab,
+  part,
+  bare = false,
 }: {
   extras: AnalyticsExtras | null;
+  /** Main Dashboard rows: 'stock' (OOS by class, ISR), 'orders' (PO book, inward), 'plan' (buying plan, approvals). All when unset. */
+  part?: "stock" | "orders" | "plan";
+  /** Render the cards only, inside a grid the caller owns. */
+  bare?: boolean;
   book: { open: number; overdue: number; highRisk: number; ageing: { name: string; value: number }[] };
   onTab: (id: TabId) => void;
 }) {
@@ -1936,15 +1946,17 @@ export function ObjectiveSynopsisCards({
   const isr = extras?.isr ?? null;
   const isrPct = isr && isr.soldQty > 0 ? Math.round((isr.inwardQty / isr.soldQty) * 100) : null;
 
-  return (
-    <div className="ana-grid ana-tab-grid">
+  const show = (p: "stock" | "orders" | "plan") => !part || part === p;
+  const cards = (
+    <>
+      {show("orders") && (
       <AnaCard
         title="PO book"
         icon={FileCheck}
         tone={book.overdue > 0 ? "red" : "green"}
         status={`${fmt.format(book.open)} OPEN`}
         cta="Open the PO Tracker"
-        span={4}
+        span={6}
         onClick={() => onTab("open-po")}
         info={"WHAT: the purchase-order book in three numbers, each with its share.\n\nHOW: Open = POs with pieces still to arrive, as a share of every PO there has ever been (open + completed). Overdue = open POs past their expected delivery date, as a share of open. High Risk = open POs with a critical-path TNA stage past its planned date, as a share of open. Ageing splits the open POs by how far past their date they are.\n\nUSE: overdue and high-risk shares rising together means the book is slipping, not just one vendor."}
       >
@@ -1959,14 +1971,16 @@ export function ObjectiveSynopsisCards({
           ))}
         </div>
       </AnaCard>
+      )}
 
+      {show("orders") && (
       <AnaCard
         title="Inward Plan vs actual GRN"
         icon={PackageCheck}
         tone={!iw ? "neutral" : iw.shortPos || iw.unplannedPos ? "red" : "green"}
         status={iw ? `${fmt.format(iw.plannedPos)} POS PLANNED` : "WAITING"}
         cta="Open the Inward Plan"
-        span={4}
+        span={6}
         href="/receivable-plan"
         info={"WHAT: this month, did what the team planned to receive actually arrive — and what arrived that nobody planned.\n\nHOW: per PO planned on the Inward Plan for this month: received (GRN) less than planned = short, more = excess, equal = on plan. Not in plan = POs with receipts this month and no Inward Plan entry. Counted at PO level because the plan is per colour and GRN per SKU; the PO is what both share.\n\nUSE: many short POs is a vendor problem; many not-in-plan receipts means the Inward Plan is not being filled."}
       >
@@ -1982,14 +1996,16 @@ export function ObjectiveSynopsisCards({
           </ul>
         )}
       </AnaCard>
+      )}
 
+      {show("stock") && (
       <AnaCard
         title="OOS by sales class"
         icon={Boxes}
         tone={!oos ? "neutral" : oos.oosNow ? "red" : "green"}
         status={oos ? `${fmt.format(oos.oosNow)} OUT NOW` : "WAITING"}
         cta="Open Product Tracker → In stock"
-        span={4}
+        span={8}
         onClick={() => onTab("products")}
         info={"WHAT: out of stock by sales class, at variant (colour) level — A sells fastest, D slowest.\n\nHOW: over every selling variant (Ongoing + launched NPD, test SKUs out): Out now = zero stock today; At risk = stock plus what is on order runs out inside the 45-day lead time; DOH = average days on hand (stock + on order ÷ daily demand). Percentages are of the variants in that class.\n\nUSE: an A-class variant out of stock is lost sales every day — those first."}
       >
@@ -2019,7 +2035,9 @@ export function ObjectiveSynopsisCards({
           </table>
         )}
       </AnaCard>
+      )}
 
+      {show("plan") && (
       <AnaCard
         title="Buying Plan synopsis"
         icon={ShoppingCart}
@@ -2042,7 +2060,9 @@ export function ObjectiveSynopsisCards({
           </ul>
         )}
       </AnaCard>
+      )}
 
+      {show("plan") && (
       <AnaCard
         title="Approval requisitions"
         icon={ClipboardCheck}
@@ -2067,7 +2087,9 @@ export function ObjectiveSynopsisCards({
           </ul>
         )}
       </AnaCard>
+      )}
 
+      {show("stock") && (
       <AnaCard
         title="ISR — inward to sales"
         icon={Scale}
@@ -2096,6 +2118,8 @@ export function ObjectiveSynopsisCards({
           </>
         )}
       </AnaCard>
-    </div>
+      )}
+    </>
   );
+  return bare ? cards : <div className="ana-grid ana-tab-grid">{cards}</div>;
 }
