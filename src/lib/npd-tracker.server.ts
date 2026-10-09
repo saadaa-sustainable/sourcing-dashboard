@@ -175,7 +175,8 @@ export async function loadNpdMaster(ctx: {
     const c = (r.item_code ?? '').toUpperCase();
     if (CODE_RE.test(c)) codeCount.set(c, (codeCount.get(c) ?? 0) + 1);
   }
-  return all.map((r): NpdMasterRow => {
+  const ORDER: Record<NpdMasterRow['stage'], number> = { added: 0, linked: 1, can_add: 2, blocked: 3, launched: 4 };
+  const rows = all.map((r): NpdMasterRow => {
     const c = (r.item_code ?? '').toUpperCase();
     const reg = ctx.registered.get(r.id);
     const base = { ...r, added_by: reg?.created_by ?? null, added_at: reg?.created_at ?? null, linked_to: reg?.merged_into ?? null };
@@ -192,4 +193,6 @@ export async function loadNpdMaster(ctx: {
     else if (ctx.inEasyEcom.has(c)) blocked = `${c} is already in EasyEcom — add it From Product Master`;
     return { ...base, code: CODE_RE.test(c) ? c : null, stage: blocked ? 'blocked' : 'can_add', note: blocked ?? 'Can be added on Standard Cost' };
   });
+  // What needs attention first: on Standard Cost, can be added, blocked; launched ones last.
+  return rows.sort((a, b) => ORDER[a.stage] - ORDER[b.stage] || (a.code ?? a.item_code ?? '').localeCompare(b.code ?? b.item_code ?? ''));
 }
