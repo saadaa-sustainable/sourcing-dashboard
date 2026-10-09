@@ -66,8 +66,9 @@ export function canEdit(role: SdRole, status: SdStatus) {
 }
 
 export function canSubmit(role: SdRole, status: SdStatus) {
-  // A reworked record can be fixed and re-submitted, same as a draft.
-  return (status === 'draft' || status === 'rework') && RANK[role] >= RANK.team;
+  // House rule (AGENTS.md): until approved, everything is amendable — a draft, a reworked and a
+  // rejected record can all be fixed and (re)submitted.
+  return (status === 'draft' || status === 'rework' || status === 'rejected') && RANK[role] >= RANK.team;
 }
 
 export function canApprove(role: SdRole, status: SdStatus) {

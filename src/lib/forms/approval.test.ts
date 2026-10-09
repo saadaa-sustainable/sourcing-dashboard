@@ -20,6 +20,8 @@ describe('approval workflow v2', () => {
     assert.equal(canSubmit('team', 'rework'), true);
     assert.equal(canSubmit('team', 'draft'), true);
     assert.equal(canSubmit('team', 'submitted'), false);
+    assert.equal(canSubmit('team', 'rejected'), true);
+    assert.equal(canSubmit('team', 'approved'), false);
     assert.equal(canSubmit('viewer', 'rework'), false);
   });
   it('gates Rework/Reassign exactly like Approve', () => {
