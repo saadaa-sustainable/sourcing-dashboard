@@ -72,7 +72,8 @@ import type { CmtpRevision } from '@/lib/standard-cost-revisions.server';
 import type { TempProductInfo } from '@/lib/temp-product.server';
 import { useColumnSort } from '@/lib/use-column-sort';
 
-const disp = (v: number | null) => (v == null ? '—' : String(v));
+// Rounded to 2 decimals so summed figures never print float noise (163.98000000000002).
+const disp = (v: number | null) => (v == null ? '—' : String(Math.round(v * 100) / 100));
 
 /** Read-only fabric buildup referenced from the Fabric Cost master. */
 type FabricBuildup = { grey: number | null; processing: number | null; finished: number | null };

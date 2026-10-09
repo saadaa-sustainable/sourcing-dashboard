@@ -2133,6 +2133,11 @@ th.wf-cell-input { background: #33302b; color: #fff; }
 
 /* Inward Plan: the two halves of one subject — what landed, and what to expect. */
 .ip-tabs { margin: 0 0 14px; }
+/* Inward Plan: View and Input are separate screens, switched by link (each has its own URL). */
+.ip-screens { display: flex; gap: 4px; margin: 4px 0 14px; border-bottom: 1px solid #d2d5d8; }
+.ip-screens a { padding: 9px 16px; margin-bottom: -1px; font-size: 13px; font-weight: 600; color: #6e695e; text-decoration: none; border-bottom: 2px solid transparent; }
+.ip-screens a:hover { color: #2c2420; }
+.ip-screens a.active { color: #2c2420; border-bottom-color: #2c2420; }
 
 /* ---- PO SKU quantity entry (spec 7.2): paste / matrix / CSV ---- */
 .pl-panel { display: flex; flex-direction: column; gap: 10px; }
@@ -2638,18 +2643,23 @@ tr[hidden] { display: none !important; }
 .ip-decide-err { color: #b0261a; font-size: 11px; }
 
 
-/* Standard Cost → Documents tab (cost-documents-section.tsx): same table as the other cost tabs. */
-.cd-open { display: inline-flex; gap: 4px; align-items: center; font-weight: 600; color: var(--ink-1, #161513); padding: 6px 0; }
-.cd-table .cd-group-row td { background: var(--bg-surface, #fbfbfb); border-top: 1px solid var(--line, #ece7d9); font-size: 12.5px; }
-.cd-table .cd-group-row b { color: var(--ink-1, #161513); margin-right: 6px; }
-.cd-table .cd-slot { font-weight: 600; color: var(--ink-2, #494640); white-space: nowrap; }
-.cd-table .cd-add-row td { padding-top: 2px; padding-bottom: 8px; }
-.cd-doc-name { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink-1, #161513); cursor: pointer; text-align: left; min-height: 0; word-break: break-all; }
-.cd-doc-name:hover { text-decoration: underline; }
-.cd-picker { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.cd-file { position: relative; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 5px 9px; background: #fff; font-size: 12px; cursor: pointer; max-width: 260px; }
+/* Standard Cost → Documents tab (cost-documents-section.tsx): reuses the CMTP card layout. */
+.cd-heads { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cd-rfp a { display: inline-flex; gap: 4px; align-items: center; color: var(--ink-1, #161513); font-size: 13px; }
+.cd-rfp input { flex: 1; max-width: 520px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 5px 9px; font: inherit; font-weight: 400; font-size: 12.5px; background: #fff; }
+.cd-rfp .cd-none { font-weight: 500; color: var(--ink-4, #9a9384); }
+.cd-slot-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3, #6e695e); margin-top: 2px; }
+.wf-cmtp-line .cd-file-line { cursor: pointer; text-align: left; font: inherit; color: inherit; gap: 6px; }
+.wf-cmtp-line .cd-file-line:hover .cd-file-name { text-decoration: underline; }
+.cd-file-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cd-file-remark { font-size: 11.5px; color: var(--ink-3, #6e695e); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; min-width: 0; }
+.cd-file-remark::before { content: '· '; }
+.wf-cmtp-line .cd-file-date { flex: 0 0 56px; width: 56px; font-size: 11.5px; color: var(--ink-3, #6e695e); }
+.cd-picker { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.cd-picker > input { border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 12.5px; }
+.cd-file { position: relative; display: inline-flex; align-items: center; gap: 6px; border: 1px dashed var(--line-strong, #c9c2ae); border-radius: 8px; padding: 6px 9px; background: #fafaf8; font-size: 12.5px; cursor: pointer; min-width: 0; }
 .cd-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-file input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .cd-file:focus-within { outline: 2px solid var(--purple, #f0c61e); outline-offset: 2px; }
-.cd-remark { flex: 1; min-width: 200px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 5px 9px; font: inherit; font-size: 12px; }
-.cd-err { flex-basis: 100%; margin: 0; font-size: 11.5px; color: var(--danger-text, #c0392b); }
+.cd-picker-actions { display: flex; gap: 6px; }
+.cd-err { color: var(--danger-text, #c0392b); font-size: 11.5px; }
