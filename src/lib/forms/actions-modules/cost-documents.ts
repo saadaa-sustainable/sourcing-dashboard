@@ -9,7 +9,7 @@ import { COST_DOC_BUCKET, costDocFileError, fileExt, isCostDocGroup } from '@/li
 import { done, fail, supa, type ActionResult } from './_shared';
 
 /*
- * Standard Cost documents (2026-10-09): CAD plans in four groups + the RFP sheet link.
+ * Standard Cost → Documents tab (2026-10-09): CAD plans in four groups (RFP / CAD links stay on Final Cost).
  *   1. startCostDocumentUpload → a one-time signed upload URL for a server-chosen path
  *   2. the browser uploads the file straight to storage (no Vercel request-size limit)
  *   3. addCostDocument → confirms the file landed and files it under its group with its remark.
@@ -99,20 +99,4 @@ export async function deleteCostDocument(formData: FormData): Promise<ActionResu
   // Removal is kept by the audit trail (sd_audit), not logged as a decision.
   revalidatePath('/standard-cost');
   return done('Document removed.');
-}
-
-/** The cost's RFP sheet link (sd_standard_cost.rfp_link). */
-export async function saveRfpLink(formData: FormData): Promise<ActionResult> {
-  const user = await currentUser();
-  if (!user) return fail('Not signed in.');
-  if (!canEdit(user.role, 'draft')) return fail('Only team and admin users can change the RFP sheet link.');
-  const id = Number(formData.get('id'));
-  const link = String(formData.get('rfp_link') ?? '').trim();
-  if (!id) return fail('Invalid cost.');
-  if (link && !/^https?:\/\/\S+$/i.test(link)) return fail('Paste the full link, starting with https://');
-  const supabase = await supa();
-  const { error } = await supabase.from('sd_standard_cost').update({ rfp_link: link || null, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) return fail(error.message);
-  revalidatePath('/standard-cost');
-  return done(link ? 'RFP sheet link saved.' : 'RFP sheet link removed.');
 }

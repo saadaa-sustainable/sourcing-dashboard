@@ -68,6 +68,7 @@ export function StandardCostDetailClient({
   marginPct,
   track = 'fg',
   extraFabrics = [],
+  documents,
 }: {
   cost: StandardCost;
   productName: string | null;
@@ -89,6 +90,8 @@ export function StandardCostDetailClient({
   role: SdRole;
   marginPct: number;
   track?: 'fg' | 'material';
+  /** The CAD plan library, shown as the Documents tab of the cost detail. */
+  documents?: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const stageKey = cost.neg_stage ?? '';
@@ -226,6 +229,7 @@ export function StandardCostDetailClient({
           editable={canChange}
           marginPct={marginPct}
           extraFabrics={extraFabrics}
+          documents={documents}
         />
         )}
       </section>

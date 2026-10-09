@@ -116,7 +116,7 @@ export default async function StandardCostDetailPage({
           loadTempProductMap(),
           loadAnalyticsRules(),
         ]);
-  // RFP sheet + CAD plan library (Finished Goods only).
+  // CAD plan library (Finished Goods only) — the Documents tab.
   const costDocs = track === 'material' ? { ready: false, docs: [] } : await loadCostDocuments(cost.product_code);
 
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
@@ -175,20 +175,19 @@ export default async function StandardCostDetailPage({
         role={user.role}
         marginPct={rules.margin_pct / 100}
         track={track}
+        // CAD plan library — the Documents tab between Fabric Cost and Final Cost (FG only).
+        documents={
+          track !== 'material' ? (
+            <CostDocumentsSection
+              productCode={cost.product_code}
+              docs={costDocs.docs}
+              ready={costDocs.ready}
+              role={user.role}
+              userEmail={user.email}
+            />
+          ) : undefined
+        }
       />
-      {/* RFP sheet + CAD plan library (Finished Goods only). */}
-      {track !== 'material' && (
-        <CostDocumentsSection
-          costId={cost.id}
-          productCode={cost.product_code}
-          rfpLink={cost.rfp_link ?? null}
-          legacyCadLink={cost.cad_link ?? null}
-          docs={costDocs.docs}
-          ready={costDocs.ready}
-          role={user.role}
-          userEmail={user.email}
-        />
-      )}
     </FormLayout>
   );
 }

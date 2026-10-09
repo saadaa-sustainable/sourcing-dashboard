@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { ExternalLink, FileText, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
+import { FileText, Paperclip, Plus, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { addCostDocument, deleteCostDocument, saveRfpLink, signCostDocument, startCostDocumentUpload } from '@/lib/forms/actions';
+import { addCostDocument, deleteCostDocument, signCostDocument, startCostDocumentUpload } from '@/lib/forms/actions';
 import { canEdit } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
@@ -39,24 +39,19 @@ async function uploadFile(productCode: string, file: File): Promise<{ ok: true; 
 }
 
 /**
- * Standard Cost documents (2026-10-09): the RFP sheet link and the CAD plan library — four
- * primary headers (single piece; full layer single size per width, 58″ and 56″ separate;
- * standard ratio; 1:1 size ratio), each with Add + remark. No approval on documents.
+ * Standard Cost → Documents tab (2026-10-09): the CAD plan library — four primary headers
+ * (single piece; full layer single size per width, 58″ and 56″ separate; standard ratio;
+ * 1:1 size ratio), each with Add + remark. No approval on documents. The RFP and CAD links
+ * stay on the Final Cost tab.
  */
 export function CostDocumentsSection({
-  costId,
   productCode,
-  rfpLink,
-  legacyCadLink,
   docs,
   ready,
   role,
   userEmail,
 }: {
-  costId: number;
   productCode: string;
-  rfpLink: string | null;
-  legacyCadLink: string | null;
   docs: CostDocument[];
   ready: boolean;
   role: SdRole;
@@ -67,19 +62,7 @@ export function CostDocumentsSection({
   const byGroup = (g: CostDocGroup) => docs.filter((d) => d.doc_group === g);
 
   return (
-    <section className="cd-section" aria-labelledby="cd-title">
-      <div className="cd-head">
-        <div>
-          <h2 id="cd-title">
-            Documents
-            <InfoDot text={"WHAT: the files behind this standard cost — the RFP sheet and the CAD plans (markers).\n\nHOW: add each CAD plan under its group with a remark; open any file from here.\n\nUSE: one place to find the right CAD for the lay being cut."} />
-          </h2>
-          <p>RFP sheet and the CAD plan library for {productCode}.</p>
-        </div>
-      </div>
-
-      <RfpLinkRow costId={costId} link={rfpLink} editor={editor} />
-
+    <section className="cd-section" aria-label="CAD plan library">
       {!ready ? (
         <Notice tone="warn">
           The CAD plan library needs the database update <code>20261009100000_cost_documents.sql</code> — run it in the Supabase SQL editor, then reload.
@@ -87,16 +70,14 @@ export function CostDocumentsSection({
       ) : (
         <div className="cd-library">
           <div className="cd-library-head">
-            <h3>CAD plan library</h3>
+            <h3>
+              CAD plan library
+              <InfoDot text={"WHAT: the CAD plans (markers) for this product.\n\nHOW: add each plan under its group with a remark; click a file to open it.\n\nUSE: one place to find the right CAD for the lay being cut. The RFP sheet and CAD links stay on Final Cost."} />
+            </h3>
             <p className="cd-sop">
               <b>SOP</b> CAD plans are plotted on the 8 m table.
             </p>
           </div>
-          {legacyCadLink && (
-            <p className="cd-legacy">
-              Earlier CAD link: <a href={legacyCadLink} target="_blank" rel="noopener noreferrer">{legacyCadLink} <ExternalLink size={12} aria-hidden="true" /></a>
-            </p>
-          )}
           {CAD_HEADERS.map((h) => (
             <div className="cd-group" key={h.key}>
               <div className="cd-group-head">
@@ -122,47 +103,6 @@ export function CostDocumentsSection({
         </div>
       )}
     </section>
-  );
-}
-
-function RfpLinkRow({ costId, link, editor }: { costId: number; link: string | null; editor: boolean }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(link ?? '');
-  const [pending, start] = useTransition();
-  function save() {
-    const fd = new FormData();
-    fd.set('id', String(costId));
-    fd.set('rfp_link', val);
-    start(async () => {
-      const r = await saveRfpLink(fd);
-      if (r.ok) reloadWithToast(r.message ?? 'Saved.');
-      else toastError(r.error);
-    });
-  }
-  return (
-    <div className="cd-row">
-      <span className="cd-row-label">RFP sheet</span>
-      {editing ? (
-        <span className="cd-row-edit">
-          <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="https://docs.google.com/spreadsheets/…" aria-label="RFP sheet link" autoFocus />
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={save}>{pending ? 'Saving…' : 'Save'}</button>
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setEditing(false); setVal(link ?? ''); }}>Cancel</button>
-        </span>
-      ) : (
-        <span className="cd-row-value">
-          {link ? (
-            <a href={link} target="_blank" rel="noopener noreferrer">Open the RFP sheet <ExternalLink size={12} aria-hidden="true" /></a>
-          ) : (
-            <span className="wf-subtle">No RFP sheet linked yet.</span>
-          )}
-          {editor && (
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setEditing(true)}>
-              <Pencil size={12} /> {link ? 'Change' : 'Add link'}
-            </button>
-          )}
-        </span>
-      )}
-    </div>
   );
 }
 

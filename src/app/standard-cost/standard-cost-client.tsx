@@ -1335,6 +1335,7 @@ export function CostDetail({
   editable,
   marginPct,
   extraFabrics = [],
+  documents,
 }: {
   cost: StandardCost;
   lines: StandardCostLine[];
@@ -1349,8 +1350,10 @@ export function CostDetail({
   marginPct: number;
   /** Second, third … fabrics on a multi-fabric product, one row per size. */
   extraFabrics?: StandardCostExtraFabric[];
+  /** The CAD plan library (product page only) — shown as the Documents tab. */
+  documents?: React.ReactNode;
 }) {
-  const [view, setView] = useState<'cmtp' | 'fabric' | 'final' | 'history'>('cmtp');
+  const [view, setView] = useState<'cmtp' | 'fabric' | 'documents' | 'final' | 'history'>('cmtp');
   // Default the fabric from Product Master when the sheet hasn't set one and the
   // product maps to a single fabric; multi-fabric products stay blank for manual pick.
   const autoFabric = masterFabric && !masterFabric.multi ? masterFabric.fabricCode ?? '' : '';
@@ -1526,6 +1529,9 @@ export function CostDetail({
         <div className="segment wf-segment">
           <button type="button" className={view === 'cmtp' ? 'active' : ''} onClick={() => setView('cmtp')}>CMTP</button>
           <button type="button" className={view === 'fabric' ? 'active' : ''} onClick={() => setView('fabric')}>Fabric Cost</button>
+          {documents && (
+            <button type="button" className={view === 'documents' ? 'active' : ''} onClick={() => setView('documents')}>Documents</button>
+          )}
           <button type="button" className={view === 'final' ? 'active' : ''} onClick={() => setView('final')}>Final Cost</button>
           <button type="button" className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>
             Rate History{history.length > 0 ? ` (${history.length})` : ''}
@@ -1706,6 +1712,8 @@ export function CostDetail({
             </div>
           )}
         </div>
+      ) : view === 'documents' && documents ? (
+        <div className="wf-documents-view">{documents}</div>
       ) : view === 'final' ? (
         <div className="wf-final-view">
           <div className="table-scroll">
