@@ -21,7 +21,6 @@ import {
   LEVEL_LABEL,
 } from '../approval';
 import { applyPoDeletion } from './po-approval';
-import { loadCadCheckers } from '../queries-modules/cost-documents';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -61,7 +60,6 @@ const TABLE: Record<ApprovalEntity, string> = {
   inward_plan: 'sd_inward_plan_entry',
   vendor_deboarding: 'sd_vendor_deboarding_request',
   po_amendment: 'sd_po_amendment',
-  cost_document: 'sd_cost_document',
 };
 
 /** When each kind of item started waiting — escalation (spec 7.5) is measured from this. */
@@ -72,7 +70,6 @@ const WAITING_SINCE: Partial<Record<ApprovalEntity, string>> = {
   po_delete: 'requested_at',
   vendor_deboarding: 'requested_at',
   po_amendment: 'requested_at',
-  cost_document: 'submitted_at',
 };
 
 // Entities that carry line items eligible for line-item rework.
@@ -91,7 +88,6 @@ const ITEM_LINK: Partial<Record<ApprovalEntity, (id: number) => string>> = {
   material_cost: () => '/standard-cost?track=material',
   vendor_deboarding: () => '/vendor-deboarding',
   po_amendment: () => '/po-amendment',
-  cost_document: () => '/standard-cost',
 };
 
 /** Who raised an item: the first person-field the row has. */
@@ -186,26 +182,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
   const waitingSince = waitCol ? (row[waitCol] as string | null) : null;
   const escalated = isEscalated(waitingSince, Number(rules.approval_escalation_days ?? 0));
-  // CAD documents have their own two levels: L1 = the CAD checker (checks the CAD against the
-  // input; any team member when nobody is named), L2 = admin.
-  if (entityType === 'cost_document') {
-    const checkers = await loadCadCheckers();
-    const ok =
-      from === 'submitted'
-        ? checkers.length
-          ? checkers.includes(user.email.toLowerCase())
-          : canApprove(user.role, 'submitted')
-        : from === 'pending_l2'
-          ? user.role === 'admin'
-          : false;
-    if (!ok) {
-      return fail(
-        from === 'submitted'
-          ? 'This CAD is waiting for the CAD check (L1) — only the CAD checker can decide it.'
-          : 'This CAD is waiting for the admin (L2).',
-      );
-    }
-  } else if (!canDecide(user, from, matrix, escalated)) {
+  if (!canDecide(user, from, matrix, escalated)) {
     const named = approversFor(from, matrix);
     return fail(
       named.length
@@ -262,15 +239,11 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     }
   }
 
-  // A CAD document approved at L1 (the CAD check) moves on to the admin; L2 approves it.
-  const cadL1 = entityType === 'cost_document' && decision === 'approve' && from === 'submitted';
-  const to: SdStatus = cadL1
-    ? 'pending_l2'
-    : decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
+  const to: SdStatus =
+    decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
   const now = new Date().toISOString();
-  const patch: Record<string, unknown> = cadL1
-    ? { status: to, l1_approved_by: user.email, l1_approved_at: now, updated_at: now }
-    : decision === 'approve'
+  const patch: Record<string, unknown> =
+    decision === 'approve'
       ? { status: to, approved_by: user.email, approved_at: now }
       : decision === 'rework'
         ? {
@@ -301,21 +274,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
       .eq('id', entityId);
   }
 
-  await writeLog(entityType, String(entityId), label, from, to, user.email, notes || (cadL1 ? 'CAD check approved (L1)' : undefined));
-  if (cadL1) {
-    // Not final yet: tell the admins it is their turn, not the uploader that it is approved.
-    await createNotification({
-      kind: 'approval_l1',
-      title: `CAD checked, awaiting your approval: ${label}`,
-      body: notes || null,
-      link: '/approvals',
-      audienceRole: 'admin',
-      createdBy: user.email,
-    });
-    revalidatePath('/approvals');
-    revalidatePath('/standard-cost');
-    return done('CAD check approved (L1) — sent to the admin for L2.');
-  }
+  await writeLog(entityType, String(entityId), label, from, to, user.email, notes || undefined);
   await tellRaiser(entityType, entityId, label, row, decision, user.email, notes);
 
   if (decision === 'rework') {

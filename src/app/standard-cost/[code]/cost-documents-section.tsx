@@ -1,19 +1,10 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
-import { ExternalLink, FileText, Paperclip, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { useState, useTransition } from 'react';
+import { ExternalLink, FileText, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import {
-  addCostDocument,
-  deleteCostDocument,
-  replaceCostDocument,
-  saveCadCheckers,
-  saveRfpLink,
-  signCostDocument,
-  startCostDocumentUpload,
-} from '@/lib/forms/actions';
-import { canApprove, canEdit, STATUS_LABEL, statusText } from '@/lib/forms/approval';
-import { ApprovalBar } from '@/components/forms/approval-bar';
+import { addCostDocument, deleteCostDocument, saveRfpLink, signCostDocument, startCostDocumentUpload } from '@/lib/forms/actions';
+import { canEdit } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import { confirmDelete } from '@/lib/confirm';
@@ -47,20 +38,10 @@ async function uploadFile(productCode: string, file: File): Promise<{ ok: true; 
   return { ok: true, path: ticket.path };
 }
 
-/** The workflow status of a CAD document, with its stage while it waits. */
-function docStatus(d: CostDocument): { text: string; tone: string } {
-  if (d.status === 'submitted') return { text: `${STATUS_LABEL.submitted} · CAD check (L1)`, tone: 'orange' };
-  if (d.status === 'pending_l2') return { text: `${STATUS_LABEL.pending_l2} · admin (L2)`, tone: 'orange' };
-  if (d.status === 'approved') return { text: statusText('approved', { approverEdited: d.approver_edited }), tone: 'teal' };
-  if (d.status === 'rework') return { text: STATUS_LABEL.rework, tone: 'orange' };
-  return { text: STATUS_LABEL.rejected, tone: 'red' };
-}
-
 /**
  * Standard Cost documents (2026-10-09): the RFP sheet link and the CAD plan library — four
  * primary headers (single piece; full layer single size per width, 58″ and 56″ separate;
- * standard ratio; 1:1 size ratio), each with Add + remark. Every CAD file goes through two
- * levels: the CAD checker (L1) checks it against the input, then the admin (L2) approves.
+ * standard ratio; 1:1 size ratio), each with Add + remark. No approval on documents.
  */
 export function CostDocumentsSection({
   costId,
@@ -69,7 +50,6 @@ export function CostDocumentsSection({
   legacyCadLink,
   docs,
   ready,
-  checkers,
   role,
   userEmail,
 }: {
@@ -79,17 +59,12 @@ export function CostDocumentsSection({
   legacyCadLink: string | null;
   docs: CostDocument[];
   ready: boolean;
-  checkers: string[];
   role: SdRole;
   userEmail: string;
 }) {
   const editor = canEdit(role, 'draft');
   const me = userEmail.toLowerCase();
-  const canL1 = checkers.length ? checkers.includes(me) : canApprove(role, 'submitted');
-  const canL2 = role === 'admin';
   const byGroup = (g: CostDocGroup) => docs.filter((d) => d.doc_group === g);
-  const pendingL1 = docs.filter((d) => d.status === 'submitted').length;
-  const pendingL2 = docs.filter((d) => d.status === 'pending_l2').length;
 
   return (
     <section className="cd-section" aria-labelledby="cd-title">
@@ -97,20 +72,13 @@ export function CostDocumentsSection({
         <div>
           <h2 id="cd-title">
             Documents
-            <InfoDot text={"WHAT: the files behind this standard cost — the RFP sheet and the CAD plans (markers).\n\nHOW: add each CAD plan under its group with a remark. The CAD checker (L1) checks it against the input, then the admin (L2) approves it — Approval Pending, Approved (Edited & Approved / First time Approved), Rework / Reassign or Rejected / Discarded, with a remark for the last two.\n\nUSE: open any file from here; a file sent for Rework / Reassign is replaced in place."} />
+            <InfoDot text={"WHAT: the files behind this standard cost — the RFP sheet and the CAD plans (markers).\n\nHOW: add each CAD plan under its group with a remark; open any file from here.\n\nUSE: one place to find the right CAD for the lay being cut."} />
           </h2>
           <p>RFP sheet and the CAD plan library for {productCode}.</p>
         </div>
-        {(pendingL1 > 0 || pendingL2 > 0) && (
-          <div className="cd-head-pills">
-            {pendingL1 > 0 && <span className="wf-status tone-orange">{pendingL1} with the CAD check (L1)</span>}
-            {pendingL2 > 0 && <span className="wf-status tone-orange">{pendingL2} with the admin (L2)</span>}
-          </div>
-        )}
       </div>
 
       <RfpLinkRow costId={costId} link={rfpLink} editor={editor} />
-      <CheckerRow checkers={checkers} isAdmin={role === 'admin'} />
 
       {!ready ? (
         <Notice tone="warn">
@@ -144,8 +112,6 @@ export function CostDocumentsSection({
                     docs={byGroup(slot.group)}
                     productCode={productCode}
                     editor={editor}
-                    canL1={canL1}
-                    canL2={canL2}
                     isAdmin={role === 'admin'}
                     me={me}
                   />
@@ -200,51 +166,12 @@ function RfpLinkRow({ costId, link, editor }: { costId: number; link: string | n
   );
 }
 
-function CheckerRow({ checkers, isAdmin }: { checkers: string[]; isAdmin: boolean }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(checkers.join(', '));
-  const [pending, start] = useTransition();
-  function save() {
-    const fd = new FormData();
-    fd.set('emails', val);
-    start(async () => {
-      const r = await saveCadCheckers(fd);
-      if (r.ok) reloadWithToast(r.message ?? 'Saved.');
-      else toastError(r.error);
-    });
-  }
-  return (
-    <div className="cd-row">
-      <span className="cd-row-label">CAD checker (L1)</span>
-      {editing ? (
-        <span className="cd-row-edit">
-          <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="name@saadaa.in — separate several with commas" aria-label="CAD checker emails" autoFocus />
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={save}>{pending ? 'Saving…' : 'Save'}</button>
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setEditing(false); setVal(checkers.join(', ')); }}>Cancel</button>
-        </span>
-      ) : (
-        <span className="cd-row-value">
-          <span>{checkers.length ? checkers.join(', ') : <span className="wf-subtle">Not set — any team member can do the CAD check.</span>}</span>
-          <span className="wf-subtle">checks each CAD against the input; the admin approves at L2</span>
-          {isAdmin && (
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setEditing(true)}>
-              <Pencil size={12} /> {checkers.length ? 'Change' : 'Set'}
-            </button>
-          )}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function Slot({
   group,
   label,
   docs,
   productCode,
   editor,
-  canL1,
-  canL2,
   isAdmin,
   me,
 }: {
@@ -253,8 +180,6 @@ function Slot({
   docs: CostDocument[];
   productCode: string;
   editor: boolean;
-  canL1: boolean;
-  canL2: boolean;
   isAdmin: boolean;
   me: string;
 }) {
@@ -265,7 +190,7 @@ function Slot({
       {docs.length ? (
         <ul className="cd-docs">
           {docs.map((d) => (
-            <DocRow key={d.id} d={d} productCode={productCode} editor={editor} canL1={canL1} canL2={canL2} isAdmin={isAdmin} me={me} />
+            <DocRow key={d.id} d={d} productCode={productCode} canRemove={isAdmin || (editor && (d.created_by ?? '').toLowerCase() === me)} />
           ))}
         </ul>
       ) : (
@@ -273,21 +198,7 @@ function Slot({
       )}
       {editor &&
         (adding ? (
-          <FilePicker
-            productCode={productCode}
-            submitLabel="Add"
-            onCancel={() => setAdding(false)}
-            onUploaded={async (path, file, remark) => {
-              const fd = new FormData();
-              fd.set('product_code', productCode);
-              fd.set('doc_group', group);
-              fd.set('file_path', path);
-              fd.set('file_name', file.name);
-              fd.set('file_size', String(file.size));
-              fd.set('remark', remark);
-              return addCostDocument(fd);
-            }}
-          />
+          <AddPicker productCode={productCode} group={group} onCancel={() => setAdding(false)} />
         ) : (
           <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm cd-add" onClick={() => setAdding(true)}>
             <Plus size={13} /> Add {label ? `${label} plan` : 'plan'}
@@ -297,30 +208,8 @@ function Slot({
   );
 }
 
-function DocRow({
-  d,
-  productCode,
-  editor,
-  canL1,
-  canL2,
-  isAdmin,
-  me,
-}: {
-  d: CostDocument;
-  productCode: string;
-  editor: boolean;
-  canL1: boolean;
-  canL2: boolean;
-  isAdmin: boolean;
-  me: string;
-}) {
-  const [deciding, setDeciding] = useState(false);
-  const [replacing, setReplacing] = useState(false);
+function DocRow({ d, productCode, canRemove }: { d: CostDocument; productCode: string; canRemove: boolean }) {
   const [pending, start] = useTransition();
-  const s = docStatus(d);
-  const myTurn = (d.status === 'submitted' && canL1) || (d.status === 'pending_l2' && canL2);
-  const mine = (d.created_by ?? '').toLowerCase() === me;
-  const canRemove = isAdmin || (mine && d.status !== 'approved');
 
   function open() {
     start(async () => {
@@ -351,84 +240,25 @@ function DocRow({
         <button type="button" className="cd-doc-name" onClick={open} disabled={pending} title="Open the file">
           <FileText size={14} aria-hidden="true" /> {d.file_name}
         </button>
-        <span className={`wf-status tone-${s.tone}`}>{s.text}</span>
-      </div>
-      <div className="cd-doc-meta">
-        {d.remark && <span className="cd-doc-remark">“{d.remark}”</span>}
-        <span>{kb(d.file_size)}{d.file_size ? ' · ' : ''}added {day(d.submitted_at)}{d.created_by ? ` by ${d.created_by}` : ''}</span>
-        {d.l1_approved_at && <span>CAD checked {day(d.l1_approved_at)}</span>}
-        {d.status === 'approved' && <span>approved {day(d.approved_at)}</span>}
-      </div>
-      {d.status === 'rework' && d.rework_notes && <p className="cd-doc-note">Rework / Reassign: {d.rework_notes}</p>}
-      {d.status === 'rejected' && d.rejection_notes && <p className="cd-doc-note bad">Rejected / Discarded: {d.rejection_notes}</p>}
-      <div className="cd-doc-actions">
-        {myTurn && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setDeciding((o) => !o)} aria-expanded={deciding}>
-            {d.status === 'submitted' ? 'Decide · CAD check (L1)' : 'Decide · admin (L2)'}
-          </button>
-        )}
-        {editor && d.status === 'rework' && !replacing && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setReplacing(true)}>
-            <RefreshCw size={12} /> Replace file
-          </button>
-        )}
         {canRemove && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={remove} aria-label={`Remove ${d.file_name}`}>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={remove} aria-label={`Remove ${d.file_name}`} title="Remove">
             <Trash2 size={12} />
           </button>
         )}
       </div>
-      {deciding && myTurn && (
-        <div className="cd-decide">
-          <ApprovalBar
-            entityType="cost_document"
-            entityId={String(d.id)}
-            entityLabel={`CAD — ${productCode} · ${COST_DOC_GROUP_LABEL[d.doc_group]}`}
-            onDone={(r) => {
-              if (r.ok) reloadWithToast(r.message ?? 'Saved.');
-            }}
-          />
-        </div>
-      )}
-      {replacing && (
-        <FilePicker
-          productCode={productCode}
-          submitLabel="Replace & resubmit"
-          initialRemark={d.remark ?? ''}
-          onCancel={() => setReplacing(false)}
-          onUploaded={async (path, file, remark) => {
-            const fd = new FormData();
-            fd.set('id', String(d.id));
-            fd.set('file_path', path);
-            fd.set('file_name', file.name);
-            fd.set('file_size', String(file.size));
-            fd.set('remark', remark);
-            return replaceCostDocument(fd);
-          }}
-        />
-      )}
+      <div className="cd-doc-meta">
+        {d.remark && <span className="cd-doc-remark">“{d.remark}”</span>}
+        <span>{kb(d.file_size)}{d.file_size ? ' · ' : ''}added {day(d.created_at)}{d.created_by ? ` by ${d.created_by}` : ''}</span>
+      </div>
     </li>
   );
 }
 
-function FilePicker({
-  productCode,
-  submitLabel,
-  initialRemark = '',
-  onCancel,
-  onUploaded,
-}: {
-  productCode: string;
-  submitLabel: string;
-  initialRemark?: string;
-  onCancel: () => void;
-  onUploaded: (path: string, file: File, remark: string) => Promise<{ ok: boolean; message?: string; error?: string }>;
-}) {
+function AddPicker({ productCode, group, onCancel }: { productCode: string; group: CostDocGroup; onCancel: () => void }) {
   const [file, setFile] = useState<File | null>(null);
-  const [remark, setRemark] = useState(initialRemark);
+  const [remark, setRemark] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const input = useRef<HTMLInputElement>(null);
 
   function go() {
     setErr(null);
@@ -436,9 +266,16 @@ function FilePicker({
     start(async () => {
       const up = await uploadFile(productCode, file);
       if (!up.ok) return setErr(up.error);
-      const r = await onUploaded(up.path, file, remark.trim());
-      if (r.ok) reloadWithToast(r.message ?? 'Saved.');
-      else setErr(r.error ?? 'Could not save.');
+      const fd = new FormData();
+      fd.set('product_code', productCode);
+      fd.set('doc_group', group);
+      fd.set('file_path', up.path);
+      fd.set('file_name', file.name);
+      fd.set('file_size', String(file.size));
+      fd.set('remark', remark.trim());
+      const r = await addCostDocument(fd);
+      if (r.ok) reloadWithToast(r.message ?? 'Added.');
+      else setErr(r.error);
     });
   }
 
@@ -448,7 +285,6 @@ function FilePicker({
         <Paperclip size={13} aria-hidden="true" />
         <span>{file ? file.name : 'Choose a file'}</span>
         <input
-          ref={input}
           type="file"
           accept={ACCEPT}
           onChange={(e) => {
@@ -461,7 +297,7 @@ function FilePicker({
       <input className="cd-remark" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark (e.g. marker efficiency, lay length)" aria-label="Remark" />
       <div className="cd-picker-actions">
         <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || !file} onClick={go}>
-          {pending ? 'Uploading…' : submitLabel}
+          {pending ? 'Uploading…' : 'Add'}
         </button>
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={onCancel}>
           Cancel
@@ -471,4 +307,3 @@ function FilePicker({
     </div>
   );
 }
-

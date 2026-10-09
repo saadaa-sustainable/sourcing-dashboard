@@ -1,6 +1,4 @@
 import 'server-only';
-import { loadCadCheckers, loadPendingCostDocuments } from './cost-documents';
-import { COST_DOC_GROUP_LABEL } from '@/lib/cost-documents';
 import { cache } from 'react';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
@@ -79,7 +77,7 @@ export async function countPendingApprovals(): Promise<number> {
   // are the admin's turn (the bell renders for admins only).
   const costPending = (t: string) =>
     supabase.from(t).select('*', { count: 'exact', head: true }).in('neg_stage', ['proposed', 'rate_submitted']);
-  const [a, b, c, d, e, f, g, h, inward, cad] = await Promise.all([
+  const [a, b, c, d, e, f, g, h, inward] = await Promise.all([
     pending('sd_buying_plan'),
     pending('sd_discontinue_request'),
     pending('sd_po_approval'),
@@ -91,12 +89,11 @@ export async function countPendingApprovals(): Promise<number> {
     // Monthly inward-plan sheet: one queue card per month with Pending rows.
     // paging-ok: a handful of month rows, distinct-counted below
     supabase.from('sd_inward_plan_entry').select('plan_month').eq('approval_status', 'Pending'),
-    pending('sd_cost_document'),
   ]);
   const inwardMonths = new Set(((inward.data ?? []) as { plan_month: string }[]).map((r) => r.plan_month)).size;
   return (
     (a.count ?? 0) + (b.count ?? 0) + (c.count ?? 0) + (d.count ?? 0) + (e.count ?? 0) +
-    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0) + inwardMonths + (cad.count ?? 0)
+    (f.count ?? 0) + (g.count ?? 0) + (h.count ?? 0) + inwardMonths
   );
 }
 
@@ -735,24 +732,6 @@ export async function loadApprovalQueue(): Promise<{
       href: '/receivable-plan?tab=input',
     });
   }
-  // CAD plans on standard costs: L1 = the CAD checker, L2 = admin (decideApproval).
-  const [cadDocs, cadCheckers] = await Promise.all([loadPendingCostDocuments(), loadCadCheckers()]);
-  for (const d of cadDocs) {
-    items.push({
-      entityType: 'cost_document',
-      entityId: String(d.id),
-      label: `CAD — ${d.product_code} · ${COST_DOC_GROUP_LABEL[d.doc_group] ?? d.doc_group}`,
-      sublabel: `${d.file_name}${d.status === 'pending_l2' ? ' · CAD checked (L1), with the admin (L2)' : ' · waiting for the CAD check (L1) against the input'}`,
-      status: d.status === 'pending_l2' ? 'pending_l2' : 'submitted',
-      quantity: 0,
-      requiredRole: d.status === 'pending_l2' ? 'admin' : 'team',
-      submittedBy: d.created_by,
-      submittedAt: d.submitted_at,
-      submitNote: d.remark,
-      href: `/standard-cost/${encodeURIComponent(d.product_code)}`,
-    });
-  }
-
   // Spec 7.5 — stamp each card with whose turn it is and how long it has been theirs, so
   // the queue says who is holding it up rather than leaving everyone to assume.
   const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
@@ -760,10 +739,7 @@ export async function loadApprovalQueue(): Promise<{
   const now = Date.now();
   for (const item of items) {
     item.level = levelForStatus(item.status);
-    item.approvers =
-      item.entityType === 'cost_document' && item.status === 'submitted' && cadCheckers.length
-        ? cadCheckers
-        : approversFor(item.status, matrix);
+    item.approvers = approversFor(item.status, matrix);
     item.daysWaiting = item.submittedAt
       ? Math.max(0, Math.floor((now - Date.parse(item.submittedAt)) / 86_400_000))
       : null;

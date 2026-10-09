@@ -98,20 +98,6 @@ async function buildForm(db: Db, entity: ApprovalEntity, idText: string): Promis
     };
   }
 
-  if (entity === 'cost_document') {
-    const doc = await header('sd_cost_document');
-    if (!doc) return { error: 'Document not found.' };
-    return {
-      form: {
-        title: `CAD document — ${text(doc.product_code)}`,
-        note: 'Correct the remark recorded with the file, then approve. The file itself is replaced by the team on Rework / Reassign.',
-        rows: [{ ref: 'header', label: text(doc.file_name), sub: text(doc.product_code), fields: [f('remark', 'Remark', 'text', doc.remark)] }],
-      },
-      targets: new Map([['header', { ref: 'header', table: 'sd_cost_document', keyCol: 'id', key: id }]]),
-      status: doc.status as SdStatus,
-    };
-  }
-
   if (entity === 'po_approval') {
     const po = await header('sd_po_approval');
     if (!po) return { error: 'PO not found.' };

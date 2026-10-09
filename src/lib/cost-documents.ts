@@ -40,8 +40,6 @@ export const COST_DOC_GROUP_LABEL: Record<CostDocGroup, string> = {
 
 export const isCostDocGroup = (v: string): v is CostDocGroup => v in COST_DOC_GROUP_LABEL;
 
-export type CostDocStatus = 'submitted' | 'pending_l2' | 'approved' | 'rework' | 'rejected';
-
 export type CostDocument = {
   id: number;
   product_code: string;
@@ -49,16 +47,8 @@ export type CostDocument = {
   file_name: string;
   file_size: number | null;
   remark: string | null;
-  status: CostDocStatus;
   created_by: string | null;
-  submitted_at: string;
-  l1_approved_by: string | null;
-  l1_approved_at: string | null;
-  approved_by: string | null;
-  approved_at: string | null;
-  rework_notes: string | null;
-  rejection_notes: string | null;
-  approver_edited: boolean;
+  created_at: string;
 };
 
 /** Extension of a file name (lower case), or ''. */

@@ -997,9 +997,7 @@ export type ApprovalEntity =
   | 'inward_plan'
   | 'vendor_deboarding'
   /** Spec 7.9 — a cost / quantity / time change to a PO already issued in EasyEcom. */
-  | 'po_amendment'
-  /** A CAD plan / document on a Finished Goods standard cost — L1 CAD check, then L2 admin. */
-  | 'cost_document';
+  | 'po_amendment';
 
 /** What an amendment changes on an issued PO. */
 export type PoAmendmentType = 'cost' | 'quantity' | 'time';

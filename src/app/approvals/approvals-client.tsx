@@ -50,7 +50,6 @@ const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'po_delete', label: 'PO Deletions' },
   { key: 'po_amendment', label: 'PO Amendments' },
   { key: 'standard_cost', label: 'Standard Cost' },
-  { key: 'cost_document', label: 'CAD documents' },
   { key: 'discontinue', label: 'Discontinue' },
   { key: 'vendor_deboarding', label: 'Vendor De-Boarding' },
   { key: 'inward_plan', label: 'Inward Plan (month)' },
