@@ -47,10 +47,11 @@ export type KanbanOption = {
 
 type View = 'cards' | 'kanban' | 'table';
 
-// The chosen view is remembered per browser (a convenience, never required).
+// The chosen view is remembered per browser (a convenience, never required). Keys carry ':v2'
+// since Kanban became the opening view (2026-10-09), so every browser starts on Kanban once.
 function readView(storageKey: string): View | null {
   try {
-    const v = localStorage.getItem(storageKey);
+    const v = localStorage.getItem(`${storageKey}:v2`);
     return v === 'cards' || v === 'kanban' || v === 'table' ? v : null;
   } catch {
     return null;
@@ -94,7 +95,7 @@ export function PlanLineViews({
   storageKey,
   noun = 'line',
   qtyUnit = 'pcs',
-  defaultView = 'cards',
+  defaultView = 'kanban',
 }: {
   items: PlanCard[];
   table: ReactNode;
@@ -117,7 +118,7 @@ export function PlanLineViews({
   );
   const setView = (v: View) => {
     try {
-      localStorage.setItem(storageKey, v);
+      localStorage.setItem(`${storageKey}:v2`, v);
     } catch {
       /* private window: the switch still works for this render */
     }
@@ -257,11 +258,11 @@ export function PlanLineViews({
     <>
       <div className="pl-views-bar">
         <div className="segment wf-segment" role="group" aria-label="View lines as">
-          <button type="button" className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
-            <LayoutGrid size={14} aria-hidden="true" /> Cards
-          </button>
           <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}>
             <Columns3 size={14} aria-hidden="true" /> Kanban
+          </button>
+          <button type="button" className={view === 'cards' ? 'active' : ''} aria-pressed={view === 'cards'} onClick={() => setView('cards')}>
+            <LayoutGrid size={14} aria-hidden="true" /> Cards
           </button>
           <button type="button" className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => setView('table')}>
             <Table2 size={14} aria-hidden="true" /> Table

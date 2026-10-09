@@ -59,7 +59,7 @@ export function InwardPlanSheet({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [board, setBoard] = useState<'weeks' | 'vendors' | 'lines'>('weeks');
   // Lines as a List (the table), Cards or Kanban by status; the choice is remembered per browser.
-  const [layout, setLayout] = useState<'list' | 'cards' | 'kanban'>('list');
+  const [layout, setLayout] = useState<'list' | 'cards' | 'kanban'>('kanban');
   const [query, setQuery] = useState('');
   // Lines ticked for a bulk action (ids), and the rows the list currently shows (for "select all shown").
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -82,16 +82,16 @@ export function InwardPlanSheet({
     });
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('ip-sheet-layout');
+      const saved = localStorage.getItem('ip-sheet-layout-v2');
       // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
       if (saved === 'list' || saved === 'cards' || saved === 'kanban') setLayout(saved);
     } catch {
-      /* storage blocked: keep list */
+      /* storage blocked: keep kanban */
     }
   }, []);
   const chooseLayout = (l: 'list' | 'cards' | 'kanban') => {
     setLayout(l);
-    try { localStorage.setItem('ip-sheet-layout', l); } catch { /* ignore */ }
+    try { localStorage.setItem('ip-sheet-layout-v2', l); } catch { /* ignore */ }
   };
 
   const monthRows = useMemo(() => rows.filter((r) => r.plan_month === month), [rows, month]);
@@ -288,7 +288,7 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
               ) : null;
             })()}
           <div className="segment ip-layout-seg" role="group" aria-label="Layout">
-            {(['list', 'cards', 'kanban'] as const).map((l) => (
+            {(['kanban', 'cards', 'list'] as const).map((l) => (
               <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
                 {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
               </button>

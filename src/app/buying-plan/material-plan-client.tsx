@@ -726,7 +726,6 @@ export function MaterialPlanClient({
             bulk={bulkDecide}
             noun="material line"
             qtyUnit={null}
-            defaultView="table"
             kanban={MAT_INPUT_KANBAN}
             editor={inputEditor}
             decision={canDecideLines ? (key) => {

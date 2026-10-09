@@ -158,19 +158,19 @@ export function ReceivablePlanClient({
   const [needsMine, setNeedsMine] = useState(() => decides && rows.some((r) => r.input_status === 'submitted'));
   // PO lines come in pages so the table is not one long scroll.
   const [page, setPage] = useState(0);
-  const [layout, setLayout] = useState<LinesLayout>('list');
+  const [layout, setLayout] = useState<LinesLayout>('kanban');
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('ip-lines-layout');
+      const saved = localStorage.getItem('ip-lines-layout-v2');
       // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
       if (saved === 'list' || saved === 'cards' || saved === 'kanban') setLayout(saved);
     } catch {
-      /* storage blocked: keep list */
+      /* storage blocked: keep kanban */
     }
   }, []);
   const chooseLayout = (l: LinesLayout) => {
     setLayout(l);
-    try { localStorage.setItem('ip-lines-layout', l); } catch { /* ignore */ }
+    try { localStorage.setItem('ip-lines-layout-v2', l); } catch { /* ignore */ }
   };
   /** Cards and Kanban are for reading; "Edit" opens the row in the list, filtered to it. */
   const editInList = (r: ReceivablePlanRow) => {
@@ -404,7 +404,7 @@ export function ReceivablePlanClient({
           </div>
         ) : <span />}
         <div className="segment ip-layout-seg" role="group" aria-label="Layout">
-          {(['list', 'cards', 'kanban'] as LinesLayout[]).map((l) => (
+          {(['kanban', 'cards', 'list'] as LinesLayout[]).map((l) => (
             <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
               {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
             </button>

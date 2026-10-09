@@ -1318,7 +1318,6 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
                   storageKey="buying-plan-input-view"
                   bulk={bulkDecide}
                   noun="product"
-                  defaultView="table"
                   kanban={INPUT_KANBAN}
                   editor={inputEditor}
                   decision={canDecideLines ? (key) => {

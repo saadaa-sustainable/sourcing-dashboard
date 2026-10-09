@@ -142,19 +142,19 @@ export function StandardCostClient({
   // explicit control rather than quietly disappearing.
   const [cardSort, setCardSort] = useState<'code' | 'job' | 'fob' | 'efob' | 'stage' | 'updated'>('code');
   // Cards / Kanban / Table, remembered per browser (both tracks share the choice).
-  const [view, setView] = useState<SheetView>('cards');
+  const [view, setView] = useState<SheetView>('kanban');
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('sc-sheet-view');
+      const saved = localStorage.getItem('sc-sheet-view-v2');
       // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
       if (saved === 'cards' || saved === 'kanban' || saved === 'table') setView(saved);
     } catch {
-      /* storage blocked: keep cards */
+      /* storage blocked: keep kanban */
     }
   }, []);
   const chooseView = (v: SheetView) => {
     setView(v);
-    try { localStorage.setItem('sc-sheet-view', v); } catch { /* ignore */ }
+    try { localStorage.setItem('sc-sheet-view-v2', v); } catch { /* ignore */ }
   };
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
@@ -375,7 +375,7 @@ export function StandardCostClient({
 
   const viewSwitch = (
     <div className="segment sc-view-seg" role="group" aria-label="View">
-      {(['cards', 'kanban', 'table'] as SheetView[]).map((v) => (
+      {(['kanban', 'cards', 'table'] as SheetView[]).map((v) => (
         <button key={v} type="button" className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => chooseView(v)}>
           {v === 'cards' ? 'Cards' : v === 'kanban' ? 'Kanban' : 'Table'}
         </button>
