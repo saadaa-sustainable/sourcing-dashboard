@@ -508,7 +508,7 @@ function EntryTab({
             </button>
           ))}
         </div>
-        <div className="vc2-toolbar">
+        <div className="vc2-toolbar plan-filterbar">
           <label className="vc2-search">
             <Search size={14} aria-hidden="true" />
             <input type="search" value={search} placeholder="Search vendor name or code" aria-label="Search vendors" onChange={(e) => setSearch(e.target.value)} />
@@ -530,9 +530,9 @@ function EntryTab({
               })}
             </select>
           )}
-          <span className="vc2-count">{filtered.length} of {decorated.length} vendors</span>
-          <button type="button" className="vc2-btn" onClick={exportRows}><Download size={14} /> Export</button>
           <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+          <span className="vc2-count plan-end">{filtered.length} of {decorated.length} vendors</span>
+          <button type="button" className="vc2-btn" onClick={exportRows}><Download size={14} /> Export</button>
         </div>
         <div className="table-scroll">
           <table className="vc2-table">
@@ -839,7 +839,7 @@ function LiveEntryTab({
       )}
 
       <div className="wf-toolbar vc-toolbar">
-        <div className="wf-toolbar-left">
+        <div className="wf-toolbar-left plan-filterbar">
           <Field label="Search vendor">
             <input
               value={search}

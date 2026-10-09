@@ -965,7 +965,7 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
 
   // Shared filter toolbar (sticky card). Group-by only applies to the grouped View.
   const toolbar = (
-    <div className={`bp-toolbar bp-filter-toolbar bp-filter-toolbar-${mode}`}>
+    <div className={`bp-toolbar bp-filter-toolbar bp-filter-toolbar-${mode} plan-filterbar`}>
       <input
         className="bp-search"
         aria-label="Search product code"
@@ -1004,16 +1004,16 @@ USE: '—' means no approved ${label} rate yet — that quantity cannot be value
         More filters
         {hiddenFilterCount > 0 && <span className="bp-more-count">{hiddenFilterCount}</span>}
       </button>
+      <ClearFiltersButton active={hasFilters || inputSearch !== ''} onClear={clearFilters} />
       {mode === 'input' && editable && (
         <button type="button" className="wf-btn wf-btn-primary bp-add-products" onClick={() => setProductPickerOpen(true)}>
           <Plus size={15} aria-hidden="true" />
           Add products
         </button>
       )}
-      <span className="bp-toolbar-count">
+      <span className="bp-toolbar-count plan-end">
         {shownCount} of {totalCount} shown
       </span>
-      <ClearFiltersButton active={hasFilters || inputSearch !== ''} onClear={clearFilters} />
       <div
         id="buying-plan-more-filters"
         className="bp-more-filters"

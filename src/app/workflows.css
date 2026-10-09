@@ -2804,3 +2804,22 @@ tr.iw-picked > td { background: #fffbea; }
 /* Shared "Clear all filters" button (components/clear-filters-button.tsx) — on every filter bar. */
 .clear-filters-btn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .clear-filters-btn:disabled { opacity: .45; cursor: default; }
+
+/* ---- Planning toolbars (Buying Plan, Vendor Capacity, Standard Cost, Inward Plan) ----
+   One layout everywhere: search → filters → Clear all filters on the left; count, export and the
+   view switch (Kanban / Cards / List / Table) pushed to the right end (.plan-end). Wraps as a
+   whole on narrow screens. Overrides the older per-page fixed-column grids. */
+.plan-filterbar.plan-filterbar { display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px; grid-template-columns: none !important; }
+.plan-filterbar.plan-filterbar > * { width: auto !important; min-width: 0; flex: 0 1 auto; margin-left: 0; justify-self: auto; grid-column: auto !important; }
+.plan-filterbar.plan-filterbar > input,
+.plan-filterbar.plan-filterbar > .wf-search,
+.plan-filterbar.plan-filterbar > .bp-search,
+.plan-filterbar.plan-filterbar > .field:first-child,
+.plan-filterbar.plan-filterbar > label:first-child { flex: 1 1 240px !important; max-width: 380px; }
+.plan-filterbar.plan-filterbar > .field:first-child input { width: 100%; }
+.plan-filterbar.plan-filterbar > select { flex: 0 1 170px !important; min-height: 36px; }
+.plan-filterbar.plan-filterbar > .segment { flex: none !important; margin: 0; }
+.plan-filterbar.plan-filterbar > .clear-filters-btn { flex: none !important; min-height: 36px; }
+.plan-filterbar.plan-filterbar > .plan-end { margin-left: auto !important; }
+.plan-filterbar.plan-filterbar > .bp-more-filters { flex: 1 1 100% !important; }
+.plan-filterbar.plan-filterbar > .wf-check, .plan-filterbar.plan-filterbar > .wf-check-field { flex: none !important; white-space: nowrap; }

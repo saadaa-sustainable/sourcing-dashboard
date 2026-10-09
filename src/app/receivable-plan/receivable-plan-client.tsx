@@ -355,7 +355,7 @@ export function ReceivablePlanClient({
 
       {message && <Notice tone="ok">{message}</Notice>}
 
-      <div className="wf-toolbar wf-filter-bar">
+      <div className="wf-toolbar wf-filter-bar plan-filterbar">
         {decides && (
           <div className="segment fb-seg" role="group" aria-label="Show">
             <button type="button" className={needsMine ? 'active' : ''} aria-pressed={needsMine} onClick={() => setNeedsMine(true)}>
@@ -413,29 +413,12 @@ export function ReceivablePlanClient({
             setNeedsMine(false);
           }}
         />
-        <span className="wf-chip">
+        <span className="wf-chip plan-end">
           {shown.length} rows
           {oosCount > 0 && (
             <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
           )}
         </span>
-      </div>
-
-      <div className="ip-viewrow">
-        {viewTabs.length > 0 ? (
-          <div className="segment tracker-status-tabs">
-            {viewTabs.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={view === t.key ? 'active' : ''}
-                onClick={() => setView(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        ) : <span />}
         <div className="segment ip-layout-seg" role="group" aria-label="Layout">
           {(['kanban', 'cards', 'list'] as LinesLayout[]).map((l) => (
             <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
@@ -444,6 +427,23 @@ export function ReceivablePlanClient({
           ))}
         </div>
       </div>
+
+      {viewTabs.length > 0 && (
+        <div className="ip-viewrow">
+            <div className="segment tracker-status-tabs">
+              {viewTabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={view === t.key ? 'active' : ''}
+                  onClick={() => setView(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+        </div>
+      )}
 
       {view === 'lines' && layout !== 'list' ? (
         <>

@@ -653,7 +653,7 @@ export function StandardCostClient({
       {isMat ? (
         <>
 
-      <div className="wf-toolbar">
+      <div className="wf-toolbar plan-filterbar">
         <input
           className="wf-search"
           placeholder="Filter code…"
@@ -675,9 +675,9 @@ export function StandardCostClient({
             {role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})
           </button>
         </div>
-        {viewSwitch}
-        <span className="wf-subtle">{shown.length} shown</span>
         <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        <span className="wf-subtle plan-end">{shown.length} shown</span>
+        {viewSwitch}
         {editable && (
           <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}>
             <Plus size={14} /> Add Material to Input Standard Cost
@@ -710,7 +710,7 @@ export function StandardCostClient({
                 {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}><Plus size={14} /> Add Product to Input Standard Cost</button>}
               </div>
             </div>
-            <div className="sc-fg-toolbar">
+            <div className="sc-fg-toolbar plan-filterbar">
               <label className="sc-fg-search"><Search size={15} aria-hidden="true" /><input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search product code or name" aria-label="Search product code or name" /></label>
               <select aria-label="Filter by status" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}>
                 <option value="all">All statuses</option>
@@ -739,8 +739,9 @@ export function StandardCostClient({
                 <button type="button" className={!mineOnly ? 'active' : ''} aria-pressed={!mineOnly} onClick={() => setMineOnly(false)}>All products</button>
                 <button type="button" className={mineOnly ? 'active' : ''} aria-pressed={mineOnly} onClick={() => setMineOnly(true)}>{role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})</button>
               </div>
-              {viewSwitch}
               <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+              <span className="plan-end" />
+              {viewSwitch}
             </div>
             {role === 'admin' && mineOnly && (
               <ListBulkDecide items={shown} track={isMat ? 'material' : 'fg'} picked={picked} setPicked={setPicked} pickable={pickable} />

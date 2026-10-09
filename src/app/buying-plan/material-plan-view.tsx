@@ -353,7 +353,7 @@ export function MaterialPlanView({
         {/* Filters */}
         <div className="bp-sticky">
           <div className="bp-card bp-toolbar-card">
-            <div className="bp-toolbar bp-filter-toolbar bp-filter-toolbar-view">
+            <div className="bp-toolbar bp-filter-toolbar bp-filter-toolbar-view plan-filterbar">
               <input
                 className="bp-search"
                 aria-label="Search material"
@@ -376,13 +376,13 @@ export function MaterialPlanView({
                 <option value="uom">Group by: Unit</option>
                 <option value="code">Group by: Material code</option>
               </select>
-              <span className="bp-toolbar-count">
-                {rows.length} of {planned.length} shown
-              </span>
               <ClearFiltersButton
                 active={hasFilters}
                 onClear={() => { setSearch(''); setTypeF(''); setRouteF(''); }}
               />
+              <span className="bp-toolbar-count plan-end">
+                {rows.length} of {planned.length} shown
+              </span>
             </div>
           </div>
         </div>
