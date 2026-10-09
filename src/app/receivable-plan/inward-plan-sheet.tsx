@@ -1,7 +1,7 @@
 'use client';
 
 import { confirmDelete } from '@/lib/confirm';
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Upload, Trash2 } from 'lucide-react';
 import { FilterTable, type Column } from '@/components/filter-table';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -24,6 +24,8 @@ const dateLabel = (v: string | null) =>
 
 const STATUS_TONE: Record<string, string> = { Approved: 'success', Rejected: 'danger', 'RE-WORK': 'warn', Pending: 'info' };
 const STATUSES = ['Pending', 'Approved', 'RE-WORK', 'Rejected'] as const;
+/** Kanban reads left to right as the line moves: waiting → sent back → approved → rejected. */
+const KANBAN = ['Pending', 'RE-WORK', 'Approved', 'Rejected'] as const;
 
 function StatusPill({ status, approverEdited }: { status: string; approverEdited?: boolean }) {
   // The sheet stores Pending / Approved / RE-WORK / Rejected; shown in the workflow's words.
@@ -56,12 +58,36 @@ export function InwardPlanSheet({
   const [month, setMonth] = useState<string>(defaultMonth);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [board, setBoard] = useState<'weeks' | 'vendors' | 'lines'>('weeks');
+  // Lines as a List (the table), Cards or Kanban by status; the choice is remembered per browser.
+  const [layout, setLayout] = useState<'list' | 'cards' | 'kanban'>('list');
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ip-sheet-layout');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
+      if (saved === 'list' || saved === 'cards' || saved === 'kanban') setLayout(saved);
+    } catch {
+      /* storage blocked: keep list */
+    }
+  }, []);
+  const chooseLayout = (l: 'list' | 'cards' | 'kanban') => {
+    setLayout(l);
+    try { localStorage.setItem('ip-sheet-layout', l); } catch { /* ignore */ }
+  };
 
   const monthRows = useMemo(() => rows.filter((r) => r.plan_month === month), [rows, month]);
   const shown = useMemo(
     () => (statusFilter === 'all' ? monthRows : monthRows.filter((r) => r.approval_status === statusFilter)),
     [monthRows, statusFilter],
   );
+  // Cards and Kanban have no table search of their own: one box over product, PO ref, vendor.
+  const matches = (r: InwardPlanSheetRow) => {
+    const q = query.trim().toLowerCase();
+    return !q || `${r.product_code} ${r.po_no ?? ''} ${r.vendor_name ?? ''} ${r.category ?? ''}`.toLowerCase().includes(q);
+  };
+  const searched = shown.filter(matches);
+  // Kanban columns are the statuses, so it ignores the status pills above.
+  const searchedAll = monthRows.filter(matches);
 
   const totals = useMemo(() => {
     const t = { lines: monthRows.length, qty: 0, value: 0, approvedQty: 0, approvedValue: 0, received: 0, by: {} as Record<string, number> };
@@ -116,7 +142,7 @@ export function InwardPlanSheet({
   if (approver || editor) {
     columns.push({
       key: 'actions', label: 'Action', kind: 'text', filter: 'none', sortable: false, source: 'supabase',
-      render: (r) => <RowActions row={r} approver={approver} editor={editor} />,
+      render: (r) => <RowActions row={r} approver={approver} editor={editor} inRow />,
     });
   }
 
@@ -212,8 +238,53 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
         </div>
       )}
 
+      {monthRows.length > 0 && board === 'lines' && (
+        <div className="ip-viewrow iw-linesbar">
+          {layout !== 'list' ? (
+            <input
+              className="wf-search"
+              placeholder="Search product, PO ref, vendor…"
+              aria-label="Search lines"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          ) : <span />}
+          <div className="segment ip-layout-seg" role="group" aria-label="Layout">
+            {(['list', 'cards', 'kanban'] as const).map((l) => (
+              <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
+                {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {monthRows.length > 0 && board !== 'lines' ? (
         <InwardWeekBoard board={board} month={month} rows={monthRows} arrivals={arrivals} today={today} />
+      ) : monthRows.length > 0 && layout === 'cards' ? (
+        searched.length ? (
+          <div className="ip-cards">
+            {searched.map((r) => <SheetCard key={r.id} row={r} approver={approver} editor={editor} />)}
+          </div>
+        ) : (
+          <div className="ip-empty wf-subtle">No lines match.</div>
+        )
+      ) : monthRows.length > 0 && layout === 'kanban' ? (
+        <div className="ip-kanban">
+          {KANBAN.map((s) => {
+            const items = searchedAll.filter((r) => r.approval_status === s);
+            return (
+              <section key={s} className="ip-kcol" aria-label={sheetStatusText(s)}>
+                <div className="ip-kcol-head">
+                  <StatusPill status={s} />
+                  <span className="ip-kcol-n">{items.length}</span>
+                </div>
+                {items.map((r) => <SheetCard key={r.id} row={r} approver={approver} editor={editor} compact />)}
+                {!items.length && <div className="ip-kcol-more">No lines</div>}
+              </section>
+            );
+          })}
+        </div>
       ) : (
       <FilterTable
         rows={shown}
@@ -231,8 +302,41 @@ HOW: count of lines with status Pending. The whole month can be decided at once 
   );
 }
 
+/** One line as a card (Cards / Kanban), with the same actions as the list row. */
+function SheetCard({ row: r, approver, editor, compact = false }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean; compact?: boolean }) {
+  const planned = r.inward_qty ?? 0;
+  const pct = planned > 0 ? Math.min(100, Math.round((r.received_in_month / planned) * 100)) : 0;
+  return (
+    <article className={`ip-card${r.approval_status === 'Rejected' ? ' wf-row-muted' : ''}`}>
+      <div className="ip-card-top">
+        <span className="ip-card-po mono">{r.po_no ?? '—'}</span>
+        {!compact && <StatusPill status={r.approval_status} approverEdited={r.approver_edited} />}
+      </div>
+      <div className="ip-card-name">{r.product_code}</div>
+      <div className="ip-card-meta">{[r.category, r.vendor_name, r.po_type].filter(Boolean).join(' · ') || '—'}</div>
+      <div className="ip-card-figs">
+        <span><small>Planned</small>{r.inward_qty == null ? '—' : fmt.format(r.inward_qty)}</span>
+        <span><small>₹ / pc</small>{r.cost_per_piece == null ? '—' : fmt.format(r.cost_per_piece)}</span>
+        <span><small>Value</small>{money.format(r.value)}</span>
+      </div>
+      <span className="ip-card-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} /></span>
+      <div className="ip-card-foot">
+        <span className="ip-card-when">
+          Received {fmt.format(r.received_in_month)} this month
+          {planned > 0 && r.received_in_month > planned ? ` · over plan by ${fmt.format(r.received_in_month - planned)}` : planned > 0 ? ` · ${pct}%` : ''}
+        </span>
+        <span className="ip-card-status">Last GRN {dateLabel(r.last_received_on)}</span>
+      </div>
+      {r.mt_comments && <div className="ip-card-meta">Management: {r.mt_comments}</div>}
+      {r.remarks && <div className="ip-card-meta">Team: {r.remarks}</div>}
+      {(approver || editor) && <RowActions row={r} approver={approver} editor={editor} />}
+    </article>
+  );
+}
+
 /** Per-line decision (admin) and removal (team / admin) — the odd PO handled on its own. */
-function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean }) {
+function RowActions({ row, approver, editor, inRow = false }: { row: InwardPlanSheetRow; approver: boolean; editor: boolean; inRow?: boolean }) {
+  const cls = `wf-inline-actions${inRow ? ' iw-row-actions' : ''}`;
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<'' | 'RE-WORK' | 'Rejected' | 'EDIT'>('');
   const [note, setNote] = useState('');
@@ -280,7 +384,7 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
 
   if (mode === 'EDIT') {
     return (
-      <span className="wf-inline-actions">
+      <span className={cls}>
         <input type="number" min={0} style={{ width: 80 }} aria-label="Inward qty" title="Inward qty" value={qty} onChange={(e) => setQty(e.target.value)} />
         <input type="number" min={0} step="0.01" style={{ width: 80 }} aria-label="₹ per piece" title="₹ per piece" value={cost} onChange={(e) => setCost(e.target.value)} />
         <input style={{ width: 140 }} placeholder="Comment (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -291,7 +395,7 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
   }
   if (mode) {
     return (
-      <span className="wf-inline-actions">
+      <span className={cls}>
         <input
          
           style={{ width: 160 }}
@@ -305,7 +409,7 @@ function RowActions({ row, approver, editor }: { row: InwardPlanSheetRow; approv
     );
   }
   return (
-    <span className="wf-inline-actions">
+    <span className={cls}>
       {approver && row.approval_status !== 'Approved' && (
         <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => decide('Approved', '')}>Approve</button>
       )}

@@ -2723,3 +2723,8 @@ tr[hidden] { display: none !important; }
 .iw-ring span { width: 42px; height: 42px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
 .iw-vendor-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 900px) { .iw-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Monthly plan → Lines: actions stay on one line in the list, so a row is one line tall. */
+.iw-row-actions { flex-wrap: nowrap; white-space: nowrap; }
+.iw-linesbar { margin: 0 0 12px; }
+.iw-linesbar .wf-search { min-width: 260px; }
+.ip-kcol .ip-card .wf-inline-actions { gap: 4px; }
