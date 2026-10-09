@@ -22,6 +22,7 @@ import type { SdRole } from '@/lib/forms/types';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
 import { InwardWeekBoard } from './inward-week-board';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -267,6 +268,12 @@ HOW: count of lines with status Pending. Decide them line by line in Lines (tick
                 aria-label="Search lines"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+              />
+            )}
+            {layout !== 'list' && (
+              <ClearFiltersButton
+                active={Boolean(query) || statusFilter !== 'all'}
+                onClear={() => { setQuery(''); setStatusFilter('all'); }}
               />
             )}
             {editor && <AddLine key={month} month={month} />}

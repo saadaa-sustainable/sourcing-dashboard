@@ -9,6 +9,7 @@ import { addFabric, updateFabric } from '@/lib/forms/actions';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import type { FabricMaster } from '@/lib/forms/types';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 
 // Composition input fields (from the fabric team's quality-report format). The code
 // itself is entered by hand — never generated — and duplicate codes are blocked.
@@ -162,6 +163,7 @@ export function FabricMasterClient({
           onChange={(e) => setFilter(e.target.value)}
         />
         <span className="wf-subtle">{shown.length} shown</span>
+        <ClearFiltersButton active={filter !== ''} onClear={() => setFilter('')} />
       </div>
 
       <div className="table-panel wf-grid-panel">

@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Search, Send, Trash2, X } from 'lucide-react';
 import {
@@ -705,6 +706,7 @@ export function PoApprovalClient({
           <Search size={13} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
         </label>
+        <ClearFiltersButton active={filter !== 'mine' || q !== ''} onClear={() => { setFilter('mine'); setQ(''); }} />
         {editable && (
           <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
             <Plus size={14} /> Raise a PO
@@ -1610,6 +1612,7 @@ function PoSubmissionTable({
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <ClearFiltersButton active={q !== ''} onClear={() => setQ('')} />
       </div>
       <div className="table-panel">
         <div className="table-scroll">

@@ -15,6 +15,7 @@ import { Field, Notice } from '@/components/forms/form-layout';
 import { Combobox, type ComboOption } from '@/components/forms/combobox';
 import { InfoDot } from '@/components/info-dot';
 import type { Colour, MaterialMaster, MaterialType } from '@/lib/forms/types';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 
 const TYPES: { key: MaterialType; label: string }[] = [
   { key: 'dyed', label: 'Dyed / finished' },
@@ -209,6 +210,7 @@ export function MaterialMasterClient({
           onChange={(e) => setFilter(e.target.value)}
         />
         <span className="wf-subtle">{shown.length} shown</span>
+        <ClearFiltersButton active={filter !== ''} onClear={() => setFilter('')} />
       </div>
 
       <div className="table-panel wf-grid-panel">

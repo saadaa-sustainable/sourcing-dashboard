@@ -17,6 +17,7 @@ import { PlanPivot } from '@/components/forms/plan-pivot';
 import { ApprovalContextPanel } from '@/components/forms/approval-context-panel';
 import { productCodeFromLineLabel, type ApprovalContext } from '@/lib/approval-context';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
 import { utilisationLabel } from '@/lib/utilisation';
 
@@ -164,6 +165,10 @@ export function ApprovalsClient({
             );
           })}
         </div>
+        <ClearFiltersButton
+          active={filter !== 'mine' || typeFilter !== 'all'}
+          onClear={() => { setFilter('mine'); setTypeFilter('all'); }}
+        />
       </div>
 
       {role === 'admin' && shown.filter((i) => i.entityType === 'standard_cost' && i.costRecord?.neg_stage === 'proposed').length > 1 && (

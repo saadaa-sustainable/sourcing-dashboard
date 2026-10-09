@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Bot, ChevronDown, ChevronRight, Plus, Send, UserRound } from 'lucide-react';
@@ -143,6 +144,10 @@ export function IssuesClient({
             ))}
           </select>
           <input value={search} placeholder="Search title, PO, product, person…" onChange={(e) => setSearch(e.target.value)} />
+          <ClearFiltersButton
+            active={tab !== 'open' || category !== '' || assignee !== '' || search !== ''}
+            onClear={() => { setTab('open'); setCategory(''); setAssignee(''); setSearch(''); }}
+          />
           {canAct && (
             <button type="button" className="wf-btn wf-btn-primary" onClick={() => setComposing((v) => !v)}>
               <Plus size={14} /> Raise an issue

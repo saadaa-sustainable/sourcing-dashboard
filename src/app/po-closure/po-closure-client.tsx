@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { ChevronDown, ChevronRight, Play, Save } from 'lucide-react';
 import { initiateClosure, submitFinanceLeg, submitSourcingLeg } from '@/lib/forms/actions';
@@ -89,6 +90,7 @@ export function PoClosureClient({
           <button type="button" className={filter === 'open15' ? 'active' : ''} onClick={() => setFilter('open15')}>Open beyond 15 days</button>
         </div>
         <span className="wf-subtle">{shown.length} shown</span>
+        <ClearFiltersButton active={filter !== 'all'} onClear={() => setFilter('all')} />
       </div>
 
       <div className="table-panel wf-grid-panel">

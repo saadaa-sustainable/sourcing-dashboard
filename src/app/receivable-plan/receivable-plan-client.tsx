@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition, useEffect } from 'react';
 import Link from 'next/link';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
@@ -400,6 +401,18 @@ export function ReceivablePlanClient({
           <input type="checkbox" checked={oosOnly} onChange={(e) => setOosOnly(e.target.checked)} />
           OOS only
         </label>
+        <ClearFiltersButton
+          active={Boolean(search || vendor || state || risk || oosOnly || edd !== 'all' || needsMine)}
+          onClear={() => {
+            setSearch('');
+            setVendor('');
+            setState('');
+            setRisk('');
+            setOosOnly(false);
+            setEdd('all');
+            setNeedsMine(false);
+          }}
+        />
         <span className="wf-chip">
           {shown.length} rows
           {oosCount > 0 && (

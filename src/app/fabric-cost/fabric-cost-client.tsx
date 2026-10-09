@@ -9,6 +9,7 @@ import { saveFabricCostBase } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Notice } from '@/components/forms/form-layout';
 import type { FabricCostBase } from '@/lib/forms/types';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 
 const NUM_FIELDS = [
   'yarn_cost',
@@ -169,6 +170,7 @@ export function FabricCostClient({
           onChange={(e) => setFilter(e.target.value)}
         />
         <span className="wf-subtle">{shown.length} shown</span>
+        <ClearFiltersButton active={filter !== ''} onClear={() => setFilter('')} />
         {editable && (
           <div className="wf-toolbar-right">
             <input

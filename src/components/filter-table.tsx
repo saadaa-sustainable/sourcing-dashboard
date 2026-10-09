@@ -1,5 +1,6 @@
 'use client';
 
+import { ClearFiltersButton } from './clear-filters-button';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Download, ListFilter } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
@@ -427,15 +428,10 @@ export function FilterTable<T>({
               <Download size={13} /> {pdfBusy ? 'PDF…' : 'PDF'}
             </button>
           )}
-          {anyFilter && (
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost"
-              onClick={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
-            >
-              Clear filters
-            </button>
-          )}
+          <ClearFiltersButton
+            active={anyFilter}
+            onClear={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
+          />
         </div>
         <div className="wf-chip">{fmt.format(sorted.length)} {unit}</div>
       </div>
@@ -524,7 +520,7 @@ export function FilterTable<T>({
                         style={{ marginLeft: 8 }}
                         onClick={() => { setSearch(''); setColFilters({}); setSelFilters({}); setSort(null); setPage(0); }}
                       >
-                        Clear filters
+                        Clear all filters
                       </button>
                     )}
                   </td>

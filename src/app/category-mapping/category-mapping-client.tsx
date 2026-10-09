@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Check, CircleAlert, Save } from 'lucide-react';
 import { saveProductCategory } from '@/lib/forms/actions';
@@ -75,6 +76,10 @@ export function CategoryMappingClient({
           Missing only
         </label>
         <span className="wf-subtle">{shown.length} of {rows.length}</span>
+        <ClearFiltersButton
+          active={search !== '' || missingOnly}
+          onClear={() => { setSearch(''); setMissingOnly(false); }}
+        />
       </div>
 
 

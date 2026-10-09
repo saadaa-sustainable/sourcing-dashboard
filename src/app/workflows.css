@@ -2801,3 +2801,6 @@ tr.iw-picked > td { background: #fffbea; }
 .vcm-vendor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .vcm-miss { color: #a3301c; font-weight: 600; }
 .vcm-notes { margin-top: 12px; }
+/* Shared "Clear all filters" button (components/clear-filters-button.tsx) — on every filter bar. */
+.clear-filters-btn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.clear-filters-btn:disabled { opacity: .45; cursor: default; }
