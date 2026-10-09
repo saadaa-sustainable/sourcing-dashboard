@@ -34,6 +34,8 @@ import {
   dateOrNull,
   textOrNull,
 } from './_shared';
+import { pageAll } from '../queries-modules/_shared';
+import { loadNpdOptions, loadNpdProduct, NpdNotConfiguredError, type NpdOption } from '@/lib/npd-tracker.server';
 
 /** 'kg' when the team says so, otherwise the metre the Fabric Cost master rates in. */
 const fabricUom = (v: unknown): 'mtr' | 'kg' => (String(v ?? '').trim().toLowerCase() === 'kg' ? 'kg' : 'mtr');
@@ -608,30 +610,96 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
 /* into the real code when it appears.                                 */
 /* ------------------------------------------------------------------ */
 
-/** Create a temporary product (system-minted TMP-xxxx) + seed its Standard Cost row. */
-export async function mintTempProduct(formData: FormData): Promise<ActionResult> {
+/**
+ * Typing a name to create a product is RETIRED (user, 2026-10-09): a product not in EasyEcom is
+ * added only from NPD Tracker V7 (addNpdProduct), so every new product has a record. Kept as a
+ * refusal so an old open tab gets a clear answer instead of a silent TMP code.
+ */
+export async function mintTempProduct(_formData: FormData): Promise<ActionResult> {
+  void _formData;
+  return fail('New products are no longer created by typing a name. Pick the product from NPD Tracker V7 instead.');
+}
+
+/** The NPD Tracker V7 products that can be (or why they cannot be) added to Standard Cost. */
+export async function listNpdProducts(): Promise<{ ok: true; options: NpdOption[] } | { ok: false; error: string }> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  if (!canEdit(user.role, 'draft')) return { ok: false, error: 'You do not have permission to add products.' };
+  const supabase = await supa();
+  try {
+    const [sheet, catalog, temps] = await Promise.all([
+      pageAll<{ product_code: string }>(() => supabase.from('sd_standard_cost').select('product_code').order('product_code')),
+      pageAll<{ product_code: string }>(() => supabase.from('sd_product_catalog').select('product_code').order('product_code')),
+      pageAll<{ npd_product_id: number | null }>(() =>
+        supabase.from('sd_temp_product').select('npd_product_id').eq('status', 'active').not('npd_product_id', 'is', null).order('temp_code'),
+      ),
+    ]);
+    const options = await loadNpdOptions({
+      onSheet: new Set(sheet.map((r) => String(r.product_code).toUpperCase())),
+      inEasyEcom: new Set(catalog.map((r) => String(r.product_code).toUpperCase())),
+      npdRegistered: new Set(temps.map((r) => Number(r.npd_product_id))),
+    });
+    return { ok: true, options };
+  } catch (e) {
+    if (e instanceof NpdNotConfiguredError) return { ok: false, error: e.message };
+    return { ok: false, error: `Could not read NPD Tracker V7: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
+ * Add an NPD Tracker V7 product to Standard Cost under its NPD SKU code. The NPD row is re-read
+ * here (never trusted from the browser); the registry keeps the NPD id, item code, category,
+ * status and type as the record of where the product came from.
+ */
+export async function addNpdProduct(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   if (!canEdit(user.role, 'draft')) return fail('You do not have permission to add products.');
+  const id = Number(formData.get('npd_id'));
+  if (!Number.isInteger(id) || id <= 0) return fail('Pick a product from NPD Tracker V7.');
 
-  const name = String(formData.get('name') ?? '').trim();
-  if (!name) return fail('Give the new product a name.');
+  let found;
+  try {
+    found = await loadNpdProduct(id);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+  if (!found) return fail('That product is not on NPD Tracker V7 any more, or it is already launched.');
+  const { row, duplicates } = found;
+  if (duplicates > 1) return fail(`SKU code ${row.sku_code} is used by ${duplicates} NPD products. Fix it on NPD Tracker V7 first.`);
 
   const supabase = await supa();
-  const { data: code, error } = await supabase.rpc('sd_mint_temp_product', {
-    p_name: name,
+  const { data: code, error } = await supabase.rpc('sd_register_npd_product', {
+    p_code: row.sku_code,
+    p_name: row.product_name ?? row.sku_code,
+    p_npd_id: row.id,
+    p_item_code: row.item_code,
+    p_category: row.category,
+    p_status: row.status,
+    p_type: row.product_type,
     p_by: user.email,
   });
-  if (error || !code) return fail(error?.message ?? 'Could not create the temporary product.');
+  if (error || !code) return fail(error?.message ?? 'Could not add the NPD product.');
 
-  // Seed its Standard Cost row so it shows up in the sheet ready to be costed.
-  const { error: scErr } = await supabase
+  // Seed its Standard Cost row so it shows on the sheet ready to be costed.
+  const { data: sc, error: scErr } = await supabase
     .from('sd_standard_cost')
-    .upsert({ product_code: code, documented: false, updated_at: new Date().toISOString() }, { onConflict: 'product_code' });
-  if (scErr) return fail(`Created ${code} but could not seed its cost row: ${scErr.message}`);
+    .upsert({ product_code: code, documented: false, updated_at: new Date().toISOString() }, { onConflict: 'product_code' })
+    .select('id')
+    .maybeSingle();
+  if (scErr) return fail(`Added ${code} but could not create its cost row: ${scErr.message}`);
 
+  await writeLog(
+    'standard_cost',
+    String(sc?.id ?? code),
+    `Standard cost — ${code}`,
+    null,
+    'draft',
+    user.email,
+    `Added from NPD Tracker V7: ${row.product_name ?? code}${row.item_code ? ` · item ${row.item_code}` : ''}${row.category ? ` · ${row.category}` : ''}`,
+  );
   revalidatePath('/standard-cost');
-  return { ok: true, message: `Created temporary product ${code} — “${name}”. Fill its cost, then it can be used in Buying Plan / PO.` };
+  return { ok: true, message: `Added ${code} — “${row.product_name ?? code}” from NPD Tracker V7. Fill its cost next.` };
 }
 
 /** Merge a temporary product into its real EasyEcom code (admin) — atomic repoint. */

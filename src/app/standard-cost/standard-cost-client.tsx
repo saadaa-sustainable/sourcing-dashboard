@@ -26,7 +26,8 @@ import {
   setTargetCost,
   signOffCost,
   submitActualRate,
-  mintTempProduct,
+  addNpdProduct,
+  listNpdProducts,
   decideCostsBulk,
   type ActionResult,
 } from '@/lib/forms/actions';
@@ -56,6 +57,7 @@ import { targetFields } from '@/components/forms/target-inputs';
 import { canEdit } from '@/lib/forms/approval';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ProductPicker } from '@/components/forms/product-picker';
+import type { NpdOption } from '@/lib/npd-tracker.server';
 import { ClearFiltersButton } from '@/components/clear-filters-button';
 import type {
   CmtpComponent,
@@ -159,17 +161,38 @@ export function StandardCostClient({
   };
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
-  const [tempName, setTempName] = useState('');
   // Add popup: where the product comes from, and the one picked (added only on confirm).
-  const [addMode, setAddMode] = useState<'master' | 'new'>('master');
+  // A product not in EasyEcom comes ONLY from NPD Tracker V7 (no typed names any more).
+  const [addMode, setAddMode] = useState<'master' | 'npd'>('master');
   const [pickedCode, setPickedCode] = useState<string | null>(null);
+  const [npd, setNpd] = useState<{ state: 'idle' | 'loading' | 'ready' | 'error'; options: NpdOption[]; error: string | null }>({
+    state: 'idle',
+    options: [],
+    error: null,
+  });
+  const [npdQuery, setNpdQuery] = useState('');
+  const [npdPicked, setNpdPicked] = useState<number | null>(null);
   function openAdd() {
     setAddMode('master');
     setPickedCode(null);
     setNewCode('');
-    setTempName('');
+    setNpdQuery('');
+    setNpdPicked(null);
     setError(null);
     setAddOpen(true);
+  }
+  /** Switch the popup to NPD Tracker V7, loading its list the first time. */
+  function openNpd(query = '') {
+    setAddMode('npd');
+    setPickedCode(null);
+    setNpdPicked(null);
+    setNpdQuery(query);
+    if (npd.state === 'ready' || npd.state === 'loading') return;
+    setNpd((cur) => ({ ...cur, state: 'loading', error: null }));
+    listNpdProducts().then((res) => {
+      if (res.ok) setNpd({ state: 'ready', options: res.options, error: null });
+      else setNpd({ state: 'error', options: [], error: res.error });
+    });
   }
 
   const signedOff = costs.filter((c) => c.neg_stage === 'signed_off' || c.status === 'approved').length;
@@ -289,18 +312,18 @@ export function StandardCostClient({
     });
   }
 
-  // Create a not-yet-in-EasyEcom product with a system-minted TMP-xxxx code.
-  function addTemp(typed?: string) {
-    const name = (typed ?? tempName).trim();
-    if (!name) return;
+  // Add a product not in EasyEcom from NPD Tracker V7, under its NPD SKU code.
+  function addFromNpd() {
+    if (npdPicked == null) return;
     setError(null);
     setMessage(null);
     const fd = new FormData();
-    fd.set('name', name);
+    fd.set('npd_id', String(npdPicked));
+    const pickedOption = npd.options.find((o) => o.id === npdPicked);
     start(async () => {
-      const result = await mintTempProduct(fd);
+      const result = await addNpdProduct(fd);
       if (result.ok) {
-        window.location.href = '/standard-cost';
+        window.location.href = pickedOption?.code ? `/standard-cost/${encodeURIComponent(pickedOption.code)}` : '/standard-cost';
       } else setError(toastError(result.error));
     });
   }
@@ -508,21 +531,28 @@ export function StandardCostClient({
   const matExists = isMat && matUp !== '' && existingCodes.has(matUp);
   const addTarget = isMat ? matUp : addMode === 'master' ? pickedCode : null;
   const restoring = addTarget ? hiddenSet.has(addTarget) : false;
-  const canSubmitAdd = !pending && (isMat ? matUp.length >= 2 && !matExists : addMode === 'master' ? !!pickedCode : tempName.trim().length > 0);
+  const canSubmitAdd = !pending && (isMat ? matUp.length >= 2 && !matExists : addMode === 'master' ? !!pickedCode : npdPicked != null);
   const submitAdd = () => {
     if (!canSubmitAdd) return;
     if (isMat) addCode(matUp);
     else if (addMode === 'master' && pickedCode) addCode(pickedCode);
-    else addTemp();
+    else addFromNpd();
   };
+  const npdShown = (() => {
+    const q = npdQuery.trim().toLowerCase();
+    if (!q) return npd.options;
+    return npd.options.filter((o) =>
+      `${o.sku_code} ${o.product_name ?? ''} ${o.item_code ?? ''} ${o.category ?? ''}`.toLowerCase().includes(q),
+    );
+  })();
   const submitLabel = pending
     ? 'Adding…'
     : restoring
       ? 'Restore and open'
       : isMat
         ? 'Add material'
-        : addMode === 'new'
-          ? 'Create temporary product'
+        : addMode === 'npd'
+          ? 'Add from NPD Tracker V7'
           : 'Add product';
 
   const addForm = editable ? (
@@ -561,9 +591,9 @@ export function StandardCostClient({
               <span className="sc-add-radio" aria-hidden="true" />
               <span><b>From Product Master</b><small>A product already in EasyEcom</small></span>
             </button>
-            <button type="button" role="radio" aria-checked={addMode === 'new'} className="sc-add-option" onClick={() => { setAddMode('new'); setPickedCode(null); }}>
+            <button type="button" role="radio" aria-checked={addMode === 'npd'} className="sc-add-option" onClick={() => openNpd()}>
               <span className="sc-add-radio" aria-hidden="true" />
-              <span><b>New product</b><small>Not in EasyEcom yet, gets a TMP code</small></span>
+              <span><b>From NPD Tracker V7</b><small>A new product not in EasyEcom yet, under its NPD SKU code</small></span>
             </button>
           </div>
 
@@ -583,9 +613,9 @@ export function StandardCostClient({
                   items={catalog}
                   exclude={existingCodes}
                   onPick={(code) => setPickedCode(code)}
-                  // Anything typed that is not in the product master becomes a temporary
-                  // product with a TMP code, never a free-text product code.
-                  onAddNew={(typed) => { setTempName(typed); setAddMode('new'); }}
+                  // Anything typed that is not in the product master is looked up on NPD
+                  // Tracker V7 — new products come only from there, never as free text.
+                  onAddNew={(typed) => openNpd(typed)}
                   disabled={pending}
                   placeholder="Search product code or name…"
                 />
@@ -593,18 +623,49 @@ export function StandardCostClient({
               </div>
             )
           ) : (
-            <label className="sc-add-field" htmlFor="sc-add-temp">
-              <span>Product name</span>
+            <div className="sc-add-field">
+              <span>NPD Tracker V7 product</span>
               <input
-                id="sc-add-temp"
+                className="wf-search"
                 autoFocus
-                value={tempName}
-                placeholder="e.g. Linen co-ord set, sage"
+                value={npdQuery}
+                placeholder="Search SKU code, name, item code or category…"
+                aria-label="Search NPD Tracker V7"
                 autoComplete="off"
-                onChange={(e) => setTempName(e.target.value)}
+                onChange={(e) => setNpdQuery(e.target.value)}
               />
-              <small>It gets a temporary code (TMP-…). Link it to its EasyEcom product later from its cost page.</small>
-            </label>
+              {npd.state === 'loading' && <small>Reading NPD Tracker V7…</small>}
+              {npd.state === 'error' && <p className="sc-add-note is-error" role="alert">{npd.error}</p>}
+              {npd.state === 'ready' && (
+                <div className="sc-npd-list" role="listbox" aria-label="NPD Tracker V7 products">
+                  {npdShown.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="option"
+                      aria-selected={npdPicked === o.id}
+                      aria-disabled={o.blocked ? true : undefined}
+                      disabled={Boolean(o.blocked) || pending}
+                      className={`sc-npd-row${npdPicked === o.id ? ' is-picked' : ''}`}
+                      onClick={() => setNpdPicked(o.id)}
+                      title={o.blocked ?? undefined}
+                    >
+                      <span className="mono">{o.code ?? (o.sku_code || '—')}</span>
+                      <b>{o.product_name ?? 'No name on NPD'}</b>
+                      <small>
+                        {[o.category, o.product_type, o.status || 'No status', o.item_code, o.launch && `launch ${o.launch}`].filter(Boolean).join(' · ')}
+                      </small>
+                      {o.blocked && <em className="sc-npd-why">{o.blocked}</em>}
+                    </button>
+                  ))}
+                  {!npdShown.length && <p className="wf-subtle sc-npd-empty">No NPD Tracker V7 product matches.</p>}
+                </div>
+              )}
+              <small>
+                Only products on NPD Tracker V7 that are not launched yet. The product code is its NPD SKU code; link it to
+                its EasyEcom product later from its cost page.
+              </small>
+            </div>
           )}
           {restoring && (
             <p className="sc-add-note">This product was removed from the sheet earlier. Adding it brings back its cost, cost sheet and history.</p>

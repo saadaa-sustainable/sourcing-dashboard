@@ -2825,3 +2825,15 @@ tr.iw-picked > td { background: #fffbea; }
 .plan-filterbar.plan-filterbar > .wf-check, .plan-filterbar.plan-filterbar > .wf-check-field { flex: none !important; white-space: nowrap; }
 /* Vendor Capacity's search carries a label above it: line the bar up on the bottom edge. */
 .vc-toolbar .plan-filterbar.plan-filterbar { align-items: flex-end; }
+
+/* Standard Cost → Add product → From NPD Tracker V7: the pick list. */
+.sc-npd-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; margin: 6px 0 4px; padding-right: 2px; }
+.sc-npd-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: baseline; width: 100%; padding: 9px 11px; text-align: left; background: #fff; border: 1px solid #d2d5d8; border-radius: 8px; font: inherit; color: inherit; cursor: pointer; }
+.sc-npd-row:hover:not(:disabled) { border-color: #8c9196; }
+.sc-npd-row.is-picked { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
+.sc-npd-row:disabled { cursor: not-allowed; background: #faf9f6; color: #6e695e; }
+.sc-npd-row .mono { grid-row: span 2; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.sc-npd-row b { font-size: 13px; font-weight: 600; }
+.sc-npd-row small { font-size: 11px; color: var(--ink-3, #5f5a50); }
+.sc-npd-why { grid-column: 2; font-style: normal; font-size: 11px; color: #8a4b00; }
+.sc-npd-empty { margin: 8px 0; }

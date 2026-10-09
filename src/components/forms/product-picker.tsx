@@ -36,8 +36,8 @@ export function ProductPicker({
   disabled?: boolean;
   /** Let the user add a typed code that isn't in the catalog yet (new/unsynced products). */
   allowFreeText?: boolean;
-  /** When given, the free-text row creates a NEW product from what was typed (Standard Cost:
-   *  it gets a TMP-xxxx code) instead of adding the typed text as a product code. */
+  /** When given, the free-text row hands what was typed to this callback instead of adding it as a
+   *  product code (Standard Cost: looks it up on NPD Tracker V7 — the only source of new products). */
   onAddNew?: (typed: string) => void;
 }) {
   const [q, setQ] = useState('');
@@ -169,8 +169,8 @@ export function ProductPicker({
             >
               {onAddNew ? (
                 <>
-                  <span className="mono wf-picker-code">＋ Create “{q.trim()}” as a new product</span>
-                  <span className="wf-picker-name">not in EasyEcom: gets a temporary ID (TMP-…) you can link later</span>
+                  <span className="mono wf-picker-code">Look up “{q.trim()}” on NPD Tracker V7</span>
+                  <span className="wf-picker-name">not in EasyEcom: new products are added from NPD Tracker V7</span>
                 </>
               ) : (
                 <>
