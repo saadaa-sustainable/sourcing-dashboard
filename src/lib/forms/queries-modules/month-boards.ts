@@ -581,10 +581,6 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     });
   }
 
-  const started = cards.filter((c) => !c.id.startsWith('bp-new-'));
-  // Pieces are FG only: material quantities are metres / kg and do not add to pieces.
-  const totalQty = lines.filter((l) => !materialPlans.has(l.plan_id)).reduce((s, l) => s + qtyOf(l), 0);
-  const totalValue = lines.reduce((s, l) => s + lineValue(l), 0);
   return {
     columns: [
       { key: 'draft', label: 'Draft', tone: 'draft', hint: 'Being filled · not submitted yet' },
@@ -593,11 +589,8 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       { key: 'closed', label: 'Closed', tone: 'closed', hint: 'Month over · plan frozen' },
     ],
     cards,
-    totals: [
-      { value: String(started.length), label: 'Plans' },
-      { value: num(totalQty), label: 'Pcs planned' },
-      { value: inrShort(totalValue), label: 'Valued' },
-    ],
+    // Header totals removed on request (2026-10-09); each month card carries its own figures.
+    totals: [],
     unit: 'plans',
     trackLabels: { FG: 'Finished Goods (FG)', Material: 'Fabric / Material' },
     listColumns: [{ label: 'Products', num: true }, { label: 'Pcs planned', num: true }, { label: 'Issued', num: true }, { label: 'Value', num: true }],
