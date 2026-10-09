@@ -18,6 +18,8 @@ import {
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostDetailClient } from './cost-detail-client';
+import { CostDocumentsSection } from './cost-documents-section';
+import { loadCadCheckers, loadCostDocuments } from '@/lib/forms/queries-modules/cost-documents';
 import type { StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 import { loadProductFabricMap } from '@/lib/product-fabric.server';
@@ -114,6 +116,11 @@ export default async function StandardCostDetailPage({
           loadTempProductMap(),
           loadAnalyticsRules(),
         ]);
+  // RFP sheet + CAD plan library (Finished Goods only).
+  const [costDocs, cadCheckers] =
+    track === 'material'
+      ? [{ ready: false, docs: [] }, [] as string[]]
+      : await Promise.all([loadCostDocuments(cost.product_code), loadCadCheckers()]);
 
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -172,6 +179,20 @@ export default async function StandardCostDetailPage({
         marginPct={rules.margin_pct / 100}
         track={track}
       />
+      {/* RFP sheet + CAD plan library (Finished Goods only). */}
+      {track !== 'material' && (
+        <CostDocumentsSection
+          costId={cost.id}
+          productCode={cost.product_code}
+          rfpLink={cost.rfp_link ?? null}
+          legacyCadLink={cost.cad_link ?? null}
+          docs={costDocs.docs}
+          ready={costDocs.ready}
+          checkers={cadCheckers}
+          role={user.role}
+          userEmail={user.email}
+        />
+      )}
     </FormLayout>
   );
 }
