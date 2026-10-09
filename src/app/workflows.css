@@ -2665,3 +2665,47 @@ tr[hidden] { display: none !important; }
 .cd-file:focus-within { outline: 2px solid var(--purple, #f0c61e); outline-offset: 2px; }
 .cd-picker-actions { display: flex; gap: 6px; }
 .cd-err { color: var(--danger-text, #c0392b); font-size: 11.5px; }
+
+/* ---- Inward Plan · Monthly plan: tiles, Weeks / Vendors board (Vendor Capacity style) ---- */
+.iw-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.iw-tile { background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.iw-tile > span { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: var(--ink-3, #5f5a50); }
+.iw-tile strong { display: block; margin-top: 4px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-1, #161513); }
+.iw-tile small { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3, #5f5a50); }
+.iw-tile.is-warn { border-color: #efd39a; background: #fffbea; }
+.iw-boardseg { margin: 4px 0 12px; }
+.iw-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+.iw-head h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.iw-head .wf-subtle { display: inline-flex; align-items: center; gap: 4px; }
+.iw-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
+.iw-bar { height: 6px; margin-top: 6px; background: #eceae4; border-radius: 99px; overflow: hidden; }
+.iw-bar i { display: block; height: 100%; background: var(--ink-1, #161513); border-radius: 99px; }
+.iw-over { display: block; margin-top: 3px; font-size: 11px; font-weight: 600; color: #1e6b35; }
+.iw-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid; white-space: nowrap; }
+.iw-info { background: #eaf1fb; color: #1d4f91; border-color: #b9cdea; }
+.iw-ok { background: #e7f4ea; color: #1e6b35; border-color: #b7dcc1; }
+.iw-warn { background: #fdf2dc; color: #7a4b00; border-color: #efd39a; }
+.iw-grey { background: #f1efea; color: #4a4640; border-color: #dcd8cf; }
+.iw-weeks-scroll { overflow-x: auto; padding-bottom: 4px; }
+.iw-weeks { display: grid; gap: 12px; }
+.iw-week { display: flex; flex-direction: column; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; min-width: 0; }
+.iw-week.is-now { border-color: var(--ink-1, #161513); box-shadow: 0 0 0 1px var(--ink-1, #161513); }
+.iw-week-top { padding: 12px 14px; border-bottom: 1px solid #e7e4dc; }
+.iw-figs { margin-top: 10px; font-size: 12px; color: var(--ink-3, #5f5a50); }
+.iw-figs b { color: var(--ink-1, #161513); font-variant-numeric: tabular-nums; }
+.iw-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; align-items: end; height: 36px; margin-top: 10px; }
+.iw-day { background: #d2d5d8; border-radius: 3px 3px 0 0; }
+.iw-day.has { background: var(--ink-1, #161513); }
+.iw-day.is-future, .iw-day.is-out { background: #ece9e2; }
+.iw-daynames { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; font-size: 10px; color: var(--ink-3, #5f5a50); text-align: center; }
+.iw-week-lines { display: flex; flex-direction: column; gap: 8px; padding: 10px; flex: 1; background: #faf9f6; border-radius: 0 0 12px 12px; }
+.iw-line { background: #fff; border: 1px solid #e7e4dc; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.iw-line .mono { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iw-line .iw-bar { height: 4px; }
+.iw-more { text-align: center; padding: 4px; }
+.iw-vendors { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.iw-vendor { display: flex; gap: 14px; align-items: center; padding: 14px; background: #fff; border: 1px solid #d2d5d8; border-radius: 12px; min-width: 0; }
+.iw-ring { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; }
+.iw-ring span { width: 42px; height: 42px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.iw-vendor-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+@media (max-width: 900px) { .iw-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

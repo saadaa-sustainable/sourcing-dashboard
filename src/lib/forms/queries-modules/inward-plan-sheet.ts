@@ -30,6 +30,8 @@ export type InwardPlanSheetRow = {
   /** GRN pieces for this PO ref, any date. */
   received_total: number;
   last_received_on: string | null;
+  /** GRN pieces for this PO ref by receipt day (YYYY-MM-DD), days inside the plan month only. */
+  received_by_day: Record<string, number>;
   /** received_in_month − inward_qty; null when no planned qty. */
   variance: number | null;
   created_by: string | null;
@@ -65,7 +67,7 @@ export async function loadInwardPlanSheet(): Promise<InwardPlanSheetRow[]> {
 
   // Receipts by PO reference, keyed by month of receipt as well as in total.
   const refs = [...new Set(rows.map((r) => String(r.po_no ?? '').trim()).filter(Boolean))];
-  const grn = new Map<string, { total: number; byMonth: Map<string, number>; last: string | null }>();
+  const grn = new Map<string, { total: number; byMonth: Map<string, number>; byDay: Map<string, number>; last: string | null }>();
   for (let i = 0; i < refs.length; i += 200) {
     const chunk = refs.slice(i, i + 200);
     const data = await pageAll<{ po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }>(() =>
@@ -79,12 +81,14 @@ export async function loadInwardPlanSheet(): Promise<InwardPlanSheetRow[]> {
     for (const g of data) {
       const ref = String(g.po_ref_num ?? '').trim();
       if (!ref) continue;
-      const agg = grn.get(ref) ?? { total: 0, byMonth: new Map<string, number>(), last: null };
+      const agg = grn.get(ref) ?? { total: 0, byMonth: new Map<string, number>(), byDay: new Map<string, number>(), last: null };
       const qty = Number(g.received_quantity) || 0;
       agg.total += qty;
       if (g.grn_created_at) {
         const m = `${g.grn_created_at.slice(0, 7)}-01`;
         agg.byMonth.set(m, (agg.byMonth.get(m) ?? 0) + qty);
+        const d = g.grn_created_at.slice(0, 10);
+        agg.byDay.set(d, (agg.byDay.get(d) ?? 0) + qty);
         if (!agg.last || g.grn_created_at > agg.last) agg.last = g.grn_created_at;
       }
       grn.set(ref, agg);
@@ -117,6 +121,7 @@ export async function loadInwardPlanSheet(): Promise<InwardPlanSheetRow[]> {
       received_in_month: inMonth,
       received_total: g?.total ?? 0,
       last_received_on: g?.last ?? null,
+      received_by_day: Object.fromEntries([...(g?.byDay ?? [])].filter(([d]) => d.slice(0, 7) === month.slice(0, 7))),
       variance: qty != null ? inMonth - qty : null,
       created_by: (r.created_by as string | null) ?? null,
       created_at: String(r.created_at),

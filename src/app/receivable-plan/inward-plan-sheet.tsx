@@ -12,6 +12,8 @@ import { decideInwardPlanRow, deleteInwardPlanRow, editAndApproveInwardRow, impo
 import { reloadWithToast, toastError } from '@/lib/toast';
 import type { SdRole } from '@/lib/forms/types';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
+import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
+import { InwardWeekBoard } from './inward-week-board';
 
 const fmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -38,15 +40,22 @@ export function InwardPlanSheet({
   role,
   monthOptions,
   initialMonth,
+  arrivals = [],
+  today,
 }: {
   rows: InwardPlanSheetRow[];
   role: SdRole;
   monthOptions: string[];
   initialMonth: string | null;
+  /** Receivable-plan expectations, for the week board. */
+  arrivals?: ArrivalRow[];
+  /** YYYY-MM-DD, from the server. */
+  today: string;
 }) {
   const defaultMonth = initialMonth && monthOptions.includes(initialMonth) ? initialMonth : rows[0]?.plan_month ?? monthOptions[0];
   const [month, setMonth] = useState<string>(defaultMonth);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [board, setBoard] = useState<'weeks' | 'vendors' | 'lines'>('weeks');
 
   const monthRows = useMemo(() => rows.filter((r) => r.plan_month === month), [rows, month]);
   const shown = useMemo(
@@ -140,24 +149,39 @@ export function InwardPlanSheet({
         {editor && <ImportSheet month={month} monthOptions={monthOptions} />}
       </div>
 
-      <div className="metric-grid wf-metric-grid">
-        <div className="metric-card tone-purple">
-          <span className="metric-label">Planned <InfoDot text="WHAT: what the sheet says will come in this month.\n\nHOW: Σ planned qty and Σ planned qty × cost over every line of the month, whatever its status." /></span>
+      <div className="iw-tiles">
+        <div className="iw-tile">
+          <span>Planned <InfoDot text="WHAT: what the sheet says will come in this month.
+
+HOW: Σ planned qty over every line of the month, whatever its status." /></span>
           <strong>{fmt.format(totals.qty)} pcs</strong>
-          <small>{totals.lines} line(s) · {money.format(totals.value)} at cost</small>
+          <small>{totals.lines} line(s)</small>
         </div>
-        <div className="metric-card tone-teal">
-          <span className="metric-label">Approved <InfoDot text="WHAT: the part of the month's plan the admin has signed off.\n\nHOW: Σ over lines with status Approved." /></span>
-          <strong>{fmt.format(totals.approvedQty)} pcs</strong>
-          <small>{totals.by.Approved ?? 0} line(s) · {money.format(totals.approvedValue)}</small>
+        <div className="iw-tile">
+          <span>Value <InfoDot text="WHAT: the money the planned inward represents.
+
+HOW: Σ planned qty × cost per piece over every line of the month." /></span>
+          <strong>{money.format(totals.value)}</strong>
+          <small>{fmt.format(totals.approvedQty)} pcs approved · {money.format(totals.approvedValue)}</small>
         </div>
-        <div className="metric-card tone-orange">
-          <span className="metric-label">Received this month <InfoDot text="WHAT: what has actually landed against the month's POs.\n\nHOW: Σ GRN pieces for each PO reference dated inside the plan month, over every line." /></span>
+        <div className="iw-tile">
+          <span>Received <InfoDot text="WHAT: what has actually landed against the month's POs.
+
+HOW: Σ GRN pieces for each PO reference dated inside the plan month, over every line." /></span>
           <strong>{fmt.format(totals.received)} pcs</strong>
-          <small>{totals.qty ? `${Math.round((totals.received / totals.qty) * 100)}% of planned` : '—'}</small>
+          <small>{totals.qty ? (totals.received > totals.qty ? `over plan by ${fmt.format(totals.received - totals.qty)}` : `${Math.round((totals.received / totals.qty) * 100)}% of planned`) : '—'}</small>
         </div>
-        <div className={`metric-card ${pendingCount ? 'tone-red' : 'tone-teal'}`}>
-          <span className="metric-label">Waiting for approval <InfoDot text="WHAT: lines the admin has not decided yet.\n\nHOW: count of lines with status Pending. The whole month can be decided at once below or on Approvals." /></span>
+        <div className="iw-tile">
+          <span>Still to come <InfoDot text="WHAT: planned pieces not received yet.
+
+HOW: planned − received, never below zero." /></span>
+          <strong>{fmt.format(Math.max(0, totals.qty - totals.received))} pcs</strong>
+          <small>across {totals.lines} line(s)</small>
+        </div>
+        <div className={`iw-tile${pendingCount ? ' is-warn' : ''}`}>
+          <span>Waiting for approval <InfoDot text="WHAT: lines the admin has not decided yet.
+
+HOW: count of lines with status Pending. The whole month can be decided at once below or on Approvals." /></span>
           <strong>{pendingCount}</strong>
           <small>{pendingCount ? 'line(s) pending · admin decides' : 'nothing pending'}</small>
         </div>
@@ -180,6 +204,17 @@ export function InwardPlanSheet({
         </section>
       )}
 
+      {monthRows.length > 0 && (
+        <div className="segment iw-boardseg" role="group" aria-label="Show the month as">
+          {([['weeks', 'Weeks'], ['vendors', 'Vendors'], ['lines', 'Lines']] as const).map(([k, label]) => (
+            <button key={k} type="button" className={board === k ? 'active' : ''} aria-pressed={board === k} onClick={() => setBoard(k)}>{label}</button>
+          ))}
+        </div>
+      )}
+
+      {monthRows.length > 0 && board !== 'lines' ? (
+        <InwardWeekBoard board={board} month={month} rows={monthRows} arrivals={arrivals} today={today} />
+      ) : (
       <FilterTable
         rows={shown}
         columns={columns}
@@ -191,6 +226,7 @@ export function InwardPlanSheet({
         defaultSource="form"
         download={{ filename: `inward-plan-${month.slice(0, 7)}.csv` }}
       />
+      )}
     </>
   );
 }

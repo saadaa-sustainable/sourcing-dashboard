@@ -116,6 +116,7 @@ export function ReceivablePlanClient({
   role = 'viewer',
   initialTab = 'arrivals',
   initialMonth = null,
+  today,
 }: {
   rows: ReceivablePlanRow[];
   /** Rows for the Arrivals tab — same data the standalone Arrivals page reads. */
@@ -129,6 +130,8 @@ export function ReceivablePlanClient({
   role?: SdRole;
   initialTab?: 'arrivals' | 'input' | 'monthly' | 'lines';
   initialMonth?: string | null;
+  /** YYYY-MM-DD, from the server. */
+  today: string;
 }) {
   const [search, setSearch] = useState('');
   const [vendor, setVendor] = useState('');
@@ -279,7 +282,7 @@ export function ReceivablePlanClient({
       {tab === 'arrivals' ? (
         <ArrivalsClient rows={arrivals} />
       ) : tab === 'monthly' ? (
-        <InwardPlanSheet rows={sheet} role={role} monthOptions={sheetMonths} initialMonth={initialMonth} />
+        <InwardPlanSheet rows={sheet} role={role} monthOptions={sheetMonths} initialMonth={initialMonth} arrivals={arrivals} today={today} />
       ) : (
       <>
       {screen === 'view' ? (

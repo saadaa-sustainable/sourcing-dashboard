@@ -23,6 +23,11 @@ function weekRange() {
   return { weekStart: start, weekEnd: end.toISOString().slice(0, 10) };
 }
 
+// Today's date in India, for the week board's "this week" and upcoming days.
+function todayIst() {
+  return new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+}
+
 export const dynamic = 'force-dynamic';
 
 export default async function ReceivablePlanPage({
@@ -109,6 +114,7 @@ export default async function ReceivablePlanPage({
         role={user.role}
         initialTab={initialTab}
         initialMonth={initialMonth}
+        today={todayIst()}
       />
     </FormLayout>
   );
