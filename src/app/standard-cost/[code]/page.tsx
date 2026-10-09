@@ -116,7 +116,7 @@ export default async function StandardCostDetailPage({
           loadAnalyticsRules(),
         ]);
   // CAD plan library (Finished Goods only) — the Documents tab.
-  const costDocs = track === 'material' ? { ready: false, docs: [] } : await loadCostDocuments(cost.product_code);
+  const costDocs = track === 'material' ? { ready: false, linksReady: false, docs: [] } : await loadCostDocuments(cost.product_code);
 
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};

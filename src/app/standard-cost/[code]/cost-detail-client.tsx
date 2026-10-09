@@ -94,7 +94,7 @@ export function StandardCostDetailClient({
   marginPct: number;
   track?: 'fg' | 'material';
   /** CAD plan library rows (FG only) — the Documents tab; null hides the tab. */
-  costDocs?: { ready: boolean; docs: CostDocument[] } | null;
+  costDocs?: { ready: boolean; linksReady: boolean; docs: CostDocument[] } | null;
   userEmail?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -242,6 +242,7 @@ export function StandardCostDetailClient({
                 productCode={cost.product_code}
                 docs={costDocs.docs}
                 ready={costDocs.ready}
+                linksReady={costDocs.linksReady}
                 editable={canChange}
                 role={role}
                 userEmail={userEmail}

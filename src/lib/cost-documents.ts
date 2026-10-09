@@ -9,31 +9,29 @@ export const COST_DOC_MAX_BYTES = 25 * 1024 * 1024;
 /** CAD / marker files, drawings, the input sheet and images. */
 export const COST_DOC_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'dxf', 'plt', 'hpgl', 'mrk', 'cut', 'xlsx', 'xls', 'csv', 'zip'] as const;
 
-export type CostDocGroup = 'single_piece' | 'full_layer_58' | 'full_layer_56' | 'standard_ratio' | 'ratio_1_1';
+export type CostDocGroup = 'single_piece' | 'full_layer' | 'standard_ratio' | 'ratio_1_1';
 
 /**
- * The CAD plan library: four primary headers; "Full layer, single size, per width" keeps
- * each width separate (58" and 56").
+ * The CAD plan library: four primary headers. Three hold uploaded files; "Full layer · single
+ * size per width" holds width + link entries instead — as many widths as the product is cut
+ * in (user, 2026-10-09).
  */
-export const CAD_HEADERS: { key: string; title: string; hint: string; slots: { group: CostDocGroup; label: string }[] }[] = [
-  { key: 'single', title: 'Single piece', hint: 'One garment laid out on its own.', slots: [{ group: 'single_piece', label: 'Single piece' }] },
-  {
-    key: 'full_layer',
-    title: 'Full layer · single size per width',
-    hint: 'A full lay of one size, planned for each fabric width — 58″ and 56″ kept separate.',
-    slots: [
-      { group: 'full_layer_58', label: '58″ width' },
-      { group: 'full_layer_56', label: '56″ width' },
-    ],
-  },
-  { key: 'standard_ratio', title: 'Standard ratio', hint: 'The standard size-ratio lay.', slots: [{ group: 'standard_ratio', label: 'Standard ratio' }] },
-  { key: 'ratio_1_1', title: '1:1 size ratio', hint: 'Every size once, in a 1:1 ratio.', slots: [{ group: 'ratio_1_1', label: '1:1 size ratio' }] },
+export const CAD_HEADERS: { key: CostDocGroup; title: string; hint: string; kind: 'file' | 'width_link' }[] = [
+  { key: 'single_piece', title: 'Single piece', hint: 'One garment laid out on its own.', kind: 'file' },
+  { key: 'full_layer', title: 'Full layer · single size per width', hint: 'A full lay of one size for each fabric width — one link per width.', kind: 'width_link' },
+  { key: 'standard_ratio', title: 'Standard ratio', hint: 'The standard size-ratio lay.', kind: 'file' },
+  { key: 'ratio_1_1', title: '1:1 size ratio', hint: 'Every size once, in a 1:1 ratio.', kind: 'file' },
 ];
+
+/** Fabric widths offered when adding a Full layer link (any other width can be typed). */
+export const COMMON_WIDTHS = ['44', '54', '56', '58', '60', '63', '72'];
+
+/** "58" → "58″"; anything already carrying a unit is shown as typed. */
+export const widthLabel = (w: string | null) => (!w ? '—' : /^\d+(\.\d+)?$/.test(w.trim()) ? `${w.trim()}″` : w.trim());
 
 export const COST_DOC_GROUP_LABEL: Record<CostDocGroup, string> = {
   single_piece: 'Single piece',
-  full_layer_58: 'Full layer · 58″ width',
-  full_layer_56: 'Full layer · 56″ width',
+  full_layer: 'Full layer · single size per width',
   standard_ratio: 'Standard ratio',
   ratio_1_1: '1:1 size ratio',
 };
@@ -44,7 +42,11 @@ export type CostDocument = {
   id: number;
   product_code: string;
   doc_group: CostDocGroup;
-  file_name: string;
+  /** Uploaded file (single piece / ratios); null for a shared link. */
+  file_name: string | null;
+  /** Full layer: the fabric width (e.g. '58') and the shared link. */
+  width: string | null;
+  link_url: string | null;
   file_size: number | null;
   remark: string | null;
   created_by: string | null;

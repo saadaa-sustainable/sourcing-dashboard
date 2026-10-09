@@ -2650,10 +2650,9 @@ tr[hidden] { display: none !important; }
 .cd-rfp a { display: inline-flex; gap: 4px; align-items: center; color: var(--ink-1, #161513); font-size: 13px; }
 .cd-rfp input { flex: 1; max-width: 520px; border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 5px 9px; font: inherit; font-weight: 400; font-size: 12.5px; background: #fff; }
 .cd-rfp .cd-none { font-weight: 500; color: var(--ink-4, #9a9384); }
-.cd-slot-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3, #6e695e); margin-top: 2px; }
 .wf-cmtp-line .cd-file-line { cursor: pointer; text-align: left; font: inherit; color: inherit; gap: 6px; }
 .wf-cmtp-line .cd-file-line:hover .cd-file-name { text-decoration: underline; }
-.cd-file-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cd-file-name { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .cd-file-remark { font-size: 11.5px; color: var(--ink-3, #6e695e); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; min-width: 0; }
 .cd-file-remark::before { content: '· '; }
 .wf-cmtp-line .cd-file-date { flex: 0 0 56px; width: 56px; font-size: 11.5px; color: var(--ink-3, #6e695e); }
@@ -2663,6 +2662,8 @@ tr[hidden] { display: none !important; }
 .cd-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-file input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .cd-file:focus-within { outline: 2px solid var(--purple, #f0c61e); outline-offset: 2px; }
+.cd-width-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px; }
+.cd-width-row > input { border: 1px solid var(--line-strong, #c9c2ae); border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 12.5px; min-width: 0; }
 .cd-picker-actions { display: flex; gap: 6px; }
 .cd-err { color: var(--danger-text, #c0392b); font-size: 11.5px; }
 
