@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition, useEffect } from 'react';
+import Link from 'next/link';
 import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
@@ -126,7 +127,7 @@ export function ReceivablePlanClient({
   sheet?: InwardPlanSheetRow[];
   sheetMonths?: string[];
   role?: SdRole;
-  initialTab?: 'arrivals' | 'input' | 'monthly';
+  initialTab?: 'arrivals' | 'input' | 'monthly' | 'lines';
   initialMonth?: string | null;
 }) {
   const [search, setSearch] = useState('');
@@ -136,16 +137,22 @@ export function ReceivablePlanClient({
   const [risk, setRisk] = useState('');
   const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
   const [view, setView] = useState<ViewMode>('lines');
-  /* Two tabs over one subject. Arrivals is the read: what was expected against what landed.
-     Input Inward Plan is the write: where the team says how much to expect and when. They
-     were separate pages, which meant answering "did it arrive" and "when is it coming"
-     required knowing they lived apart. */
-  const [tab, setTab] = useState<'arrivals' | 'input' | 'monthly'>(initialTab);
+  // Input works on PO lines only; the rollups are for reading.
+  const viewTabs = initialTab === 'input' ? [] : VIEW_TABS;
+  /* Two screens. View is the read: arrivals against the plan, the monthly sheet, and the plan
+     lines by PO, product, variant or receiving month — nothing editable. Input is the write:
+     the team enters quantity and week per PO line and submits; the approver decides there. */
+  const screen: 'view' | 'input' = initialTab === 'input' ? 'input' : 'view';
+  const [tab, setTab] = useState<'arrivals' | 'monthly' | 'lines'>(initialTab === 'input' ? 'lines' : initialTab);
   const [message, setMessage] = useState<string | null>(null);
   const [submitRemark, setSubmitRemark] = useState('');
   // An approver opens on the rows waiting for their decision; "All rows" shows the rest.
   const isApprover = canApprove(role, 'submitted');
-  const [needsMine, setNeedsMine] = useState(() => isApprover && rows.some((r) => r.input_status === 'submitted'));
+  const canInput = editable || isApprover;
+  // Editing and deciding happen on the Input screen only; View is read-only for everyone.
+  const linesEditable = screen === 'input' && editable;
+  const decides = screen === 'input' && isApprover;
+  const [needsMine, setNeedsMine] = useState(() => decides && rows.some((r) => r.input_status === 'submitted'));
   // PO lines come in pages so the table is not one long scroll.
   const [page, setPage] = useState(0);
   const [layout, setLayout] = useState<LinesLayout>('list');
@@ -248,35 +255,26 @@ export function ReceivablePlanClient({
 
   return (
     <>
-      <div className="segment ip-tabs" role="tablist" aria-label="Inward Plan views">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'arrivals'}
-          className={tab === 'arrivals' ? 'active' : ''}
-          onClick={() => setTab('arrivals')}
-        >
-          Arrivals
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'input'}
-          className={tab === 'input' ? 'active' : ''}
-          onClick={() => setTab('input')}
-        >
-          Input Inward Plan
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'monthly'}
-          className={tab === 'monthly' ? 'active' : ''}
-          onClick={() => setTab('monthly')}
-        >
-          Monthly plan
-        </button>
-      </div>
+      <nav className="ip-screens" aria-label="Inward Plan screens">
+        <Link href={`/receivable-plan?tab=${tab === 'lines' && screen === 'input' ? 'monthly' : tab}${initialMonth ? `&month=${initialMonth}` : ''}`} className={screen === 'view' ? 'active' : ''} aria-current={screen === 'view' ? 'page' : undefined}>
+          View inward plan
+        </Link>
+        {canInput && (
+          <Link href="/receivable-plan?tab=input" className={screen === 'input' ? 'active' : ''} aria-current={screen === 'input' ? 'page' : undefined}>
+            Input inward plan
+          </Link>
+        )}
+      </nav>
+
+      {screen === 'view' && (
+        <div className="segment ip-tabs" role="tablist" aria-label="Inward Plan views">
+          {([['arrivals', 'Arrivals'], ['monthly', 'Monthly plan'], ['lines', 'Plan lines']] as const).map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'arrivals' ? (
         <ArrivalsClient rows={arrivals} />
@@ -284,6 +282,16 @@ export function ReceivablePlanClient({
         <InwardPlanSheet rows={sheet} role={role} monthOptions={sheetMonths} initialMonth={initialMonth} />
       ) : (
       <>
+      {screen === 'view' ? (
+      <Notice tone="info">
+        The plan as entered, read-only: one row per colour on an open PO with the receiving week or
+        month and the quantity expected. Use <strong>View</strong> to see it by product, variant or
+        receiving month. To change it, open <strong>Input inward plan</strong>.
+        {lastUpdated && (
+          <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
+        )}
+      </Notice>
+      ) : (
       <Notice tone="info">
         Each row is one colour on an open PO, split by size. Pick when it&rsquo;s expected — either a{' '}
         <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
@@ -291,15 +299,17 @@ export function ReceivablePlanClient({
         month is approved</strong> you can switch to any week within it without re-approval; filling
         a week directly, changing the quantity, or moving to another month needs approval again.
         DOQ, stock and OOS come from the inventory-planning snapshot; <strong>Status</strong> is the
-        live TNA risk. Use <strong>View</strong> to see the plan by product, variant or receiving month.
+        live TNA risk. To read the plan by product, variant or receiving month, open{' '}
+        <strong>View inward plan</strong>.
         {lastUpdated && (
           <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
         )}
       </Notice>
+      )}
 
       {/* The approver decides the submitted week here as well as on Approvals — the
           same batch decision, so "Open record" never lands on a page with nothing to press. */}
-      {canApprove(role, 'submitted') && submittedCount > 0 && (
+      {decides && submittedCount > 0 && (
         <section className="wf-queue-card wf-queue-card-wide sc-decision" aria-label="Your decision">
           <div className="wf-queue-head">
             <div>
@@ -322,7 +332,7 @@ export function ReceivablePlanClient({
       {message && <Notice tone="ok">{message}</Notice>}
 
       <div className="wf-toolbar wf-filter-bar">
-        {isApprover && (
+        {decides && (
           <div className="segment fb-seg" role="group" aria-label="Show">
             <button type="button" className={needsMine ? 'active' : ''} aria-pressed={needsMine} onClick={() => setNeedsMine(true)}>
               Needs approval ({submittedCount})
@@ -376,18 +386,20 @@ export function ReceivablePlanClient({
       </div>
 
       <div className="ip-viewrow">
-        <div className="segment tracker-status-tabs">
-          {VIEW_TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={view === t.key ? 'active' : ''}
-              onClick={() => setView(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {viewTabs.length > 0 ? (
+          <div className="segment tracker-status-tabs">
+            {viewTabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={view === t.key ? 'active' : ''}
+                onClick={() => setView(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        ) : <span />}
         <div className="segment ip-layout-seg" role="group" aria-label="Layout">
           {(['list', 'cards', 'kanban'] as LinesLayout[]).map((l) => (
             <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
@@ -404,9 +416,9 @@ export function ReceivablePlanClient({
             layout={layout}
             pageFrom={pageFrom}
             pageTo={pageTo}
-            editable={editable}
+            editable={linesEditable}
             onEdit={editInList}
-            canDecide={isApprover}
+            canDecide={decides}
           />
           {layout === 'cards' && pagerEl}
         </>
@@ -439,7 +451,7 @@ export function ReceivablePlanClient({
                   <th rowSpan={2} className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
                   <th rowSpan={2} className="input-col">Receiving week / month</th>
                   <th rowSpan={2} className="num input-col">Qty expected</th>
-                  {editable && <th rowSpan={2} aria-label="Save" />}
+                  {linesEditable && <th rowSpan={2} aria-label="Save" />}
                 </tr>
                 <tr>
                   {SIZE_KEYS.map(([, label]) => (
@@ -452,7 +464,7 @@ export function ReceivablePlanClient({
                   <ReceivableRow
                     key={row.row_key}
                     row={row}
-                    editable={editable}
+                    editable={linesEditable}
                     weekOptions={weekOptions}
                     monthOptions={monthOptions}
                     onSaved={() => setMessage('Saved.')}
@@ -461,7 +473,7 @@ export function ReceivablePlanClient({
                 ))}
                 {!shown.length && (
                   <tr>
-                    <td colSpan={editable ? 22 : 21} className="wf-empty-cell">
+                    <td colSpan={linesEditable ? 22 : 21} className="wf-empty-cell">
                       No open receivables match.
                     </td>
                   </tr>
@@ -477,12 +489,12 @@ export function ReceivablePlanClient({
           mode={view}
           layout={layout}
           onOpenLines={(q) => { setSearch(q); setView('lines'); }}
-          canDecide={isApprover}
+          canDecide={decides}
         />
       )}
 
       {/* Submit sits after the PO lines: fill the rows first, then send the week. */}
-      {editable && view === 'lines' && (
+      {linesEditable && view === 'lines' && (
         <div className="rp-submit">
           <div className="rp-submit-text">
             <b>Submit for approval</b>

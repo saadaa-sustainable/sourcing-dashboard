@@ -71,16 +71,27 @@ export default async function ReceivablePlanPage({
     );
   }
 
-  // Both tabs load together: the page is one screen with two views, not two pages.
-  const [rows, arrivals, sheet] = await Promise.all([loadReceivablePlan(), loadArrivalPlan(), loadInwardPlanSheet()]);
+  // Two screens: Input (?tab=input) enters the plan; View (arrivals / monthly / lines) reads it.
+  // Input only needs the PO lines, so it skips the arrivals and monthly-sheet reads.
+  const initialTab =
+    params.tab === 'monthly' || params.tab === 'input' || params.tab === 'lines' ? params.tab : 'arrivals';
+  const isInput = initialTab === 'input';
+  const [rows, arrivals, sheet] = await Promise.all([
+    loadReceivablePlan(),
+    isInput ? Promise.resolve({ rows: [] }) : loadArrivalPlan(),
+    isInput ? Promise.resolve([]) : loadInwardPlanSheet(),
+  ]);
   const week = weekRange();
-  const initialTab = params.tab === 'monthly' || params.tab === 'input' ? params.tab : 'arrivals';
   const initialMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '') ? (params.month as string) : null;
 
   return (
     <FormLayout
       title="Inward Plan"
-      subtitle="What is arriving and when. Arrivals shows what was expected against what actually landed; Input Inward Plan is where the team enters the quantity and week to expect."
+      subtitle={
+        isInput
+          ? 'Enter the quantity and receiving week or month per PO line, then submit for approval.'
+          : 'What is arriving and when: arrivals against the plan, the monthly sheet and the plan lines. Read-only — enter changes on Input inward plan.'
+      }
       active="/receivable-plan"
       role={user.role}
       userEmail={user.email}
