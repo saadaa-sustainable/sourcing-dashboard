@@ -13,7 +13,10 @@ import {
   saveTnaLeadtimes,
   setPoClosure,
   submitPoApproval,
+  updatePoDeleteRequestReason,
+  withdrawPoDeleteRequest,
 } from '@/lib/forms/actions';
+import { confirmDelete as askConfirmDelete } from '@/lib/confirm';
 import { addMonths, canApprove, canDeletePo, canEdit, isPlanFrozen, monthLabel, monthStart, routeApproval, STATUS_LABEL } from '@/lib/forms/approval';
 import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
 import type { CostSheetFigures } from '@/lib/cost-sheet';
@@ -265,7 +268,8 @@ export function PoApprovalClient({
   initialEditId?: number | null;
 }) {
   const editable = canEdit(role, 'draft');
-  const initialEdit = initialEditId != null ? pos.find((p) => p.id === initialEditId && (p.status === 'draft' || p.status === 'rework')) ?? null : null;
+  // House rule: until approved, everything is amendable — any non-approved request opens for edit.
+  const initialEdit = initialEditId != null && editable ? pos.find((p) => p.id === initialEditId && p.status !== 'approved') ?? null : null;
   const [form, setForm] = useState(() => (initialEdit ? formFromPo(initialEdit) : { ...BLANK }));
   // The page: which POs are listed, the search, the tab, and whether the raise-a-PO drawer is open.
   const [filter, setFilter] = useState<Filter>('mine');
@@ -364,7 +368,7 @@ export function PoApprovalClient({
     return p;
   };
 
-  /** Load a raised PO back into the form. Only a draft or a reworked PO gets here. */
+  /** Load a raised PO back into the form. Any PO that is not yet approved gets here. */
   function startEdit(po: PoApproval) {
     setError(null);
     setMessage(null);
@@ -410,10 +414,46 @@ export function PoApprovalClient({
     });
   }
 
+  // The person who asked for a deletion can change the reason or withdraw the ask until the
+  // admin approves it (house rule: until approved, everything is amendable).
+  const [reasonDraft, setReasonDraft] = useState<string | null>(null);
+  function saveDeleteReason(reqId: number) {
+    if (reasonDraft == null) return;
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(reqId));
+    p.set('delete_reason', reasonDraft);
+    start(async () => {
+      const res = await updatePoDeleteRequestReason(p);
+      if (res.ok) {
+        setReasonDraft(null);
+        reloadWithToast(res.message ?? 'Saved.');
+      } else setError(toastError(res.error));
+    });
+  }
+  async function withdrawDelete(reqId: number, requestLabel: string) {
+    const ok = await askConfirmDelete({
+      title: `Withdraw the deletion request for ${requestLabel}?`,
+      body: 'The ask is removed from the admin’s queue and the PO request stays live. You can ask again later.',
+      confirmLabel: 'Withdraw request',
+    });
+    if (!ok) return;
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(reqId));
+    start(async () => {
+      const res = await withdrawPoDeleteRequest(p);
+      if (res.ok) {
+        setReasonDraft(null);
+        reloadWithToast(res.message ?? 'Withdrawn.');
+      } else setError(toastError(res.error));
+    });
+  }
+
   // Spec 7.1: submit = save the draft, show the three validations as a pop-up, confirm
   // with a remark, then route it for approval.
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
-  // A raised PO stays editable until it is submitted: Edit on its row loads it back here.
+  // A raised PO stays editable until it is approved: Edit on its row loads it back here.
   const [editing, setEditing] = useState<PoApproval | null>(initialEdit);
   // The request this form is about: the one being edited, or the draft the first save made.
   const current: PoApproval | null = editing ?? (draftId != null ? pos.find((p) => p.id === draftId) ?? null : null);
@@ -538,7 +578,7 @@ export function PoApprovalClient({
   const approvedNotIssued = (p: PoApproval) => p.status === 'approved' && !p.po_issued_at;
   const mine = (p: PoApproval) =>
     (queued(p) && canApprove(role, p.status)) ||
-    ((p.status === 'draft' || p.status === 'rework') && editable) ||
+    ((p.status === 'draft' || p.status === 'rework' || p.status === 'rejected') && editable) ||
     (approvedNotIssued(p) && editable);
   const FILTERS: { key: Filter; label: string; test: (p: PoApproval) => boolean }[] = [
     { key: 'mine', label: 'Needs my action', test: mine },
@@ -817,11 +857,19 @@ export function PoApprovalClient({
             <div>
               <h3>
                 {editing ? `Edit ${editing.request_id}` : 'Raise a PO for approval'}
-                <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is submitted — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
+                <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is approved — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
               </h3>
               {editing && (
                 <p className="wf-subtle">
-                  Editing a saved request{editing.status === 'rework' ? ' sent back for rework' : ''} — saving updates it
+                  Editing a saved request
+                  {editing.status === 'rework'
+                    ? ' sent back for rework'
+                    : editing.status === 'rejected'
+                      ? ' that was rejected'
+                      : editing.status === 'submitted' || editing.status === 'pending_l2'
+                        ? ' awaiting approval'
+                        : ''}{' '}
+                  — saving updates it
                   rather than raising another. Its SKU quantities stay as they are.
                 </p>
               )}
@@ -859,6 +907,41 @@ export function PoApprovalClient({
               <strong>Deletion requested</strong> by {pendingDelete.requested_by} on{' '}
               {new Date(pendingDelete.requested_at).toLocaleDateString('en-IN')} — “{pendingDelete.reason}”.
               It is in the admin’s approval queue; the request stays live until they decide.
+              {editable &&
+                (pendingDelete.requested_by ?? '').trim().toLowerCase() === (userEmail ?? '').trim().toLowerCase() &&
+                Boolean(userEmail) && (
+                  <span className="wf-footer-actions">
+                    {reasonDraft != null ? (
+                      <>
+                        <input
+                          className="wf-mini-input"
+                          value={reasonDraft}
+                          onChange={(e) => setReasonDraft(e.target.value)}
+                          placeholder="Reason for deleting this request"
+                          aria-label="Reason for deleting this request"
+                        />
+                        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || reasonDraft.trim().length < 4} onClick={() => saveDeleteReason(pendingDelete.id)}>
+                          Save reason
+                        </button>
+                        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setReasonDraft(null)}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setReasonDraft(pendingDelete.reason)}>
+                        Change reason
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn-sm wf-btn-delete"
+                      disabled={pending}
+                      onClick={() => void withdrawDelete(pendingDelete.id, pendingDelete.request_id)}
+                    >
+                      Withdraw request
+                    </button>
+                  </span>
+                )}
             </Notice>
           )}
           {declinedDelete && (
@@ -1296,7 +1379,7 @@ export function PoApprovalClient({
                     poRef={current.po_ref_num ?? current.request_id}
                     productCode={form.product_code.trim() || current.product_code}
                     lines={currentLines}
-                    editable={current.status === 'draft' || current.status === 'rework'}
+                    editable={current.status !== 'approved' && editable}
                     onSaved={() => reloadWithToast()}
                     onClose={() => setActiveStep('plan')}
                   />
@@ -1313,7 +1396,7 @@ export function PoApprovalClient({
                   ? 'Lines saved. Submit runs the three checks (rate vs standard, vendor load, TNA against the vendor’s history) and routes it by value.'
                   : 'Save the lines above, then submit.'
                 : current
-                  ? `Saving updates ${current.request_id}. It stays editable until it is submitted.`
+                  ? `Saving updates ${current.request_id}. It stays editable until it is approved${current.status === 'submitted' || current.status === 'pending_l2' ? ' — the approver sees the saved changes' : ''}.`
                   : 'Save & continue creates the draft and gives it its Request ID; every later save updates it.'}
             </p>
             {STEP_ORDER.indexOf(activeStep) > 0 && (
@@ -1340,15 +1423,19 @@ export function PoApprovalClient({
                 <button type="button" className="wf-btn wf-btn-ghost" onClick={cancelEdit} disabled={pending}>
                   Close
                 </button>
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary"
-                  onClick={() => run(true)}
-                  disabled={pending || !current || !currentLines.length}
-                  title={currentLines.length ? 'Run the three checks and submit' : 'Save the SKU lines first'}
-                >
-                  <Send size={15} /> {pending ? 'Working…' : 'Submit for approval'}
-                </button>
+                {/* Already in the approval queue: saved changes reach the approver as they are,
+                    so there is nothing to submit again. */}
+                {!(current && (current.status === 'submitted' || current.status === 'pending_l2')) && (
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-primary"
+                    onClick={() => run(true)}
+                    disabled={pending || !current || !currentLines.length}
+                    title={currentLines.length ? 'Run the three checks and submit' : 'Save the SKU lines first'}
+                  >
+                    <Send size={15} /> {pending ? 'Working…' : current?.status === 'rework' || current?.status === 'rejected' ? 'Submit again' : 'Submit for approval'}
+                  </button>
+                )}
               </>
             )}
           </div>

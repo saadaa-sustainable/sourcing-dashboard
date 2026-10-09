@@ -198,7 +198,8 @@ export function PoCardBody({
   const issued = Boolean(po.po_issued_at);
   const queued = po.status === 'submitted' || po.status === 'pending_l2';
   const isApprover = queued && canApprove(role, po.status);
-  const linesEditable = (po.status === 'draft' || po.status === 'rework') && canIssue;
+  // House rule: until approved, everything is amendable (draft, pending, rework, rejected).
+  const linesEditable = po.status !== 'approved' && canIssue;
   const editableHere = linesEditable && canEdit(role, po.status);
   const isEditing = editingId === po.id;
   const stdCmForPo = po.product_code ? stdCm[po.product_code.trim()] : undefined;
