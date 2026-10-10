@@ -7,6 +7,30 @@ import type { SdUser, SdCustomRole } from '../types';
 /* ------------------------------------------------------------------ */
 
 export async function currentUser(): Promise<SdUser | null> {
+  // Local development only: bypass authentication while keeping
+  // the real Supabase data layer active.
+  if (process.env.LOCAL_AUTH_BYPASS === 'true') {
+    const supabase = await client();
+    const localEmail = 'admin@saadaa.in';
+
+    const { data } = await supabase
+      .from('sd_user')
+      .select('email, full_name, role, is_active')
+      .eq('email', localEmail)
+      .maybeSingle();
+
+    const user: SdUser = (data as SdUser | null) ?? {
+      email: localEmail,
+      full_name: 'Local Developer',
+      role: 'admin',
+      is_active: true,
+    };
+
+    user.allowed_pages = null;
+
+    return user;
+  }
+
   const supabase = await client();
   const { data: claims } = await supabase.auth.getClaims();
   const email =
@@ -56,12 +80,19 @@ export async function currentUser(): Promise<SdUser | null> {
       .from('sd_user_role')
       .select('role_id, sd_custom_role(pages)')
       .eq('user_email', user.email);
-    const rows = (assignments ?? []) as unknown as { role_id: number; sd_custom_role: { pages: string[] | null } | null }[];
+    const rows = (assignments ?? []) as unknown as {
+      role_id: number;
+      sd_custom_role: { pages: string[] | null } | null;
+    }[];
+
     if (rows.length) {
       user.custom_role_ids = rows.map((r) => r.role_id);
-      user.allowed_pages = [...new Set(rows.flatMap((r) => r.sd_custom_role?.pages ?? []))];
+      user.allowed_pages = [
+        ...new Set(rows.flatMap((r) => r.sd_custom_role?.pages ?? [])),
+      ];
     }
   }
+
   return user;
 }
 

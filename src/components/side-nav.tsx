@@ -97,6 +97,7 @@ const PO_WORKFLOW_LINKS: NavLink[] = [
   { href: '/po-amendment', label: 'PO Amendment', Icon: FilePen },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
+  { href: '/finished-good-po-closer', label: 'Finished Good PO Closer', Icon: PackageCheck },
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
 ];
 
