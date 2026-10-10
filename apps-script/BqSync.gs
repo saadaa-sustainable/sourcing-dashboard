@@ -309,6 +309,9 @@ const BqSync_ = (function () {
     const groups = new Map();
     for (const r of raw) {
       if (!r.sku) continue;
+      // Main Warehouse only (2026-10-07): FBA / STORE / Holisol rows would add stock and push
+      // MAX(OOS days) to 45 for SKUs that never sat there.
+      if (r.warehouse !== 'Main Warehouse') continue;
       if (String(r.size || '').toUpperCase() === 'IN METERS') continue;
       if (/^[^/]+\/[^/]+\/[^/]+$/.test(r.sku)) continue; // dyed-fabric/RM codes
       let g = groups.get(r.sku);
@@ -429,6 +432,8 @@ const BqSync_ = (function () {
         const start = addD(end, -6);
         windows['w' + w] = { start: iso(start), end: iso(end), label: iso(start) + ' → ' + iso(end) };
       }
+      // f45: the 45 days ending on the anchor day — the DOQ sheet's 45-day DOQ / OOS days window.
+      windows.f45 = { start: iso(addD(latestD, -44)), end: latest, label: iso(addD(latestD, -44)) + ' → ' + latest };
       windows.at = { start: earliest, end: latest, label: earliest + ' → ' + latest };
       for (const k in windows) {
         windows[k].ndays = dates.filter((d) => d >= windows[k].start && d <= windows[k].end).length;
@@ -436,23 +441,46 @@ const BqSync_ = (function () {
 
       // 2. one conditional-aggregation query -> per-SKU window figures
       const cond = (k) => `date_day BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
-      // Out of stock on a day = no SELLABLE stock at Main Warehouse (has_inventory_today = 0),
-      // the rule the team's DOQ sheet applies to the EasyEcom inventory report (sellable qty
-      // <= 0). Physical stock summed over warehouses is the fallback for days without the flag.
-      const per = (k) =>
-        `SUM(IF(${cond(k)}, qty, 0)) ${k}_qty, ` +
-        `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk > 0, hit > 0)) ${k}_avail, ` +
-        `COUNTIF(${cond(k)} AND IF(hit IS NULL, stk <= 0, hit = 0)) ${k}_oos`;
+      // Main Warehouse only (decided 2026-10-07). Out of stock on a day = no SELLABLE stock at
+      // Main Warehouse, the DOQ sheet's rule (Inventory report "Sellable qty" <= 0).
+      //  * Anchor day: sellable = available − 3 (EasyEcom's buffer), so OOS ⇔ Main stock <= 3.
+      //    Verified SKU by SKU on 6 Oct 2026: reproduces the sheet's 1,026 OOS exactly.
+      //  * Earlier days: the feed's current_stock is TODAY's stock repeated on every past day, so
+      //    it cannot say what was on hand then; that day's has_inventory_today flag can (stock
+      //    as the fallback where the flag is missing).
+      const sellable = `IF(date_day = '${latest}', stk > 3, IF(hit IS NULL, stk > 3, hit > 0))`;
+      // Sales (the _qty columns) come from the EasyEcom order lines, not the inventory feed's
+      // daily_quantity: the DOQ sheet's RAW SALES is EasyEcom's order report — every line of the
+      // day whatever its status, cancelled included — minus B2B stock transfers (stock moved to
+      // EBO001 / Marketing / studio, not a sale). Amazon FBA is left out too: the report carries
+      // only a fraction of it. Reconciled 7 Oct 2026 over 23 Aug–6 Oct: 114,259 vs the sheet's
+      // 115,474 (the feed's t45 ran ~16% under); 2,704 SKUs exact, 3,080 within one piece.
+      const dcond = (k) => `d BETWEEN '${windows[k].start}' AND '${windows[k].end}'`;
+      const keys = ['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'f45', 'at'];
+      const perStock = (k) =>
+        `COUNTIF(${cond(k)} AND ${sellable}) ${k}_avail, ` +
+        `COUNTIF(${cond(k)} AND NOT ${sellable}) ${k}_oos`;
+      const perSales = (k) => `SUM(IF(${dcond(k)}, q, 0)) ${k}_qty`;
       const sql =
         `WITH day AS ( ` +
-        `  SELECT sku, date_day, SUM(COALESCE(daily_quantity, 0)) qty, SUM(COALESCE(current_stock, 0)) stk, ` +
-        `    MAX(IF(warehouse = 'Main Warehouse', has_inventory_today, NULL)) hit ` +
+        `  SELECT sku, date_day, SUM(COALESCE(current_stock, 0)) stk, MAX(has_inventory_today) hit ` +
         `  FROM ${DATASET}saadaa_inventory_planning\` ` +
-        `  WHERE sku IS NOT NULL AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
+        `  WHERE sku IS NOT NULL AND warehouse = 'Main Warehouse' AND UPPER(COALESCE(Size, '')) != 'IN METERS' ` +
         `    AND NOT REGEXP_CONTAINS(sku, r'^[^/]+/[^/]+/[^/]+$') ` +
         `  GROUP BY sku, date_day ` +
-        `) SELECT sku, ${['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'at'].map(per).join(', ')} ` +
-        `FROM day GROUP BY sku`;
+        `), stockw AS ( ` +
+        `  SELECT sku, REGEXP_REPLACE(UPPER(sku), r'[^A-Z0-9]', '') k, ${keys.map(perStock).join(', ')} ` +
+        `  FROM day GROUP BY sku ` +
+        `), sales AS ( ` +
+        `  SELECT REGEXP_REPLACE(UPPER(sku), r'[^A-Z0-9]', '') k, DATE(ORDER_Date) d, SUM(suborder_quantity) q ` +
+        `  FROM ${DATASET}SAADAA_EasyEcom_FACT_ITEMS\` ` +
+        `  WHERE COALESCE(Order_Type, '') != 'Stock Transfer Order' AND UPPER(COALESCE(marketplace, '')) != 'AMAZON_FBA' ` +
+        `    AND DATE(ORDER_Date) BETWEEN '${earliest}' AND '${latest}' ` +
+        `  GROUP BY 1, 2 ` +
+        `), salesw AS ( ` +
+        `  SELECT k, ${keys.map(perSales).join(', ')} FROM sales GROUP BY k ` +
+        `) SELECT s.sku, ${keys.map((k) => `COALESCE(w.${k}_qty, 0) ${k}_qty, s.${k}_avail, s.${k}_oos`).join(', ')} ` +
+        `FROM stockw s LEFT JOIN salesw w ON w.k = s.k`;
       const raw = runQuery(sql);
 
       const synced_at = new Date().toISOString();

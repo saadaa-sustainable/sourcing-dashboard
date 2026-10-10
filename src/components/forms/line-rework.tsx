@@ -8,7 +8,7 @@ import { reworkLines, type ActionResult } from '@/lib/forms/actions';
 import type { ApprovalEntity } from '@/lib/forms/types';
 
 /**
- * Line-item Rework/Reassign. Opens a pop-up listing the record's lines; the
+ * Line-item Rework / Reassign. Opens a pop-up listing the record's lines; the
  * approver types a reason against each line they are sending back (each line
  * captures its own reason). Only lines with a reason are reverted.
  */

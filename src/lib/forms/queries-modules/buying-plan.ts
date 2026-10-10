@@ -1,5 +1,5 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { client, pageAll, PAGE_SIZE } from './_shared';
 import { monthStart } from '../approval';
 import { loadApprovedStandardCosts, loadApprovedMaterialCosts } from './standard-cost';
 import { loadReplenishmentByProduct } from './replenishment-oos';
@@ -182,3 +182,23 @@ export async function loadActualsByProduct(planMonth: string) {
 // standard_value by qty, but on a submitted line standard_value is already the frozen LINE
 // TOTAL — the "Rs 1 crore for 1,000 pieces" bug. It had no callers; the plan client and
 // loadBuyingPlanAnalysis carry the correct value rule (value >= qty ? total : qty × rate).
+
+/**
+ * Every month's plan status on both tracks, for the Buying Plan header (month picker list and
+ * the tab dots). One row per month that has a plan on either track.
+ */
+export async function loadPlanMonthStatuses(): Promise<{ month: string; fg: string | null; material: string | null }[]> {
+  const supabase = await client();
+  const rows = await pageAll<{ plan_month: string; plan_type: string | null; status: string | null }>(() =>
+    supabase.from('sd_buying_plan').select('plan_month, plan_type, status').order('id'),
+  );
+  const byMonth = new Map<string, { month: string; fg: string | null; material: string | null }>();
+  for (const r of rows) {
+    const month = String(r.plan_month).slice(0, 10);
+    const cur = byMonth.get(month) ?? { month, fg: null, material: null };
+    if ((r.plan_type ?? 'fg') === 'material') cur.material = r.status;
+    else cur.fg = r.status;
+    byMonth.set(month, cur);
+  }
+  return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+}

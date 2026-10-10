@@ -39,7 +39,7 @@ export function complianceLine(a: BuyingPlanAnalysis): string {
     case 'on_time':
       return `Approved on time (deadline ${dl})`;
     case 'pending':
-      return `Awaiting approval — deadline ${dl}`;
+      return `Approval Pending — deadline ${dl}`;
     case 'breach_submission':
       return `BREACH — submission side, ${c.daysLate} day${c.daysLate === 1 ? '' : 's'} past the ${dl} deadline`;
     case 'breach_approval':

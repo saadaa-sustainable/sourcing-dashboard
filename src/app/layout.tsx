@@ -6,7 +6,12 @@ import './analytics-cards.css';
 import './buying-plan.css';
 import './po-approval.css';
 import './shopify-ui.css';
+// Last: the one search-bar look, over every page's own styles.
+import './search-bars.css';
+// After it: the universal toolbar (every filter / search bar) — its heights win.
+import './toolbar.css';
 import { ToastHost } from '@/components/toast-host';
+import { ConfirmHost } from '@/components/confirm-host';
 import { NumberInputGuard } from '@/components/number-input-guard';
 import { NavOverridesProvider } from '@/components/nav-overrides';
 import { loadNavVisibility } from '@/lib/forms/queries';
@@ -49,6 +54,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <NavOverridesProvider value={navOverrides}>{children}</NavOverridesProvider>
         <ToastHost />
+        <ConfirmHost />
         <NumberInputGuard />
       </body>
     </html>

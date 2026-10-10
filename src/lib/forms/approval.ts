@@ -11,7 +11,7 @@ import type { ApprovalEntity, SdRole, SdStatus } from './types';
 export const ADMIN_THRESHOLD_QTY = 5_000;
 
 /** Entities that always need admin (founder) approval, whatever the quantity. */
-const ALWAYS_ADMIN: ApprovalEntity[] = ['discontinue', 'standard_cost', 'material_cost', 'vendor_deboarding', 'po_delete'];
+const ALWAYS_ADMIN: ApprovalEntity[] = ['discontinue', 'standard_cost', 'material_cost', 'vendor_deboarding', 'vendor_commercial', 'po_delete'];
 
 /** PO categories that always need 2-level (admin) approval, whatever the qty. */
 const PO_ALWAYS_ADMIN = ['npd', 'mat'];
@@ -66,7 +66,16 @@ export function canEdit(role: SdRole, status: SdStatus) {
 }
 
 export function canSubmit(role: SdRole, status: SdStatus) {
-  // A reworked record can be fixed and re-submitted, same as a draft.
+  // House rule (AGENTS.md): until approved, everything is amendable — a draft, a reworked and a
+  // rejected record can all be fixed and (re)submitted.
+  return (status === 'draft' || status === 'rework' || status === 'rejected') && RANK[role] >= RANK.team;
+}
+
+/**
+ * Buying Plan keeps its own lifecycle and is NOT under the amend-until-approved rule (user,
+ * 2026-10-09): only a draft or a reworked plan can be submitted.
+ */
+export function canSubmitPlan(role: SdRole, status: SdStatus) {
   return (status === 'draft' || status === 'rework') && RANK[role] >= RANK.team;
 }
 
@@ -78,7 +87,7 @@ export function canApprove(role: SdRole, status: SdStatus) {
   return false;
 }
 
-/** Sending back for Rework/Reassign is an approver action — same gate as approve. */
+/** Sending back for Rework / Reassign is an approver action — same gate as approve. */
 export function canRework(role: SdRole, status: SdStatus) {
   return canApprove(role, status);
 }
@@ -191,14 +200,71 @@ export function canDeletePo(
 /* Display                                                             */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The approval workflow every module follows (team's spec, 2026-10-08):
+ *   STATUS              SUB STATUS                              REMARKS
+ *   Approval Pending
+ *   Approved            Edited & Approved / First time Approved
+ *   Rework / Reassign                                           mandatory
+ *   Rejected / Discarded                                        mandatory
+ * Every badge, list, filter and notice words a status through these — never by hand.
+ */
+/*
+ * The approval workflow every module follows (team's spec, 2026-10-08). Approval is the
+ * admin's action:
+ *   STATUS              SUB STATUS                              REMARKS
+ *   Approval Pending
+ *   Approved            Edited & Approved / First time Approved
+ *   Rework / Reassign                                           mandatory
+ *   Rejected / Discarded                                        mandatory
+ * Edited & Approved = the admin changed the submitted values before approving
+ * (approver_edited); First time Approved = approved as submitted.
+ * Every badge, list, filter and notice words a status through these — never by hand.
+ */
 export const STATUS_LABEL: Record<SdStatus, string> = {
   draft: 'Draft',
   submitted: 'Approval Pending',
   pending_l2: 'Approval Pending',
-  rework: 'Rework-and-Reassign',
+  rework: 'Rework / Reassign',
   approved: 'Approved',
-  rejected: 'Rejected',
+  rejected: 'Rejected / Discarded',
 };
+
+/** The two sub statuses of Approved. */
+export const SUB_STATUS = {
+  edited: 'Edited & Approved',
+  firstTime: 'First time Approved',
+} as const;
+
+/** Approved's sub status: the admin edited the values before approving, or approved as submitted. */
+export function approvedSubStatus(opts: { approverEdited?: boolean | null }): string {
+  return opts.approverEdited ? SUB_STATUS.edited : SUB_STATUS.firstTime;
+}
+
+/**
+ * A record's status in the workflow's words — the one place every badge and list reads from.
+ * Approved is always shown with its sub status; pass the record's approver_edited.
+ * (`edited` is accepted for older callers and ignored: a team rework round is not an edit.)
+ */
+export function statusText(
+  status: SdStatus,
+  opts: { approverEdited?: boolean | null; edited?: boolean | null } = {},
+): string {
+  if (status === 'approved') return approvedSubStatus(opts);
+  return STATUS_LABEL[status];
+}
+
+/**
+ * The inward-plan sheet keeps its own words in approval_status ('Pending', 'Approved',
+ * 'RE-WORK', 'Rejected'); this shows them the same way as every other module.
+ */
+export function sheetStatusText(raw: string | null | undefined, opts: { approverEdited?: boolean | null } = {}): string {
+  const s = (raw ?? '').trim().toUpperCase();
+  if (s === 'APPROVED') return approvedSubStatus(opts);
+  if (s === 'RE-WORK' || s === 'REWORK') return STATUS_LABEL.rework;
+  if (s === 'REJECTED') return STATUS_LABEL.rejected;
+  return STATUS_LABEL.submitted;
+}
 
 /** Maps onto the existing .tone-* classes in globals.css. */
 export const STATUS_TONE: Record<SdStatus, string> = {
@@ -264,27 +330,34 @@ export function weekLabel(isoDate: string): string {
 }
 
 /**
- * The vendor-capacity week runs Saturday to Friday: a vendor's figures are submitted once
- * a week and lock on submission; the next week opens automatically on Saturday. Returns
- * the Saturday (IST) that started the current capacity week, as an ISO date.
+ * The vendor-capacity week runs Monday to Sunday: a vendor's figures are submitted once
+ * a week and lock on submission; the next week opens automatically on Monday. Returns
+ * the Monday (IST) that started the current capacity week, as an ISO date.
  */
 export function capacityWeekStart(date = new Date()): string {
   const ist = new Date(date.getTime() + 5.5 * 3600_000);
   const dow = ist.getUTCDay(); // 0 = Sunday … 6 = Saturday
-  const back = (dow + 1) % 7; // days since the last Saturday
-  const saturday = new Date(ist.getTime() - back * 86_400_000);
-  return saturday.toISOString().slice(0, 10);
+  const back = (dow + 6) % 7; // days since the last Monday
+  const monday = new Date(ist.getTime() - back * 86_400_000);
+  return monday.toISOString().slice(0, 10);
 }
 
-/** The Saturday the next capacity week opens on, as an ISO date. */
+/** The Monday the next capacity week opens on, as an ISO date. */
 export function capacityWeekNext(date = new Date()): string {
   const start = new Date(`${capacityWeekStart(date)}T00:00:00Z`);
   return new Date(start.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
 }
 
+/**
+ * The once-a-week submit lock. Off for now (2026-10-08): a vendor can be updated on any day,
+ * as often as needed; the board counts each vendor's latest update in a week. Set true to bring
+ * the lock back (row locked from submission until the next Monday; admins can still correct).
+ */
+export const CAPACITY_WEEKLY_LOCK = false;
+
 /** Was this submission made inside the current capacity week (so the row is locked)? */
 export function capacityLocked(submittedAt: string | null | undefined, date = new Date()): boolean {
-  if (!submittedAt) return false;
+  if (!CAPACITY_WEEKLY_LOCK || !submittedAt) return false;
   const weekStartUtc = Date.parse(`${capacityWeekStart(date)}T00:00:00Z`) - 5.5 * 3600_000;
   return Date.parse(submittedAt) >= weekStartUtc;
 }

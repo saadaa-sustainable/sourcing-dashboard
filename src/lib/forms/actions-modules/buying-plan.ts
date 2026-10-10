@@ -11,7 +11,7 @@ import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { canApprove, canEdit, canSubmitPlan, statusOnSubmit } from '../approval';
 import {
   canAcceptProposal,
   canConfirmCm,
@@ -63,13 +63,9 @@ export async function saveBuyingPlan(formData: FormData): Promise<ActionResult> 
     .maybeSingle();
 
   const status = (existing?.status ?? 'draft') as SdStatus;
-  // Month-end freeze (spec item 5): once the month has ended the plan takes no direct
-  // edits. The only way in is an amendment routed through approval — the plan must
-  // already be in 'rework' (requestPlanAmendment, or an approver sending it back).
-  if (isPlanFrozen(planMonth) && status !== 'rework') {
-    return fail(
-      `The ${planMonth.slice(0, 7)} plan is closed — it froze at month-end. To change it, request an amendment; it goes through approval.`,
-    );
+  // A month that is over is view only (user rule, 2026-10-08): no edits at all, rework or not.
+  if (isPlanFrozen(planMonth)) {
+    return fail(`The ${String(planMonth).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   }
   if (!canEdit(user.role, status)) {
     return fail(
@@ -219,7 +215,8 @@ export async function submitBuyingPlan(formData: FormData): Promise<ActionResult
     .eq('id', planId)
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
-  if (!canSubmit(user.role, plan.status as SdStatus)) {
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
+  if (!canSubmitPlan(user.role, plan.status as SdStatus)) {
     return fail('This plan cannot be submitted from its current state.');
   }
 
@@ -297,6 +294,7 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
     .eq('id', planId)
     .maybeSingle();
   if (!plan) return fail('Plan not found.');
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   const from = plan.status as SdStatus;
   if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
 
@@ -322,10 +320,12 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
   const nonZero = ((allLines ?? []) as Record<string, unknown>[]).filter(
     (l) => Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0) > 0,
   );
-  const stillPending = nonZero.filter((l) => l.line_status !== 'approved').length;
+  // A rejected line is decided (it is out of the plan), so it does not hold the plan open.
+  const stillPending = nonZero.filter((l) => l.line_status !== 'approved' && l.line_status !== 'rejected').length;
+  const anyApproved = nonZero.some((l) => l.line_status === 'approved');
   const label = `Buying plan ${String(plan.plan_month).slice(0, 7)}`;
 
-  if (nonZero.length > 0 && stillPending === 0) {
+  if (anyApproved && stillPending === 0) {
     const { data: hdr, error: hdrErr } = await supabase
       .from('sd_buying_plan')
       .update({ status: 'approved', approved_by: user.email, approved_at: new Date().toISOString() })
@@ -345,6 +345,89 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   return done(`Approved ${lineIds.length} line(s); ${stillPending} still pending.`);
+}
+
+/**
+ * Reject single plan lines (per-product decision on the plan page). A rejected line is out
+ * of every total and does not hold the plan open: once the remaining non-zero lines are all
+ * approved the plan is approved; if every line is rejected the plan is rejected. A reason is
+ * required and kept on the line.
+ */
+export async function rejectBuyingPlanLines(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const planId = Number(formData.get('plan_id'));
+  const note = String(formData.get('note') ?? '').trim();
+  if (!planId) return fail('Invalid plan.');
+  if (!note) return fail('A remark is mandatory for Reject / Discard.');
+  let lineIds: number[] = [];
+  try {
+    lineIds = (JSON.parse(String(formData.get('line_ids') ?? '[]')) as unknown[])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  } catch {
+    lineIds = [];
+  }
+  if (!lineIds.length) return fail('Select at least one line to reject.');
+
+  const supabase = await supa();
+  const { data: plan } = await supabase
+    .from('sd_buying_plan')
+    .select('id, plan_month, status')
+    .eq('id', planId)
+    .maybeSingle();
+  if (!plan) return fail('Plan not found.');
+  if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over.`);
+  const from = plan.status as SdStatus;
+  if (from !== 'submitted' && from !== 'pending_l2') return fail('Only a plan awaiting approval can have lines rejected.');
+  if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
+
+  const { data: touched, error: lineErr } = await supabase
+    .from('sd_buying_plan_line')
+    .update({ line_status: 'rejected', rework_notes: note })
+    .eq('plan_id', planId)
+    .in('id', lineIds)
+    .select('id');
+  if (lineErr) return fail(lineErr.message);
+  if (!touched?.length) return fail('Those lines no longer exist — the plan was re-saved. Reload and review the current lines.');
+
+  // paging-ok: one plan's lines, at most a few hundred
+  const { data: allLines } = await supabase
+    .from('sd_buying_plan_line')
+    .select('job_work_qty, fob_qty, efob_qty, line_status')
+    .eq('plan_id', planId);
+  const nonZero = ((allLines ?? []) as Record<string, unknown>[]).filter(
+    (l) => Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0) > 0,
+  );
+  const stillPending = nonZero.filter((l) => l.line_status !== 'approved' && l.line_status !== 'rejected').length;
+  const anyApproved = nonZero.some((l) => l.line_status === 'approved');
+  const label = `Buying plan ${String(plan.plan_month).slice(0, 7)}`;
+  const summary = `${lineIds.length} line(s) rejected: ${note}`;
+
+  if (stillPending === 0) {
+    const now = new Date().toISOString();
+    const to: SdStatus = anyApproved ? 'approved' : 'rejected';
+    const { data: hdr, error: hdrErr } = await supabase
+      .from('sd_buying_plan')
+      .update(
+        to === 'approved'
+          ? { status: to, approved_by: user.email, approved_at: now }
+          : { status: to, rejection_notes: note },
+      )
+      .eq('id', planId)
+      .eq('status', from)
+      .select('id');
+    if (hdrErr) return fail(hdrErr.message);
+    if (hdr?.length) await writeLog('buying_plan', String(planId), label, from, to, user.email, summary);
+    revalidatePath('/approvals');
+    revalidatePath('/buying-plan');
+    return done(to === 'approved' ? `Rejected ${lineIds.length} line(s) — the rest are approved, plan approved.` : 'Every line rejected — plan rejected.');
+  }
+
+  await writeLog('buying_plan', String(planId), label, from, from, user.email, summary);
+  revalidatePath('/approvals');
+  revalidatePath('/buying-plan');
+  return done(`Rejected ${lineIds.length} line(s); ${stillPending} still pending.`);
 }
 
 /* ================================================================== */

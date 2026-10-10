@@ -5,7 +5,10 @@ import {
   canDecide,
   canDeletePo,
   canRework,
+  sheetStatusText,
+  statusText,
   canSubmit,
+  canSubmitPlan,
   isEscalated,
   levelForStatus,
   statusOnSubmit,
@@ -18,6 +21,11 @@ describe('approval workflow v2', () => {
     assert.equal(canSubmit('team', 'rework'), true);
     assert.equal(canSubmit('team', 'draft'), true);
     assert.equal(canSubmit('team', 'submitted'), false);
+    assert.equal(canSubmit('team', 'rejected'), true);
+    assert.equal(canSubmit('team', 'approved'), false);
+    // Buying Plan is outside the amend-until-approved rule: a rejected plan is not resubmitted.
+    assert.equal(canSubmitPlan('team', 'rejected'), false);
+    assert.equal(canSubmitPlan('team', 'rework'), true);
     assert.equal(canSubmit('viewer', 'rework'), false);
   });
   it('gates Rework/Reassign exactly like Approve', () => {
@@ -26,10 +34,17 @@ describe('approval workflow v2', () => {
     assert.equal(canRework('admin', 'pending_l2'), true);
     assert.equal(canRework('team', 'draft'), false);
   });
-  it('labels the new/merged statuses', () => {
-    assert.equal(STATUS_LABEL.rework, 'Rework-and-Reassign');
+  it('words statuses as the approval workflow spec', () => {
     assert.equal(STATUS_LABEL.submitted, 'Approval Pending');
     assert.equal(STATUS_LABEL.pending_l2, 'Approval Pending');
+    assert.equal(STATUS_LABEL.rework, 'Rework / Reassign');
+    assert.equal(STATUS_LABEL.rejected, 'Rejected / Discarded');
+    assert.equal(statusText('approved', { approverEdited: true }), 'Edited & Approved');
+    assert.equal(statusText('approved', { approverEdited: false }), 'First time Approved');
+    assert.equal(statusText('approved'), 'First time Approved');
+    assert.equal(sheetStatusText('RE-WORK'), 'Rework / Reassign');
+    assert.equal(sheetStatusText('Rejected'), 'Rejected / Discarded');
+    assert.equal(sheetStatusText('Pending'), 'Approval Pending');
     assert.ok(STATUS_TONE.rework);
   });
   it('lets the raiser delete their own request until it is approved', () => {

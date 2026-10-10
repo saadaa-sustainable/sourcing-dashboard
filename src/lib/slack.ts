@@ -85,6 +85,22 @@ export async function notifyFabricRateSlack(n: {
   await postSlack(opsWebhook(), text);
 }
 
+// ── Standard Cost target set by the approver ─────────────────────────────────
+export async function notifyCostTargetSlack(n: {
+  code: string;
+  name?: string | null;
+  summary: string; // "Job ₹100 · FOB ₹90"
+  track: 'fg' | 'material';
+}): Promise<void> {
+  const path = `/standard-cost/${encodeURIComponent(n.code)}${n.track === 'material' ? '?track=material' : ''}`;
+  const text = [
+    `🎯 *Target set:* ${n.code}${n.name ? ` · ${n.name}` : ''}`,
+    `${n.summary} — the team to come back with the vendor rate.`,
+    link(path, 'Open the cost →'),
+  ].join('\n');
+  await postSlack(opsWebhook(), text);
+}
+
 // ── Rework sent back to a submitter ──────────────────────────────────────────
 export async function notifyReworkSlack(n: {
   what: string; // e.g. "Buying plan 2026-09" or a PO ref
@@ -94,7 +110,7 @@ export async function notifyReworkSlack(n: {
   scope?: string | null; // e.g. "3 lines"
 }): Promise<void> {
   const text = [
-    `↩️ *Sent back for rework:* ${n.what}${n.scope ? ` (${n.scope})` : ''}`,
+    `↩️ *Rework / Reassign:* ${n.what}${n.scope ? ` (${n.scope})` : ''}`,
     n.submitter ? `👤 ${n.submitter} needs to revise${n.by ? ` — returned by ${n.by}` : ''}` : '',
     n.reason ? `>${n.reason.slice(0, 400)}` : '',
     link('/my-dashboard', 'Open your submissions →'),
@@ -196,4 +212,43 @@ export async function notifyPlanAmendmentSlack(n: {
     link('/approvals', 'Open the Approvals queue →'),
   ].join('\n');
   await postSlack(opsWebhook(), text);
+}
+
+// ── Vendor Capacity monthly report to management (2026-10-09) ────────────────
+//   SLACK_MANAGEMENT_WEBHOOK_URL — the management channel. Falls back to the Supply Chain
+//   webhook (then ops / feedback) so the mandatory report always lands somewhere.
+const managementWebhook = () => process.env.SLACK_MANAGEMENT_WEBHOOK_URL || supplyChainWebhook();
+
+export function hasManagementSlack(): boolean {
+  return Boolean(managementWebhook());
+}
+
+/** Which channel the management report goes to — shown on the report card. */
+export function managementReportTarget(): 'management' | SlackReportTarget {
+  return process.env.SLACK_MANAGEMENT_WEBHOOK_URL ? 'management' : slackReportTarget();
+}
+
+export async function notifyVendorCapacityReportSlack(n: {
+  monthLabel: string;
+  active: number;
+  compliance: string; // "71% of vendor-weeks updated"
+  neverUpdated: number;
+  overAnyWeek: number;
+  capacity: string; // "3,90,780 pcs / month (from 3,80,000)"
+  utilisation: string; // via utilisationLabel
+  pdfUrl: string | null;
+  path: string;
+}): Promise<boolean> {
+  const hook = managementWebhook();
+  if (!hook) return false;
+  const text = [
+    `🏭 *Vendor Capacity — ${n.monthLabel}.* Monthly report to management is ready.`,
+    `• Weekly input: ${n.compliance} · ${n.neverUpdated} of ${n.active} active vendors never updated`,
+    `• Capacity declared: ${n.capacity}`,
+    `• Capacity used at month end: ${n.utilisation} · ${n.overAnyWeek} vendor${n.overAnyWeek === 1 ? '' : 's'} over capacity in at least one week`,
+    n.pdfUrl ? `📎 <${n.pdfUrl}|Download the PDF report>` : '📎 PDF could not be stored — open the monthly analysis instead.',
+    link(n.path, 'Open the monthly analysis →'),
+  ].join('\n');
+  await postSlack(hook, text);
+  return true;
 }

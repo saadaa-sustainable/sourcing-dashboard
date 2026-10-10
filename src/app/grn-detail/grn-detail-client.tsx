@@ -2,7 +2,9 @@
 
 import { Notice } from '@/components/forms/form-layout';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { useMemo } from 'react';
 import type { GrnDetail } from '@/lib/forms/types';
+import { unpackRows, type PackedRows } from '@/lib/packed-rows';
 
 const date = (v: string | null) => (v ? String(v).slice(0, 10) : '');
 
@@ -31,7 +33,8 @@ const COLS: Column<GrnDetail>[] = [
   { key: 'synced_at', label: 'Synced', kind: 'text', accessor: (r) => date(r.synced_at) },
 ];
 
-export function GrnDetailClient({ rows, limit }: { rows: GrnDetail[]; limit: number }) {
+export function GrnDetailClient({ rows: packed, limit }: { rows: PackedRows<GrnDetail>; limit: number }) {
+  const rows = useMemo(() => unpackRows(packed), [packed]);
   const capped = rows.length >= limit;
   return (
     <>

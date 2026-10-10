@@ -1,4 +1,5 @@
 import 'server-only';
+import { packRows, type PackedRows } from '@/lib/packed-rows';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import type {
   EeProductMaster,
@@ -18,20 +19,67 @@ import type {
 } from '../types';
 
 /** The EasyEcom product master — one row per SKU, read-only. Paged (exceeds 1000). */
-export async function loadEeProductMaster(): Promise<EeProductMaster[]> {
+// The columns the Product Master table shows (product-master-client COLS) — nothing else
+// is sent. Keep in step with COLS when a column is added there.
+const PRODUCT_MASTER_COLUMNS = [
+  'sku',
+  'product_variant',
+  'product_name',
+  'colour',
+  'size',
+  'product_state',
+  'weave_type',
+  'category_name',
+  'gender',
+  'item_category',
+  'sub_category',
+  'rm_fabric_sku',
+  'dyed_fabric_sku',
+  'fabric_name',
+  'fabric_composition',
+  'fabric_gsm',
+  'fit_type',
+  'sleeve_type',
+  'neck_collar_type',
+  'season',
+  'replenishment_type',
+  'product_type',
+  'product_launch_date',
+  'mrp',
+  'cost',
+  'category_type',
+  'color_family',
+  'garment_length_type',
+  'demographic_price_rage',
+  'fabric_consumption_average',
+  'qty_in_meters',
+  'related_ongoing_product',
+  'washcare_sku',
+  'active',
+  'width',
+  'height',
+  'length',
+  'weight',
+  'hsn_code',
+  'model_no',
+  'gst',
+  'tax_rate',
+  'tax_rule_name',
+  'product_image_url',
+  'description',
+  'created_at',
+] as const;
+
+/**
+ * Every EasyEcom SKU for the Product Master table, packed (keys once, rows as value lists):
+ * 7.5k rows × 46 columns sent as objects made a 10.8 MB page.
+ */
+export async function loadEeProductMaster(): Promise<PackedRows<EeProductMaster>> {
   const supabase = await client();
-  const rows: EeProductMaster[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('sd_ee_product_master')
-      .select('*')
-      .order('sku')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_ee_product_master: ${error.message}`);
-    rows.push(...((data ?? []) as EeProductMaster[]));
-    if (!data || data.length < PAGE_SIZE) break;
-  }
-  return rows;
+  const rows = await pageAll<EeProductMaster>(() =>
+    supabase.from('sd_ee_product_master').select(PRODUCT_MASTER_COLUMNS.join(',')).order('sku'),
+  );
+  return packRows(rows, [...PRODUCT_MASTER_COLUMNS] as (keyof EeProductMaster & string)[]);
 }
 
 // The GRN detail table has 170k+ rows — far too many to ship to the browser at
@@ -46,16 +94,19 @@ const GRN_DETAIL_LIMIT = 5000;
  * response is capped at 1,000 rows, so the page was quietly showing a fifth of what the
  * constant promised.
  */
-export async function loadGrnDetail(): Promise<GrnDetail[]> {
+export async function loadGrnDetail(): Promise<PackedRows<GrnDetail>> {
   const supabase = await client();
   const rows = await pageAll<GrnDetail>(() =>
     supabase
-      .from('sd_ee_grn')
+      .from('sd_ee_grn_saadaa')
       .select('*')
       .order('grn_created_at', { ascending: false, nullsFirst: false })
       .order('grn_detail_id', { ascending: false }),
+    // Only the newest GRN_DETAIL_LIMIT are shown: stop there instead of reading all 185k
+    // lines (186 round trips, ~19 s) and throwing the rest away.
+    GRN_DETAIL_LIMIT,
   );
-  return rows.slice(0, GRN_DETAIL_LIMIT);
+  return packRows(rows);
 }
 
 export const grnDetailLimit = GRN_DETAIL_LIMIT;

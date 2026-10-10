@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { addMonths, monthStart } from '@/lib/forms/approval';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { generatePlanReport } from '@/lib/plan-report';
+import { generateVendorCapacityReport, VC_REPORT_TYPE } from '@/lib/vendor-capacity-report';
 
 // jsPDF + Supabase storage need the Node runtime; the report reads a month of PO lines.
 export const runtime = 'nodejs';
@@ -12,6 +13,8 @@ export const maxDuration = 120;
  * (see vercel.json). The plan for the month that just ended is frozen by the date rule
  * already; this job generates its analytical PDF and posts it to the Supply Chain
  * channel. Idempotent: if the month was already posted, it does nothing unless ?force=1.
+ * The same run sends Vendor Capacity's mandatory monthly report to management (2026-10-09),
+ * with its own idempotency check — one report failing never stops the other.
  *
  * ?month=YYYY-MM-01 reports a specific month (default: the month that just ended).
  * Vercel sends `Authorization: Bearer $CRON_SECRET`; anything else is rejected.
@@ -28,19 +31,22 @@ export async function GET(request: NextRequest) {
   const force = request.nextUrl.searchParams.get('force') === '1';
   const startedAt = new Date().toISOString();
 
-  if (!force && hasSupabaseAdminEnv()) {
-    const { data: existing } = await createAdminClient()
+  const postedAlready = async (type: string) => {
+    if (force || !hasSupabaseAdminEnv()) return null;
+    const { data } = await createAdminClient()
       .from('sd_plan_report')
       .select('slack_posted_at')
       .eq('plan_month', planMonth)
-      .eq('plan_type', 'fg')
+      .eq('plan_type', type)
       .maybeSingle();
-    if (existing?.slack_posted_at) {
-      return Response.json({ ok: true, startedAt, planMonth, skipped: 'already posted', postedAt: existing.slack_posted_at });
-    }
-  }
+    return (data as { slack_posted_at: string | null } | null)?.slack_posted_at ?? null;
+  };
 
-  const result = await generatePlanReport(planMonth, { post: true, by: 'cron' });
-  const status = result.ok ? 200 : 500;
-  return Response.json({ startedAt, finishedAt: new Date().toISOString(), planMonth, ...result }, { status });
+  const [fgPosted, vcPosted] = await Promise.all([postedAlready('fg'), postedAlready(VC_REPORT_TYPE)]);
+  const [buyingPlan, vendorCapacity] = await Promise.all([
+    fgPosted ? Promise.resolve({ ok: true as const, skipped: 'already posted', postedAt: fgPosted }) : generatePlanReport(planMonth, { post: true, by: 'cron' }),
+    vcPosted ? Promise.resolve({ ok: true as const, skipped: 'already posted', postedAt: vcPosted }) : generateVendorCapacityReport(planMonth, { post: true, by: 'cron' }),
+  ]);
+  const ok = buyingPlan.ok && vendorCapacity.ok;
+  return Response.json({ ok, startedAt, finishedAt: new Date().toISOString(), planMonth, buyingPlan, vendorCapacity }, { status: ok ? 200 : 500 });
 }

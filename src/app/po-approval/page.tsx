@@ -39,7 +39,7 @@ export default async function PoApprovalPage({ searchParams }: { searchParams: P
   if (!canView('/po-approval', user.role, user.allowed_pages ?? null)) redirect('/');
 
   const [
-    { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, capacityByVendor },
+    { pos, cycleById, linesByPo, productCodes, vendorCodes, vendorNames, vendorTypes, productNames, capacityByVendor },
     submissions,
     leadtimes,
     stdCm,
@@ -79,6 +79,8 @@ export default async function PoApprovalPage({ searchParams }: { searchParams: P
         productCodes={productCodes}
         vendorCodes={vendorCodes}
         vendorNames={vendorNames}
+        vendorTypes={vendorTypes}
+        productNames={productNames}
         deboarded={deboarded}
         submissions={submissions}
         leadtimes={leadtimes}

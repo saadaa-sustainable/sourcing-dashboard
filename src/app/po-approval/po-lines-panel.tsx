@@ -46,10 +46,20 @@ export function PoLinesPanel({
   onSaved: () => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<Mode>('paste');
+  // The fill-in table is the default way in: the master's colours and sizes, ready to type.
+  const [mode, setMode] = useState<Mode>(editable ? 'matrix' : 'paste');
   const [ctx, setCtx] = useState<PoLineContext | null>(null);
   const [text, setText] = useState('');
-  const [grid, setGrid] = useState<Record<string, Record<string, string>>>({});
+  const [grid, setGrid] = useState<Record<string, Record<string, string>>>(() => {
+    const g: Record<string, Record<string, string>> = {};
+    for (const l of lines) {
+      const v = (l.product_variant ?? '').toUpperCase();
+      if (!v) continue;
+      g[v] ??= {};
+      g[v][(l.size ?? '').toUpperCase()] = String(Number(l.qty) || '');
+    }
+    return g;
+  });
   const [draft, setDraft] = useState<PoLineDraft[]>(
     lines.map((l) => ({
       product_variant: (l.product_variant ?? '').toUpperCase(),
@@ -170,11 +180,11 @@ export function PoLinesPanel({
 
       {editable && (
         <div className="role-tabs pl-tabs" role="tablist" aria-label="How to enter quantities">
+          <button role="tab" aria-selected={mode === 'matrix'} className={mode === 'matrix' ? 'active' : ''} onClick={openMatrix}>
+            <Grid3x3 size={13} /> Fill the table
+          </button>
           <button role="tab" aria-selected={mode === 'paste'} className={mode === 'paste' ? 'active' : ''} onClick={() => setMode('paste')}>
             <ClipboardPaste size={13} /> Paste from Excel
-          </button>
-          <button role="tab" aria-selected={mode === 'matrix'} className={mode === 'matrix' ? 'active' : ''} onClick={openMatrix}>
-            <Grid3x3 size={13} /> Matrix
           </button>
           <button role="tab" aria-selected={mode === 'csv'} className={mode === 'csv' ? 'active' : ''} onClick={() => setMode('csv')}>
             <Upload size={13} /> CSV file
@@ -256,45 +266,82 @@ export function PoLinesPanel({
         </div>
       )}
 
+      {/* A product added from NPD Tracker V7: its colours come from the NPD SKU-code cell. */}
+      {ctx?.npd && (
+        <p className="pl-npd-note">
+          <b>Colours from NPD Tracker V7.</b> This product is not in EasyEcom yet, so its colour codes are read from its
+          NPD SKU code <span className="mono">{ctx.npd.skuText || '(blank)'}</span>
+          {ctx.npd.sizesFromNpd ? ' and its sizes from NPD' : ''}. Check them before saving
+          {ctx.npd.unread.length > 0 && (
+            <> — could not read <span className="mono">{ctx.npd.unread.join(', ')}</span> as a code</>
+          )}
+          . A code that is wrong can be fixed on NPD Tracker V7, or paste your own colours and quantities.
+        </p>
+      )}
+
       {editable && mode === 'matrix' && (
         <div className="table-scroll pl-matrix">
           {!ctx ? (
             <p className="wf-subtle">Loading this product’s colours…</p>
           ) : (
-            <table className="wide-table wf-grid">
+            <table className="wide-table wf-grid pl-fill">
               <thead>
                 <tr>
-                  <th className="pl-matrix-corner">Colour</th>
+                  <th>Dyed fabric SKU <HeaderInfo label="Dyed fabric SKU" text="The dyed fabric this colour is cut from, as the product master holds it." /></th>
+                  <th>Colour</th>
+                  <th>Product SKU <HeaderInfo label="Product SKU" text="The colour variant code; with the size it makes the SKU (e.g. SDCPBL + _S)." /></th>
                   {matrix.sizes.map((s) => (
                     <th key={s} className="num">{s}</th>
                   ))}
-                  <th className="num">Row total</th>
+                  <th className="num">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {matrix.variants.map((v) => {
+                  const info = ctx.variantInfo?.[v];
                   const rowTotal = matrix.sizes.reduce((sum, s) => sum + (Number(grid[v]?.[s]) || 0), 0);
                   return (
-                    <tr key={v}>
+                    <tr key={v} className={rowTotal ? 'is-filled' : undefined}>
+                      <td className="mono">{info?.dyedFabricSku ?? <span className="wf-subtle">—</span>}</td>
+                      <td>{info?.colour ?? <span className="wf-subtle">—</span>}</td>
                       <td className="mono pl-matrix-row">{v}</td>
-                      {matrix.sizes.map((s) => (
-                        <td key={s} className="num input-col">
-                          <input
-                            type="number"
-                            min={0}
-                            value={grid[v]?.[s] ?? ''}
-                            onChange={(e) => applyMatrix({ ...grid, [v]: { ...(grid[v] ?? {}), [s]: e.target.value } })}
-                          />
-                        </td>
-                      ))}
+                      {matrix.sizes.map((s) => {
+                        // A size the master has no SKU for is greyed, but can still be typed into.
+                        const known = !info?.sizes.length || info.sizes.includes(s);
+                        return (
+                          <td key={s} className={`num input-col${known ? '' : ' pl-nosku'}`}>
+                            <input
+                              type="number"
+                              min={0}
+                              aria-label={`${v} ${s}`}
+                              title={known ? `${v}_${s}` : `${v}_${s} is not in the product master`}
+                              placeholder={known ? '' : '—'}
+                              value={grid[v]?.[s] ?? ''}
+                              onChange={(e) => applyMatrix({ ...grid, [v]: { ...(grid[v] ?? {}), [s]: e.target.value } })}
+                            />
+                          </td>
+                        );
+                      })}
                       <td className="num">{rowTotal ? fmt.format(rowTotal) : '—'}</td>
                     </tr>
                   );
                 })}
+                {matrix.variants.length > 0 && (
+                  <tr className="pl-fill-total">
+                    <td colSpan={3}>Total</td>
+                    {matrix.sizes.map((s) => {
+                      const t = matrix.variants.reduce((sum, v) => sum + (Number(grid[v]?.[s]) || 0), 0);
+                      return <td key={s} className="num">{t ? fmt.format(t) : '—'}</td>;
+                    })}
+                    <td className="num">{fmt.format(totalQty)}</td>
+                  </tr>
+                )}
                 {!matrix.variants.length && (
                   <tr>
-                    <td colSpan={matrix.sizes.length + 2} className="wf-empty-cell">
-                      No active colours on record for {productCode ?? 'this product'} — use Paste instead.
+                    <td colSpan={matrix.sizes.length + 4} className="wf-empty-cell">
+                      {ctx.npd
+                        ? `No colour code could be read from the NPD SKU code of ${productCode ?? 'this product'} — use Paste instead, or fix the SKU code on NPD Tracker V7.`
+                        : `No colours on record for ${productCode ?? 'this product'} in the product master — use Paste instead.`}
                     </td>
                   </tr>
                 )}

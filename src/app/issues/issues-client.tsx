@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Bot, ChevronDown, ChevronRight, Plus, Send, UserRound } from 'lucide-react';
@@ -116,15 +117,16 @@ export function IssuesClient({
         </div>
       </div>
 
-      <div className="iss-bar">
-        <div className="role-tabs" role="tablist" aria-label="Issue views">
-          {(['open', 'mine', 'resolved', 'all'] as Tab[]).map((t) => (
-            <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-              {t === 'open' ? 'Open' : t === 'mine' ? 'Mine' : t === 'resolved' ? 'Resolved / dismissed' : 'All'}
-            </button>
-          ))}
-        </div>
-        <div className="iss-filters">
+      <div className="tb">
+        <div className="tb-find iss-filters">
+          <div className="segment" role="tablist" aria-label="Issue views">
+            {(['open', 'mine', 'resolved', 'all'] as Tab[]).map((t) => (
+              <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+                {t === 'open' ? 'Open' : t === 'mine' ? 'Mine' : t === 'resolved' ? 'Resolved / dismissed' : 'All'}
+              </button>
+            ))}
+          </div>
+          <input value={search} placeholder="Search title, PO, product, person…" onChange={(e) => setSearch(e.target.value)} />
           <select value={category} onChange={(e) => setCategory(e.target.value as IssueCategory | '')} aria-label="Category">
             <option value="">All categories</option>
             {ISSUE_CATEGORIES.map((c) => (
@@ -142,7 +144,12 @@ export function IssuesClient({
               </option>
             ))}
           </select>
-          <input value={search} placeholder="Search title, PO, product, person…" onChange={(e) => setSearch(e.target.value)} />
+          <ClearFiltersButton
+            active={tab !== 'open' || category !== '' || assignee !== '' || search !== ''}
+            onClear={() => { setTab('open'); setCategory(''); setAssignee(''); setSearch(''); }}
+          />
+        </div>
+        <div className="tb-see">
           {canAct && (
             <button type="button" className="wf-btn wf-btn-primary" onClick={() => setComposing((v) => !v)}>
               <Plus size={14} /> Raise an issue

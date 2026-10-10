@@ -2,10 +2,12 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { useColumnSort } from '@/lib/use-column-sort';
 import { Check, CircleAlert, Save } from 'lucide-react';
 import { saveProductCategory } from '@/lib/forms/actions';
 import { Notice } from '@/components/forms/form-layout';
+import { Combobox, type ComboOption } from '@/components/forms/combobox';
 import type { CategoryMapRow } from '@/lib/category-mapping.server';
 
 /**
@@ -27,6 +29,8 @@ export function CategoryMappingClient({
   subCategoryOptions: string[];
   editable: boolean;
 }) {
+  const catOpts = useMemo<ComboOption[]>(() => categoryOptions.map((c) => ({ value: c, label: c, detail: 'Category in use' })), [categoryOptions]);
+  const subOpts = useMemo<ComboOption[]>(() => subCategoryOptions.map((c) => ({ value: c, label: c, detail: 'Sub-category in use' })), [subCategoryOptions]);
   const [search, setSearch] = useState('');
   const [missingOnly, setMissingOnly] = useState(false);
 
@@ -51,35 +55,37 @@ export function CategoryMappingClient({
         EasyEcom-derived value; where nothing is set yet, the row is flagged below.
       </Notice>
 
-      <div className="chip-row" style={{ margin: '10px 0' }}>
-        {missingCount > 0 ? (
-          <span className="wf-sub-banner is-pending">
-            <CircleAlert size={15} /> {missingCount} product{missingCount === 1 ? '' : 's'} missing category
-          </span>
-        ) : (
-          <span className="wf-sub-banner is-done">
-            <Check size={15} /> Every product has a category
-          </span>
-        )}
-        <input
-          placeholder="Search code or name"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--line-2,#e4e0d5)' }}
-        />
-        <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, fontWeight: 650 }}>
-          <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
-          Missing only
-        </label>
-        <span className="wf-subtle">{shown.length} of {rows.length}</span>
+      <div className="tb">
+        <div className="tb-find">
+          {missingCount > 0 ? (
+            <span className="wf-sub-banner is-pending">
+              <CircleAlert size={15} /> {missingCount} product{missingCount === 1 ? '' : 's'} missing category
+            </span>
+          ) : (
+            <span className="wf-sub-banner is-done">
+              <Check size={15} /> Every product has a category
+            </span>
+          )}
+          <input
+            placeholder="Search code or name"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--line-2,#e4e0d5)' }}
+          />
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, fontWeight: 650 }}>
+            <input type="checkbox" checked={missingOnly} onChange={(e) => setMissingOnly(e.target.checked)} />
+            Missing only
+          </label>
+          <ClearFiltersButton
+            active={search !== '' || missingOnly}
+            onClear={() => { setSearch(''); setMissingOnly(false); }}
+          />
+        </div>
+        <div className="tb-see">
+          <span className="wf-subtle tb-count">{shown.length} of {rows.length}</span>
+        </div>
       </div>
 
-      <datalist id="cat-opts">
-        {categoryOptions.map((c) => <option key={c} value={c} />)}
-      </datalist>
-      <datalist id="subcat-opts">
-        {subCategoryOptions.map((c) => <option key={c} value={c} />)}
-      </datalist>
 
       <div className="table-panel wf-grid-panel">
         <div className="table-scroll">
@@ -99,6 +105,8 @@ export function CategoryMappingClient({
                   key={r.product_code}
                   row={r}
                   editable={editable}
+                  catOpts={catOpts}
+                  subOpts={subOpts}
                 />
               ))}
               {!shown.length && (
@@ -112,7 +120,7 @@ export function CategoryMappingClient({
   );
 }
 
-function CategoryRow({ row, editable }: { row: CategoryMapRow; editable: boolean }) {
+function CategoryRow({ row, editable, catOpts, subOpts }: { row: CategoryMapRow; editable: boolean; catOpts: ComboOption[]; subOpts: ComboOption[] }) {
   const [cat, setCat] = useState(row.effectiveCategory ?? '');
   const [sub, setSub] = useState(row.effectiveSubCategory ?? '');
   const [busy, start] = useTransition();
@@ -147,12 +155,12 @@ function CategoryRow({ row, editable }: { row: CategoryMapRow; editable: boolean
       </td>
       <td>
         {editable ? (
-          <input list="cat-opts" value={cat} onChange={(e) => { setCat(e.target.value); setSaved(false); }} placeholder="e.g. Menswear" />
+          <Combobox ariaLabel="Category" value={cat} onChange={(v) => { setCat(v); setSaved(false); }} placeholder="e.g. Menswear" options={catOpts} />
         ) : (row.effectiveCategory ?? '—')}
       </td>
       <td>
         {editable ? (
-          <input list="subcat-opts" value={sub} onChange={(e) => { setSub(e.target.value); setSaved(false); }} placeholder="e.g. Top wear" />
+          <Combobox ariaLabel="Sub-category" value={sub} onChange={(v) => { setSub(v); setSaved(false); }} placeholder="e.g. Top wear" options={subOpts} />
         ) : (row.effectiveSubCategory ?? '—')}
       </td>
       <td className="wf-subtle">{source}</td>

@@ -1,5 +1,7 @@
 'use server';
 
+import { notifyCostTargetSlack } from '@/lib/slack';
+import { createNotification } from '@/lib/notifications.server';
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
@@ -9,7 +11,8 @@ import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
-import {
+import { targetSummary,
+  canEditApproveCost,
   canAcceptProposal,
   canConfirmCm,
   canConfirmFabric,
@@ -42,6 +45,18 @@ const COST_HISTORY_TABLE: Record<'fg' | 'material', string> = {
 };
 
 /** Clear the FG two-step confirmation stamps (fabric → CM) for a new round. */
+/** Tell the team, in the bell, what happened to a cost (links to the product's page). */
+async function tellTeam(track: 'fg' | 'material', code: string, kind: string, title: string, body: string | null, by: string) {
+  await createNotification({
+    kind,
+    title,
+    body,
+    link: `/standard-cost/${encodeURIComponent(code)}${track === 'material' ? '?track=material' : ''}`,
+    audienceRole: 'team',
+    createdBy: by,
+  });
+}
+
 function resetConfirmations() {
   return { fabric_confirmed_at: null, fabric_confirmed_by: null, cm_confirmed_at: null, cm_confirmed_by: null };
 }
@@ -139,14 +154,27 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
     status: 'draft',
     rejection_notes: null,
     negotiation_notes: null,
+    // A fresh round has no admin target yet — so its approval reads First time Approved
+    // unless the admin sets one (costStageText).
+    target_job: null,
+    target_fob: null,
+    target_efob: null,
+    target_cost: null,
     updated_at: new Date().toISOString(),
   };
   // A fresh round starts the FG two-step sign-off over — otherwise the previous
   // round's fabric/CM confirmations linger and the admin can never sign off again.
   if (track === 'fg') Object.assign(patch, resetConfirmations());
 
-  const { error } = await supabase.from(table).update(patch).eq('id', id);
+  // Guarded on the stage the guard saw, so a proposal approved/rejected meanwhile is never
+  // silently overwritten (a pending proposal is revised in place; approved = locked).
+  const stageNow = row.neg_stage;
+  let q = supabase.from(table).update(patch, { count: 'exact' }).eq('id', id);
+  q = stageNow ? q.eq('neg_stage', stageNow) : q.is('neg_stage', null);
+  const { error, count } = await q;
   if (error) return fail(error.message);
+  if (count === 0) return fail('This cost changed meanwhile — reload and try again.');
+  const revising = stageNow === 'proposed';
   // Rate labels differ by track (material: FOB Fabric / Billing / Standard Fabric).
   const rateSummary = [
     job != null ? `${track === 'material' ? 'FOB Fabric' : 'Job'} ${job}` : null,
@@ -158,12 +186,17 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   const detail = [rateSummary, proposed != null ? `expected ${proposed}` : null]
     .filter(Boolean)
     .join(' · ');
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `Proposed${detail ? ` (${detail})` : ''}`);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `${revising ? 'Proposal revised' : 'Proposed'}${detail ? ` (${detail})` : ''}`);
   revalidatePath('/standard-cost');
-  return done('Proposed for costing.');
+  return done(revising ? 'Proposal updated — still awaiting approval.' : 'Proposed for costing.');
 }
 
-/** The approver (admin) reviews a proposal and states the target cost. */
+/**
+ * The approver (admin) sets or changes the target, per rate type, at any stage. Types left
+ * blank keep their current target. The team owes a vendor rate against it (stage target_set),
+ * so a submitted rate goes back to them and a signed-off cost starts a new round (its accepted
+ * rate stays the standard until the new one is signed off). The team is told on Slack.
+ */
 export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
@@ -172,18 +205,46 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
-  if (!canSetTarget(user.role, row.neg_stage)) return fail('This is not awaiting a target cost.');
-  const target = numOrNull(formData.get('target_cost'));
-  if (target == null) return fail('Enter a target cost.');
+  if (!canSetTarget(user.role, row.neg_stage)) return fail('Only the approver can set a target.');
+  if (row.frozen) return fail('This cost is frozen by an issued PO; its target can no longer change.');
 
-  const { error } = await supabase
+  // One target per rate type, so the team knows which rate each figure is aimed at.
+  const patch: Record<string, unknown> = {};
+  for (const k of ['job', 'fob', 'efob'] as const) {
+    const v = numOrNull(formData.get(`target_${k}`));
+    if (v != null) patch[`target_${k}`] = v;
+  }
+  if (!Object.keys(patch).length) return fail('Enter a target for at least one rate type.');
+
+  const { data: current } = await supabase
     .from(table)
-    .update({ neg_stage: 'target_set', target_cost: target, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .select('target_job, target_fob, target_efob')
+    .eq('id', id)
+    .maybeSingle();
+  const merged = { ...(current ?? {}), ...patch } as { target_job?: number | null; target_fob?: number | null; target_efob?: number | null };
+
+  Object.assign(patch, {
+    neg_stage: 'target_set',
+    // The old single target had no type; a typed target replaces it.
+    target_cost: null,
+    updated_at: new Date().toISOString(),
+  });
+  // A vendor rate already submitted must be confirmed afresh against the new target.
+  if (track === 'fg' && row.neg_stage === 'rate_submitted') Object.assign(patch, resetConfirmations());
+
+  const { error } = await supabase.from(table).update(patch).eq('id', id);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target cost ${target}`);
+  const summary = targetSummary(merged, track) ?? '';
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Target ${summary}`);
+  await tellTeam(track, row.product_code, 'cost_target', `Target set: ${row.product_code}`, `${summary}. Come back with the vendor rate.`, user.email);
+  // Best-effort: a Slack hiccup never undoes the target.
+  try {
+    await notifyCostTargetSlack({ code: row.product_code, summary, track });
+  } catch {
+    /* ignore */
+  }
   revalidatePath('/standard-cost');
-  return done('Target cost set.');
+  return done(`Target set: ${summary}. The team has been notified.`);
 }
 
 /** Admin accepts the proposal as-is — the proposed rates become the Standard Cost. */
@@ -218,6 +279,7 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
     user.email, 'Proposal accepted as-is',
   );
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Proposal accepted as-is — standard cost');
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'Your proposal was accepted as the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
   return done('Proposal accepted. This is now the standard cost.');
@@ -248,11 +310,18 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
   // New actual rates must be confirmed afresh (fabric, then CM).
   if (track === 'fg') Object.assign(patch, resetConfirmations());
 
-  const { error } = await supabase.from(table).update(patch).eq('id', id);
+  // Guarded on the stage the guard saw, so a rate approved meanwhile is never reopened here.
+  const { error, count } = await supabase
+    .from(table)
+    .update(patch, { count: 'exact' })
+    .eq('id', id)
+    .eq('neg_stage', row.neg_stage as string);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, 'Actual rate submitted');
+  if (count === 0) return fail('This cost changed meanwhile — reload and try again.');
+  const revising = row.neg_stage === 'rate_submitted';
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, revising ? 'Actual rate revised' : 'Actual rate submitted');
   revalidatePath('/standard-cost');
-  return done('Actual rate submitted for sign-off.');
+  return done(revising ? 'Rate updated — still awaiting approval.' : 'Actual rate submitted for approval.');
 }
 
 /** The approver (admin) signs off — the actual rate becomes the approved Standard Cost. */
@@ -265,7 +334,7 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
-  if (!canSignOff(user.role, row.neg_stage)) return fail('This is not awaiting sign-off.');
+  if (!canSignOff(user.role, row.neg_stage)) return fail('This is not awaiting approval.');
 
   const patch: Record<string, unknown> = {
     neg_stage: 'signed_off',
@@ -282,12 +351,98 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   await recordAcceptedRate(
     supabase, track, row.product_code,
     { job: row.job_cost, fob: row.fob_cost, efob: row.efob_cost ?? null },
-    user.email, 'Signed off — standard cost',
+    user.email, 'Approved — standard cost',
   );
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Signed off — standard cost');
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, 'Approved — standard cost');
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
-  return done('Signed off. This is now the standard cost.');
+  return done('Approved. This is now the standard cost.');
+}
+
+/**
+ * Edit & approve (approval workflow, 2026-10-08): the admin changes the rates on a cost that is
+ * awaiting approval (a proposal, or a submitted vendor rate) and approves in one step. The new
+ * rates become the standard cost; they are also kept as the admin's target for the round, which
+ * is what makes the badge read "Edited & Approved" (costStageText). Every changed rate is
+ * recorded in sd_approval_edit, like every other Edit & approve.
+ */
+export async function editAndApproveCost(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const track = costTrackOf(formData);
+  const id = Number(formData.get('id'));
+  const note = String(formData.get('note') ?? '').trim();
+  if (!id) return fail('Invalid cost row.');
+  const next = {
+    job_cost: numOrNull(formData.get('job_cost')),
+    fob_cost: numOrNull(formData.get('fob_cost')),
+    efob_cost: numOrNull(formData.get('efob_cost')),
+  };
+  if (Object.values(next).some((v) => v != null && (!Number.isFinite(v) || v < 0))) return fail('Rates must be numbers of 0 or more.');
+  if (next.job_cost == null && next.fob_cost == null && next.efob_cost == null) return fail('Enter at least one rate.');
+  const { supabase, table, row } = await loadCostRow(track, id);
+  if (!row) return fail('Cost not found.');
+  if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
+  if (!canEditApproveCost(user.role, row.neg_stage)) return fail('This cost is not waiting for your approval.');
+
+  const labels = track === 'material'
+    ? { job_cost: 'FOB Fabric', fob_cost: 'Billing', efob_cost: 'Standard Fabric' }
+    : { job_cost: 'Job', fob_cost: 'FOB', efob_cost: 'E-FOB' };
+  const before = row as unknown as Record<string, number | null>;
+  const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => (before[k] ?? null) !== next[k]);
+  if (!changed.length) return fail('Nothing was changed. Use Approve to approve it as submitted.');
+
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    ...next,
+    target_job: next.job_cost,
+    target_fob: next.fob_cost,
+    target_efob: next.efob_cost,
+    target_cost: null,
+    neg_stage: 'signed_off',
+    status: 'approved',
+    approved_by: user.email,
+    approved_at: now,
+    updated_at: now,
+  };
+  if (track === 'fg') Object.assign(patch, { documented: true, edited_before_approval: true });
+  const { data: done1, error } = await supabase
+    .from(table)
+    .update(patch)
+    .eq('id', id)
+    .in('neg_stage', ['proposed', 'rate_submitted'])
+    .select('id');
+  if (error) return fail(error.message);
+  if (!done1?.length) return fail('Already decided by someone else — reload to see it.');
+
+  await recordAcceptedRate(
+    supabase, track, row.product_code,
+    { job: next.job_cost, fob: next.fob_cost, efob: next.efob_cost },
+    user.email, `Edited & approved by the admin${note ? ` — ${note}` : ''}`,
+  );
+  const summary = changed.map((k) => `${labels[k]} ${before[k] ?? '—'} → ${next[k] ?? '—'}`).join('; ');
+  const { error: logError } = await supabase.from('sd_approval_edit').insert(
+    changed.map((k) => ({
+      entity_type: costEntity(track),
+      entity_id: String(id),
+      row_ref: String(id),
+      row_label: row.product_code,
+      field: k,
+      field_label: labels[k],
+      old_value: before[k] == null ? null : String(before[k]),
+      new_value: next[k] == null ? null : String(next[k]),
+      edited_by: user.email,
+      edited_at: now,
+    })) as never,
+  );
+  if (logError) console.error('[cost edit & approve] edit history not recorded:', logError.message);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'approved', user.email, `Edited & Approved: ${summary}${note ? `. ${note}` : ''}`);
+  await tellTeam(track, row.product_code, 'cost_signed_off', `Edited & Approved: ${row.product_code}`, `The admin changed the rates and approved them — ${summary}.`, user.email);
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  revalidatePath('/approvals');
+  return done(`Edited & Approved — ${summary}. This is now the standard cost.`);
 }
 
 /** The approver (admin) sends the rate back for renegotiation. */
@@ -298,7 +453,7 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
-  if (!note) return fail('Give a reason to renegotiate.');
+  if (!note) return fail('A remark is mandatory for Rework / Reassign.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (!canRenegotiate(user.role, row.neg_stage)) return fail('This cannot be renegotiated right now.');
@@ -309,8 +464,9 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
     .eq('id', id);
   if (error) return fail(error.message);
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, row.status, user.email, `Renegotiate: ${note}`);
+  await tellTeam(track, row.product_code, 'cost_renegotiate', `Rework / Reassign: ${row.product_code}`, note, user.email);
   revalidatePath('/standard-cost');
-  return done('Sent back to renegotiate.');
+  return done('Sent for Rework / Reassign (renegotiate).');
 }
 
 /** The approver (admin) rejects the cost proposal/rate. */
@@ -321,7 +477,7 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
-  if (!note) return fail('Give a reason to reject.');
+  if (!note) return fail('A remark is mandatory for Reject / Discard.');
   const { supabase, table, row } = await loadCostRow(track, id);
   if (!row) return fail('Cost not found.');
   if (!canRejectCost(user.role, row.neg_stage)) return fail('This cannot be rejected right now.');
@@ -331,7 +487,8 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
     .update({ neg_stage: 'rejected', status: 'rejected', rejection_notes: note, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) return fail(error.message);
-  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected: ${note}`);
+  await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'rejected', user.email, `Rejected / Discarded: ${note}`);
+  await tellTeam(track, row.product_code, 'cost_rejected', `Rejected / Discarded: ${row.product_code}`, note, user.email);
   revalidatePath('/standard-cost');
   return done('Cost rejected.');
 }
@@ -348,7 +505,7 @@ export async function decideCostsBulk(formData: FormData): Promise<ActionResult>
   const decision = String(formData.get('decision') ?? '');
   if (decision !== 'accept' && decision !== 'reject') return fail('Invalid decision.');
   const note = String(formData.get('note') ?? '').trim();
-  if (decision === 'reject' && !note) return fail('Give a reason to reject.');
+  if (decision === 'reject' && !note) return fail('A remark is mandatory for Reject / Discard.');
   // Entries are "f<id>" (finished goods) or "m<id>" (material), the queue's own ids.
   const keys = String(formData.get('ids') ?? '')
     .split(',')
@@ -369,7 +526,7 @@ export async function decideCostsBulk(formData: FormData): Promise<ActionResult>
   }
   revalidatePath('/approvals');
   revalidatePath('/standard-cost');
-  const verb = decision === 'accept' ? 'Accepted' : 'Rejected';
+  const verb = decision === 'accept' ? 'Approved' : 'Rejected / Discarded';
   if (!ok) return fail(`${verb} none — ${failures.slice(0, 3).join('; ')}`);
   return done(
     `${verb} ${ok} of ${keys.length} proposal(s).` +
@@ -521,12 +678,13 @@ export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
   await recordAcceptedRate(
     supabase, 'fg', row.product_code as string,
     { job: row.job_cost as number | null, fob: row.fob_cost as number | null, efob: row.efob_cost as number | null },
-    user.email, 'Signed off — CM confirmed',
+    user.email, 'Approved — CM confirmed',
   );
-  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — signed off');
+  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — approved');
+  await tellTeam('fg', row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
   revalidatePath('/standard-cost');
   revalidatePath('/buying-plan');
-  return done('Signed off. This is now the standard cost.');
+  return done('Approved. This is now the standard cost.');
 }
 
 /* ================================================================== */

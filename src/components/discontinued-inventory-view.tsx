@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { HeaderInfo } from '@/components/header-info';
 import {
   Bar,
@@ -74,6 +75,15 @@ export function DiscontinuedInventoryView({
   const [color, setColor] = useState('');
   const [bucket, setBucket] = useState('');
   const [action, setAction] = useState('');
+  // Clear all filters: search and every select (the action chips share the action filter).
+  const filtersActive = search !== '' || category !== '' || color !== '' || bucket !== '' || action !== '';
+  const clearFilters = () => {
+    setSearch('');
+    setCategory('');
+    setColor('');
+    setBucket('');
+    setAction('');
+  };
 
   const categories = useMemo(() => uniq(rollups.map((r) => r.category)), [rollups]);
   const colors = useMemo(() => uniq(rollups.map((r) => r.color)), [rollups]);
@@ -253,43 +263,49 @@ export function DiscontinuedInventoryView({
         )}
       </section>
 
-      <div className="wf-toolbar">
-        <input
-          className="wf-search"
-          placeholder="Search SKU / product / colour / size…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select className="wf-search" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">All categories</option>
-          <option value={BLANK}>—</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-        <select className="wf-search" value={color} onChange={(e) => setColor(e.target.value)}>
-          <option value="">All colours</option>
-          <option value={BLANK}>—</option>
-          {colors.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-        <select className="wf-search" value={bucket} onChange={(e) => setBucket(e.target.value)}>
-          <option value="">All ageing</option>
-          {AGEING_BUCKETS.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-        <select className="wf-search" value={action} onChange={(e) => setAction(e.target.value)}>
-          <option value="">All actions</option>
-          {RECOMMENDED_ACTIONS.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-        <span className="wf-chip">{fmt.format(shown.length)} SKUs</span>
-        <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!shown.length}>
-          <Download size={14} /> CSV
-        </button>
+      <div className="tb">
+        <div className="tb-find">
+          <input
+            className="wf-search"
+            placeholder="Search SKU / product / colour / size…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select className="wf-search" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">All categories</option>
+            <option value={BLANK}>—</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select className="wf-search" value={color} onChange={(e) => setColor(e.target.value)}>
+            <option value="">All colours</option>
+            <option value={BLANK}>—</option>
+            {colors.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select className="wf-search" value={bucket} onChange={(e) => setBucket(e.target.value)}>
+            <option value="">All ageing</option>
+            {AGEING_BUCKETS.map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+          <select className="wf-search" value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">All actions</option>
+            {RECOMMENDED_ACTIONS.map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        </div>
+        <div className="tb-see">
+          <span className="wf-chip">{fmt.format(shown.length)} SKUs</span>
+          <span className="tb-divider" />
+          <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!shown.length}>
+            <Download size={14} /> CSV
+          </button>
+        </div>
       </div>
 
       {actionCounts.length > 0 && (

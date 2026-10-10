@@ -7,7 +7,7 @@ import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
 import { computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules, loadApprovalMatrix } from '../queries';
+import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts, loadAnalyticsRules, loadApprovalMatrix, loadPoReviewItems } from '../queries';
 import {
   approversFor,
   canApprove,
@@ -15,6 +15,7 @@ import {
   canEdit,
   canSubmit,
   isEscalated,
+  isPlanFrozen,
   levelForStatus,
   statusOnSubmit,
   LEVEL_LABEL,
@@ -31,9 +32,10 @@ import {
   canSignOff,
   canSubmitRate,
 } from '../cost';
-import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from '../types';
+import type { ApprovalEntity, PoApproval, PoCategory, PoType, SdRole, SdStatus } from '../types';
 import { INWARD_PLAN_STATUSES } from '../types';
 import { notifyReworkSlack } from '@/lib/slack';
+import { createNotification } from '@/lib/notifications.server';
 import {
   type ActionResult,
   type LinkResult,
@@ -57,6 +59,7 @@ const TABLE: Record<ApprovalEntity, string> = {
   receivable_plan: 'sd_receivable_input',
   inward_plan: 'sd_inward_plan_entry',
   vendor_deboarding: 'sd_vendor_deboarding_request',
+  vendor_commercial: 'sd_vendor_commercial_request',
   po_amendment: 'sd_po_amendment',
 };
 
@@ -67,6 +70,7 @@ const WAITING_SINCE: Partial<Record<ApprovalEntity, string>> = {
   po_approval: 'submitted_for_approval_at',
   po_delete: 'requested_at',
   vendor_deboarding: 'requested_at',
+  vendor_commercial: 'requested_at',
   po_amendment: 'requested_at',
 };
 
@@ -75,6 +79,51 @@ const LINE_TABLE: Partial<Record<ApprovalEntity, string>> = {
   buying_plan: 'sd_buying_plan_line',
   po_approval: 'sd_po_approval_line',
 };
+
+/** Where each kind of item is worked on — the link in its bell notice. */
+const ITEM_LINK: Partial<Record<ApprovalEntity, (id: number) => string>> = {
+  po_approval: (id) => `/po-approval/${id}`,
+  po_delete: () => '/po-approval',
+  buying_plan: () => '/buying-plan',
+  discontinue: () => '/discontinue',
+  standard_cost: () => '/standard-cost',
+  material_cost: () => '/standard-cost?track=material',
+  vendor_deboarding: () => '/vendor-deboarding',
+  vendor_commercial: () => '/vendor-commercial',
+  po_amendment: () => '/po-amendment',
+};
+
+/** Who raised an item: the first person-field the row has. */
+function raisedBy(row: Record<string, unknown> | null): string | null {
+  for (const k of ['submitted_by', 'created_by', 'requested_by', 'raised_by']) {
+    const v = row?.[k];
+    if (typeof v === 'string' && v.includes('@')) return v;
+  }
+  return null;
+}
+
+/** Tell the person who raised an item, in the bell, what the approver decided. */
+async function tellRaiser(
+  entityType: ApprovalEntity,
+  entityId: number,
+  label: string,
+  row: Record<string, unknown> | null,
+  decision: 'approve' | 'reject' | 'rework',
+  by: string,
+  notes: string,
+) {
+  const to = raisedBy(row);
+  if (!to || to.toLowerCase() === by.toLowerCase()) return;
+  const what = label || `${entityType.replace(/_/g, ' ')} #${entityId}`;
+  await createNotification({
+    kind: `approval_${decision}`,
+    title: decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Rework / Reassign: ${what}` : `Rejected / Discarded: ${what}`,
+    body: notes || null,
+    link: ITEM_LINK[entityType]?.(entityId) ?? '/my-dashboard',
+    recipientEmail: to,
+    createdBy: by,
+  });
+}
 
 export async function decideApproval(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
@@ -91,13 +140,22 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     return fail('Invalid decision.');
   }
   if ((decision === 'reject' || decision === 'rework') && !notes) {
-    return fail('A reason is required to reject or send for rework.');
+    return fail('A remark is mandatory for Rework / Reassign and Reject / Discard.');
   }
 
   // Receivable plan is a batch of row_key-keyed rows, not one id record — decide
   // the whole submitted batch in one go (keeps ApprovalBar reusable for it).
   if (entityType === 'receivable_plan') {
-    return decideReceivablePlanBulk(user.role, user.email, decision, notes, label);
+    // row_keys (JSON list) narrows the decision to those rows — a card on the Inward Plan
+    // decides its own line(s); without it the whole submitted week is decided.
+    let rowKeys: string[] | undefined;
+    try {
+      const parsed = JSON.parse(String(formData.get('row_keys') ?? '[]'));
+      if (Array.isArray(parsed) && parsed.length) rowKeys = parsed.map(String);
+    } catch {
+      return fail('Invalid row selection.');
+    }
+    return decideReceivablePlanBulk(user.role, user.email, decision, notes, label, rowKeys);
   }
   // The monthly inward-plan sheet is decided a month at a time — entity_id is the
   // plan month (YYYY-MM-01), and every Pending row of that month takes the decision.
@@ -117,6 +175,10 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (!row) return fail('Record not found.');
 
   const from = row.status as SdStatus;
+  // A buying plan whose month is over is view only (user rule, 2026-10-08): no decision on it.
+  if (entityType === 'buying_plan' && typeof row.plan_month === 'string' && isPlanFrozen(row.plan_month)) {
+    return fail(`The ${row.plan_month.slice(0, 7)} plan is view only — its month is over.`);
+  }
   // Spec 7.5 — the escalation matrix decides who may act, falling back to the role ladder
   // wherever a level has nobody named. Past the escalation window the level above can act
   // too, so one person being away never parks a PO.
@@ -168,6 +230,18 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
     if (!applied.ok) return applied;
   }
 
+  // Freeze the review exactly as the approver saw it: the panels are computed live, so without
+  // this a year-old approval would show today's stock and cost. Taken before the status moves.
+  let reviewSnapshot: unknown = null;
+  if (entityType === 'po_approval' && decision === 'approve') {
+    try {
+      const [item] = await loadPoReviewItems([row as unknown as PoApproval]);
+      reviewSnapshot = item ?? null;
+    } catch {
+      reviewSnapshot = null; // never block an approval on the snapshot
+    }
+  }
+
   const to: SdStatus =
     decision === 'approve' ? 'approved' : decision === 'rework' ? 'rework' : 'rejected';
   const now = new Date().toISOString();
@@ -180,7 +254,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
             rework_notes: notes,
             reworked_by: user.email,
             reworked_at: now,
-            // Mark so a later approval counts as Edited-and-Approved.
+            // Kept for history; the sub status follows approver_edited (an admin edit), not a rework round.
             edited_before_approval: true,
           }
         : { status: to, rejection_notes: notes || null };
@@ -196,7 +270,15 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already processed by another approver.');
 
+  if (reviewSnapshot) {
+    await supabase
+      .from('sd_po_approval')
+      .update({ review_snapshot: reviewSnapshot as never, review_snapshot_at: now })
+      .eq('id', entityId);
+  }
+
   await writeLog(entityType, String(entityId), label, from, to, user.email, notes || undefined);
+  await tellRaiser(entityType, entityId, label, row, decision, user.email, notes);
 
   if (decision === 'rework') {
     await notifyReworkSlack({ what: label || `${entityType} #${entityId}`, by: user.email, reason: notes });
@@ -206,11 +288,12 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   revalidatePath('/buying-plan');
   revalidatePath('/discontinue');
   revalidatePath('/vendor-deboarding');
+  revalidatePath('/vendor-commercial');
   revalidatePath('/po-amendment');
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
   return done(
-    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for Rework / Reassign.' : 'Rejected / Discarded.',
   );
 }
 
@@ -235,11 +318,16 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
     decisions = [];
   }
   decisions = decisions.filter((d) => d && d.lineId && String(d.note ?? '').trim());
-  if (!decisions.length) return fail('Flag at least one line and give each a reason.');
+  if (!decisions.length) return fail('A remark is mandatory for Rework / Reassign — flag at least one line and give it a remark.');
 
   const supabase = await supa();
-  const { data: row } = await supabase.from(table).select('id, status').eq('id', entityId).maybeSingle();
+  const { data: rowRaw } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+  const row = rowRaw as unknown as Record<string, unknown> | null;
   if (!row) return fail('Record not found.');
+  // A buying plan whose month is over is view only (user rule, 2026-10-08).
+  if (entityType === 'buying_plan' && typeof row.plan_month === 'string' && isPlanFrozen(row.plan_month)) {
+    return fail(`The ${row.plan_month.slice(0, 7)} plan is view only — its month is over.`);
+  }
   const from = row.status as SdStatus;
   if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
 
@@ -271,6 +359,11 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   if (!updated?.length) return fail('Already processed by another approver.');
 
   await writeLog(entityType, String(entityId), label, from, 'rework', user.email, summary);
+  {
+    // paging-ok: one record by id
+    const { data: full } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
+    await tellRaiser(entityType, entityId, label, full as unknown as Record<string, unknown> | null, 'rework', user.email, summary);
+  }
   await notifyReworkSlack({
     what: label || `${entityType} #${entityId}`,
     by: user.email,
@@ -280,7 +373,39 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   revalidatePath('/approvals');
   revalidatePath('/buying-plan');
   revalidatePath('/po-approval');
-  return done('Lines sent for rework.');
+  return done('Lines sent for Rework / Reassign.');
+}
+
+/**
+ * A batch decision (receivable plan, a month of the inward plan) tells each person who
+ * entered rows in it, once. A batch with nobody recorded goes to the team.
+ */
+async function tellBatch(
+  people: (string | null | undefined)[],
+  what: string,
+  link: string,
+  kind: string,
+  decision: string,
+  by: string,
+  notes: string,
+) {
+  const title =
+    decision === 'approve' ? `Approved: ${what}` : decision === 'rework' ? `Rework / Reassign: ${what}` : `Rejected / Discarded: ${what}`;
+  const recipients = [
+    ...new Set(
+      people
+        .filter((p): p is string => typeof p === 'string' && p.includes('@'))
+        .map((p) => p.toLowerCase())
+        .filter((p) => p !== by.toLowerCase()),
+    ),
+  ];
+  if (!recipients.length) {
+    await createNotification({ kind, title, body: notes || null, link, audienceRole: 'team', createdBy: by });
+    return;
+  }
+  for (const to of recipients) {
+    await createNotification({ kind, title, body: notes || null, link, recipientEmail: to, createdBy: by });
+  }
 }
 
 async function decideReceivablePlanBulk(
@@ -289,6 +414,8 @@ async function decideReceivablePlanBulk(
   decision: string,
   notes: string,
   label: string,
+  /** Only these rows (a card's line, or a group's submitted lines); every submitted row when omitted. */
+  rowKeys?: string[],
 ): Promise<ActionResult> {
   const from: SdStatus = 'submitted';
   if (!canApprove(role, from)) return fail('This decision is above your approval level.');
@@ -308,6 +435,20 @@ async function decideReceivablePlanBulk(
           }
         : { status: to, rejection_notes: notes || null };
   const supabase = await supa();
+  // One PostgREST filter narrows every read and write below to the chosen rows (quoted, so a
+  // row key with commas or dots stays one value); without rows it matches every row.
+  const rows = rowKeys?.length
+    ? `row_key.in.(${rowKeys.map((k) => `"${k.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`).join(',')})`
+    : 'row_key.not.is.null';
+
+  // Who submitted this batch, read before the decision changes the rows.
+  // paging-ok: the people on one submitted batch; distinct-ed below
+  const { data: submitters } = await supabase
+    .from('sd_receivable_input')
+    .select('submitted_by, updated_by')
+    .eq('status', from)
+    .or(rows)
+    .limit(1000);
 
   // Capture the month-granularity rows being approved so we can stamp the
   // approved month on them — that stamp is what lets the team later switch to any
@@ -318,6 +459,7 @@ async function decideReceivablePlanBulk(
       .from('sd_receivable_input')
       .select('row_key, delivery_date_this_week')
       .eq('status', from)
+    .or(rows)
       .eq('receiving_granularity', 'month');
     monthRows = (data ?? []) as typeof monthRows;
   }
@@ -329,13 +471,15 @@ async function decideReceivablePlanBulk(
       .from('sd_receivable_input')
       .update({ approved_month: null })
       .eq('status', from)
+    .or(rows)
       .neq('receiving_granularity', 'month');
   }
 
   const { error } = await supabase
     .from('sd_receivable_input')
     .update(patch)
-    .eq('status', from);
+    .eq('status', from)
+    .or(rows);
   if (error) return fail(error.message);
 
   if (decision === 'approve' && monthRows.length) {
@@ -350,11 +494,20 @@ async function decideReceivablePlanBulk(
       await supabase.from('sd_receivable_input').update({ approved_month: month }).in('row_key', keys);
     }
   }
-  await writeLog('receivable_plan', 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
+  await writeLog('receivable_plan', rowKeys?.length === 1 ? rowKeys[0] : 'batch', label || 'Receivable plan', from, to, email, notes || undefined);
+  await tellBatch(
+    ((submitters ?? []) as { submitted_by: string | null; updated_by: string | null }[]).map((r) => r.submitted_by ?? r.updated_by),
+    label || 'Receivable plan',
+    '/receivable-plan?tab=input',
+    `receivable_${decision}`,
+    decision,
+    email,
+    notes,
+  );
   revalidatePath('/approvals');
   revalidatePath('/receivable-plan');
   return done(
-    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for rework.' : 'Rejected.',
+    decision === 'approve' ? 'Approved.' : decision === 'rework' ? 'Sent for Rework / Reassign.' : 'Rejected / Discarded.',
   );
 }
 
@@ -378,6 +531,14 @@ async function decideInwardPlanBulk(
   const sheetStatus = decision === 'approve' ? 'Approved' : decision === 'rework' ? 'RE-WORK' : 'Rejected';
   if (!INWARD_PLAN_STATUSES.includes(sheetStatus)) return fail('Invalid decision.');
   const supabase = await supa();
+  // Who entered the month's pending lines, read before the decision stamps updated_by.
+  // paging-ok: one month's pending lines; distinct-ed below
+  const { data: enteredBy } = await supabase
+    .from('sd_inward_plan_entry')
+    .select('created_by, updated_by')
+    .eq('plan_month', month)
+    .eq('approval_status', 'Pending')
+    .limit(1000);
   const { data: updated, error } = await supabase
     .from('sd_inward_plan_entry')
     .update({
@@ -392,6 +553,15 @@ async function decideInwardPlanBulk(
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Nothing is pending for that month any more.');
   await writeLog('inward_plan', month, label || `Inward plan — ${month}`, from, to, email, notes || undefined);
+  await tellBatch(
+    ((enteredBy ?? []) as { created_by: string | null; updated_by: string | null }[]).map((r) => r.created_by ?? r.updated_by),
+    label || `Inward plan — ${month.slice(0, 7)}`,
+    `/receivable-plan?tab=monthly&month=${month}`,
+    `inward_${decision}`,
+    decision,
+    email,
+    notes,
+  );
   revalidatePath('/approvals');
   revalidatePath('/receivable-plan');
   revalidatePath('/ppm-prep');
@@ -399,7 +569,7 @@ async function decideInwardPlanBulk(
     decision === 'approve'
       ? `Approved — ${updated.length} line(s) now count as the month's plan.`
       : decision === 'rework'
-        ? `Sent for rework (${updated.length} line(s)).`
+        ? `Sent for Rework / Reassign (${updated.length} line(s)).`
         : `Rejected (${updated.length} line(s)).`,
   );
 }

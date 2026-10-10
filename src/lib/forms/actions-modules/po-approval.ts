@@ -128,14 +128,16 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
 
   // Guard edits against the current stored status.
   let status: SdStatus = 'draft';
+  let before: Record<string, unknown> | null = null;
   if (id) {
     const { data: existing } = await supabase
       .from('sd_po_approval')
-      .select('id, status')
+      .select('*')
       .eq('id', id)
       .maybeSingle();
     if (!existing) return fail('PO not found.');
     status = existing.status as SdStatus;
+    before = existing as Record<string, unknown>;
   }
   if (!canEdit(user.role, status)) {
     return fail(
@@ -210,23 +212,46 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   }
 
   if (id) {
+    // House rule (AGENTS.md): until approved, everything is amendable — draft, pending,
+    // rework and rejected requests all save. Only an approved PO is locked (guarded here
+    // too, so a PO approved meanwhile is never overwritten).
     const { data: updated, error } = await supabase
       .from('sd_po_approval')
       .update(fields)
       .eq('id', id)
-      .in('status', ['draft', 'rework'])
+      .neq('status', 'approved')
       .select('id');
     if (error) {
       if (error.code === '23505') return fail(`EasyCom reference "${fields.po_ref_num}" is already recorded on another request.`);
       return fail(`Could not save: ${error.message}`);
     }
-    // The guarded update matched nothing — the PO left draft/rework meanwhile.
+    // The guarded update matched nothing — the PO was approved meanwhile.
     // Never report "Saved." for a write that changed no row.
     if (!updated?.length) {
-      return fail('This PO is no longer editable (it has been submitted, approved or rejected). Reload to see its current state.');
+      return fail('This PO has been approved and can no longer be edited. Reload to see its current state.');
+    }
+    // An amendment after submission is logged with what changed, so the approver (pending)
+    // or the history (sent back / rejected) shows it. Drafts are not logged.
+    if (status !== 'draft' && before) {
+      const changed = Object.entries(fields)
+        .filter(([k, v]) => k in before! && String(before![k] ?? '') !== String(v ?? ''))
+        .map(([k, v]) => `${k}: ${before![k] ?? '—'} → ${v ?? '—'}`);
+      if (changed.length) {
+        await writeLog(
+          'po_approval',
+          String(id),
+          `PO request ${(before.request_id as string | null) ?? `#${id}`} amended`,
+          status,
+          status,
+          user.email,
+          `Amended — ${changed.join('; ')}`.slice(0, 2000),
+        );
+      }
     }
     revalidatePath('/po-approval');
-    return { ok: true, message: 'Saved.', id };
+    const pendingNote = status === 'submitted' || status === 'pending_l2' ? ' The approver sees the new values.' : '';
+    const resubmitNote = status === 'rework' || status === 'rejected' ? ' Submit it again when ready.' : '';
+    return { ok: true, message: `Saved.${pendingNote}${resubmitNote}`, id };
   }
 
   const { data, error } = await supabase
@@ -376,7 +401,7 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
       submit_remark: submitRemark,
     })
     .eq('id', id)
-    .in('status', ['draft', 'rework'])
+    .in('status', ['draft', 'rework', 'rejected'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
@@ -551,6 +576,90 @@ export async function deletePoApproval(formData: FormData): Promise<ActionResult
   return done(
     `Deleted ${po.request_id ?? `request #${id}`}${po.product_code ? ` · ${po.product_code}` : ''}. It stays in the deleted log with your reason.`,
   );
+}
+
+/**
+ * The open deletion ask (not yet approved) that the signed-in user raised. House rule: until
+ * approved, everything is amendable — the person who asked can change the reason or withdraw it.
+ */
+async function loadOwnOpenDeleteRequest(
+  supabase: Awaited<ReturnType<typeof supa>>,
+  reqId: number,
+  email: string,
+): Promise<
+  | { ok: true; req: { id: number; po_id: number; request_id: string | null; product_code: string | null; status: SdStatus; reason: string | null } }
+  | { ok: false; result: ActionResult }
+> {
+  const { data: req } = await supabase
+    .from('sd_po_delete_request')
+    .select('id, po_id, request_id, product_code, status, reason, requested_by')
+    .eq('id', reqId)
+    .maybeSingle();
+  if (!req) return { ok: false, result: fail('Deletion request not found.') };
+  if (req.status === 'approved') return { ok: false, result: fail('This deletion was already approved.') };
+  if (req.status === 'rejected') return { ok: false, result: fail('This deletion request was declined — ask again if something has changed.') };
+  const mine = String(req.requested_by ?? '').trim().toLowerCase();
+  if (!mine || mine !== email.trim().toLowerCase()) {
+    return { ok: false, result: fail('Only the person who asked for this deletion can change or withdraw it.') };
+  }
+  return { ok: true, req: req as { id: number; po_id: number; request_id: string | null; product_code: string | null; status: SdStatus; reason: string | null } };
+}
+
+/** Change the reason on your own deletion ask while it waits with the admin. */
+export async function updatePoDeleteRequestReason(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const reqId = Number(formData.get('id'));
+  if (!reqId) return fail('Invalid request.');
+  const reason = String(formData.get('delete_reason') ?? '').trim();
+  if (reason.length < 4) return fail('Give a reason for deleting this request.');
+
+  const supabase = await supa();
+  const own = await loadOwnOpenDeleteRequest(supabase, reqId, user.email);
+  if (!own.ok) return own.result;
+  if ((own.req.reason ?? '') === reason) return done('No change to the reason.');
+
+  const { data: updated, error } = await supabase
+    .from('sd_po_delete_request')
+    .update({ reason })
+    .eq('id', reqId)
+    .in('status', ['submitted', 'pending_l2', 'rework'])
+    .select('id');
+  if (error) return fail(error.message);
+  if (!updated?.length) return fail('This deletion request was decided meanwhile. Reload to see it.');
+
+  const label = `Delete PO request ${own.req.request_id ?? `#${own.req.po_id}`}${own.req.product_code ? ` · ${own.req.product_code}` : ''}`;
+  await writeLog('po_delete', String(reqId), label, own.req.status, own.req.status, user.email, `Reason amended: “${own.req.reason ?? ''}” → “${reason}”`);
+  revalidatePath('/po-approval');
+  revalidatePath('/approvals');
+  return done('Reason updated. The admin sees the new reason.');
+}
+
+/** Withdraw your own deletion ask before the admin approves it. The PO stays live. */
+export async function withdrawPoDeleteRequest(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  const reqId = Number(formData.get('id'));
+  if (!reqId) return fail('Invalid request.');
+
+  const supabase = await supa();
+  const own = await loadOwnOpenDeleteRequest(supabase, reqId, user.email);
+  if (!own.ok) return own.result;
+
+  const { data: removed, error } = await supabase
+    .from('sd_po_delete_request')
+    .delete()
+    .eq('id', reqId)
+    .in('status', ['submitted', 'pending_l2', 'rework'])
+    .select('id');
+  if (error) return fail(error.message);
+  if (!removed?.length) return fail('This deletion request was decided meanwhile. Reload to see it.');
+
+  const label = `Delete PO request ${own.req.request_id ?? `#${own.req.po_id}`}${own.req.product_code ? ` · ${own.req.product_code}` : ''}`;
+  await writeLog('po_delete', String(reqId), label, own.req.status, 'rejected', user.email, 'Withdrawn by the person who asked');
+  revalidatePath('/po-approval');
+  revalidatePath('/approvals');
+  return done(`Deletion request withdrawn — ${own.req.request_id ?? 'the PO request'} stays live.`);
 }
 
 /**

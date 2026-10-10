@@ -268,7 +268,7 @@ export type AnalyticsExtras = {
     byClass: { cls: 'A' | 'B' | 'C' | 'D'; variants: number; oosNow: number; atRisk: number; avgDoh: number | null }[];
   } | null;
   /** Everything waiting for someone's decision, by kind. */
-  approvalRequisitions: { total: number; buyingPlans: number; pos: number; poDeletes: number; discontinue: number; deboarding: number; inward: number } | null;
+  approvalRequisitions: { total: number; buyingPlans: number; pos: number; poDeletes: number; discontinue: number; deboarding: number; inward: number; commercial?: number } | null;
   /** Inward-to-sales ratio: pieces received vs pieces sold over the same four complete weeks. */
   isr: { from: string; to: string; inwardQty: number; inwardPos: number; soldQty: number; skus: number } | null;
   /** Buying Plan synopsis for the current month (set by the dashboard page from the plan analysis). */
@@ -319,7 +319,7 @@ export type AnalyticsExtras = {
  */
 export type ApprovalNotification = {
   key: string;
-  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding' | 'inward_plan';
+  kind: 'buying_plan' | 'discontinue' | 'po_approval' | 'po_delete' | 'po_amendment' | 'standard_cost' | 'vendor_deboarding' | 'vendor_commercial' | 'inward_plan';
   label: string;
   sublabel: string;
   status: SdStatus;
@@ -667,6 +667,8 @@ export type DoqWindowRow = {
   w2_qty: number | null; w2_avail: number | null; w2_oos: number | null;
   w3_qty: number | null; w3_avail: number | null; w3_oos: number | null;
   w4_qty: number | null; w4_avail: number | null; w4_oos: number | null;
+  /** The 45 days ending on the anchor day (yesterday). */
+  f45_qty?: number | null; f45_avail?: number | null; f45_oos?: number | null;
   at_qty: number | null; at_avail: number | null; at_oos: number | null;
   synced_at: string | null;
 };
@@ -773,8 +775,10 @@ export type BuyingPlan = {
   approved_at: string | null;
   rejection_notes: string | null;
   // True once an approver edited/reworked the plan before approving — drives the
-  // "First-Time Approved" vs "Edited-and-Approved" distinction on the badge.
+  // "First time Approved" vs "Edited & Approved" sub status (approval workflow spec).
   edited_before_approval: boolean;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
   created_at: string;
 };
 
@@ -791,6 +795,8 @@ export type BuyingPlanLine = {
   standard_value: number | null;
   uom: string | null; // material track only
   line_status: SdStatus | null; // per-line approval state (line-item granularity)
+  /** This line's values were changed by the approver (Edit & approve). */
+  approver_edited?: boolean | null;
   rework_notes: string | null;
   remark: string | null; // free note, e.g. carried from a CSV import
   material_type: string | null; // material track: raw | dyed | trim
@@ -867,6 +873,9 @@ export type DiscontinueRequest = {
   approved_by: string | null;
   approved_at: string | null;
   rejection_notes: string | null;
+  edited_before_approval?: boolean | null;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -880,6 +889,42 @@ export type VendorDeboardingReason =
   | 'unethical'
   | 'process_gap'
   | 'other';
+
+/** One row of sd_vendor_commercial_request — the team's Commercial Approval form, field for field. */
+export type VendorCommercialRequest = {
+  id: number;
+  business_type: import('./commercial').CommercialBusinessType;
+  vendor_code: string;
+  vendor_name: string | null;
+  po_numbers: string;
+  request_type: import('./commercial').CommercialRequestType;
+  hold_qty: number | null;
+  hold_days: number | null;
+  ready_date: string | null;
+  hold_reason: string | null;
+  cost_reason: string | null;
+  cost_reason_other: string | null;
+  increment_amount: number | null;
+  owner_name: string | null;
+  owner_contact: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  invoice_amount: number | null;
+  rg_pending: string | null;
+  debit_note_number: string | null;
+  credit_amount: number | null;
+  remarks: string;
+  attachments: import('./commercial').CommercialAttachment[];
+  status: SdStatus;
+  requested_by: string | null;
+  requested_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_notes: string | null;
+  rework_notes: string | null;
+  edited_before_approval: boolean;
+  approver_edited?: boolean | null;
+};
 
 /** One row of sd_vendor_deboarding_request — the team's de-boarding form, field for field. */
 export type VendorDeboardingRequest = {
@@ -909,6 +954,8 @@ export type VendorDeboardingRequest = {
   reworked_by: string | null;
   reworked_at: string | null;
   edited_before_approval: boolean;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
 };
 
 /**
@@ -969,6 +1016,8 @@ export type PoApprovalLine = {
   size: string | null;
   qty: number;
   line_status: SdStatus | null;
+  /** This line's values were changed by the approver (Edit & approve). */
+  approver_edited?: boolean | null;
   rework_notes: string | null;
 };
 
@@ -983,6 +1032,8 @@ export type ApprovalEntity =
   | 'receivable_plan'
   | 'inward_plan'
   | 'vendor_deboarding'
+  /** Vendor Commercial Approval — hold waiver, cost increment, CD, DN removal, credit note. */
+  | 'vendor_commercial'
   /** Spec 7.9 — a cost / quantity / time change to a PO already issued in EasyEcom. */
   | 'po_amendment';
 
@@ -1018,6 +1069,8 @@ export type PoAmendment = {
   reworked_by: string | null;
   reworked_at: string | null;
   edited_before_approval: boolean;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
   created_at: string;
 };
 
@@ -1108,7 +1161,11 @@ export type StandardCost = {
   // Cost-negotiation lifecycle (its own process): propose → target → actual → sign-off.
   neg_stage: string | null;
   proposed_cost: number | null;
+  /** Legacy single target (type not recorded); new targets are per rate type below. */
   target_cost: number | null;
+  target_job?: number | null;
+  target_fob?: number | null;
+  target_efob?: number | null;
   negotiation_notes: string | null;
   // Sequential sign-off (FG): fabric rate confirmed first, then CM/other second.
   fabric_confirmed_at: string | null;
@@ -1408,6 +1465,8 @@ export type ReceivablePlanRow = {
   input_updated_at: string | null;
   // Approval status of this row's weekly input (draft/submitted/approved/…).
   input_status: SdStatus | null;
+  /** The approver changed this row's expected qty / date when approving. */
+  input_approver_edited?: boolean;
   // The month (1st) approved at month-granularity, if any. While set, the team may
   // switch to any week within it without re-approval.
   approved_month: string | null;
@@ -1517,6 +1576,8 @@ export type PoApproval = {
   // Present on the table and returned by select('*'); read by the read-only detail panel.
   benchmark_cost?: boolean | null;
   edited_before_approval?: boolean | null;
+  /** The approver changed submitted values when approving (Edit & approve). */
+  approver_edited?: boolean | null;
   rework_notes?: string | null;
   reworked_by?: string | null;
   reworked_at?: string | null;
@@ -1673,7 +1734,7 @@ export type ApprovalQueueItem = {
 /** The slice of a cost row the decision bar reads — enough to accept, set a target, sign off or reject. */
 export type CostDecisionRecord = Pick<
   StandardCost,
-  'id' | 'product_code' | 'neg_stage' | 'job_cost' | 'fob_cost' | 'efob_cost' | 'proposed_cost' | 'target_cost' | 'fabric_confirmed_at' | 'cm_confirmed_at'
+  'id' | 'product_code' | 'neg_stage' | 'job_cost' | 'fob_cost' | 'efob_cost' | 'proposed_cost' | 'target_cost' | 'target_job' | 'target_fob' | 'target_efob' | 'fabric_confirmed_at' | 'cm_confirmed_at'
 >;
 
 /**

@@ -34,6 +34,8 @@ import {
   dateOrNull,
   textOrNull,
 } from './_shared';
+import { pageAll } from '../queries-modules/_shared';
+import { loadNpdOptions, loadNpdProduct, NpdNotConfiguredError, type NpdOption } from '@/lib/npd-tracker.server';
 
 /** 'kg' when the team says so, otherwise the metre the Fabric Cost master rates in. */
 const fabricUom = (v: unknown): 'mtr' | 'kg' => (String(v ?? '').trim().toLowerCase() === 'kg' ? 'kg' : 'mtr');
@@ -58,6 +60,17 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   if (existing?.frozen) {
     return fail('This cost is frozen (a PO was issued) and can no longer be edited.');
   }
+  // A NEW cost row must be an EasyEcom product or a temporary (TMP-xxxx) one: a typed name
+  // ("ABCD") is never a product code. New products not in EasyEcom go through mintTempProduct.
+  if (!existing) {
+    const [{ data: inCatalog }, { data: temp }] = await Promise.all([
+      supabase.from('sd_product_catalog').select('product_code').eq('product_code', product_code.toUpperCase()).maybeSingle(),
+      supabase.from('sd_temp_product').select('temp_code').eq('temp_code', product_code).eq('status', 'active').maybeSingle(),
+    ]);
+    if (!inCatalog && !temp) {
+      return fail(`${product_code} is not in EasyEcom. Create it as a new product instead: it gets a temporary TMP ID you can link later.`);
+    }
+  }
   // Documentation (fabric link, consumption-derived total, CAD/RFP) stays editable even
   // after sign-off — only a PO-issued freeze locks it. The rate (job/FOB/EFOB) is owned by
   // the negotiation flow, so this save only touches rate columns when they're explicitly sent.
@@ -65,8 +78,6 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   const patch: Record<string, unknown> = {
     product_code,
     total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
-    cad_link: textOrNull(formData.get('cad_link')),
-    rfp_link: textOrNull(formData.get('rfp_link')),
     fabric_code: textOrNull(formData.get('fabric_code')),
     // Saving is the act of documenting — clears the "data gap" flag.
     documented: true,
@@ -75,6 +86,10 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
   // How the fabric is consumed (per metre / per kg). Only the cost sheet sends it, so a
   // rate-only save never resets a chosen unit.
   if (formData.has('fabric_uom')) patch.fabric_uom = fabricUom(formData.get('fabric_uom'));
+  // The CAD / RFP links are saved from the Documents tab (saveCostLinks); only touch them
+  // when a caller sends them, so a cost-sheet save never blanks a saved link.
+  if (formData.has('cad_link')) patch.cad_link = textOrNull(formData.get('cad_link'));
+  if (formData.has('rfp_link')) patch.rfp_link = textOrNull(formData.get('rfp_link'));
   // Rate columns are owned by the negotiation flow — only touch them when a caller
   // explicitly sends them, so a documentation save never nulls a signed-off rate.
   if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));
@@ -277,7 +292,7 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
     .maybeSingle();
   if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
 
-  // Keep only rows that carry a head; drop fully-empty scratch rows.
+  // A cost line is a head with an amount; a listed sub-item left blank is not saved.
   const clean = rows
     .map((r, i) => ({
       product_code,
@@ -286,7 +301,7 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
       amount: numOrNull(r.amount),
       position: i,
     }))
-    .filter((r) => r.category && (r.label != null || r.amount != null));
+    .filter((r) => r.category && r.amount != null);
 
   const total = clean.reduce((s, r) => s + (r.amount ?? 0), 0);
 
@@ -310,8 +325,11 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
     keyCounts.set(base, n + 1);
     return n ? `${base} #${n + 1}` : base;
   };
+  // Only lines with an amount are cost lines. The CMTP table lists every sub-item and saves
+  // the filled ones, so an old line saved with no amount dropping out is not a revision.
+  const existingFilled = (existing ?? []).filter((r) => numOrNull(r.amount) != null);
   const oldByKey = new Map<string, number | null>(
-    (existing ?? []).map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
+    existingFilled.map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
   );
   keyCounts.clear();
   const amtEq = (a: number | null, b: number | null) =>
@@ -327,13 +345,13 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
       changes.push({ category: r.category, label: r.label, old, next: r.amount });
     }
   }
-  for (const r of existing ?? []) {
+  for (const r of existingFilled) {
     const k = lineKey(String(r.category), textOrNull(r.label));
     if (!seen.has(k)) {
       changes.push({ category: String(r.category), label: textOrNull(r.label), old: numOrNull(r.amount), next: null });
     }
   }
-  const isRevision = (existing?.length ?? 0) > 0 && changes.length > 0;
+  const isRevision = existingFilled.length > 0 && changes.length > 0;
   const reason = String(formData.get('revision_reason') ?? '').trim();
   if (isRevision && !reason) {
     return fail(
@@ -364,6 +382,24 @@ export async function saveCmtpComponents(formData: FormData): Promise<ActionResu
         reason,
         revised_by: user.email,
       })),
+    );
+  }
+
+  // Trim History — every change to a trim line (Product / Brand Trims, any "trim" head), the
+  // first entry too, kept apart from the general CMTP revision log (best-effort).
+  const trimChanges = changes.filter((c) => /trim/i.test(c.category));
+  if (trimChanges.length) {
+    await supabase.from('sd_trim_history' as never).insert(
+      trimChanges.map((c) => ({
+        product_code,
+        trim_head: c.category,
+        item: c.label,
+        old_amount: c.old,
+        new_amount: c.next,
+        change_kind: c.old == null ? 'added' : c.next == null ? 'removed' : 'changed',
+        reason: reason || (existingFilled.length ? null : 'First entry'),
+        changed_by: user.email,
+      })) as never,
     );
   }
 
@@ -444,7 +480,7 @@ export async function submitStandardCost(formData: FormData): Promise<ActionResu
       rejection_notes: null,
     })
     .eq('id', id)
-    .in('status', ['draft', 'rework'])
+    .in('status', ['draft', 'rework', 'rejected'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
@@ -545,7 +581,7 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
       rejection_notes: null,
     })
     .eq('id', id)
-    .in('status', ['draft', 'rework'])
+    .in('status', ['draft', 'rework', 'rejected'])
     .select('id');
   if (error) return fail(error.message);
   if (!updated?.length) return fail('Already submitted by someone else.');
@@ -574,30 +610,97 @@ export async function submitMaterialCost(formData: FormData): Promise<ActionResu
 /* into the real code when it appears.                                 */
 /* ------------------------------------------------------------------ */
 
-/** Create a temporary product (system-minted TMP-xxxx) + seed its Standard Cost row. */
-export async function mintTempProduct(formData: FormData): Promise<ActionResult> {
+/**
+ * Typing a name to create a product is RETIRED (user, 2026-10-09): a product not in EasyEcom is
+ * added only from NPD Tracker V7 (addNpdProduct), so every new product has a record. Kept as a
+ * refusal so an old open tab gets a clear answer instead of a silent TMP code.
+ */
+export async function mintTempProduct(_formData: FormData): Promise<ActionResult> {
+  void _formData;
+  return fail('New products are no longer created by typing a name. Pick the product from NPD Tracker V7 instead.');
+}
+
+/** The NPD Tracker V7 products that can be (or why they cannot be) added to Standard Cost. */
+export async function listNpdProducts(): Promise<{ ok: true; options: NpdOption[] } | { ok: false; error: string }> {
+  const user = await currentUser();
+  if (!user) return { ok: false, error: 'Not signed in.' };
+  if (!canEdit(user.role, 'draft')) return { ok: false, error: 'You do not have permission to add products.' };
+  const supabase = await supa();
+  try {
+    const [sheet, catalog, temps] = await Promise.all([
+      pageAll<{ product_code: string }>(() => supabase.from('sd_standard_cost').select('product_code').order('product_code')),
+      pageAll<{ product_code: string }>(() => supabase.from('sd_product_catalog').select('product_code').order('product_code')),
+      pageAll<{ npd_product_id: number | null }>(() =>
+        supabase.from('sd_temp_product').select('npd_product_id').eq('status', 'active').not('npd_product_id', 'is', null).order('temp_code'),
+      ),
+    ]);
+    const options = await loadNpdOptions({
+      onSheet: new Set(sheet.map((r) => String(r.product_code).toUpperCase())),
+      inEasyEcom: new Set(catalog.map((r) => String(r.product_code).toUpperCase())),
+      npdRegistered: new Set(temps.map((r) => Number(r.npd_product_id))),
+    });
+    return { ok: true, options };
+  } catch (e) {
+    if (e instanceof NpdNotConfiguredError) return { ok: false, error: e.message };
+    return { ok: false, error: `Could not read NPD Tracker V7: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/**
+ * Add an NPD Tracker V7 product to Standard Cost under its NPD ITEM CODE (upper-cased). The NPD row
+ * is re-read here (never trusted from the browser); the registry keeps the NPD id, SKU code (for
+ * PO Approval's SKU quantities), category, status and type as the record of where it came from.
+ */
+export async function addNpdProduct(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   if (!canEdit(user.role, 'draft')) return fail('You do not have permission to add products.');
+  const id = Number(formData.get('npd_id'));
+  if (!Number.isInteger(id) || id <= 0) return fail('Pick a product from NPD Tracker V7.');
 
-  const name = String(formData.get('name') ?? '').trim();
-  if (!name) return fail('Give the new product a name.');
+  let found;
+  try {
+    found = await loadNpdProduct(id);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+  if (!found) return fail('That product is not on NPD Tracker V7 any more, or it is already launched.');
+  const { row, duplicates } = found;
+  if (!row.item_code) return fail('This NPD product has no item code yet. Add it on NPD Tracker V7 first.');
+  if (duplicates > 1) return fail(`Item code ${row.item_code} is used by ${duplicates} NPD products. Fix it on NPD Tracker V7 first.`);
 
   const supabase = await supa();
-  const { data: code, error } = await supabase.rpc('sd_mint_temp_product', {
-    p_name: name,
+  const { data: code, error } = await supabase.rpc('sd_register_npd_product', {
+    p_item_code: row.item_code,
+    p_sku_code: row.sku_code,
+    p_name: row.product_name ?? row.item_code,
+    p_npd_id: row.id,
+    p_category: row.category,
+    p_status: row.status,
+    p_type: row.product_type,
     p_by: user.email,
   });
-  if (error || !code) return fail(error?.message ?? 'Could not create the temporary product.');
+  if (error || !code) return fail(error?.message ?? 'Could not add the NPD product.');
 
-  // Seed its Standard Cost row so it shows up in the sheet ready to be costed.
-  const { error: scErr } = await supabase
+  // Seed its Standard Cost row so it shows on the sheet ready to be costed.
+  const { data: sc, error: scErr } = await supabase
     .from('sd_standard_cost')
-    .upsert({ product_code: code, documented: false, updated_at: new Date().toISOString() }, { onConflict: 'product_code' });
-  if (scErr) return fail(`Created ${code} but could not seed its cost row: ${scErr.message}`);
+    .upsert({ product_code: code, documented: false, updated_at: new Date().toISOString() }, { onConflict: 'product_code' })
+    .select('id')
+    .maybeSingle();
+  if (scErr) return fail(`Added ${code} but could not create its cost row: ${scErr.message}`);
 
+  await writeLog(
+    'standard_cost',
+    String(sc?.id ?? code),
+    `Standard cost — ${code}`,
+    null,
+    'draft',
+    user.email,
+    `Added from NPD Tracker V7: ${row.product_name ?? code}${row.sku_code ? ` · SKU ${row.sku_code}` : ''}${row.category ? ` · ${row.category}` : ''}`,
+  );
   revalidatePath('/standard-cost');
-  return { ok: true, message: `Created temporary product ${code} — “${name}”. Fill its cost, then it can be used in Buying Plan / PO.` };
+  return { ok: true, message: `Added ${code} — “${row.product_name ?? code}” from NPD Tracker V7. Fill its cost next.` };
 }
 
 /** Merge a temporary product into its real EasyEcom code (admin) — atomic repoint. */
@@ -625,3 +728,66 @@ export async function mergeTempProduct(formData: FormData): Promise<ActionResult
   return { ok: true, message: `Merged ${temp_code} into ${real_code}. All its cost, plan and PO data now lives under ${real_code}.` };
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Products not in EasyEcom — typed codes ("ABCD") and TMP-xxxx alike   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Link a product that is not in EasyEcom to its EasyEcom product code: its cost, cost sheet,
+ * rate history, plan lines and POs all move to the real code (sd_link_product, one
+ * transaction; the database itself checks the caller is an admin).
+ */
+export async function linkProductToEasyEcom(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (user.role !== 'admin') return fail('Only an admin can link a product to EasyEcom.');
+  const from = String(formData.get('product_code') ?? '').trim();
+  const to = String(formData.get('real_code') ?? '').trim().toUpperCase();
+  if (!from || !to) return fail('Pick the EasyEcom product to link to.');
+  // When the EasyEcom product already has its own cost: the rates (and cost sheet) the admin
+  // chose to keep, as JSON from the merge panel.
+  let merge: Record<string, unknown> | null = null;
+  const rawMerge = formData.get('merge');
+  if (rawMerge) {
+    try {
+      merge = JSON.parse(String(rawMerge));
+    } catch {
+      return fail('Could not read the chosen rates.');
+    }
+  }
+
+  const supabase = await supa();
+  const { error } = await supabase.rpc('sd_link_product', { p_from: from, p_to: to, p_by: user.email, p_merge: merge as never });
+  if (error) return fail(error.message);
+
+  revalidatePath('/standard-cost');
+  revalidatePath('/buying-plan');
+  revalidatePath('/po-approval');
+  return {
+    ok: true,
+    message: merge
+      ? `Merged ${from} into ${to} with the rates you chose. Its plan lines and POs now sit under ${to}.`
+      : `Linked ${from} to ${to}. Its cost, plan lines and POs now sit under ${to}.`,
+  };
+}
+
+/**
+ * Delete a product that is not in EasyEcom, with its cost sheet. The database refuses while a
+ * PO, plan line, inward or cutting record still uses it (link it instead), once it is frozen,
+ * and for a signed-off cost unless the caller is an admin. Deleted rows stay in the audit log.
+ */
+export async function deleteUnlinkedProduct(formData: FormData): Promise<ActionResult> {
+  const user = await currentUser();
+  if (!user) return fail('Not signed in.');
+  if (!canEdit(user.role, 'draft')) return fail('You do not have permission to delete products.');
+  const code = String(formData.get('product_code') ?? '').trim();
+  if (!code) return fail('Product code is required.');
+
+  const supabase = await supa();
+  const { error } = await supabase.rpc('sd_delete_unlinked_product', { p_code: code, p_by: user.email });
+  if (error) return fail(error.message);
+
+  revalidatePath('/standard-cost');
+  return { ok: true, message: `Deleted ${code}.` };
+}

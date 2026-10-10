@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { client } from './_shared';
 import type { SdUser, SdCustomRole } from '../types';
 
@@ -6,6 +7,7 @@ import type { SdUser, SdCustomRole } from '../types';
 /* Identity                                                            */
 /* ------------------------------------------------------------------ */
 
+<<<<<<< HEAD
 export async function currentUser(): Promise<SdUser | null> {
   // Local development only: bypass authentication while keeping
   // the real Supabase data layer active.
@@ -31,6 +33,9 @@ export async function currentUser(): Promise<SdUser | null> {
     return user;
   }
 
+=======
+export const currentUser = cache(async function currentUser(): Promise<SdUser | null> {
+>>>>>>> origin/main
   const supabase = await client();
   const { data: claims } = await supabase.auth.getClaims();
   const email =
@@ -39,20 +44,17 @@ export async function currentUser(): Promise<SdUser | null> {
       : null;
   if (!email) return null;
 
-  const { data } = await supabase
-    .from('sd_user')
-    .select('email, full_name, role, is_active')
-    .eq('email', email)
-    .maybeSingle();
-
-  // Best-effort: stamp last-seen so the User Panel can show when each person last used
-  // the dashboard. The RPC is throttled server-side (~5-min granularity) and scoped to
-  // the caller's own row; never let it block or break auth.
-  try {
-    await supabase.rpc('sd_touch_last_seen');
-  } catch {
-    /* ignore — presence tracking must never fail a page load */
-  }
+  // The user row, the last-seen stamp and the custom-role assignments do not depend on each
+  // other: one round trip instead of three in a row (this runs on every page).
+  const [{ data }, , { data: assignments }] = await Promise.all([
+    supabase.from('sd_user').select('email, full_name, role, is_active').eq('email', email).maybeSingle(),
+    // Best-effort: stamp last-seen so the User Panel can show when each person last used
+    // the dashboard. The RPC is throttled server-side (~5-min granularity) and scoped to
+    // the caller's own row; never let it block or break auth.
+    Promise.resolve(supabase.rpc('sd_touch_last_seen')).catch(() => null),
+    // paging-ok: one user's role assignments, a handful of rows
+    supabase.from('sd_user_role').select('role_id, sd_custom_role(pages)').eq('user_email', email),
+  ]);
 
   // Someone signed in with a valid @saadaa.in account but was never added to
   // sd_user. Treat as viewer rather than crashing — an admin adds them later.
@@ -76,6 +78,7 @@ export async function currentUser(): Promise<SdUser | null> {
   // Admins and users with no custom roles are unrestricted (null).
   user.allowed_pages = null;
   if (user.role !== 'admin') {
+<<<<<<< HEAD
     const { data: assignments } = await supabase
       .from('sd_user_role')
       .select('role_id, sd_custom_role(pages)')
@@ -85,6 +88,9 @@ export async function currentUser(): Promise<SdUser | null> {
       sd_custom_role: { pages: string[] | null } | null;
     }[];
 
+=======
+    const rows = (assignments ?? []) as unknown as { role_id: number; sd_custom_role: { pages: string[] | null } | null }[];
+>>>>>>> origin/main
     if (rows.length) {
       user.custom_role_ids = rows.map((r) => r.role_id);
       user.allowed_pages = [
@@ -94,7 +100,7 @@ export async function currentUser(): Promise<SdUser | null> {
   }
 
   return user;
-}
+});
 
 /**
  * Global sidebar tab-visibility overrides: path → visible. A path present here overrides

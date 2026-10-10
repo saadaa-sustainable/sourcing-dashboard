@@ -21,6 +21,8 @@ import { CategoryMappingClient } from '../category-mapping/category-mapping-clie
 import { FabricCostClient } from '../fabric-cost/fabric-cost-client';
 import { FabricRateSubmissionPanel } from '@/components/forms/fabric-rate-submission-panel';
 import { MasterTabs } from './master-tabs';
+import { NpdProductsClient } from './npd-products-client';
+import { loadNpdMasterPage } from '@/lib/npd-master.server';
 import { MASTER_TABS } from './master-tabs.config';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +38,7 @@ const SUBTITLE: Record<string, string> = {
   fabric: 'Fabric composition codes with duplicate prevention — the source the Buying Plan material track picks from.',
   material: 'One code list for Raw, Dyed and Trim materials — the source the Buying Plan material track picks from.',
   'fabric-cost': 'Fabric cost base — grey rate, processing and finished fabric cost, plus the monthly rate submission.',
+  npd: 'New products from NPD Tracker V7, read live — which are on Standard Cost, which can be added, and which need fixing on the tracker.',
 };
 
 export default async function MasterPage({
@@ -106,6 +109,9 @@ export default async function MasterPage({
         editable={editable}
       />
     );
+  } else if (tab === 'npd') {
+    const npd = await loadNpdMasterPage();
+    body = <NpdProductsClient rows={npd.rows} error={npd.error} />;
   } else {
     // fabric-cost
     const [rows, submissionState] = await Promise.all([

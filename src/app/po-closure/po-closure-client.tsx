@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { ChevronDown, ChevronRight, Play, Save } from 'lucide-react';
 import { initiateClosure, submitFinanceLeg, submitSourcingLeg } from '@/lib/forms/actions';
@@ -83,12 +84,17 @@ export function PoClosureClient({
         </div>
       )}
 
-      <div className="wf-toolbar">
-        <div className="segment wf-segment">
-          <button type="button" className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>All</button>
-          <button type="button" className={filter === 'open15' ? 'active' : ''} onClick={() => setFilter('open15')}>Open beyond 15 days</button>
+      <div className="tb">
+        <div className="tb-find">
+          <div className="segment wf-segment">
+            <button type="button" className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>All</button>
+            <button type="button" className={filter === 'open15' ? 'active' : ''} onClick={() => setFilter('open15')}>Open beyond 15 days</button>
+          </div>
+          <ClearFiltersButton active={filter !== 'all'} onClear={() => setFilter('all')} />
         </div>
-        <span className="wf-subtle">{shown.length} shown</span>
+        <div className="tb-see">
+          <span className="wf-subtle tb-count">{shown.length} shown</span>
+        </div>
       </div>
 
       <div className="table-panel wf-grid-panel">

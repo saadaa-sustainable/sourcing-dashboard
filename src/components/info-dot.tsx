@@ -85,7 +85,13 @@ export function InfoDot({ text, label = 'More info' }: { text: string; label?: s
           cursor: 'help',
           color: '#9a9384',
           display: 'inline-flex',
+          alignItems: 'center',
           verticalAlign: 'middle',
+          // The global `button { min-height: 40px }` made this 13px icon a 40px-tall button with
+          // the icon pinned to its top, so every ⓘ sat above the text beside it (and table
+          // headings grew to fit it).
+          minHeight: 0,
+          lineHeight: 0,
           marginLeft: 4,
           padding: 0,
         }}

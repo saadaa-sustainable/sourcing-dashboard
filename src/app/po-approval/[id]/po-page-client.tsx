@@ -49,7 +49,7 @@ export function PoPageClient({
         <div className="poa-head-top">
           <div className="poa-head-title">
             <span className="mono poa-head-id">{po.request_id}</span>
-            <StatusBadge status={po.status} />
+            <StatusBadge status={po.status} approverEdited={po.approver_edited} />
             <span className={`poa-flag is-${flag.tone}`} title={flag.title}>{flag.text}</span>
           </div>
           <StageStrip po={po} large />

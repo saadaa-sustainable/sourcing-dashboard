@@ -5,7 +5,7 @@ import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import Link from 'next/link';
 import { CheckCheck, RotateCcw, ShieldCheck } from 'lucide-react';
-import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL } from '@/lib/forms/approval';
+import { canApprove, LEVEL_LABEL, ROLE_LABEL, STATUS_LABEL, statusText } from '@/lib/forms/approval';
 import { approveBuyingPlanLines, reworkLines } from '@/lib/forms/actions';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -17,14 +17,19 @@ import { PlanPivot } from '@/components/forms/plan-pivot';
 import { ApprovalContextPanel } from '@/components/forms/approval-context-panel';
 import { productCodeFromLineLabel, type ApprovalContext } from '@/lib/approval-context';
 import { FilterTable, type Column } from '@/components/filter-table';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import type { ApprovalEntity, ApprovalLogRow, ApprovalQueueItem, SdRole } from '@/lib/forms/types';
 import { utilisationLabel } from '@/lib/utilisation';
+
+// An approval made through Edit & approve records its changes in the notes; say so in the log.
+const logTo = (r: ApprovalLogRow) =>
+  statusText(r.to_status, { approverEdited: r.to_status === 'approved' && (r.notes ?? '').startsWith('Edited by the approver') });
 
 // Columns for the approval-history log (read-only decision list) → shared FilterTable.
 const LOG_COLS: Column<ApprovalLogRow>[] = [
   { key: 'created_at', label: 'When', accessor: (r) => r.created_at, render: (r) => <span className="wf-subtle">{new Date(r.created_at).toLocaleString('en-IN')}</span> },
   { key: 'record', label: 'Record', accessor: (r) => r.entity_label ?? `${r.entity_type} #${r.entity_id}`, render: (r) => r.entity_label ?? `${r.entity_type} #${r.entity_id}` },
-  { key: 'change', label: 'Change', accessor: (r) => STATUS_LABEL[r.to_status], render: (r) => (<>{r.from_status ? STATUS_LABEL[r.from_status] : '—'} → <strong>{STATUS_LABEL[r.to_status]}</strong></>) },
+  { key: 'change', label: 'Change', accessor: (r) => logTo(r), render: (r) => (<>{r.from_status ? STATUS_LABEL[r.from_status] : '—'} → <strong>{logTo(r)}</strong></>) },
   { key: 'actor_email', label: 'Actor', render: (r) => <span className="wf-subtle">{r.actor_email}</span> },
   { key: 'notes', label: 'Notes', render: (r) => r.notes ?? '—' },
 ];
@@ -48,6 +53,7 @@ const TYPE_TABS: { key: ApprovalEntity; label: string }[] = [
   { key: 'standard_cost', label: 'Standard Cost' },
   { key: 'discontinue', label: 'Discontinue' },
   { key: 'vendor_deboarding', label: 'Vendor De-Boarding' },
+  { key: 'vendor_commercial', label: 'Commercial Approval' },
   { key: 'inward_plan', label: 'Inward Plan (month)' },
   { key: 'receivable_plan', label: 'Inward Plan (weekly)' },
 ];
@@ -121,44 +127,50 @@ export function ApprovalsClient({
         </div>
       </div>
 
-      <div className="wf-toolbar">
-        <div className="segment wf-segment">
-          <button
-            type="button"
-            className={filter === 'mine' ? 'active' : ''}
-            onClick={() => setFilter('mine')}
-          >
-            Awaiting me
-          </button>
-          <button
-            type="button"
-            className={filter === 'all' ? 'active' : ''}
-            onClick={() => setFilter('all')}
-          >
-            Everything pending
-          </button>
-        </div>
-        <div className="segment wf-segment">
-          <button
-            type="button"
-            className={typeFilter === 'all' ? 'active' : ''}
-            onClick={() => setTypeFilter('all')}
-          >
-            All types ({byLevel.length})
-          </button>
-          {TYPE_TABS.map((t) => {
-            const count = byLevel.filter((item) => item.entityType === t.key).length;
-            return (
-              <button
-                type="button"
-                key={t.key}
-                className={typeFilter === t.key ? 'active' : ''}
-                onClick={() => setTypeFilter(t.key)}
-              >
-                {t.label} ({count})
-              </button>
-            );
-          })}
+      <div className="tb">
+        <div className="tb-find">
+          <div className="segment wf-segment">
+            <button
+              type="button"
+              className={filter === 'mine' ? 'active' : ''}
+              onClick={() => setFilter('mine')}
+            >
+              Awaiting me
+            </button>
+            <button
+              type="button"
+              className={filter === 'all' ? 'active' : ''}
+              onClick={() => setFilter('all')}
+            >
+              Everything pending
+            </button>
+          </div>
+          <div className="segment wf-segment">
+            <button
+              type="button"
+              className={typeFilter === 'all' ? 'active' : ''}
+              onClick={() => setTypeFilter('all')}
+            >
+              All types ({byLevel.length})
+            </button>
+            {TYPE_TABS.map((t) => {
+              const count = byLevel.filter((item) => item.entityType === t.key).length;
+              return (
+                <button
+                  type="button"
+                  key={t.key}
+                  className={typeFilter === t.key ? 'active' : ''}
+                  onClick={() => setTypeFilter(t.key)}
+                >
+                  {t.label} ({count})
+                </button>
+              );
+            })}
+          </div>
+          <ClearFiltersButton
+            active={filter !== 'mine' || typeFilter !== 'all'}
+            onClear={() => { setFilter('mine'); setTypeFilter('all'); }}
+          />
         </div>
       </div>
 
@@ -543,71 +555,56 @@ function BuyingPlanApprovalLines({
       </div>
       {error && <p className="wf-line-error">{error}</p>}
 
-      {/* Rework remark appears inline, at the point of action — required, and it
-          applies to exactly the checked rows (never the whole plan). */}
-      {mode === 'rework' && (
-        <div className="wf-line-rework-inline">
-          <label className="wf-subtle" htmlFor={`rework-${item.entityId}`}>
-            Remark for the {actionable.length} checked line(s) — sent to the submitter
-          </label>
-          <textarea
-            id={`rework-${item.entityId}`}
-            className="wf-textarea"
-            rows={2}
-            placeholder="What needs to change on these lines?"
-            value={remark}
-            onChange={(e) => setRemark(e.target.value)}
-            autoFocus
-          />
-          <div className="wf-line-rework-actions">
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              onClick={rework}
-              disabled={isBusy || !actionable.length}
-            >
-              <RotateCcw size={14} /> {isBusy ? 'Working…' : `Send ${actionable.length} line(s) for rework`}
-            </button>
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm"
-              onClick={() => { setMode(null); setRemark(''); setError(null); }}
-              disabled={isBusy}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="wf-line-approve-foot">
         <span className="wf-subtle">
           {pendingLines.length} line(s) pending · {lines.length - pendingLines.length} approved
-          {actionable.length > 0 && (
-            <> · <strong>{actionable.length} checked</strong> — actions apply to these only</>
-          )}
+          {actionable.length > 0 && <> · <strong>{actionable.length} ticked</strong> — decide them from the bar below</>}
         </span>
-        {mode !== 'rework' && (
-          <div className="wf-line-action-btns">
-            <button
-              type="button"
-              className="wf-btn wf-btn-ghost wf-btn-sm"
-              onClick={() => { setMode('rework'); setError(null); }}
-              disabled={isBusy || !actionable.length}
-            >
-              <RotateCcw size={14} /> Rework selected ({actionable.length})
-            </button>
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              onClick={approve}
-              disabled={isBusy || !actionable.length}
-            >
-              <CheckCheck size={14} /> {isBusy ? 'Approving…' : `Approve selected (${actionable.length})`}
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Ticked lines are decided from the same floating bar as the Buying Plan and Standard
+          Cost. The rework remark applies to exactly the ticked lines (never the whole plan). */}
+      {actionable.length > 0 && (
+        <div className="bp-bulk-bar" role="region" aria-label={`Decide the ticked lines of ${item.label}`}>
+          <span className="bp-bulk-count">
+            {item.label} · <b>{actionable.length}</b> line{actionable.length === 1 ? '' : 's'} ticked
+          </span>
+          {mode === 'rework' ? (
+            <>
+              <input
+                autoFocus
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                placeholder="Remark for Rework / Reassign (required) — sent to the submitter"
+                aria-label="Rework remark for the ticked lines"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && remark.trim()) rework();
+                  if (e.key === 'Escape') setMode(null);
+                }}
+              />
+              <button type="button" className="bp-bulk-btn strong" onClick={rework} disabled={isBusy || !remark.trim()}>
+                <RotateCcw size={13} /> {isBusy ? 'Working…' : `Rework / Reassign ${actionable.length}`}
+              </button>
+              <button type="button" className="bp-bulk-btn" onClick={() => { setMode(null); setRemark(''); setError(null); }} disabled={isBusy}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="bp-bulk-btn strong" onClick={approve} disabled={isBusy}>
+                <CheckCheck size={13} /> {isBusy ? 'Approving…' : `Approve ${actionable.length}`}
+              </button>
+              <button type="button" className="bp-bulk-btn" onClick={() => { setMode('rework'); setError(null); }} disabled={isBusy}>
+                <RotateCcw size={13} /> Rework / Reassign
+              </button>
+              <button type="button" className="bp-bulk-btn" onClick={() => setSelected(new Set())} disabled={isBusy}>
+                Clear
+              </button>
+            </>
+          )}
+          {error && <span className="bp-bulk-error">{error}</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -708,35 +705,48 @@ function CostBulkBar({
             Proposals that need a target, or name no rate, are best decided on their own card.
           </p>
         </div>
-        <label className="wf-subtle" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={allPicked}
-            onChange={() => setPicked(allPicked ? new Set() : new Set(ids))}
-            aria-label="Select every proposal in view"
-          />
-          Select all in view
-        </label>
+        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setPicked(allPicked ? new Set() : new Set(ids))}>
+          {allPicked ? 'Untick all' : `Tick all to decide (${ids.length})`}
+        </button>
       </div>
-      {mode === 'reject' ? (
-        <div className="wf-approval-bar">
-          <textarea className="wf-textarea" rows={2} placeholder="Reason for rejection — recorded on every selected proposal" value={note} onChange={(e) => setNote(e.target.value)} />
-          <div className="wf-approval-actions">
-            <button type="button" className="wf-btn wf-btn-danger" disabled={pending || !note.trim() || !chosen.length} onClick={() => decide('reject')}>
-              {pending ? 'Working…' : `Reject ${chosen.length} selected`}
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost" onClick={() => { setMode(''); setNote(''); }}>Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <div className="wf-approval-actions">
-          <button type="button" className="wf-btn wf-btn-primary" disabled={pending || !chosen.length} onClick={() => decide('accept')}>
-            <CheckCheck size={15} /> {pending ? 'Working…' : `Accept ${chosen.length} selected proposal(s)`}
-          </button>
-          <button type="button" className="wf-btn wf-btn-ghost" disabled={!chosen.length} onClick={() => setMode('reject')}>
-            Reject selected…
-          </button>
-          <span className="wf-subtle">{chosen.length} of {items.length} selected</span>
+      {chosen.length > 0 && (
+        <div className="bp-bulk-bar" role="region" aria-label="Decide the ticked cost proposals">
+          <span className="bp-bulk-count">
+            <b>{chosen.length}</b> proposal{chosen.length === 1 ? '' : 's'} ticked
+          </span>
+          {mode === 'reject' ? (
+            <>
+              <input
+                autoFocus
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Remark for Reject / Discard (required) — recorded on every ticked proposal"
+                aria-label="Reason to reject the ticked proposals"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && note.trim()) decide('reject');
+                  if (e.key === 'Escape') setMode('');
+                }}
+              />
+              <button type="button" className="bp-bulk-btn strong" disabled={pending || !note.trim()} onClick={() => decide('reject')}>
+                {pending ? 'Working…' : `Reject / Discard ${chosen.length}`}
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => { setMode(''); setNote(''); }}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="bp-bulk-btn strong" disabled={pending} onClick={() => decide('accept')}>
+                <CheckCheck size={13} /> {pending ? 'Working…' : `Approve ${chosen.length}`}
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setMode('reject')}>
+                Reject / Discard
+              </button>
+              <button type="button" className="bp-bulk-btn" disabled={pending} onClick={() => setPicked(new Set())}>
+                Clear
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

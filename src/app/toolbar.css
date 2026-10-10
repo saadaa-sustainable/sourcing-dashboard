@@ -1,0 +1,229 @@
+/*
+ * The universal toolbar (design option A, 2026-10-09) — one look for every filter / search bar.
+ *
+ *   <div className="tb">                       ← the bar (white card, one row, wraps as blocks)
+ *     <div className="tb-find">                ← LEFT: [status switch] search → filters → quick switch → Clear all filters
+ *     <div className="tb-see">                 ← RIGHT: count → view switch → [tb-divider] → secondary / main actions
+ *
+ * Rules: every control is 36px tall; the search box is 300px; dropdowns size to their text;
+ * "Clear all filters" is a text link, last in the left group; the right group always sits at
+ * the right end. `tb-flat` drops the card look when the bar is already inside a card header.
+ *
+ * Loads after search-bars.css (layout.tsx) so its heights win; uses !important only where page
+ * stylesheets set heights / grids with higher specificity.
+ */
+
+.tb {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  background: #fff;
+  border: 1px solid #d2d5d8;
+  border-radius: 12px;
+  box-shadow: none;
+  grid-template-columns: none !important;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.tb.tb-flat { padding: 0; margin: 0; background: transparent; border: 0; border-radius: 0; }
+
+.tb-find,
+.tb-see {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tb-find { flex: 1 1 auto; }
+.tb-see { flex: 0 0 auto; margin-left: auto; }
+
+/* ---- one height for every control ---- */
+.tb input:not([type="checkbox"]):not([type="radio"]),
+.tb select,
+.tb .wf-btn,
+.tb .tb-btn,
+.tb .download-button,
+.tb .bp-more-button,
+.tb .vc2-btn,
+.tb .vc2-chip {
+  box-sizing: border-box;
+  height: 36px !important;
+  min-height: 36px !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  line-height: normal;
+}
+.tb .wf-btn,
+.tb .tb-btn,
+.tb .download-button,
+.tb .bp-more-button,
+.tb .vc2-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px !important;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* Search: 300px, shrinks on narrow screens. A wrapper (label / .field) holding it is the box's slot. */
+.tb input:not([type="checkbox"]):not([type="radio"]) { flex: 0 1 300px; width: 300px !important; min-width: 160px; max-width: 100%; }
+.tb .tb-search-wrap { flex: 0 1 300px; min-width: 160px; display: flex; }
+.tb .tb-search-wrap input:not([type="checkbox"]):not([type="radio"]),
+.tb .tb-search-wrap .search-field { flex: 1 1 auto; width: 100% !important; }
+.tb input[type="number"] { flex: 0 0 90px; width: 90px !important; min-width: 0; }
+
+/* Dropdowns size to their text. */
+.tb select { flex: 0 0 auto; width: auto !important; min-width: 0; max-width: 260px; padding: 0 30px 0 12px !important; }
+
+/* Switches (status, quick filter, views): 36px track, 28px buttons. */
+.tb .segment {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  padding: 3px !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.tb .segment button,
+.tb .segment a {
+  height: 28px;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  font-size: 12.5px !important;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Checkbox filters ("OOS only", "Stale only") line up with the controls. */
+.tb label:has(> input[type="checkbox"]) {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  white-space: nowrap;
+  font-size: 13px;
+  flex: none;
+}
+
+/* Clear all filters: a text link, last in the left group. */
+.tb .clear-filters-btn {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 6px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--ink-1, #161513) !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  flex: none;
+}
+.tb .clear-filters-btn svg { display: none; }
+.tb .clear-filters-btn:disabled { color: #a8a39a !important; text-decoration: none; opacity: 1 !important; }
+
+/* Right group pieces. */
+.tb .tb-count { font-size: 12px; color: var(--ink-3, #5f5a50); white-space: nowrap; }
+.tb .tb-divider { width: 1px; height: 20px; background: #e2ddd2; flex: none; }
+.tb .wf-chip { height: 28px; display: inline-flex; align-items: center; margin: 0; }
+
+/* A label printed above a control would push it off the line: keep it for screen readers only. */
+.tb .tb-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Phone: search takes its own line; the right group drops below as a whole. */
+@media (max-width: 640px) {
+  .tb { padding: 10px; }
+  .tb-find > input:not([type="checkbox"]):not([type="radio"]),
+  .tb-find > .tb-search-wrap { flex: 1 1 100%; width: 100% !important; }
+  .tb-see { margin-left: 0; width: 100%; }
+}
+
+/* A search drawn as a wrapper (bordered label/div holding the input): the WRAPPER is the 36px box,
+   the input inside fills it with no height or border of its own. */
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search) {
+  box-sizing: border-box;
+  height: 36px !important;
+  min-height: 36px !important;
+  flex: 0 1 300px;
+  width: 300px;
+  min-width: 160px;
+  max-width: 100%;
+  margin: 0 !important;
+  border-radius: 8px !important;
+}
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search) input:not([type="checkbox"]):not([type="radio"]) {
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+@media (max-width: 640px) {
+  .tb-find > :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search) { flex: 1 1 100%; width: 100%; }
+}
+
+/* A dropdown whose name was printed above it: the name sits inside the same 36px box, left of the
+   value ("Vendor  All ▾"). Markup: <label className="tb-field"><span>Vendor</span><select …/></label> */
+.tb .tb-field {
+  box-sizing: border-box;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 10px;
+  border: 1px solid #c9cccf;
+  border-radius: 8px;
+  background: #fff;
+  flex: none;
+  max-width: 300px;
+  margin: 0;
+}
+.tb .tb-field > span { font-size: 12px; font-weight: 600; color: var(--ink-3, #5f5a50); white-space: nowrap; }
+.tb .tb-field select {
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 0 !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  padding-left: 4px !important;
+  max-width: 220px;
+}
+
+/* Wrapping order: when the two groups don't fit on one line, the RIGHT group drops below as a
+   whole first; the filters only wrap among themselves when they alone are wider than the bar.
+   (flex-basis max-content = each group asks for its full one-line width.) */
+.tb-find { flex: 1 1 max-content; }
+.tb-see { flex: 0 1 max-content; justify-content: flex-end; }
+
+/* Widths that keep a full filter set on one line at a normal laptop width: dropdowns at most 180px
+   (a long choice is shortened in the closed box — the open list shows it whole), search 260px. */
+.tb select { max-width: 180px; text-overflow: ellipsis; }
+.tb .tb-field select { max-width: 160px; }
+.tb input:not([type="checkbox"]):not([type="radio"]) { flex-basis: 260px; width: 260px !important; }
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) { flex-basis: 260px; width: 260px; }
+
+/* Search starts at 220px and grows (to 320px) into whatever room the line has left. */
+.tb input:not([type="checkbox"]):not([type="radio"]) { flex: 1 0 220px; width: 220px !important; max-width: 320px; }
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) { flex: 1 0 220px; width: 220px; max-width: 320px; }
+.tb :is(.search-field, .table-meta-search, .mb-search, .vc2-search, .sc-fg-search, .poa-search, .tb-search-wrap) input:not([type="checkbox"]):not([type="radio"]) { max-width: none; }
+.tb input[type="number"] { flex: 0 0 90px; width: 90px !important; }

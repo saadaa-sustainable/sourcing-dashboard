@@ -4,7 +4,7 @@ import { FormHelp } from '@/components/forms/form-help';
 import { ApprovalsBell } from '@/components/forms/approvals-bell';
 import { FeedbackBell } from '@/components/forms/feedback-bell';
 import { signOut } from '@/lib/auth-actions';
-import { ROLE_LABEL, STATUS_LABEL, STATUS_TONE } from '@/lib/forms/approval';
+import { ROLE_LABEL, STATUS_TONE, statusText } from '@/lib/forms/approval';
 import { canView } from '@/lib/views';
 import { FeatureBadgeLive } from '@/components/feature-badge-live';
 import { ReportButton } from '@/components/forms/report-button';
@@ -110,16 +110,20 @@ export function FormLayout({
   );
 }
 
-export function StatusBadge({ status, edited }: { status: SdStatus; edited?: boolean }) {
-  // For an approved record, surface whether it went through edits (rework) or was
-  // approved first time — this drives the "% of approvals that needed edits" metric.
-  const label =
-    status === 'approved' && edited !== undefined
-      ? edited
-        ? 'Edited-and-Approved'
-        : 'First-Time Approved'
-      : STATUS_LABEL[status];
-  return <span className={`wf-status tone-${STATUS_TONE[status]}`}>{label}</span>;
+export function StatusBadge({
+  status,
+  edited,
+  approverEdited,
+}: {
+  status: SdStatus;
+  /** Went through a rework round before approval. */
+  edited?: boolean | null;
+  /** The approver changed values when approving (Edit & approve). */
+  approverEdited?: boolean | null;
+}) {
+  // An approved record says how it got there: with the approver's edits, after rework, or
+  // first time — this also drives the "% of approvals that needed edits" metric.
+  return <span className={`wf-status tone-${STATUS_TONE[status]}`}>{statusText(status, { edited, approverEdited })}</span>;
 }
 
 export function Notice({

@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import { buildTrackerRows } from '@/lib/business-logic';
 import { loadDashboardData } from '@/lib/data';
@@ -102,10 +103,12 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
     ),
     pageAll<{ received_quantity: number | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('received_quantity')
         .gte('grn_created_at', planMonth)
         .lt('grn_created_at', monthEnd)
+        // Date first, then id: a stable page order the (grn_created_at, grn_detail_id) index serves.
+        .order('grn_created_at')
         .order('grn_detail_id'),
     ),
     loadDashboardData(),
@@ -274,7 +277,7 @@ export async function loadPpmPrep(): Promise<PpmPrep> {
 }
 
 /** Per-source data freshness for the Sync Health tab (sd_sync_status view). */
-export async function loadSyncStatus(): Promise<SyncStatusRow[]> {
+export const loadSyncStatus = cache(async function loadSyncStatus(): Promise<SyncStatusRow[]> {
   const supabase = await client();
   const { data, error } = await supabase
     .from('sd_sync_status')
@@ -283,4 +286,4 @@ export async function loadSyncStatus(): Promise<SyncStatusRow[]> {
     .order('source');
   if (error) throw new Error(`sd_sync_status: ${error.message}`);
   return (data ?? []) as SyncStatusRow[];
-}
+});

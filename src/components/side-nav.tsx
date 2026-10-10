@@ -7,6 +7,7 @@ import { useNavOverrides } from '@/components/nav-overrides';
 import {
   Activity,
   UserX,
+  BadgeIndianRupee,
   Award,
   Ban,
   Boxes,
@@ -27,6 +28,7 @@ import {
   PackageCheck,
   PackageSearch,
   PackageX,
+  Receipt,
   Repeat,
   ShoppingCart,
   SlidersHorizontal,
@@ -97,7 +99,11 @@ const PO_WORKFLOW_LINKS: NavLink[] = [
   { href: '/po-amendment', label: 'PO Amendment', Icon: FilePen },
   { href: '/po-details', label: 'PO Details (Form)', Icon: FileText },
   { href: '/po-closure', label: 'PO Closure', Icon: CheckCheck },
+<<<<<<< HEAD
   { href: '/finished-good-po-closer', label: 'Finished Good PO Closer', Icon: PackageCheck },
+=======
+  { href: '/vendor-invoices', label: 'Vendor Invoices', Icon: Receipt },
+>>>>>>> origin/main
   { href: '/cash-flow', label: 'Cash Flow', Icon: Wallet },
 ];
 
@@ -108,6 +114,7 @@ const GOVERNANCE_LINKS: NavLink[] = [
   { href: '/discontinue', label: 'Discontinued Products View', Icon: Ban },
   { href: '/issues', label: 'Issue Tracker', Icon: ClipboardList },
   { href: '/vendor-deboarding', label: 'Vendor De-Boarding', Icon: UserX },
+  { href: '/vendor-commercial', label: 'Vendor Commercial Approval', Icon: BadgeIndianRupee },
 ];
 
 // MASTER DATA & DATASETS — the Master hub, the raw datasets, and each master on its own

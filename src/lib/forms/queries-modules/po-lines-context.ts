@@ -2,6 +2,8 @@ import 'server-only';
 import { client, pageAll } from './_shared';
 import { distributeQty, skuOf, type MixCell, type PoLineDraft, type SkuPending } from '@/lib/po-lines';
 import { loadPlanMembership } from './buying-plan-analysis';
+import { loadNpdSkuSource } from '@/lib/npd-tracker.server';
+import { readNpdColours, readNpdSizes, readNpdSkuCodes } from '@/lib/npd-sku';
 
 /**
  * Spec 7.2 — what the SKU-level entry grid needs for one product: the colours to offer,
@@ -18,6 +20,12 @@ export type PoLineContext = {
   pending: SkuPending[];
   /** Colour NAME → variant code (BLACK → SDAVLKBL), so a pasted sheet that names colours reads in. */
   colours: Record<string, string>;
+  /** Per product SKU (colour variant), as the product master holds it: colour name, the dyed
+   *  fabric it is cut from, and the sizes that exist as SKUs. Drives the fill-in table. */
+  variantInfo: Record<string, { colour: string | null; dyedFabricSku: string | null; sizes: string[] }>;
+  /** Set when the colours / sizes came from NPD Tracker V7 (a product not in EasyEcom yet): the
+   *  SKU-code cell as written there, and any part of it that could not be read as a code. */
+  npd?: { skuText: string; unread: string[]; sizesFromNpd: boolean } | null;
 };
 
 const SIZE_LADDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
@@ -32,7 +40,7 @@ export async function loadPoLineContext(productCodeRaw: string | null): Promise<
     supabase.from('sd_active_variants').select('product_code, product_variant').eq('product_code', productCode),
     // Colour names for the product's variants (one row per SKU; the name repeats per size).
     // paging-ok: one product's SKUs — a few dozen rows
-    supabase.from('sd_ee_product_master').select('product_variant, colour').like('sku', `${productCode}%`),
+    supabase.from('sd_ee_product_master').select('sku, product_variant, colour, size, dyed_fabric_sku').like('sku', `${productCode}%`),
     // Every open line for the product: pending pieces per SKU. Paged — a busy product can
     // carry more than a thousand lines across its open POs.
     pageAll<{ sku: string | null; product_variant: string | null; size: string | null; pending_qty: number | null }>(() =>
@@ -72,13 +80,81 @@ export async function loadPoLineContext(productCodeRaw: string | null): Promise<
   const sizes = [...SIZE_LADDER, ...extra];
 
   const colours: Record<string, string> = {};
-  for (const r of (colourRows.data ?? []) as { product_variant: string | null; colour: string | null }[]) {
+  const variantInfo: PoLineContext['variantInfo'] = {};
+  for (const r of (colourRows.data ?? []) as { sku: string | null; product_variant: string | null; colour: string | null; size: string | null; dyed_fabric_sku: string | null }[]) {
+    // Junk spellings in the master ("SMFLKBL_ 3XL", "SMFLKBL-3XL") are not real SKUs.
+    if (!r.sku || !/^[A-Za-z0-9_]+$/.test(r.sku)) continue;
     const v = up(r.product_variant);
     const c = up(r.colour);
-    if (v && c && v.startsWith(productCode) && !colours[c]) colours[c] = v;
+    if (!v || !v.startsWith(productCode)) continue;
+    if (c && !colours[c]) colours[c] = v;
+    const info = (variantInfo[v] ??= { colour: null, dyedFabricSku: null, sizes: [] });
+    if (!info.colour && r.colour) info.colour = r.colour.trim();
+    if (!info.dyedFabricSku && r.dyed_fabric_sku) info.dyedFabricSku = r.dyed_fabric_sku.trim().toUpperCase();
+    const sz = up(r.size);
+    if (sz && !info.sizes.includes(sz)) info.sizes.push(sz);
+  }
+  // Colours the master knows but the active list missed still get a row.
+  const allVariants = [...new Set([...variants, ...Object.keys(variantInfo)])].sort();
+  // Sizes: the ones this product's SKUs actually come in, in ladder order; else the ladder.
+  const masterSizes = new Set(Object.values(variantInfo).flatMap((i) => i.sizes));
+  const sizesOut = masterSizes.size
+    ? [...SIZE_LADDER.filter((s) => masterSizes.has(s) || sizesSeen.has(s)), ...[...masterSizes, ...sizesSeen].filter((s) => !SIZE_LADDER.includes(s)).filter((s, i, a) => a.indexOf(s) === i).sort()]
+    : sizes;
+
+  // A product added from NPD Tracker V7 has no colours in EasyEcom yet: take them from its NPD
+  // SKU-code cell (the user's rule: the SKU code is used here, in PO Approval), with its NPD sizes
+  // and colour names. Read live from NPD, falling back to the SKU text saved when it was added.
+  if (!allVariants.length) {
+    const npd = await loadNpdContext(supabase, productCode);
+    if (npd) {
+      const sizesNpd = npd.sizes.length
+        ? [...SIZE_LADDER.filter((s) => npd.sizes.includes(s)), ...npd.sizes.filter((s) => !SIZE_LADDER.includes(s))]
+        : sizes;
+      const npdColours: Record<string, string> = {};
+      const npdInfo: PoLineContext['variantInfo'] = {};
+      for (const v of npd.variants) {
+        const name = Object.entries(npd.colourNames).find(([code]) => v.endsWith(code))?.[1] ?? null;
+        if (name) npdColours[name.toUpperCase()] = v;
+        npdInfo[v] = { colour: name, dyedFabricSku: null, sizes: npd.sizes.length ? sizesNpd : [] };
+      }
+      return {
+        productCode,
+        variants: npd.variants,
+        sizes: sizesNpd,
+        pending: [...bySku.values()],
+        colours: npdColours,
+        variantInfo: npdInfo,
+        npd: { skuText: npd.skuText, unread: npd.unread, sizesFromNpd: npd.sizes.length > 0 },
+      };
+    }
   }
 
-  return { productCode, variants, sizes, pending: [...bySku.values()], colours };
+  return { productCode, variants: allVariants, sizes: sizesOut, pending: [...bySku.values()], colours, variantInfo };
+}
+
+/** The NPD Tracker V7 source of a product added from it (sd_temp_product source = 'npd'), or null. */
+async function loadNpdContext(
+  supabase: Awaited<ReturnType<typeof client>>,
+  productCode: string,
+): Promise<{ skuText: string; variants: string[]; unread: string[]; sizes: string[]; colourNames: Record<string, string> } | null> {
+  const { data: reg } = await supabase
+    .from('sd_temp_product')
+    .select('npd_product_id, npd_sku_code')
+    .eq('temp_code', productCode)
+    .eq('source', 'npd')
+    .maybeSingle();
+  if (!reg) return null;
+  const live = reg.npd_product_id ? await loadNpdSkuSource(Number(reg.npd_product_id)) : null;
+  const skuText = (live?.sku_code ?? reg.npd_sku_code ?? '').trim();
+  const read = readNpdSkuCodes(skuText);
+  return {
+    skuText,
+    variants: read.variants,
+    unread: read.unread,
+    sizes: readNpdSizes(live?.sizes),
+    colourNames: readNpdColours(live?.colors_by_code),
+  };
 }
 
 /* ------------------------------------------------------------------ */

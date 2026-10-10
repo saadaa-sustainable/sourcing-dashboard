@@ -53,12 +53,17 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/po-details', label: 'PO Details (Form)', group: 'PO Workflow' },
   { path: '/cutting-register', label: 'Cutting Register', group: 'PO Workflow' },
   { path: '/po-closure', label: 'PO Closure', group: 'PO Workflow' },
+<<<<<<< HEAD
   { path: '/finished-good-po-closer', label: 'Finished Good PO Closer', group: 'PO Workflow' },
+=======
+  { path: '/vendor-invoices', label: 'Vendor Invoices', group: 'PO Workflow' },
+>>>>>>> origin/main
   { path: '/po-manual-adjustment', label: 'Manual Data Ingestion', group: 'Governance & Data' },
   { path: '/receivable-plan', label: 'Inward Plan', group: 'Planning' },
   { path: '/cash-flow', label: 'Cash Flow', group: 'PO Workflow', adminOnly: true },
   { path: '/discontinue', label: 'Discontinued Products View', group: 'Governance & Data' },
   { path: '/vendor-deboarding', label: 'Vendor De-Boarding', group: 'Governance & Data' },
+  { path: '/vendor-commercial', label: 'Vendor Commercial Approval', group: 'Governance & Data' },
   // Not admin-only: routine items (small FG buying plans / POs) route to the TEAM
   // level, and this queue is the only place PO decisions are taken.
   { path: '/approvals', label: 'Approvals', group: 'Governance & Data' },
@@ -76,6 +81,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/fabric-master', label: 'Fabric Master', group: 'Master Data & Datasets' },
   { path: '/material-master', label: 'Material Master', group: 'Master Data & Datasets' },
   { path: '/fabric-cost', label: 'Fabric Cost', group: 'Master Data & Datasets' },
+  { path: '/npd-products', label: 'NPD Products', group: 'Master Data & Datasets' },
   { path: '/users', label: 'User Panel', group: 'Admin', adminOnly: true },
   { path: '/adoption', label: 'Adoption & Activity', group: 'Admin', adminOnly: true },
   { path: '/rules-master', label: 'Rules Master', group: 'Admin', adminOnly: true },
@@ -136,4 +142,5 @@ export const MASTER_ROUTES = [
   '/fabric-master',
   '/material-master',
   '/fabric-cost',
+  '/npd-products',
 ];

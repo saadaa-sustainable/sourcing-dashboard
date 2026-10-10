@@ -18,7 +18,11 @@ import {
   NotConfiguredError,
 } from '@/lib/forms/queries';
 import { StandardCostDetailClient } from './cost-detail-client';
-import type { StandardCostRateHistory } from '@/lib/forms/types';
+import { loadCostDocuments } from '@/lib/forms/queries-modules/cost-documents';
+import { loadTrimHistory } from '@/lib/forms/queries-modules/trim-history';
+import { standardCostVariation } from '@/lib/forms/queries-modules/variation-reports';
+import { VariationReportPanel } from '@/components/variation-report';
+import type { StandardCost, StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 import { loadProductFabricMap } from '@/lib/product-fabric.server';
 import { loadTempProductMap } from '@/lib/temp-product.server';
@@ -114,6 +118,32 @@ export default async function StandardCostDetailPage({
           loadTempProductMap(),
           loadAnalyticsRules(),
         ]);
+  // CAD plan library (Finished Goods only) — the Documents tab.
+  const costDocs = track === 'material' ? { ready: false, linksReady: false, docs: [] } : await loadCostDocuments(cost.product_code);
+  // Trim History (Finished Goods only): this product's trim changes, and each trim's spread
+  // across every costed product's CMTP lines (trims are the most variable cost line).
+  const trimChanges = track === 'material' ? { ready: false, changes: [] } : await loadTrimHistory(cost.product_code);
+  const trimValues = new Map<string, number[]>();
+  if (track !== 'material') {
+    for (const c of cmtp) {
+      if (!/trim/i.test(c.category) || c.amount == null) continue;
+      const k = `${c.category} :: ${c.label ?? ''}`;
+      const list = trimValues.get(k) ?? [];
+      list.push(Number(c.amount));
+      trimValues.set(k, list);
+    }
+  }
+  const trimSpread = Object.fromEntries(
+    Array.from(trimValues, ([k, vs]) => {
+      const s = [...vs].sort((a, b) => a - b);
+      const mid = Math.floor(s.length / 2);
+      return [k, { min: s[0], max: s[s.length - 1], median: s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2, products: s.length }];
+    }),
+  );
+
+  // A frozen cost (a PO was issued against it) opens with its Variation Report: standard rate
+  // vs the PO line prices (Finished Goods; material costs are never frozen).
+  const variation = track !== 'material' && cost.frozen ? await standardCostVariation(cost as StandardCost) : null;
 
   // Fabric buildup map + code list — the Fabric Cost tab reads these from the master.
   const fabricByCode: Record<string, { grey: number | null; processing: number | null; finished: number | null }> = {};
@@ -144,6 +174,7 @@ export default async function StandardCostDetailPage({
       allowedPages={user.allowed_pages ?? null}
       accent="purple"
     >
+      {variation && <VariationReportPanel report={variation} />}
       <StandardCostDetailClient
         cost={cost}
         productName={productName}
@@ -158,9 +189,23 @@ export default async function StandardCostDetailPage({
         masterFabric={productFabric[cost.product_code] ?? null}
         temp={tempProducts[cost.product_code]}
         catalog={catalog}
+        costByCode={Object.fromEntries(
+          (track === 'material' ? [] : costs).map((c) => [
+            c.product_code.toUpperCase(),
+            { job_cost: c.job_cost, fob_cost: c.fob_cost, efob_cost: c.efob_cost, neg_stage: c.neg_stage, frozen: !!c.frozen },
+          ]),
+        )}
+        // What was linked into this product earlier: the typed name or TMP code, as recorded.
+        linkedFrom={Object.entries(tempProducts as Record<string, { status: string; merged_into: string | null }>)
+          .filter(([, t]) => t.status === 'merged' && (t.merged_into ?? '').toUpperCase() === cost.product_code.toUpperCase())
+          .map(([k]) => k)}
         role={user.role}
         marginPct={rules.margin_pct / 100}
         track={track}
+        // Documents tab between Fabric Cost and Final Cost (FG only).
+        costDocs={track !== 'material' ? costDocs : null}
+        trims={track !== 'material' ? { ...trimChanges, spread: trimSpread } : null}
+        userEmail={user.email}
       />
     </FormLayout>
   );

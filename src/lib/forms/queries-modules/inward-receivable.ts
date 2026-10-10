@@ -1,4 +1,5 @@
 import 'server-only';
+import { MAIN_WAREHOUSE } from '@/lib/po-scope';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
   computeInternalStatus,
@@ -97,7 +98,7 @@ export async function loadArrivalPlan(): Promise<{ rows: ArrivalRow[] }> {
     // page, so page the response too or receipts silently go missing.
     const data = await pageAll<{ po_number: string; sku: string | null; received_quantity: number | null; grn_created_at: string | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('po_number, sku, received_quantity, grn_created_at')
         .in('po_number', chunk)
         .order('po_number')
@@ -195,7 +196,7 @@ async function loadHistoricalArrivalRows(
     if (!chunk.length) continue;
     const data = await pageAll<{ po_ref_num: string; received_quantity: number | null; grn_created_at: string | null }>(() =>
       supabase
-        .from('sd_ee_grn')
+        .from('sd_ee_grn_saadaa')
         .select('po_ref_num, received_quantity, grn_created_at')
         .in('po_ref_num', chunk)
         .order('po_ref_num')
@@ -273,7 +274,7 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
   const inputs = await pageAll<Record<string, unknown>>(() =>
     supabase
       .from('sd_receivable_input')
-      .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at, status, approved_month')
+      .select('row_key, delivery_date_this_week, receiving_granularity, qty_expected_this_week, remarks, updated_at, status, approved_month, approver_edited')
       .order('row_key'),
   );
   const inputByKey = new Map(inputs.map((i) => [String(i.row_key), i]));
@@ -319,6 +320,7 @@ export async function loadReceivablePlan(): Promise<ReceivablePlanRow[]> {
       input_updated_at: (inp?.updated_at as string | null) ?? null,
       input_status: (inp?.status as ReceivablePlanRow['input_status']) ?? null,
       approved_month: (inp?.approved_month as string | null) ?? null,
+      input_approver_edited: Boolean(inp?.approver_edited),
     };
   });
 }
@@ -352,6 +354,7 @@ async function loadStockByVariantSize(
       supabase
         .from('sd_inventory_planning')
         .select('sku, product_variant, current_stock, warehouse, date_day')
+        .eq('warehouse', MAIN_WAREHOUSE)
         .in('product_variant', chunk)
         .order('sku'),
     );

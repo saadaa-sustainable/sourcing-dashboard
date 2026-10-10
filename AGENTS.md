@@ -37,3 +37,22 @@ table genuinely cannot reach 1,000 rows, add it to SMALL_TABLES there with the c
 observed. If a read is narrowed so it can only return a few rows, justify it in place:
 `// paging-ok: filtered to one PO, at most a few dozen lines`. A waiver with no reason is
 rejected.
+
+# Until approved, everything is amendable (house rule)
+
+Any record that goes through approval (plan lines, inward / receivable lines, cost sheets, PO
+requests, capacity entries…) stays **fully editable by its owner — every field, add and remove
+lines — until it is approved**. Draft, Approval Pending, Rework / Reassign and Rejected / Discarded
+all count as "not approved".
+
+- Amending a line that was sent back or rejected puts it back to Approval Pending (resubmitted)
+  and is logged with what changed.
+- Once **approved**, the record is locked: change it only through the module's reopen /
+  amendment / Edit & approve path, which goes through approval again.
+- Enforce it on the server (the action refuses an approved record), not only by hiding buttons.
+- Do not invent extra locks before approval ("pending lines can't be edited", "only the CSV can
+  change it"). If a module cannot follow this rule, record the reason in `docs/PENDENCY.md`.
+- **Exception — Buying Plan** (FG and Fabric / Material) is NOT under this rule (user decision,
+  2026-10-09). It keeps its own lifecycle: a plan awaiting approval is edited only after the
+  approver sends it back for rework, only draft / rework plans are submitted (`canSubmitPlan`),
+  and approved plans change through amendments. Every other tab follows the rule.

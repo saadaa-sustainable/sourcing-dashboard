@@ -3,6 +3,7 @@ import { client, PAGE_SIZE } from './_shared';
 import { monthStart, addMonths } from '../approval';
 import { loadInProcessByVendor } from './vendor';
 import type {
+  ApprovalQueueItem,
   DeletedPoRequest,
   PoDeleteRequest,
   PoApproval,
@@ -25,7 +26,7 @@ import type {
 export async function loadPoApprovals() {
   const supabase = await client();
 
-  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }] = await Promise.all([
+  const [{ data: pos }, { data: cycle }, { data: stdProducts }, { data: vendors }, { data: catalog }] = await Promise.all([
     supabase
       .from('sd_po_approval')
       .select('*')
@@ -40,9 +41,11 @@ export async function loadPoApprovals() {
     supabase.from('sd_standard_cost').select('product_code').eq('hidden', false).limit(PAGE_SIZE),
     supabase
       .from('vendor_master_data')
-      .select('vendor_code, vendor_name, is_active')
+      .select('vendor_code, vendor_name, is_active, primary_type')
       .eq('is_active', true)
       .limit(PAGE_SIZE),
+    // Product names for the product dropdown (bold name over the code).
+    supabase.from('sd_product_catalog').select('product_code, product_name').limit(PAGE_SIZE),
   ]);
 
   const poIds = ((pos ?? []) as PoApproval[]).map((p) => p.id);
@@ -67,9 +70,15 @@ export async function loadPoApprovals() {
   // Vendor code ↔ name from the vendor master (the source for auto-fill + the
   // "CODE - Full Name" display). Fall back to any codes seen in open POs.
   const vendorNames: Record<string, string> = {};
-  ((vendors ?? []) as { vendor_code: string | null; vendor_name: string | null }[]).forEach((v) => {
+  const vendorTypes: Record<string, string> = {};
+  ((vendors ?? []) as { vendor_code: string | null; vendor_name: string | null; primary_type: string | null }[]).forEach((v) => {
     const code = (v.vendor_code ?? '').trim();
     if (code) vendorNames[code] = (v.vendor_name ?? '').trim();
+    if (code && v.primary_type) vendorTypes[code] = v.primary_type.trim();
+  });
+  const productNames: Record<string, string> = {};
+  ((catalog ?? []) as { product_code: string | null; product_name: string | null }[]).forEach((r) => {
+    if (r.product_code && r.product_name) productNames[r.product_code.trim().toUpperCase()] = r.product_name.trim();
   });
   const vendorCodes = [
     ...new Set([...Object.keys(vendorNames), ...capacityByVendor.keys()]),
@@ -79,12 +88,16 @@ export async function loadPoApprovals() {
   ((cycle ?? []) as PoCycleTime[]).forEach((c) => cycleById.set(c.id, c));
 
   return {
-    pos: (pos ?? []) as PoApproval[],
+    // The frozen review snapshot is read only on the PO's own page (loadPoReviewSnapshot);
+    // it stays off the list so the page payload does not grow with every approved PO.
+    pos: ((pos ?? []) as (PoApproval & { review_snapshot?: unknown })[]).map(({ review_snapshot: _s, ...p }) => p as PoApproval),
     cycleById,
     linesByPo,
     productCodes,
     vendorCodes,
     vendorNames,
+    vendorTypes,
+    productNames,
     capacityByVendor,
   };
 }
@@ -224,4 +237,16 @@ export async function loadNpdBudget(month = monthStart()): Promise<NpdBudget> {
     pendingCount,
     missingRate,
   };
+}
+
+/** What the approver saw when this PO was approved (written once by decideApproval), or null. */
+export async function loadPoReviewSnapshot(id: number): Promise<{ item: ApprovalQueueItem; at: string } | null> {
+  const supabase = await client();
+  const { data } = await supabase
+    .from('sd_po_approval')
+    .select('review_snapshot, review_snapshot_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (!data?.review_snapshot || !data.review_snapshot_at) return null;
+  return { item: data.review_snapshot as unknown as ApprovalQueueItem, at: data.review_snapshot_at };
 }

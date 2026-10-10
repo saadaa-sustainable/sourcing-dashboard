@@ -18,7 +18,8 @@ import type { DoqWindowRow, OosCalculationRow } from '@/lib/forms/types';
  * SKUs on the OOS exclusion list are left out entirely.
  */
 
-export const DOQ_WINDOW_KEYS = ['d1', 'l7', 'w1', 'w2', 'w3', 'w4', 'at'] as const;
+// f45 = the 45 days ending on the anchor day (yesterday, or the last complete day) — BqSync doqWindows.
+export const DOQ_WINDOW_KEYS = ['d1', 'l7', 'f45', 'w1', 'w2', 'w3', 'w4', 'at'] as const;
 export type DoqWindowKey = (typeof DOQ_WINDOW_KEYS)[number];
 
 export const DOQ_WEAVES = ['All', 'Woven', 'Knit'] as const;
@@ -177,9 +178,15 @@ export function aggregateDoqWindow(
     categoryOf?: (m: OosCalculationRow) => string;
     /** 'state' = fixed status order; 'com' = base-state order then class. */
     order?: 'state' | 'com';
+    /** Sales leakage values a lost piece at selling price × this (Rules Master leakage_price_factor). */
+    priceFactor?: number;
+    /** TOTAL-row DOH: 'skus' = averaged over every SKU (the window tables); 'rows' = the plain
+     *  average of the category rows above it (the DOQ sheet's 45-day table). */
+    totalDoh?: 'skus' | 'rows';
   },
 ): DoqCategoryRow[] {
   const categoryOf = opts?.categoryOf ?? ((m) => m.product_status?.trim() || 'Unknown');
+  const priceFactor = opts?.priceFactor ?? 1;
   const N = Math.max(1, ndays);
   const byCat: Record<string, Acc> = {};
   const countMap: Record<string, number> = {};
@@ -197,11 +204,11 @@ export function aggregateDoqWindow(
     const qty = Number(w?.[`${key}_qty`] ?? 0) || 0;
 
     const doq = avail > 0 ? qty / avail : 0;
-    // Days-of-cover is undefined with no sales in the window — such SKUs are left
-    // out of the DOH average (counted in dohCount), not averaged in as "0 days".
+    // DOH per SKU = stock ÷ window DOQ, 0 when it did not sell — the DOQ sheet's rule, and the
+    // category figure averages over EVERY SKU in it (see below), so the totals reconcile.
     const dohStock = doq > 0 ? (m.current_stock ?? 0) / doq : 0;
     const dohIp = doq > 0 ? (m.inprocess_stock ?? 0) / doq : 0;
-    const leak = oos * (m.doq_45 ?? 0) * (m.sales_value ?? 0);
+    const leak = oos * (m.doq_45 ?? 0) * (m.sales_value ?? 0) * priceFactor;
 
     const a = (byCat[cat] ??= {
       doq: 0,
@@ -253,8 +260,9 @@ export function aggregateDoqWindow(
       pctSku: totalSku > 0 ? cnt / totalSku : 0,
       doq: Math.round(a.doq * 10) / 10,
       pctDoq: tableTotalDoq > 0 ? a.doq / tableTotalDoq : 0,
-      dohStock: a.dohCount > 0 ? Math.round(a.dohStockSum / a.dohCount) : 0,
-      dohInProcess: a.dohCount > 0 ? Math.round(a.dohIpSum / a.dohCount) : 0,
+      // Averaged over every SKU in the category (the sheet's AVERAGE over the category).
+      dohStock: cnt > 0 ? Math.round(a.dohStockSum / cnt) : 0,
+      dohInProcess: cnt > 0 ? Math.round(a.dohIpSum / cnt) : 0,
       oosSkuCount: a.oosCount,
       oosSkuPct: cnt > 0 ? a.oosCount / cnt : 0,
       salesLeakage: Math.round(a.leak),
@@ -275,14 +283,16 @@ export function aggregateDoqWindow(
   }
 
   const totOosPct = tot.skuDays > 0 ? tot.oosDays / tot.skuDays : 0;
+  const meanOf = (k: 'dohStock' | 'dohInProcess') => (rows.length ? Math.round(rows.reduce((s, r) => s + r[k], 0) / rows.length) : 0);
+  const byRows = opts?.totalDoh === 'rows';
   rows.push({
     category: 'TOTAL',
     skuCount: tot.cnt,
     pctSku: totalSku > 0 ? tot.cnt / totalSku : 0,
     doq: Math.round(tot.doq * 10) / 10,
     pctDoq: tableTotalDoq > 0 ? tot.doq / tableTotalDoq : 0,
-    dohStock: tot.dohCount > 0 ? Math.round(tot.dohStockSum / tot.dohCount) : 0,
-    dohInProcess: tot.dohCount > 0 ? Math.round(tot.dohIpSum / tot.dohCount) : 0,
+    dohStock: byRows ? meanOf('dohStock') : tot.cnt > 0 ? Math.round(tot.dohStockSum / tot.cnt) : 0,
+    dohInProcess: byRows ? meanOf('dohInProcess') : tot.cnt > 0 ? Math.round(tot.dohIpSum / tot.cnt) : 0,
     oosSkuCount: tot.oosCount,
     oosSkuPct: tot.cnt > 0 ? tot.oosCount / tot.cnt : 0,
     salesLeakage: Math.round(tot.leak),

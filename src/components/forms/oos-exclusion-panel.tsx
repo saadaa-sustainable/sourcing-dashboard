@@ -1,5 +1,6 @@
 'use client';
 
+import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Ban, Plus, X } from 'lucide-react';
@@ -154,7 +155,13 @@ export function OosExclusionPanel({
     });
   }
 
-  function remove(code: string) {
+  async function remove(code: string) {
+    const ok = await confirmDelete({
+      title: `Remove ${code} from the exclusion list?`,
+      body: 'The SKU comes back into every OOS and DOQ table (both pages share this list). You can exclude it again later.',
+      confirmLabel: 'Remove exclusion',
+    });
+    if (!ok) return;
     setErr(null);
     const fd = new FormData();
     fd.set('sku', code);

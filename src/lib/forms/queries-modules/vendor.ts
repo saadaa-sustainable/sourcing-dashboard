@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { client, pageAll, PAGE_SIZE } from './_shared';
 import { buildVendorRollups, buildTrackerRows, capacityRulesFrom } from '@/lib/business-logic';
 import { loadAnalyticsRules } from './analytics';
@@ -235,11 +236,28 @@ export async function loadVendorOtif(
 }
 
 /**
+ * In-process quantity per vendor as it stood at the end of a past week (the week's Monday),
+ * from the hourly copy in sd_vendor_in_process_weekly. Null when that week has no copy
+ * (weeks before the copy started); a vendor missing from a copied week had nothing on order.
+ */
+export async function loadInProcessForWeek(week: string): Promise<Map<string, number> | null> {
+  const supabase = await client();
+  // paging-ok: filtered to one week, one row per vendor (a few dozen)
+  const { data } = await supabase
+    .from('sd_vendor_in_process_weekly')
+    .select('vendor_code, in_process_qty')
+    .eq('week', week);
+  const rows = (data ?? []) as { vendor_code: string; in_process_qty: number | null }[];
+  if (!rows.length) return null;
+  return new Map(rows.map((r) => [r.vendor_code.trim().toLowerCase(), Number(r.in_process_qty) || 0]));
+}
+
+/**
  * In-process (Approved) quantity per vendor, from the PO pipeline view
  * (sd_vendor_in_process). Feeds Vendor Capacity's available-capacity — real PO
  * load instead of the sheet's open-qty. Keyed by lower-cased vendor_code.
  */
-export async function loadInProcessByVendor(): Promise<Map<string, number>> {
+export const loadInProcessByVendor = cache(async function loadInProcessByVendor(): Promise<Map<string, number>> {
   const supabase = await client();
   const { data } = await supabase
     .from('sd_vendor_in_process')
@@ -253,13 +271,13 @@ export async function loadInProcessByVendor(): Promise<Map<string, number>> {
     if (code) map.set(code, Number(row.in_process_qty) || 0);
   });
   return map;
-}
+});
 
 /**
  * Each vendor's most recently logged monthly capacity (sd_vendor_capacity_log),
  * so the PO approval card can show "last-updated capacity". Keyed lower-case.
  */
-export async function loadLatestVendorCapacity(): Promise<
+export const loadLatestVendorCapacity = cache(async function loadLatestVendorCapacity(): Promise<
   Map<string, { capacityPerMonth: number; weekOf: string | null; machines: number; karigar: number }>
 > {
   const supabase = await client();
@@ -293,7 +311,7 @@ export async function loadLatestVendorCapacity(): Promise<
     }
   });
   return map;
-}
+});
 
 /* ------------------------------------------------------------------ */
 /* Vendor capacity                                                     */

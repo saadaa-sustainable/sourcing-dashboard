@@ -70,6 +70,7 @@ import {
 import { downloadCsv, downloadPdf, type CsvValue } from "@/lib/download";
 import { MATRIX_DEFAULT_MODE } from "@/lib/matrix-defaults";
 import { FilterTable } from "@/components/filter-table";
+import { ClearFiltersButton } from "@/components/clear-filters-button";
 import { VendorHistoryButton } from "@/components/vendor-history-modal";
 import type {
   DashboardData,
@@ -201,9 +202,11 @@ function CountUp({ text }: { text: string }) {
 
   useEffect(() => {
     if (!m || Number.isNaN(target)) return;
-    // Reduced motion: jump straight to the final value — intentional set-in-effect.
+    // Reduced motion, or a tab that is not on screen: jump straight to the final value. Browsers
+    // pause animation frames in hidden tabs, so a count-up started there stayed at 0 until the
+    // tab was looked at (a page opened in the background read "0 Overdue POs").
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (reduced) { setDisplay(target); return; }
+    if (reduced || document.visibilityState !== "visible") { setDisplay(target); return; }
     let raf = 0;
     let start = 0;
     const dur = 700;
@@ -538,14 +541,17 @@ function FilterSelect({
   value,
   options,
   onChange,
+  inBar = false,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
+  /** Inside a `.tb` toolbar: the name sits inside the box (`tb-field`) instead of above it. */
+  inBar?: boolean;
 }) {
   return (
-    <label className="field">
+    <label className={inBar ? "tb-field" : "field"}>
       <span>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">All</option>
@@ -577,6 +583,19 @@ const DASH_GROUPS = [
 
 type DashGroup = (typeof DASH_GROUPS)[number][0];
 
+/** A titled row on the Open orders today tab (layout redesign, 2026-10-09): same charts, grouped. */
+function DashSection({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
+  return (
+    <section className="dash-sec dash-sec-orders">
+      <div className="dash-sec-head">
+        <h2>{title}</h2>
+        <p>{sub}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function DashboardTab({
   capacityRules = DEFAULT_CAPACITY_RULES,
   data,
@@ -589,6 +608,7 @@ function DashboardTab({
   section,
   expectedVsActual = null,
   extras = null,
+  moneySlot = null,
 }: {
   capacityRules?: CapacityRules;
   data: DashboardData;
@@ -607,6 +627,8 @@ function DashboardTab({
   expectedVsActual?: AnalyticsExtras["expectedVsActual"];
   /** Server-computed sections — the stock and OTIF objectives read from these. */
   extras?: AnalyticsExtras | null;
+  /** Cost Variance (rendered by AnalyticsCards), placed in the Plan & approvals row. */
+  moneySlot?: React.ReactNode;
 }) {
   const lookups = useMemo(
     () => createLookups(data.vendorTypes, data.vendorMasters, data.tnaRecords),
@@ -993,6 +1015,8 @@ function DashboardTab({
       tracker.filter((row) => row.delayBucket === name).map((row) => row.poRef),
     ).length,
   }));
+  // The PO-book figures the Objectives synopsis rows share.
+  const book = { open: openRefs.length, overdue: delayedRefs.length, highRisk: highRiskRefs, ageing };
   const products = Object.values(
     tracker.reduce<Record<string, { name: string; qty: number }>>(
       (acc, row) => {
@@ -1061,35 +1085,41 @@ function DashboardTab({
   const maxVariantOpen = Math.max(1, ...variants.map((v) => v.openCount));
   return (
     <>
-      <div className="segment">
-        <button
-          className={bucket === "All" ? "active" : ""}
-          onClick={() => setBucket("All")}
-        >
-          All
-        </button>
-        <button
-          className={bucket === "Woven" ? "active" : ""}
-          onClick={() => setBucket("Woven")}
-        >
-          Woven
-        </button>
-        <button
-          className={bucket === "Knit" ? "active" : ""}
-          onClick={() => setBucket("Knit")}
-        >
-          Knitted
-        </button>
-        <button
-          className={bucket === "Other" ? "active" : ""}
-          onClick={() => setBucket("Other")}
-        >
-          Other
-        </button>
+      <div className="tb">
+        <div className="tb-find">
+          <div className="segment" style={{ marginBottom: 0 }}>
+            <button
+              className={bucket === "All" ? "active" : ""}
+              onClick={() => setBucket("All")}
+            >
+              All
+            </button>
+            <button
+              className={bucket === "Woven" ? "active" : ""}
+              onClick={() => setBucket("Woven")}
+            >
+              Woven
+            </button>
+            <button
+              className={bucket === "Knit" ? "active" : ""}
+              onClick={() => setBucket("Knit")}
+            >
+              Knitted
+            </button>
+            <button
+              className={bucket === "Other" ? "active" : ""}
+              onClick={() => setBucket("Other")}
+            >
+              Other
+            </button>
+          </div>
+          {/* Clear all filters: the vendor-type filter back to All. */}
+          <ClearFiltersButton active={bucket !== "All"} onClear={() => setBucket("All")} />
+        </div>
       </div>
       {section === "objectives" ? (
         <>
-          <div className="metric-grid dashboard-metrics">
+          <div className="metric-grid dashboard-metrics dashboard-kpis">
             <Card
               label="Overdue POs"
               value={fmt.format(delayedRefs.length)}
@@ -1134,13 +1164,11 @@ function DashboardTab({
               info={"WHAT: how many issues are open on the Issue Tracker right now — raised by people to each other, and raised by the dashboard from its own checks.\n\nHOW: issues in Open or In progress. The dashboard raises one per open PO with no TNA timeline, per open PO with no delivery date, per discontinued product still on order, and per stale feed; it closes them itself when the condition is gone.\n\nUSE: click to open the tracker. This number should trend down; days from raise to resolve are tracked there."}
               onClick={() => router.push("/issues")}
             />
-          </div>
-          {/* Spec 1.10 — the four the team asked to see on the main dashboard. Coverage %
-              (buying plan + inward) is the pair already on the "Buying to plan" view. */}
-          <div className="metric-grid dashboard-metrics">
+            {/* Spec 1.10 — the four the team asked to see on the main dashboard. Coverage %
+                (buying plan + inward) is the pair already on the "Buying to plan" view. The
+                seven objectives sit in one even strip (redesign, 2026-10-09). */}
             <Card
               label="Sales leakage"
-              big
               value={extras?.salesLeakage ? money.format(extras.salesLeakage.amount) : "—"}
               note={
                 extras?.salesLeakage
@@ -1179,16 +1207,40 @@ function DashboardTab({
               onClick={() => router.push("/issues")}
             />
           </div>
-          <ObjectiveStockCards extras={extras} onTab={onTab} />
-          <ObjectiveSynopsisCards
-            extras={extras}
-            book={{ open: openRefs.length, overdue: delayedRefs.length, highRisk: highRiskRefs, ageing }}
-            onTab={onTab}
-          />
+          {/* Redesign (2026-10-09): the same cards, grouped by the question they answer. */}
+          <section className="dash-sec" aria-labelledby="dash-sec-stock">
+            <div className="dash-sec-head">
+              <h2 id="dash-sec-stock">Will we run out</h2>
+              <p>Variants to reorder now, fast sellers on the edge, and what is already at zero.</p>
+            </div>
+            <div className="ana-grid ana-tab-grid">
+              <ObjectiveStockCards extras={extras} onTab={onTab} bare />
+              <ObjectiveSynopsisCards extras={extras} book={book} onTab={onTab} part="stock" bare />
+            </div>
+          </section>
+          <section className="dash-sec" aria-labelledby="dash-sec-orders">
+            <div className="dash-sec-head">
+              <h2 id="dash-sec-orders">Open orders</h2>
+              <p>What is on order, how late it is, and whether receipts follow the inward plan.</p>
+            </div>
+            <div className="ana-grid ana-tab-grid">
+              <ObjectiveSynopsisCards extras={extras} book={book} onTab={onTab} part="orders" bare />
+            </div>
+          </section>
+          <section className="dash-sec" aria-labelledby="dash-sec-plan">
+            <div className="dash-sec-head">
+              <h2 id="dash-sec-plan">Plan &amp; approvals</h2>
+              <p>Buying against this month&apos;s plan, decisions waiting, and cost exceptions.</p>
+            </div>
+            <div className="ana-grid ana-tab-grid">
+              <ObjectiveSynopsisCards extras={extras} book={book} onTab={onTab} part="plan" bare />
+              {moneySlot && <div className="dash-money-slot">{moneySlot}</div>}
+            </div>
+          </section>
         </>
       ) : (
       <>
-      <div className="metric-grid dashboard-metrics">
+      <div className="metric-grid dashboard-metrics dashboard-kpis3">
         <Card
           label="Open POs"
           value={fmt.format(openRefs.length)}
@@ -1213,6 +1265,7 @@ function DashboardTab({
           info={"WHAT: the money committed on open POs — pending pieces × item price, shown per PO type.\n\nHOW: for every open line, pending quantity × the price on the PO, summed by type. Job Work lines are priced at the job-work (stitching) rate, not a full garment price, so the three types are shown side by side rather than added into one misleading total. Reversed or cancelled lines carry negative quantities and are netted off, not dropped.\n\nUSE: what is tied up with vendors right now. A rising FOB figure with flat arrivals means goods are being ordered faster than they land. Compare with the Buying Plan's approved value for the month."}
         />
       </div>
+      <DashSection title="Are deliveries keeping pace" sub="Due against delivered, week by week, and where every open PO sits in production.">
       <div className="bento-grid">
         <ChartCard
           title="Expected vs actual delivery"
@@ -1313,6 +1366,8 @@ function DashboardTab({
           )}
         </section>
       </div>
+      </DashSection>
+      <DashSection title="How late is the book" sub="Open POs by days past their delivery date, and today&apos;s execution checkpoints.">
       <div className="bento-grid">
         <ChartCard
           title="PO ageing"
@@ -1389,7 +1444,9 @@ function DashboardTab({
           </div>
         </section>
       </div>
-      <div className="bento-grid">
+      </DashSection>
+      <DashSection title="Where the work slips" sub="Average days late at each TNA stage, and the product codes with the most delayed POs.">
+      <div className="bento-grid bento-even">
         <ChartCard
           title="Stage turnaround — avg days late"
           kicker="TNA discipline"
@@ -1465,6 +1522,8 @@ function DashboardTab({
           )}
         </ChartCard>
       </div>
+      </DashSection>
+      <DashSection title="Who and what it sits with" sub="Open and delayed POs by vendor, and the codes and variants with the most on order.">
       <div className="chart-grid">
         <ChartCard
           title="Vendor PO status and delay percentage"
@@ -1619,6 +1678,8 @@ function DashboardTab({
           )}
         </section>
       </div>
+      </DashSection>
+      <DashSection title="What lands when" sub="Pieces due by vendor and week, and the planned TNA path of the POs that need watching.">
       {/* EDD scatter last: a full-width, tall panel (not a half bento cell) so every
           vendor gets vertical room — labels never collide, date axis stays in view.
           Removing it from the top row let Expected-vs-actual + Production pipeline
@@ -1813,6 +1874,7 @@ function DashboardTab({
           <Empty text="No open PO has a TNA timeline to plot" />
         )}
       </ChartCard>
+      </DashSection>
       </>
       )}
     </>
@@ -1991,6 +2053,26 @@ function TrackerTab({
   const rows = activeTab ? preStatus.filter(activeTab.test) : preStatus;
   const missingTnaCount = all.filter((r) => r.tnaMissing).length;
   const paged = usePaged(rows);
+  // Clear all filters: search, every select (incl. More filters), the status tab and
+  // Missing TNA. A vendor code seeded from a vendor-chart click is cleared to All too.
+  const filtersActive =
+    Object.values(filters).some((v) => Boolean(v)) || missingOnly;
+  const clearFilters = () => {
+    set({
+      vendor: "",
+      vendorCode: "",
+      vendorType: "",
+      type: "",
+      product: "",
+      merchant: "",
+      bucket: "",
+      status: "",
+      search: "",
+      easycom: "",
+    });
+    setMissingOnly(false);
+    paged.setPage(0);
+  };
 
   // Measure each header cell's left offset so frozen columns stack correctly,
   // whatever their (content-driven) widths are. Re-measured on page/data/resize.
@@ -2062,91 +2144,98 @@ function TrackerTab({
           info={"WHAT: pieces still to arrive across all open lines.\n\nHOW: ordered − received, summed over every open line.\n\nUSE: the volume vendors still owe. Compare with monthly capacity on Vendor Performance."}
         />
       </div>
-      <div className="filter-bar tracker-filter-bar">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            placeholder="Search PO, product or vendor"
-            value={filters.search}
-            onChange={(e) => set({ ...filters, search: e.target.value })}
-          />
-        </label>
-        <FilterSelect
-          label="Vendor Code"
-          value={filters.vendorCode}
-          options={unique(all.map((r) => r.vendorCode))}
-          onChange={(v) => set({ ...filters, vendorCode: v })}
-        />
-        <FilterSelect
-          label="Vendor Type"
-          value={filters.vendorType}
-          options={["Woven", "Knit", "Other"]}
-          onChange={(v) => set({ ...filters, vendorType: v })}
-        />
-        <FilterSelect
-          label="PO type"
-          value={filters.type}
-          options={unique(all.map((r) => r.poType))}
-          onChange={(v) => set({ ...filters, type: v })}
-        />
-        <FilterSelect
-          label="Merchant"
-          value={filters.merchant}
-          options={unique(all.map((r) => r.merchant))}
-          onChange={(v) => set({ ...filters, merchant: v })}
-        />
-        <button
-          type="button"
-          className={moreFiltersOpen ? "tracker-more-button active" : "tracker-more-button"}
-          aria-expanded={moreFiltersOpen}
-          aria-controls="tracker-more-filters"
-          onClick={() => setMoreFiltersOpen((open) => !open)}
-        >
-          <MoreHorizontal size={15} aria-hidden="true" />
-          More filters
-          {moreFilterCount > 0 && (
-            <span className="tracker-more-count">{moreFilterCount}</span>
-          )}
-        </button>
-        <div
-          id="tracker-more-filters"
-          className="tracker-more-filters"
-          role="group"
-          aria-label="More filters"
-          hidden={!moreFiltersOpen}
-        >
+      <div className="tb">
+        <div className="tb-find">
+          <label className="search-field tb-search-wrap">
+            <Search size={16} />
+            <input
+              placeholder="Search PO, product or vendor"
+              value={filters.search}
+              onChange={(e) => set({ ...filters, search: e.target.value })}
+            />
+          </label>
           <FilterSelect
-            label="Vendor"
-            value={filters.vendor}
-            options={unique(all.map((r) => r.vendorName))}
-            onChange={(v) => set({ ...filters, vendor: v })}
+            inBar
+            label="Vendor Code"
+            value={filters.vendorCode}
+            options={unique(all.map((r) => r.vendorCode))}
+            onChange={(v) => set({ ...filters, vendorCode: v })}
           />
           <FilterSelect
-            label="Product"
-            value={filters.product}
-            options={unique(all.map((r) => r.productCode))}
-            onChange={(v) => set({ ...filters, product: v })}
+            inBar
+            label="Vendor Type"
+            value={filters.vendorType}
+            options={["Woven", "Knit", "Other"]}
+            onChange={(v) => set({ ...filters, vendorType: v })}
           />
           <FilterSelect
-            label="EasyCom"
-            value={filters.easycom}
-            options={["Approved", "Partially Received", "Closure Pending"]}
-            onChange={(v) => set({ ...filters, easycom: v })}
+            inBar
+            label="PO type"
+            value={filters.type}
+            options={unique(all.map((r) => r.poType))}
+            onChange={(v) => set({ ...filters, type: v })}
           />
           <FilterSelect
-            label="Days Overdue"
-            value={filters.bucket}
-            options={[
-              "Not Due",
-              "0-7 Days",
-              "8-15 Days",
-              "16-30 Days",
-              "30+ Days",
-              "No EDD",
-            ]}
-            onChange={(v) => set({ ...filters, bucket: v })}
+            inBar
+            label="Merchant"
+            value={filters.merchant}
+            options={unique(all.map((r) => r.merchant))}
+            onChange={(v) => set({ ...filters, merchant: v })}
           />
+          <button
+            type="button"
+            className={moreFiltersOpen ? "tracker-more-button active" : "tracker-more-button"}
+            aria-expanded={moreFiltersOpen}
+            aria-controls="tracker-more-filters"
+            onClick={() => setMoreFiltersOpen((open) => !open)}
+          >
+            <MoreHorizontal size={15} aria-hidden="true" />
+            More filters
+            {moreFilterCount > 0 && (
+              <span className="tracker-more-count">{moreFilterCount}</span>
+            )}
+          </button>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
         </div>
+      </div>
+      <div
+        id="tracker-more-filters"
+        className="tracker-more-filters"
+        role="group"
+        aria-label="More filters"
+        hidden={!moreFiltersOpen}
+      >
+        <FilterSelect
+          label="Vendor"
+          value={filters.vendor}
+          options={unique(all.map((r) => r.vendorName))}
+          onChange={(v) => set({ ...filters, vendor: v })}
+        />
+        <FilterSelect
+          label="Product"
+          value={filters.product}
+          options={unique(all.map((r) => r.productCode))}
+          onChange={(v) => set({ ...filters, product: v })}
+        />
+        <FilterSelect
+          label="EasyCom"
+          value={filters.easycom}
+          options={["Approved", "Partially Received", "Closure Pending"]}
+          onChange={(v) => set({ ...filters, easycom: v })}
+        />
+        <FilterSelect
+          label="Days Overdue"
+          value={filters.bucket}
+          options={[
+            "Not Due",
+            "0-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "30+ Days",
+            "No EDD",
+          ]}
+          onChange={(v) => set({ ...filters, bucket: v })}
+        />
       </div>
       <div className="segment tracker-status-tabs">
         <button
@@ -2444,96 +2533,110 @@ function VendorTable({
     .filter(Boolean)
     .join(", ");
   const paged = usePaged(rows);
+  // Clear all filters: search, merchant, type, utilisation and delay back to All, page 1.
+  const filtersActive = query !== "" || merchant !== "" || bucket !== "" || utilBand !== "" || delayBand !== "";
+  const clearFilters = () => {
+    setQuery("");
+    setMerchant("");
+    setBucket("");
+    setUtilBand("");
+    setDelayBand("");
+    paged.setPage(0);
+  };
   return (
     <>
       {filename && (
         <div className={`table-meta${withFilters ? " has-filters" : ""}`}>
-          <div className="table-meta-filters">
-            <label className="search-field table-meta-search">
-              <Search size={14} />
-              <input
-                placeholder={searchPlaceholder}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              {query && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Clear filter"
-                  onClick={() => setQuery("")}
-                >
-                  <X size={13} />
-                </button>
+          <div className="tb tb-flat" style={{ flex: "1 1 auto" }}>
+            <div className="tb-find">
+              <label className="search-field table-meta-search tb-search-wrap">
+                <Search size={14} />
+                <input
+                  placeholder={searchPlaceholder}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Clear filter"
+                    onClick={() => setQuery("")}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </label>
+              {withFilters && (
+                <>
+                  <select
+                    className="meta-select"
+                    value={merchant}
+                    onChange={(e) => setMerchant(e.target.value)}
+                  >
+                    <option value="">All merchants</option>
+                    {unique(allRows.map((r) => r.merchant)).map((m) => (
+                      <option key={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="meta-select"
+                    value={bucket}
+                    onChange={(e) => setBucket(e.target.value)}
+                  >
+                    <option value="">All types</option>
+                    {unique(allRows.map((r) => r.vendorBucket)).map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="meta-select"
+                    value={utilBand}
+                    onChange={(e) => setUtilBand(e.target.value)}
+                  >
+                    <option value="">All utilization</option>
+                    {utilizationBands.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="meta-select"
+                    value={delayBand}
+                    onChange={(e) => setDelayBand(e.target.value)}
+                  >
+                    <option value="">All delays</option>
+                    {delayBands.map((b) => (
+                      <option key={b}>{b}</option>
+                    ))}
+                  </select>
+                </>
               )}
-            </label>
-            {withFilters && (
-              <>
-                <select
-                  className="meta-select"
-                  value={merchant}
-                  onChange={(e) => setMerchant(e.target.value)}
-                >
-                  <option value="">All merchants</option>
-                  {unique(allRows.map((r) => r.merchant)).map((m) => (
-                    <option key={m}>{m}</option>
-                  ))}
-                </select>
-                <select
-                  className="meta-select"
-                  value={bucket}
-                  onChange={(e) => setBucket(e.target.value)}
-                >
-                  <option value="">All types</option>
-                  {unique(allRows.map((r) => r.vendorBucket)).map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-                <select
-                  className="meta-select"
-                  value={utilBand}
-                  onChange={(e) => setUtilBand(e.target.value)}
-                >
-                  <option value="">All utilization</option>
-                  {utilizationBands.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-                <select
-                  className="meta-select"
-                  value={delayBand}
-                  onChange={(e) => setDelayBand(e.target.value)}
-                >
-                  <option value="">All delays</option>
-                  {delayBands.map((b) => (
-                    <option key={b}>{b}</option>
-                  ))}
-                </select>
-              </>
-            )}
-          </div>
-          <div className="table-meta-actions">
-            <span>
-              {filtered
-                ? `${fmt.format(rows.length)} of ${fmt.format(allRows.length)} rows`
-                : `${fmt.format(rows.length)} rows`}
-            </span>
-            <DownloadButton
-              filename={filename}
-              headers={vendorCsvHeaders}
-              rows={vendorCsvRows(rows)}
-            />
-            <PdfButton
-              filename={filename}
-              title={
-                filterSummary
-                  ? `${exportTitle} - filter: ${filterSummary}`
-                  : exportTitle
-              }
-              headers={vendorCsvHeaders}
-              rows={vendorCsvRows(rows)}
-              note={reportNote}
-            />
+              <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+            </div>
+            <div className="tb-see">
+              <span className="tb-count">
+                {filtered
+                  ? `${fmt.format(rows.length)} of ${fmt.format(allRows.length)} rows`
+                  : `${fmt.format(rows.length)} rows`}
+              </span>
+              <span className="tb-divider" />
+              <DownloadButton
+                filename={filename}
+                headers={vendorCsvHeaders}
+                rows={vendorCsvRows(rows)}
+              />
+              <PdfButton
+                filename={filename}
+                title={
+                  filterSummary
+                    ? `${exportTitle} - filter: ${filterSummary}`
+                    : exportTitle
+                }
+                headers={vendorCsvHeaders}
+                rows={vendorCsvRows(rows)}
+                note={reportNote}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -3421,51 +3524,65 @@ function ProductTab({ hub = null, initialView, data }: {
         hub ? <Product360Client data={hub} /> : <Empty text="This view is not available right now — the summary data did not load." />
       ) : (
       <>
-      <div className="filter-bar">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            placeholder="Search product, variant or SKU"
-            value={filters.search}
-            onChange={(e) => set({ ...filters, search: e.target.value })}
+      <div className="tb">
+        <div className="tb-find">
+          <label className="search-field tb-search-wrap">
+            <Search size={16} />
+            <input
+              placeholder="Search product, variant or SKU"
+              value={filters.search}
+              onChange={(e) => set({ ...filters, search: e.target.value })}
+            />
+          </label>
+          <FilterSelect
+            inBar
+            label="Merchant"
+            value={filters.merchant}
+            options={merchants}
+            onChange={(v) => set({ ...filters, merchant: v })}
           />
-        </label>
-        <FilterSelect
-          label="Merchant"
-          value={filters.merchant}
-          options={merchants}
-          onChange={(v) => set({ ...filters, merchant: v })}
-        />
-        <FilterSelect
-          label="Vendor"
-          value={filters.vendor}
-          options={unique(data.pendingPos.map((r) => r.vendor_name ?? ""))}
-          onChange={(v) => set({ ...filters, vendor: v })}
-        />
-        <FilterSelect
-          label="Vendor Code"
-          value={filters.vendorCode}
-          options={unique(data.pendingPos.map((r) => r.vendor_code ?? ""))}
-          onChange={(v) => set({ ...filters, vendorCode: v })}
-        />
-        <FilterSelect
-          label="PO type"
-          value={filters.type}
-          options={unique(data.pendingPos.map((r) => r.po_type ?? ""))}
-          onChange={(v) => set({ ...filters, type: v })}
-        />
-        <FilterSelect
-          label="Product"
-          value={filters.product}
-          options={allProducts}
-          onChange={(v) => set({ ...filters, product: v })}
-        />
-        <FilterSelect
-          label="Variant"
-          value={filters.variant}
-          options={allVariants}
-          onChange={(v) => set({ ...filters, variant: v })}
-        />
+          <FilterSelect
+            inBar
+            label="Vendor"
+            value={filters.vendor}
+            options={unique(data.pendingPos.map((r) => r.vendor_name ?? ""))}
+            onChange={(v) => set({ ...filters, vendor: v })}
+          />
+          <FilterSelect
+            inBar
+            label="Vendor Code"
+            value={filters.vendorCode}
+            options={unique(data.pendingPos.map((r) => r.vendor_code ?? ""))}
+            onChange={(v) => set({ ...filters, vendorCode: v })}
+          />
+          <FilterSelect
+            inBar
+            label="PO type"
+            value={filters.type}
+            options={unique(data.pendingPos.map((r) => r.po_type ?? ""))}
+            onChange={(v) => set({ ...filters, type: v })}
+          />
+          <FilterSelect
+            inBar
+            label="Product"
+            value={filters.product}
+            options={allProducts}
+            onChange={(v) => set({ ...filters, product: v })}
+          />
+          <FilterSelect
+            inBar
+            label="Variant"
+            value={filters.variant}
+            options={allVariants}
+            onChange={(v) => set({ ...filters, variant: v })}
+          />
+          <ClearFiltersButton
+            active={Object.values(filters).some((v) => Boolean(v))}
+            onClear={() =>
+              set({ merchant: "", vendor: "", vendorCode: "", type: "", variant: "", product: "", search: "" })
+            }
+          />
+        </div>
       </div>
       <div className="metric-grid compact">
         <Card
@@ -3839,6 +3956,14 @@ function MatrixTab({ data }: { data: DashboardData }) {
   const allVendorNames = unique(tracker.map((r) => r.vendorName));
   const allVendorCodes = unique(tracker.map((r) => r.vendorCode));
   const pagedRowNames = usePaged(rowNames);
+  // Clear all filters: search, product, vendor, vendor code and the hide-empty toggle back
+  // to their defaults, page 1 (the By Variant / By Product Code switch is a view, kept).
+  const filtersActive = Object.values(filters).some((v) => Boolean(v)) || !hideEmptyVendors;
+  const clearFilters = () => {
+    set({ product: "", vendor: "", vendorCode: "", search: "" });
+    setHideEmptyVendors(true);
+    pagedRowNames.setPage(0);
+  };
   return (
     <>
       <div className="segment">
@@ -3855,41 +3980,47 @@ function MatrixTab({ data }: { data: DashboardData }) {
           By Product Code
         </button>
       </div>
-      <div className="filter-bar">
-        <label className="search-field">
-          <Search size={16} />
-          <input
-            placeholder="Search product or vendor"
-            value={filters.search}
-            onChange={(e) => set({ ...filters, search: e.target.value })}
+      <div className="tb">
+        <div className="tb-find">
+          <label className="search-field tb-search-wrap">
+            <Search size={16} />
+            <input
+              placeholder="Search product or vendor"
+              value={filters.search}
+              onChange={(e) => set({ ...filters, search: e.target.value })}
+            />
+          </label>
+          <FilterSelect
+            inBar
+            label="Product"
+            value={filters.product}
+            options={allProducts}
+            onChange={(v) => set({ ...filters, product: v })}
           />
-        </label>
-        <FilterSelect
-          label="Product"
-          value={filters.product}
-          options={allProducts}
-          onChange={(v) => set({ ...filters, product: v })}
-        />
-        <FilterSelect
-          label="Vendor"
-          value={filters.vendor}
-          options={allVendorNames}
-          onChange={(v) => set({ ...filters, vendor: v })}
-        />
-        <FilterSelect
-          label="Vendor Code"
-          value={filters.vendorCode}
-          options={allVendorCodes}
-          onChange={(v) => set({ ...filters, vendorCode: v })}
-        />
-        <label className="matrix-empty-toggle">
-          <input
-            type="checkbox"
-            checked={hideEmptyVendors}
-            onChange={(e) => setHideEmptyVendors(e.target.checked)}
+          <FilterSelect
+            inBar
+            label="Vendor"
+            value={filters.vendor}
+            options={allVendorNames}
+            onChange={(v) => set({ ...filters, vendor: v })}
           />
-          Hide empty vendor columns
-        </label>
+          <FilterSelect
+            inBar
+            label="Vendor Code"
+            value={filters.vendorCode}
+            options={allVendorCodes}
+            onChange={(v) => set({ ...filters, vendorCode: v })}
+          />
+          <label className="matrix-empty-toggle">
+            <input
+              type="checkbox"
+              checked={hideEmptyVendors}
+              onChange={(e) => setHideEmptyVendors(e.target.checked)}
+            />
+            Hide empty vendor columns
+          </label>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        </div>
       </div>
       <section className="panel table-panel">
         <div className="table-meta">
@@ -4073,7 +4204,7 @@ export function DashboardShell({
               <CircleHelp size={17} /> What do these mean?
             </button>
             {role === 'admin' && <FeedbackBell />}
-            {role === 'admin' && <ApprovalsBell />}
+            {role !== 'viewer' && <ApprovalsBell />}
             {userEmail && (
               <div className="account">
                 <span className="account-email" title={userEmail}>
@@ -4126,20 +4257,22 @@ export function DashboardShell({
                     onOverdue={setOverdue}
                     onVendorSelect={openVendorPos}
                     expectedVsActual={analyticsExtras?.expectedVsActual ?? null}
+                    // Cost Variance renders from AnalyticsCards, which owns the tracker maths
+                    // behind it — passing it in keeps that one implementation rather than
+                    // copying it; the Objectives tab places it in the Plan & approvals row.
+                    moneySlot={
+                      dashGroup === "objectives" ? (
+                        <AnalyticsCards
+                          data={data}
+                          rules={analyticsRules}
+                          extras={analyticsExtras}
+                          onTab={setTab}
+                          isAdmin={role === "admin"}
+                          only="money"
+                        />
+                      ) : null
+                    }
                   />
-                  {/* Capital at Risk and Cost Variance render from AnalyticsCards, which owns
-                      the tracker maths behind them — rendering them here keeps that one
-                      implementation rather than copying it. */}
-                  {dashGroup === "objectives" && (
-                    <AnalyticsCards
-                      data={data}
-                      rules={analyticsRules}
-                      extras={analyticsExtras}
-                      onTab={setTab}
-                      isAdmin={role === "admin"}
-                      only="money"
-                    />
-                  )}
                 </>
               ) : (
                 <AnalyticsCards

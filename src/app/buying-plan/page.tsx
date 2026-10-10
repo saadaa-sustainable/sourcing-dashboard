@@ -1,14 +1,17 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { monthLabel, monthStart } from '@/lib/forms/approval';
+import { addMonths, isPlanFrozen, monthLabel, monthStart } from '@/lib/forms/approval';
 import {
   currentUser,
   loadActualsByProduct,
   loadAnalyticsRules,
   loadBuyingPlan,
   loadBuyingPlanAnalysis,
+  loadBuyingPlanBoard,
   loadMaterialPlan,
   loadPlanFirstActionAt,
+  loadPlanMonthStatuses,
   loadNpdBudget,
   loadProductCatalog,
   NotConfiguredError,
@@ -18,14 +21,18 @@ import { BuyingPlanClient } from './buying-plan-client';
 import { BuyingPlanAnalysisClient } from './buying-plan-analysis-client';
 import { MaterialPlanClient } from './material-plan-client';
 import { NpdBudgetCard } from './npd-budget-card';
-import { PlanTypeTabs, type PlanType } from './plan-type-tabs';
+import { type PlanType } from './plan-type-tabs';
+import { PlanHeader, planFacts, type PlanMonthStatus } from './plan-header';
+import { MonthBoard } from '@/components/month-board';
+import { VariationReportPanel } from '@/components/variation-report';
+import { buyingPlanVariation, materialPlanVariation } from '@/lib/forms/queries-modules/variation-reports';
 
 export const dynamic = 'force-dynamic';
 
 export default async function BuyingPlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; type?: string; track?: string }>;
+  searchParams: Promise<{ month?: string; type?: string; track?: string; mode?: string }>;
 }) {
   const params = await searchParams;
   const planMonth = /^\d{4}-\d{2}-01$/.test(params.month ?? '')
@@ -55,35 +62,75 @@ export default async function BuyingPlanPage({
     redirect('/login?error=This+dashboard+is+restricted+to+SAADAA+accounts.');
   }
 
-  const subtitle =
-    planType === 'analysis'
-      ? `Buying Plan Analysis — ${monthLabel(planMonth)}. Approved plan vs POs actually issued: quantity, value and PO-count variance, excess / short, and the exceptions (issued but not budgeted; issued above approved).`
-      : `Monthly buying budget — ${monthLabel(planMonth)}. ${
-          planType === 'material' ? 'Fabric / material track.' : 'Finished-goods track.'
-        } Submitted for approval before POs are issued.`;
+  // No month or track asked for: the landing view is the month board, one card per plan.
+  if (!params.month && !requested) {
+    const rules = await loadAnalyticsRules();
+    const board = await loadBuyingPlanBoard(Math.min(28, Math.max(1, Math.round(rules.plan_approval_deadline_day ?? 7))));
+    const next = addMonths(monthStart(), 1);
+    return (
+      <FormLayout
+        title="Buying Plan"
+        subtitle="Every month's plan, FG and fabric / material, by where it stands. Open a card to fill, review or analyse that month."
+        active="/buying-plan"
+        role={user.role}
+        userEmail={user.email}
+        allowedPages={user.allowed_pages ?? null}
+      >
+        <MonthBoard
+          data={board}
+          searchPlaceholder="Search month or track…"
+          pageBar={
+            user.role !== 'viewer' ? (
+              <Link className="wf-btn wf-btn-primary wf-btn-sm" href={`/buying-plan?month=${next}&type=fg&mode=input`}>
+                + Plan {monthLabel(next)}
+              </Link>
+            ) : null
+          }
+        />
+      </FormLayout>
+    );
+  }
+
+  // Months for the header's picker: every month with a plan on either track, plus last month,
+  // this month and next month, plus the one being looked at.
+  const statuses = await loadPlanMonthStatuses();
+  const nowMonth = monthStart();
+  const monthSet = new Set([...statuses.map((r) => r.month), addMonths(nowMonth, -1), nowMonth, addMonths(nowMonth, 1), planMonth]);
+  const planMonths: PlanMonthStatus[] = [...monthSet]
+    .sort()
+    .map((m) => statuses.find((r) => r.month === m) ?? { month: m, fg: null, material: null });
 
   return (
     <FormLayout
       title="Buying Plan"
-      subtitle={subtitle}
       active="/buying-plan"
       role={user.role}
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
-      <PlanTypeTabs planMonth={planMonth} planType={planType} />
       {planType === 'analysis' ? (
-        <AnalysisTrack planMonth={planMonth} isAdmin={user.role === 'admin'} />
+        <>
+          <PlanHeader
+            planMonth={planMonth}
+            planType="analysis"
+            months={planMonths}
+            facts={[
+              <span key="what">Approved Finished goods plan vs POs actually issued</span>,
+              ...planFacts(planMonth, null).slice(1),
+            ]}
+          />
+          <AnalysisTrack planMonth={planMonth} isAdmin={user.role === 'admin'} />
+        </>
       ) : planType === 'material' ? (
-        <MaterialTrack planMonth={planMonth} role={user.role} />
+        <MaterialTrack planMonth={planMonth} role={user.role} startInInput={params.mode === 'input'} planMonths={planMonths} />
       ) : (
-        <FgTrack planMonth={planMonth} role={user.role} />
+        <FgTrack planMonth={planMonth} role={user.role} startInInput={params.mode === 'input'} planMonths={planMonths} />
       )}
     </FormLayout>
   );
 }
 
-async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+async function FgTrack({ planMonth, role, startInInput, planMonths }: { planMonth: string; role: 'viewer' | 'team' | 'admin'; startInInput: boolean; planMonths: PlanMonthStatus[] }) {
   const [
     { plan, lines, productCodes, productMaster, standardCosts, pendingByCode },
     actualsMap,
@@ -103,11 +150,21 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
   const pickerItems = restrictToStandardCost ? await loadStandardCostProductOptions() : catalog;
   // First admin decision on the plan — the approval deadline measures this, not approval alone.
   const firstActionAt = plan?.id ? await loadPlanFirstActionAt(plan.id) : null;
+  // A month that is over opens with its Variation Report: approved plan vs POs issued.
+  const variation = isPlanFrozen(planMonth) ? await buyingPlanVariation(planMonth) : null;
   return (
-    <>
-    <NpdBudgetCard budget={npdBudget} role={role} />
     <BuyingPlanClient
       planMonth={planMonth}
+      planMonths={planMonths}
+      // NPD budget shows only when a cap exists (the "not set" banner was dropped, 2026-10-08);
+      // on a month that is over it is read-only. It sits under the header.
+      afterHeader={
+        <>
+          {variation && <VariationReportPanel report={variation} />}
+          {npdBudget.cap != null ? <NpdBudgetCard budget={npdBudget} role={isPlanFrozen(planMonth) ? 'viewer' : role} /> : null}
+        </>
+      }
+      startInInput={startInInput}
       plan={plan}
       lines={lines}
       productCodes={productCodes}
@@ -118,27 +175,29 @@ async function FgTrack({ planMonth, role }: { planMonth: string; role: 'viewer' 
       catalog={catalog}
       pickerItems={pickerItems}
       restrictPicker={restrictToStandardCost}
-      npdBudgetSet={npdBudget.cap != null}
       leadDays={{ job: rules.lead_days_job, efob: rules.lead_days_efob, fob: rules.lead_days_fob }}
       deadlineDay={rules.plan_approval_deadline_day ?? 7}
       firstActionAt={firstActionAt}
       role={role}
     />
-    </>
   );
 }
 
-async function MaterialTrack({ planMonth, role }: { planMonth: string; role: 'viewer' | 'team' | 'admin' }) {
+async function MaterialTrack({ planMonth, role, startInInput, planMonths }: { planMonth: string; role: 'viewer' | 'team' | 'admin'; startInInput: boolean; planMonths: PlanMonthStatus[] }) {
   const { plan, lines, materialCodes, colours, materialCosts } = await loadMaterialPlan(planMonth);
+  const variation = isPlanFrozen(planMonth) ? materialPlanVariation(planMonth, lines) : null;
   return (
     <MaterialPlanClient
       planMonth={planMonth}
+      planMonths={planMonths}
+      startInInput={startInInput}
       plan={plan}
       lines={lines}
       materialCodes={materialCodes}
       colours={colours}
       materialCosts={materialCosts}
       role={role}
+      afterHeader={variation ? <VariationReportPanel report={variation} /> : null}
     />
   );
 }

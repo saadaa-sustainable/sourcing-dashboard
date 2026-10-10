@@ -6,6 +6,7 @@ import {
   loadPoApprovals,
   loadPoDeleteRequests,
   loadPoReviewItems,
+  loadPoReviewSnapshot,
   loadStandardCmByCode,
   NotConfiguredError,
 } from '@/lib/forms/queries';
@@ -45,7 +46,9 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
   ]);
   const po = pos.find((p) => p.id === id);
   if (!po) notFound();
-  const [review] = await loadPoReviewItems([po]);
+  // An approved PO shows the review frozen at approval, not today's live figures.
+  const snapshot = po.status === 'approved' ? await loadPoReviewSnapshot(po.id) : null;
+  const [review] = snapshot ? [snapshot.item] : await loadPoReviewItems([po]);
 
   return (
     <FormLayout
@@ -61,6 +64,13 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
       <p className="poa-back">
         <Link href="/po-approval">← All purchase orders</Link>
       </p>
+      {snapshot && (
+        <Notice tone="info">
+          The review below is as the approver saw it on{' '}
+          {new Date(snapshot.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' })}
+          , frozen at approval. Stock and cost have moved since.
+        </Notice>
+      )}
       <PoPageClient
         po={po}
         cycle={cycleById.get(po.id)}

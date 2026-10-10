@@ -9,6 +9,7 @@ import { saveFabricCostBase } from '@/lib/forms/actions';
 import { csvObjects, downloadCsv } from '@/lib/csv';
 import { Notice } from '@/components/forms/form-layout';
 import type { FabricCostBase } from '@/lib/forms/types';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 
 const NUM_FIELDS = [
   'yarn_cost',
@@ -161,43 +162,49 @@ export function FabricCostClient({
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      <div className="wf-toolbar wf-filter-bar">
-        <input
-          className="wf-search"
-          placeholder="Filter fabric code…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <span className="wf-subtle">{shown.length} shown</span>
-        {editable && (
-          <div className="wf-toolbar-right">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onCsvFile(f);
-                e.target.value = '';
-              }}
-            />
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
-              <Download size={13} /> Template
-            </button>
-            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
-              <Upload size={13} /> Import CSV
-            </button>
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              onClick={saveAll}
-              disabled={pending || !dirtyCodes.size}
-            >
-              <Save size={13} /> {pending ? 'Saving…' : `Save changes (${dirtyCodes.size})`}
-            </button>
-          </div>
-        )}
+      <div className="tb">
+        <div className="tb-find">
+          <input
+            className="wf-search"
+            placeholder="Filter fabric code…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <ClearFiltersButton active={filter !== ''} onClear={() => setFilter('')} />
+        </div>
+        <div className="tb-see">
+          <span className="wf-subtle tb-count">{shown.length} shown</span>
+          {editable && (
+            <>
+              <span className="tb-divider" />
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void onCsvFile(f);
+                  e.target.value = '';
+                }}
+              />
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
+                <Download size={13} /> Template
+              </button>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
+                <Upload size={13} /> Import CSV
+              </button>
+              <button
+                type="button"
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                onClick={saveAll}
+                disabled={pending || !dirtyCodes.size}
+              >
+                <Save size={13} /> {pending ? 'Saving…' : `Save changes (${dirtyCodes.size})`}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="table-panel wf-grid-panel">

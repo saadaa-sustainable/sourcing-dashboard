@@ -128,6 +128,22 @@ const decisionTabs = [
 
 type DecisionTab = (typeof decisionTabs)[number]["id"];
 
+/**
+ * A titled row of cards on a Main Dashboard tab (layout redesign, 2026-10-09): the same cards,
+ * grouped by the question they answer.
+ */
+function DashRow({ title, sub, children }: { title: string; sub: string; children: React.ReactNode }) {
+  return (
+    <section className="dash-sec">
+      <div className="dash-sec-head">
+        <h2>{title}</h2>
+        <p>{sub}</p>
+      </div>
+      <div className="ana-grid ana-tab-grid">{children}</div>
+    </section>
+  );
+}
+
 function AnaCard({
   title,
   icon: Icon,
@@ -556,7 +572,8 @@ export function AnalyticsCards({
         )}
 
         {decisionTab === "vendors" && (
-          <div className="ana-grid ana-tab-grid">
+          <>
+            <DashRow title="Where the next order can go" sub="Demand over capacity on one side, spare room on the other.">
             <AnaCard
               title="Capacity vs Demand"
               icon={Scale}
@@ -571,8 +588,7 @@ export function AnalyticsCards({
                     : "BALANCED"
               }
               cta="Open vendor capacity"
-              span={7}
-              rowSpan
+              span={12}
               onClick={() => onTab("vendors")}
               info={`WHAT: which vendors have room and which are over-committed.
 
@@ -680,6 +696,8 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                 </>
               )}
             </AnaCard>
+            </DashRow>
+            <DashRow title="How we buy" sub="Concentration of open value, delivery track record, and the data's recommendation.">
 
             <AnaCard
               title="Vendor Concentration"
@@ -699,7 +717,7 @@ USE: place new POs with the vendors that have room; expect delays from the over-
                     : "WITHIN RULE"
               }
               cta="Review vendor allocation"
-              span={5}
+              span={4}
               onClick={() => onTab("vendors")}
               info={`WHAT: how much of the open buying value sits with just three vendors.
 
@@ -801,7 +819,7 @@ USE: above the ${concentrationAlert}% line (editable in Rules Master) one vendor
                     : "RELIABLE"
               }
               cta="Review vendor performance"
-              span={5}
+              span={4}
               onClick={() => onTab("vendors")}
               info={`WHAT: which vendors have been late most often recently.
 
@@ -858,7 +876,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
               tone={!vrec ? "neutral" : vrec.risky.length ? "amber" : "green"}
               status={!vrec ? "WAITING" : `${fmt.format(vrec.rated)} RATED`}
               cta="Open Vendor Recommendation"
-              span={5}
+              span={4}
               href="/vendor-recommendation"
               info={"WHAT: the most reliable vendors, and the ones that are late half the time or more.\n\nHOW: from completed POs, for vendors with at least 3 of them: on-time POs ÷ completed POs. 'Risky' = late on 50% or more.\n\nUSE: reliable vendors are where urgent replenishment should go; risky ones need a committed date in writing before the next PO."}
             >
@@ -883,11 +901,13 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                 </ul>
               )}
             </AnaCard>
-          </div>
+            </DashRow>
+          </>
         )}
 
         {decisionTab === "plan" && (
-          <div className="ana-grid ana-tab-grid">
+          <>
+            <DashRow title="This week" sub="What was issued, what is waiting for a decision, and how the month is covering.">
             <AnaCard
               title="POs issued — this week vs last"
               icon={CheckCheck}
@@ -979,7 +999,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
             </AnaCard>
 
             <AnaCard
-              title="Pending approval — now"
+              title="Approval Pending — now"
               icon={CircleAlert}
               tone={pending && pending.count > 0 ? "amber" : "neutral"}
               status={pending ? `${pending.count} WAITING` : "WAITING"}
@@ -1029,7 +1049,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                   : "LIVE"
               }
               cta="Open buying plan"
-              span={5}
+              span={4}
               href="/buying-plan"
               info={"WHAT: two halves of one question — did we order what we planned, and did what we ordered arrive.\n\nHOW: Buying Plan coverage = value of POs issued this month ÷ approved plan value for the month. Inward Plan coverage = pieces received (GRN) this month ÷ pieces planned to arrive — from the Inward Plan when the team has filled it, otherwise from the monthly sheet with rejected lines excluded. Example: planned ₹80 L, issued ₹60 L → 75%.\n\nUSE: high buying + low inward = a vendor/delivery problem, not a planning one. Low buying = the plan is not being executed. Month totals, not matched line by line; updates live through the month."}
             >
@@ -1082,65 +1102,8 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                 </p>
               )}
             </AnaCard>
-
-            {/* Spec 2.4 — the same coverage over time: what was planned to arrive, what did,
-                and whether the gap is widening. */}
-            <AnaCard
-              title="Inward trend — month on month"
-              icon={Target}
-              tone={
-                !inwardTrendMonths.length
-                  ? "neutral"
-                  : inwardLatest?.coveragePct != null && inwardLatest.coveragePct < 70
-                    ? "amber"
-                    : "green"
-              }
-              status={
-                inwardLatest?.coveragePct != null ? `${inwardLatest.coveragePct}% COVERED` : "NO PLAN"
-              }
-              cta="Open the Inward Plan"
-              span={4}
-              href="/receivable-plan"
-              info={"WHAT: month by month, the pieces the inward plan expected against the pieces goods-receipt actually booked, and the coverage between them. 100 planned with 50 received is 50% covered.\n\nHOW: planned = the month's inward-plan lines that were not rejected; received = GRN quantity booked in that month. A month with no plan shows no coverage rather than 0%, because nothing was planned — that is a different fact from nothing arriving.\n\nUSE: one month's coverage says whether the month went to plan; the run of months says whether planning is getting better or the plan is simply optimistic. Planned value is the plan's own quantity × its cost per piece."}
-            >
-              {!inwardTrendMonths.length ? (
-                <NoData text="Inward trend data is not available." />
-              ) : (
-                <>
-                  <ul className="ana-list">
-                    {inwardTrendMonths.map((m) => (
-                      <li key={m.month}>
-                        <span className="ana-list-stack">
-                          <span>{m.month}</span>
-                          <small>
-                            {m.planned > 0
-                              ? `${fmt.format(m.planned)} planned · ${money.format(m.plannedValue)}`
-                              : "nothing planned"}
-                          </small>
-                        </span>
-                        <span className="ana-list-val">
-                          {fmt.format(m.received)} received
-                          <small>{m.coveragePct != null ? `${m.coveragePct}% covered` : "no plan to measure against"}</small>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  {inwardLatest && inwardPrev && inwardLatest.coveragePct != null && inwardPrev.coveragePct != null && (
-                    <p className="ana-note">
-                      {inwardLatest.month} is {Math.abs(inwardLatest.coveragePct - inwardPrev.coveragePct)} points{" "}
-                      {inwardLatest.coveragePct >= inwardPrev.coveragePct ? "ahead of" : "behind"} {inwardPrev.month} (
-                      {inwardPrev.coveragePct}%).
-                    </p>
-                  )}
-                  {inwardTrendMonths.some((m) => m.planned === 0) && (
-                    <p className="ana-note">
-                      Months with no bar had no inward plan at all — the coverage series only starts
-                      where planning did.
-                    </p>
-                  )}
-                </>
-              )}
-            </AnaCard>
+            </DashRow>
+            <DashRow title="This month and the trend" sub="Plan issued so far by category and over three months, and inward coverage month on month.">
 
             <AnaCard
               title="Buying Plan Realization"
@@ -1155,7 +1118,6 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
               }
               cta="Open buying plan"
               span={7}
-              rowSpan
               href="/buying-plan"
               info={"WHAT: planned buying against what was actually ordered, by weave, this month and the two before.\n\nHOW: approved plan value vs issued PO value, split Woven / Knit, per month.\n\nUSE: a persistent gap in one weave means that side of the plan is not being executed — worth asking why before the next plan is approved."}
             >
@@ -1260,6 +1222,67 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
               )}
             </AnaCard>
 
+            {/* Spec 2.4 — the same coverage over time: what was planned to arrive, what did,
+                and whether the gap is widening. */}
+            <AnaCard
+              title="Inward trend — month on month"
+              icon={Target}
+              tone={
+                !inwardTrendMonths.length
+                  ? "neutral"
+                  : inwardLatest?.coveragePct != null && inwardLatest.coveragePct < 70
+                    ? "amber"
+                    : "green"
+              }
+              status={
+                inwardLatest?.coveragePct != null ? `${inwardLatest.coveragePct}% COVERED` : "NO PLAN"
+              }
+              cta="Open the Inward Plan"
+              span={5}
+              href="/receivable-plan"
+              info={"WHAT: month by month, the pieces the inward plan expected against the pieces goods-receipt actually booked, and the coverage between them. 100 planned with 50 received is 50% covered.\n\nHOW: planned = the month's inward-plan lines that were not rejected; received = GRN quantity booked in that month. A month with no plan shows no coverage rather than 0%, because nothing was planned — that is a different fact from nothing arriving.\n\nUSE: one month's coverage says whether the month went to plan; the run of months says whether planning is getting better or the plan is simply optimistic. Planned value is the plan's own quantity × its cost per piece."}
+            >
+              {!inwardTrendMonths.length ? (
+                <NoData text="Inward trend data is not available." />
+              ) : (
+                <>
+                  <ul className="ana-list">
+                    {inwardTrendMonths.map((m) => (
+                      <li key={m.month}>
+                        <span className="ana-list-stack">
+                          <span>{m.month}</span>
+                          <small>
+                            {m.planned > 0
+                              ? `${fmt.format(m.planned)} planned · ${money.format(m.plannedValue)}`
+                              : "nothing planned"}
+                          </small>
+                        </span>
+                        <span className="ana-list-val">
+                          {fmt.format(m.received)} received
+                          <small>{m.coveragePct != null ? `${m.coveragePct}% covered` : "no plan to measure against"}</small>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {inwardLatest && inwardPrev && inwardLatest.coveragePct != null && inwardPrev.coveragePct != null && (
+                    <p className="ana-note">
+                      {inwardLatest.month} is {Math.abs(inwardLatest.coveragePct - inwardPrev.coveragePct)} points{" "}
+                      {inwardLatest.coveragePct >= inwardPrev.coveragePct ? "ahead of" : "behind"} {inwardPrev.month} (
+                      {inwardPrev.coveragePct}%).
+                    </p>
+                  )}
+                  {inwardTrendMonths.some((m) => m.planned === 0) && (
+                    <p className="ana-note">
+                      Months with no bar had no inward plan at all — the coverage series only starts
+                      where planning did.
+                    </p>
+                  )}
+                </>
+              )}
+            </AnaCard>
+            </DashRow>
+            <DashRow title="Discipline" sub="Is the TNA kept, and are finished POs closed within the SLA.">
+
             <AnaCard
               title="TNA Compliance Trend"
               icon={TrendingUp}
@@ -1282,7 +1305,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                       : "ON TRACK"
               }
               cta="Review PO tracker"
-              span={5}
+              span={6}
               onClick={() => onTab("open-po")}
               info={"WHAT: is execution getting better or worse — the share of open POs on track, day by day.\n\nHOW: each day, POs with no critical-path stage past its planned date ÷ open POs, using the same TNA rule as the tracker. Recorded once a day when the dashboard is opened.\n\nUSE: today's number alone can hide a slide; the line shows the direction. A falling line with a steady PO count means stages are slipping, not that more was ordered."}
             >
@@ -1397,7 +1420,7 @@ USE: the ranking for who gets the next order. Click a vendor to open its POs in 
                     : "COMPLIANT"
               }
               cta="Open closure queue"
-              span={5}
+              span={6}
               href="/po-closure"
               info={`WHAT: are completed POs being closed out on time.
 
@@ -1447,11 +1470,13 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
                 </div>
               )}
             </AnaCard>
-          </div>
+            </DashRow>
+          </>
         )}
 
         {decisionTab === "stock" && (
-          <div className="ana-grid ana-tab-grid">
+          <>
+            <DashRow title="Coming in vs running out" sub="Last week's receipts, the reorder queue, and the pipeline still to arrive.">
             <AnaCard
               title="Inward — last 7 days"
               icon={Scale}
@@ -1485,7 +1510,7 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
               tone={!repl ? "neutral" : repl.oosVariants > 0 ? "red" : repl.variants > 0 ? "amber" : "green"}
               status={!repl ? "WAITING" : `${fmt.format(repl.variants)} VARIANTS`}
               cta={isAdmin ? "Open Replenishment" : "Open Urgent Replenishment"}
-              span={6}
+              span={4}
               {...(isAdmin
                 ? { href: "/replenishment" }
                 : { onClick: () => onTab("urgent-replenish") })}
@@ -1516,7 +1541,7 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
               tone={!pipe ? "neutral" : pipe.overdueQty > 0 ? "amber" : "green"}
               status={!pipe ? "WAITING" : `${fmt.format(pipe.next7Qty)} PCS · 7D`}
               cta="Open Inward Plan"
-              span={7}
+              span={4}
               href="/inward-plan"
               info={"WHAT: what is landing this week, what is already late, and what has no date at all.\n\nHOW: pending pieces on open lines with expected delivery date in the next 7 days; past their date; or with no date set.\n\nUSE: the warehouse's week ahead. The 'no date' lines need a date set at PO Approval before they can be planned."}
             >
@@ -1547,12 +1572,52 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
                 </>
               )}
             </AnaCard>
-
-          </div>
+            </DashRow>
+          </>
         )}
 
         {decisionTab === "datahealth" && (
-          <div className="ana-grid ana-tab-grid">
+          <>
+            <DashRow title="Data health" sub="Are the feeds fresh, is lifecycle data clean, and how the product master is made up.">
+
+            <AnaCard
+              title="Sync Freshness"
+              icon={RefreshCw}
+              tone={!sync ? "neutral" : sync.stale.length ? "red" : "green"}
+              status={!sync ? "WAITING" : sync.stale.length ? `${sync.stale.length} STALE` : "ALL FRESH"}
+              cta="Open Sync Health"
+              span={4}
+              href="/sync-status"
+              info={`WHAT: is the data on this dashboard fresh.
+
+HOW: every synced feed with the time of its last refresh. A feed is flagged stale after ${sync?.staleHours ?? 30} hours without one (editable in Rules Master).
+
+USE: if a feed is stale, every card built on it is showing yesterday's or older numbers — check Sync Health before acting on them.`}
+            >
+              {!sync ? (
+                <NoData text="Sync status data is not available." />
+              ) : sync.stale.length === 0 ? (
+                <ZeroState
+                  title="All feeds fresh"
+                  text={`${fmt.format(sync.feeds)} feeds; oldest refreshed ${sync.oldestHours ?? 0}h ago.`}
+                  compact
+                />
+              ) : (
+                <ul className="ana-list">
+                  {sync.stale.map((s) => (
+                    <li key={`${s.pipeline}-${s.source}`}>
+                      <span className="ana-list-stack"><span>{s.source}</span><small>{s.pipeline}</small></span>
+                      <span className="ana-list-val is-red">{s.hoursAgo >= 999 ? "never" : `${s.hoursAgo}h ago`}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+                          <p className="ana-foot-link">
+                <Link href="/issues?category=data" onClick={(e) => e.stopPropagation()}>
+                  Stale feeds are raised on the Issue Tracker →
+                </Link>
+              </p>
+            </AnaCard>
             <AnaCard
               title="Open POs of Discontinued Products"
               icon={Ban}
@@ -1567,7 +1632,7 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
                     : "CLEAN"
               }
               cta="Review affected PO lines"
-              span={6}
+              span={4}
               onClick={() => onTab("open-po")}
               info={"WHAT: discontinued products that are still being bought.\n\nHOW: products marked Discontinued in the Product Master that have an open PO line with pending quantity, or a line on the current buying plan.\n\nUSE: should always read zero. Anything here is either a wrong product state or a PO that should be cancelled."}
             >
@@ -1622,14 +1687,14 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
                   Each one is raised on the Issue Tracker →
                 </Link>
               </p>
-</AnaCard>
+            </AnaCard>
             <AnaCard
               title="Product Master Mix"
               icon={Database}
               tone="neutral"
               status={stateMix ? `${fmt.format(stateTotal)} CODES` : "WAITING"}
               cta="Open Product Master"
-              span={7}
+              span={4}
               href="/product-master"
               info={"WHAT: the product catalogue by lifecycle state.\n\nHOW: every product code in the master counted by state — Ongoing, NPD, NPD Not Launched, SKU-Create, To Be Discontinued, Discontinued.\n\nUSE: Discontinued and SKU-Create should shrink over time; a growing SKU-Create pile means new products are stuck before launch."}
             >
@@ -1649,46 +1714,8 @@ USE: late closures hold up vendor payment and keep received goods looking 'open'
                 </ul>
               )}
             </AnaCard>
-
-            <AnaCard
-              title="Sync Freshness"
-              icon={RefreshCw}
-              tone={!sync ? "neutral" : sync.stale.length ? "red" : "green"}
-              status={!sync ? "WAITING" : sync.stale.length ? `${sync.stale.length} STALE` : "ALL FRESH"}
-              cta="Open Sync Health"
-              span={5}
-              href="/sync-status"
-              info={`WHAT: is the data on this dashboard fresh.
-
-HOW: every synced feed with the time of its last refresh. A feed is flagged stale after ${sync?.staleHours ?? 30} hours without one (editable in Rules Master).
-
-USE: if a feed is stale, every card built on it is showing yesterday's or older numbers — check Sync Health before acting on them.`}
-            >
-              {!sync ? (
-                <NoData text="Sync status data is not available." />
-              ) : sync.stale.length === 0 ? (
-                <ZeroState
-                  title="All feeds fresh"
-                  text={`${fmt.format(sync.feeds)} feeds; oldest refreshed ${sync.oldestHours ?? 0}h ago.`}
-                  compact
-                />
-              ) : (
-                <ul className="ana-list">
-                  {sync.stale.map((s) => (
-                    <li key={`${s.pipeline}-${s.source}`}>
-                      <span className="ana-list-stack"><span>{s.source}</span><small>{s.pipeline}</small></span>
-                      <span className="ana-list-val is-red">{s.hoursAgo >= 999 ? "never" : `${s.hoursAgo}h ago`}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-                          <p className="ana-foot-link">
-                <Link href="/issues?category=data" onClick={(e) => e.stopPropagation()}>
-                  Stale feeds are raised on the Issue Tracker →
-                </Link>
-              </p>
-</AnaCard>
-          </div>
+            </DashRow>
+          </>
         )}
       </div>
     </section>
@@ -1703,9 +1730,12 @@ USE: if a feed is stale, every card built on it is showing yesterday's or older 
 export function ObjectiveStockCards({
   extras,
   onTab,
+  bare = false,
 }: {
   extras?: AnalyticsExtras | null;
   onTab: (id: TabId) => void;
+  /** Render the cards only, inside a grid the caller owns. */
+  bare?: boolean;
 }) {
   const gaps = extras?.stockoutGaps ?? null;
   const risk = gaps;
@@ -1744,8 +1774,8 @@ export function ObjectiveStockCards({
     );
   };
 
-  return (
-    <div className="ana-grid ana-tab-grid">
+  const cards = (
+    <>
 
       <AnaCard
         title="Stock Out Risk"
@@ -1821,7 +1851,7 @@ export function ObjectiveStockCards({
         tone={watch == null ? "neutral" : watch.length ? "amber" : "green"}
         status={watch == null ? "WAITING" : watch.length ? `${fmt.format(watch.length)} TO ORDER` : "CLEAR"}
         cta="Open urgent replenishment"
-        span={5}
+        span={4}
         onClick={() => onTab("urgent-replenish")}
         info={"WHAT: the fast sellers (class A and B) that run out within 30 days — the orders to place first.\n\nHOW: same population and rule as Stock Out Risk, on a 30-day horizon instead of 45, and only variants whose sales class is A or B (thresholds in Rules Master). D-class items rarely appear — they sell too slowly to run out fast.\n\nUSE: these cost real sales when empty. Place these POs before anything else on the Stock Out Risk list."}
       >
@@ -1874,7 +1904,7 @@ export function ObjectiveStockCards({
           tone={!oosSum ? "neutral" : oosSum.zeroStock > 0 ? "amber" : "green"}
           status={!oosSum ? "WAITING" : `${fmt.format(oosSum.zeroStock)} SKUS`}
           cta="Open DOQ Calculation"
-          span={6}
+          span={3}
           href="/oos-calculation"
           info={`SKUs in the DOQ Calculation sheet with zero current stock.${oosSum?.dataAsOf ? ` Inventory data as of ${oosSum.dataAsOf}.` : ""}`}
         >
@@ -1901,8 +1931,9 @@ export function ObjectiveStockCards({
             </div>
           )}
         </AnaCard>
-    </div>
+    </>
   );
+  return bare ? cards : <div className="ana-grid ana-tab-grid">{cards}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1921,8 +1952,14 @@ export function ObjectiveSynopsisCards({
   extras,
   book,
   onTab,
+  part,
+  bare = false,
 }: {
   extras: AnalyticsExtras | null;
+  /** Main Dashboard rows: 'stock' (OOS by class, ISR), 'orders' (PO book, inward), 'plan' (buying plan, approvals). All when unset. */
+  part?: "stock" | "orders" | "plan";
+  /** Render the cards only, inside a grid the caller owns. */
+  bare?: boolean;
   book: { open: number; overdue: number; highRisk: number; ageing: { name: string; value: number }[] };
   onTab: (id: TabId) => void;
 }) {
@@ -1936,15 +1973,17 @@ export function ObjectiveSynopsisCards({
   const isr = extras?.isr ?? null;
   const isrPct = isr && isr.soldQty > 0 ? Math.round((isr.inwardQty / isr.soldQty) * 100) : null;
 
-  return (
-    <div className="ana-grid ana-tab-grid">
+  const show = (p: "stock" | "orders" | "plan") => !part || part === p;
+  const cards = (
+    <>
+      {show("orders") && (
       <AnaCard
         title="PO book"
         icon={FileCheck}
         tone={book.overdue > 0 ? "red" : "green"}
         status={`${fmt.format(book.open)} OPEN`}
         cta="Open the PO Tracker"
-        span={4}
+        span={6}
         onClick={() => onTab("open-po")}
         info={"WHAT: the purchase-order book in three numbers, each with its share.\n\nHOW: Open = POs with pieces still to arrive, as a share of every PO there has ever been (open + completed). Overdue = open POs past their expected delivery date, as a share of open. High Risk = open POs with a critical-path TNA stage past its planned date, as a share of open. Ageing splits the open POs by how far past their date they are.\n\nUSE: overdue and high-risk shares rising together means the book is slipping, not just one vendor."}
       >
@@ -1959,14 +1998,16 @@ export function ObjectiveSynopsisCards({
           ))}
         </div>
       </AnaCard>
+      )}
 
+      {show("orders") && (
       <AnaCard
         title="Inward Plan vs actual GRN"
         icon={PackageCheck}
         tone={!iw ? "neutral" : iw.shortPos || iw.unplannedPos ? "red" : "green"}
         status={iw ? `${fmt.format(iw.plannedPos)} POS PLANNED` : "WAITING"}
         cta="Open the Inward Plan"
-        span={4}
+        span={6}
         href="/receivable-plan"
         info={"WHAT: this month, did what the team planned to receive actually arrive — and what arrived that nobody planned.\n\nHOW: per PO planned on the Inward Plan for this month: received (GRN) less than planned = short, more = excess, equal = on plan. Not in plan = POs with receipts this month and no Inward Plan entry. Counted at PO level because the plan is per colour and GRN per SKU; the PO is what both share.\n\nUSE: many short POs is a vendor problem; many not-in-plan receipts means the Inward Plan is not being filled."}
       >
@@ -1982,14 +2023,16 @@ export function ObjectiveSynopsisCards({
           </ul>
         )}
       </AnaCard>
+      )}
 
+      {show("stock") && (
       <AnaCard
         title="OOS by sales class"
         icon={Boxes}
         tone={!oos ? "neutral" : oos.oosNow ? "red" : "green"}
         status={oos ? `${fmt.format(oos.oosNow)} OUT NOW` : "WAITING"}
         cta="Open Product Tracker → In stock"
-        span={4}
+        span={8}
         onClick={() => onTab("products")}
         info={"WHAT: out of stock by sales class, at variant (colour) level — A sells fastest, D slowest.\n\nHOW: over every selling variant (Ongoing + launched NPD, test SKUs out): Out now = zero stock today; At risk = stock plus what is on order runs out inside the 45-day lead time; DOH = average days on hand (stock + on order ÷ daily demand). Percentages are of the variants in that class.\n\nUSE: an A-class variant out of stock is lost sales every day — those first."}
       >
@@ -2019,7 +2062,9 @@ export function ObjectiveSynopsisCards({
           </table>
         )}
       </AnaCard>
+      )}
 
+      {show("plan") && (
       <AnaCard
         title="Buying Plan synopsis"
         icon={ShoppingCart}
@@ -2042,7 +2087,9 @@ export function ObjectiveSynopsisCards({
           </ul>
         )}
       </AnaCard>
+      )}
 
+      {show("plan") && (
       <AnaCard
         title="Approval requisitions"
         icon={ClipboardCheck}
@@ -2063,10 +2110,13 @@ export function ObjectiveSynopsisCards({
             <li><span>Inward Plan</span><span className="ana-list-val">{fmt.format(ap.inward)}</span></li>
             <li><span>Discontinue</span><span className="ana-list-val">{fmt.format(ap.discontinue)}</span></li>
             <li><span>Vendor de-boarding</span><span className="ana-list-val">{fmt.format(ap.deboarding)}</span></li>
+            <li><span>Commercial approvals</span><span className="ana-list-val">{fmt.format(ap.commercial ?? 0)}</span></li>
           </ul>
         )}
       </AnaCard>
+      )}
 
+      {show("stock") && (
       <AnaCard
         title="ISR — inward to sales"
         icon={Scale}
@@ -2095,6 +2145,8 @@ export function ObjectiveSynopsisCards({
           </>
         )}
       </AnaCard>
-    </div>
+      )}
+    </>
   );
+  return bare ? cards : <div className="ana-grid ana-tab-grid">{cards}</div>;
 }

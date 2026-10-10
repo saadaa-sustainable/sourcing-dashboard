@@ -1,14 +1,16 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition, useEffect } from 'react';
+import Link from 'next/link';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { HeaderInfo } from '@/components/header-info';
 import { Save } from 'lucide-react';
 import { useColumnSort } from '@/lib/use-column-sort';
-import { saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
-import { STATUS_LABEL, canApprove } from '@/lib/forms/approval';
+import { decideApproval, saveReceivableInput, submitReceivablePlan } from '@/lib/forms/actions';
+import { STATUS_LABEL, canApprove, statusText } from '@/lib/forms/approval';
 import { Notice } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
-import { reloadWithToast } from '@/lib/toast';
+import { reloadWithToast, toastError } from '@/lib/toast';
 import type { ReceivablePlanRow, SdRole } from '@/lib/forms/types';
 import type { ArrivalRow } from '@/lib/forms/queries-modules/inward-receivable';
 import type { InwardPlanSheetRow } from '@/lib/forms/queries-modules/inward-plan-sheet';
@@ -48,34 +50,67 @@ function weekRangeLabel(mondayIso: string): string {
 function monthLabelOf(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
-function buildWeekOptions(thisMonday: string, back = 6, ahead = 20): { value: string; label: string }[] {
-  const base = new Date(`${thisMonday}T00:00:00Z`);
+/** Last day (YYYY-MM-DD) of the month after the one `iso` falls in. */
+function endOfNextMonth(iso: string): string {
+  const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) + 1, 0));
+  return d.toISOString().slice(0, 10);
+}
+/**
+ * Receiving weeks to pick from: this week up to the week holding the last day of next month —
+ * only the current and the coming month. A row already saved on an older week keeps it (the
+ * row adds its own value to the list).
+ */
+function buildWeekOptions(thisMonday: string, today: string): { value: string; label: string }[] {
+  const last = endOfNextMonth(today);
   const out: { value: string; label: string }[] = [];
-  for (let i = -back; i <= ahead; i++) {
-    const d = new Date(base);
+  for (let i = 0; ; i++) {
+    const d = new Date(`${thisMonday}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + i * 7);
     const value = d.toISOString().slice(0, 10);
-    out.push({ value, label: weekRangeLabel(value) + (i === 0 ? ' · this week' : '') });
+    if (value > last) break;
+    out.push({ value, label: weekRangeLabel(value) + (i === 0 ? ' · this week' : i === 1 ? ' · next week' : '') });
   }
   return out;
 }
 function firstOfMonth(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
-function buildMonthOptions(thisMonday: string, back = 1, ahead = 8): { value: string; label: string }[] {
-  const base = new Date(`${firstOfMonth(thisMonday)}T00:00:00Z`);
-  const thisMonthValue = firstOfMonth(thisMonday);
+/** Whole months to pick from: this month and the next, each with its dates. */
+function buildMonthOptions(today: string): { value: string; label: string }[] {
   const out: { value: string; label: string }[] = [];
-  for (let i = -back; i <= ahead; i++) {
-    const d = new Date(base);
+  for (let i = 0; i <= 1; i++) {
+    const d = new Date(`${firstOfMonth(today)}T00:00:00Z`);
     d.setUTCMonth(d.getUTCMonth() + i);
     const value = d.toISOString().slice(0, 10);
-    out.push({ value, label: monthLabelOf(value) + (value === thisMonthValue ? ' · this month' : '') });
+    const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const mon = d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' });
+    out.push({ value, label: `${monthLabelOf(value)} (1 – ${lastDay} ${mon})${i === 0 ? ' · this month' : ' · next month'}` });
   }
   return out;
 }
 
 type ViewMode = 'lines' | 'product' | 'variant' | 'month';
+/** How the PO lines are laid out: the editable table, cards, or a board by input stage. */
+type LinesLayout = 'list' | 'cards' | 'kanban';
+type InputStage = 'none' | 'draft' | 'waiting' | 'approved' | 'back';
+const INPUT_STAGES: { key: InputStage; label: string; hint: string; tone: string }[] = [
+  { key: 'none', label: 'Not planned', hint: 'No week / month or quantity yet', tone: '' },
+  { key: 'draft', label: 'Draft', hint: 'Saved, not submitted', tone: 'info' },
+  { key: 'waiting', label: 'Awaiting approval', hint: 'Submitted to the approver', tone: 'warn' },
+  { key: 'approved', label: 'Approved', hint: 'Plan accepted', tone: 'success' },
+  { key: 'back', label: 'Sent back', hint: 'Rework or rejected', tone: 'danger' },
+];
+function inputStage(r: ReceivablePlanRow): InputStage {
+  switch (r.input_status) {
+    case 'approved': return 'approved';
+    case 'submitted':
+    case 'pending_l2': return 'waiting';
+    case 'rework':
+    case 'rejected': return 'back';
+    default:
+      return r.delivery_date_this_week || r.qty_expected_this_week ? 'draft' : 'none';
+  }
+}
 const VIEW_TABS: { key: ViewMode; label: string }[] = [
   { key: 'lines', label: 'PO lines' },
   { key: 'product', label: 'By product' },
@@ -94,6 +129,7 @@ export function ReceivablePlanClient({
   role = 'viewer',
   initialTab = 'arrivals',
   initialMonth = null,
+  today,
 }: {
   rows: ReceivablePlanRow[];
   /** Rows for the Arrivals tab — same data the standalone Arrivals page reads. */
@@ -105,8 +141,10 @@ export function ReceivablePlanClient({
   sheet?: InwardPlanSheetRow[];
   sheetMonths?: string[];
   role?: SdRole;
-  initialTab?: 'arrivals' | 'input' | 'monthly';
+  initialTab?: 'arrivals' | 'input' | 'monthly' | 'lines';
   initialMonth?: string | null;
+  /** YYYY-MM-DD, from the server. */
+  today: string;
 }) {
   const [search, setSearch] = useState('');
   const [vendor, setVendor] = useState('');
@@ -115,17 +153,59 @@ export function ReceivablePlanClient({
   const [risk, setRisk] = useState('');
   const [edd, setEdd] = useState<'all' | 'has' | 'week'>('all');
   const [view, setView] = useState<ViewMode>('lines');
-  /* Two tabs over one subject. Arrivals is the read: what was expected against what landed.
-     Input Inward Plan is the write: where the team says how much to expect and when. They
-     were separate pages, which meant answering "did it arrive" and "when is it coming"
-     required knowing they lived apart. */
-  const [tab, setTab] = useState<'arrivals' | 'input' | 'monthly'>(initialTab);
+  // Input works on PO lines only; the rollups are for reading.
+  const viewTabs = initialTab === 'input' ? [] : VIEW_TABS;
+  /* Two screens. View is the read: arrivals against the plan, the monthly sheet, and the plan
+     lines by PO, product, variant or receiving month — nothing editable. Input is the write:
+     the team enters quantity and week per PO line and submits; the approver decides there. */
+  const screen: 'view' | 'input' = initialTab === 'input' ? 'input' : 'view';
+  const [tab, setTab] = useState<'arrivals' | 'monthly' | 'lines'>(initialTab === 'input' ? 'lines' : initialTab);
   const [message, setMessage] = useState<string | null>(null);
   const [submitRemark, setSubmitRemark] = useState('');
+  // An approver opens on the rows waiting for their decision; "All rows" shows the rest.
+  const isApprover = canApprove(role, 'submitted');
+  const canInput = editable || isApprover;
+  // Editing and deciding happen on the Input screen only; View is read-only for everyone.
+  const linesEditable = screen === 'input' && editable;
+  const decides = screen === 'input' && isApprover;
+  const [needsMine, setNeedsMine] = useState(() => decides && rows.some((r) => r.input_status === 'submitted'));
+  // PO lines come in pages so the table is not one long scroll.
+  const [page, setPage] = useState(0);
+  const [layout, setLayout] = useState<LinesLayout>('kanban');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ip-lines-layout-v2');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
+      if (saved === 'list' || saved === 'cards' || saved === 'kanban') setLayout(saved);
+    } catch {
+      /* storage blocked: keep kanban */
+    }
+  }, []);
+  const chooseLayout = (l: LinesLayout) => {
+    setLayout(l);
+    try { localStorage.setItem('ip-lines-layout-v2', l); } catch { /* ignore */ }
+  };
+  /** Cards and Kanban are for reading; "Edit" opens the row in the list, filtered to it. */
+  const editInList = (r: ReceivablePlanRow) => {
+    // Clear the other filters so the row cannot be hidden by them, then find it by PO + colour.
+    setVendor('');
+    setState('');
+    setRisk('');
+    setOosOnly(false);
+    setEdd('all');
+    setNeedsMine(false);
+    setSearch(`${r.po_ref_num || r.po_number} ${r.product_variant}`.trim());
+    chooseLayout('list');
+  };
+  const [pageSize, setPageSize] = useState(50);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to page 1 whenever the filters change
+    setPage(0);
+  }, [search, vendor, state, risk, oosOnly, edd, needsMine]);
   const [submitting, startSubmit] = useTransition();
 
-  const weekOptions = useMemo(() => buildWeekOptions(weekStart), [weekStart]);
-  const monthOptions = useMemo(() => buildMonthOptions(weekStart), [weekStart]);
+  const weekOptions = useMemo(() => buildWeekOptions(weekStart, today), [weekStart, today]);
+  const monthOptions = useMemo(() => buildMonthOptions(today), [today]);
 
   function submitAll() {
     startSubmit(async () => {
@@ -145,13 +225,15 @@ export function ReceivablePlanClient({
   );
 
   const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    // Every word must appear somewhere on the row, in any order — "Edit in list" searches
+    // "<PO ref> <colour>", which are not next to each other in the row's text.
+    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return rows.filter((r) => {
-      if (q &&
-        !`${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`
-          .toLowerCase()
-          .includes(q)
-      ) return false;
+      if (needsMine && r.input_status !== 'submitted') return false;
+      if (terms.length) {
+        const hay = `${r.po_number} ${r.po_ref_num ?? ''} ${r.product_code ?? ''} ${r.product_variant} ${r.vendor_name ?? ''}`.toLowerCase();
+        if (!terms.every((t) => hay.includes(t))) return false;
+      }
       if (vendor && (vendor === BLANK ? Boolean(r.vendor_name) : r.vendor_name !== vendor)) return false;
       if (state && (state === BLANK ? Boolean(r.product_state) : r.product_state !== state)) return false;
       if (risk && r.internal_status !== risk) return false;
@@ -163,9 +245,29 @@ export function ReceivablePlanClient({
       }
       return true;
     });
-  }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd]);
+  }, [rows, search, vendor, state, risk, oosOnly, edd, weekStart, weekEnd, needsMine]);
 
   const sort = useColumnSort<ReceivablePlanRow>();
+  const pageCount = Math.max(1, Math.ceil(shown.length / pageSize));
+  const pageNo = Math.min(page, pageCount - 1);
+  const pageFrom = pageNo * pageSize;
+  const pageTo = Math.min(shown.length, pageFrom + pageSize);
+  const pagerEl =
+    shown.length > 25 ? (
+      <div className="pager rp-pager">
+                <label className="rp-pager-size">
+                  Rows per page
+                  <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }} aria-label="Rows per page">
+                    {[25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+                <span>{pageFrom + 1}–{pageTo} of {shown.length} rows · page {pageNo + 1} of {pageCount}</span>
+                <button type="button" disabled={pageNo <= 0} onClick={() => setPage(0)} aria-label="First page">«</button>
+                <button type="button" disabled={pageNo <= 0} onClick={() => setPage(pageNo - 1)}>Prev</button>
+                <button type="button" disabled={pageNo >= pageCount - 1} onClick={() => setPage(pageNo + 1)}>Next</button>
+                <button type="button" disabled={pageNo >= pageCount - 1} onClick={() => setPage(pageCount - 1)} aria-label="Last page">»</button>
+              </div>
+    ) : null;
   const oosCount = rows.filter((r) => r.oos_flag).length;
   const submittedCount = rows.filter((r) => r.input_status === 'submitted').length;
 
@@ -177,42 +279,43 @@ export function ReceivablePlanClient({
 
   return (
     <>
-      <div className="segment ip-tabs" role="tablist" aria-label="Inward Plan views">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'arrivals'}
-          className={tab === 'arrivals' ? 'active' : ''}
-          onClick={() => setTab('arrivals')}
-        >
-          Arrivals
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'input'}
-          className={tab === 'input' ? 'active' : ''}
-          onClick={() => setTab('input')}
-        >
-          Input Inward Plan
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'monthly'}
-          className={tab === 'monthly' ? 'active' : ''}
-          onClick={() => setTab('monthly')}
-        >
-          Monthly plan
-        </button>
-      </div>
+      <nav className="ip-screens" aria-label="Inward Plan screens">
+        <Link href={`/receivable-plan?tab=${tab === 'lines' && screen === 'input' ? 'monthly' : tab}${initialMonth ? `&month=${initialMonth}` : ''}`} className={screen === 'view' ? 'active' : ''} aria-current={screen === 'view' ? 'page' : undefined}>
+          View inward plan
+        </Link>
+        {canInput && (
+          <Link href="/receivable-plan?tab=input" className={screen === 'input' ? 'active' : ''} aria-current={screen === 'input' ? 'page' : undefined}>
+            Input inward plan
+          </Link>
+        )}
+      </nav>
+
+      {screen === 'view' && (
+        <div className="segment ip-tabs" role="tablist" aria-label="Inward Plan views">
+          {([['arrivals', 'Arrivals'], ['monthly', 'Monthly plan'], ['lines', 'Plan lines']] as const).map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'arrivals' ? (
         <ArrivalsClient rows={arrivals} />
       ) : tab === 'monthly' ? (
-        <InwardPlanSheet rows={sheet} role={role} monthOptions={sheetMonths} initialMonth={initialMonth} />
+        <InwardPlanSheet rows={sheet} role={role} monthOptions={sheetMonths} initialMonth={initialMonth} arrivals={arrivals} today={today} />
       ) : (
       <>
+      {screen === 'view' ? (
+      <Notice tone="info">
+        The plan as entered, read-only: one row per colour on an open PO with the receiving week or
+        month and the quantity expected. Use <strong>View</strong> to see it by product, variant or
+        receiving month. To change it, open <strong>Input inward plan</strong>.
+        {lastUpdated && (
+          <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
+        )}
+      </Notice>
+      ) : (
       <Notice tone="info">
         Each row is one colour on an open PO, split by size. Pick when it&rsquo;s expected — either a{' '}
         <strong>whole month</strong> or a specific <strong>week</strong> (Mon–Sun), whichever you
@@ -220,15 +323,17 @@ export function ReceivablePlanClient({
         month is approved</strong> you can switch to any week within it without re-approval; filling
         a week directly, changing the quantity, or moving to another month needs approval again.
         DOQ, stock and OOS come from the inventory-planning snapshot; <strong>Status</strong> is the
-        live TNA risk. Use <strong>View</strong> to see the plan by product, variant or receiving month.
+        live TNA risk. To read the plan by product, variant or receiving month, open{' '}
+        <strong>View inward plan</strong>.
         {lastUpdated && (
           <> Weekly plan last updated <strong>{lastUpdated}</strong>.</>
         )}
       </Notice>
+      )}
 
       {/* The approver decides the submitted week here as well as on Approvals — the
           same batch decision, so "Open record" never lands on a page with nothing to press. */}
-      {canApprove(role, 'submitted') && submittedCount > 0 && (
+      {decides && submittedCount > 0 && (
         <section className="wf-queue-card wf-queue-card-wide sc-decision" aria-label="Your decision">
           <div className="wf-queue-head">
             <div>
@@ -250,83 +355,114 @@ export function ReceivablePlanClient({
 
       {message && <Notice tone="ok">{message}</Notice>}
 
-      <div className="wf-toolbar wf-filter-bar">
-        <input
-          className="wf-search"
-          placeholder="Filter PO / product / vendor…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select value={vendor} onChange={(e) => setVendor(e.target.value)} aria-label="Vendor">
-          <option value="">All vendors</option>
-          <option value={BLANK}>—</option>
-          {vendors.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-        <select value={state} onChange={(e) => setState(e.target.value)} aria-label="Product state">
-          <option value="">All states</option>
-          <option value={BLANK}>—</option>
-          {states.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <select value={risk} onChange={(e) => setRisk(e.target.value)} aria-label="TNA risk status">
-          <option value="">All statuses</option>
-          <option value="Overdue">Overdue</option>
-          <option value="High Risk">High Risk</option>
-          <option value="On Track">On Track</option>
-        </select>
-        <select value={edd} onChange={(e) => setEdd(e.target.value as 'all' | 'has' | 'week')} aria-label="Delivery">
-          <option value="all">Any delivery</option>
-          <option value="has">Has EDD</option>
-          <option value="week">Arriving this week</option>
-        </select>
-        <label className="wf-check">
-          <input type="checkbox" checked={oosOnly} onChange={(e) => setOosOnly(e.target.checked)} />
-          OOS only
-        </label>
-        <span className="wf-chip">
-          {shown.length} rows
-          {oosCount > 0 && (
-            <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
+      <div className="tb">
+        <div className="tb-find">
+          {decides && (
+            <div className="segment fb-seg" role="group" aria-label="Show">
+              <button type="button" className={needsMine ? 'active' : ''} aria-pressed={needsMine} onClick={() => setNeedsMine(true)}>
+                Needs approval ({submittedCount})
+              </button>
+              <button type="button" className={!needsMine ? 'active' : ''} aria-pressed={!needsMine} onClick={() => setNeedsMine(false)}>
+                All rows
+              </button>
+            </div>
           )}
-        </span>
-        {editable && view === 'lines' && (
-          <>
-            <input
-              className="wf-search"
-              placeholder="Remark for approver (optional)…"
-              value={submitRemark}
-              onChange={(e) => setSubmitRemark(e.target.value)}
-              aria-label="Remark for the approver"
-            />
-            <button
-              type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
-              disabled={submitting}
-              onClick={submitAll}
-            >
-              {submitting ? 'Submitting…' : 'Submit week for approval'}
-            </button>
-          </>
-        )}
+          <input
+            className="wf-search"
+            placeholder="Search PO, product or vendor…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select value={vendor} onChange={(e) => setVendor(e.target.value)} aria-label="Vendor">
+            <option value="">All vendors</option>
+            <option value={BLANK}>—</option>
+            {vendors.map((v) => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
+          <select value={state} onChange={(e) => setState(e.target.value)} aria-label="Product state">
+            <option value="">All states</option>
+            <option value={BLANK}>—</option>
+            {states.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select value={risk} onChange={(e) => setRisk(e.target.value)} aria-label="TNA risk status">
+            <option value="">All statuses</option>
+            <option value="Overdue">Overdue</option>
+            <option value="High Risk">High Risk</option>
+            <option value="On Track">On Track</option>
+          </select>
+          <select value={edd} onChange={(e) => setEdd(e.target.value as 'all' | 'has' | 'week')} aria-label="Delivery">
+            <option value="all">Any delivery</option>
+            <option value="has">Has EDD</option>
+            <option value="week">Arriving this week</option>
+          </select>
+          <label className="wf-check">
+            <input type="checkbox" checked={oosOnly} onChange={(e) => setOosOnly(e.target.checked)} />
+            OOS only
+          </label>
+          <ClearFiltersButton
+            active={Boolean(search || vendor || state || risk || oosOnly || edd !== 'all' || needsMine)}
+            onClear={() => {
+              setSearch('');
+              setVendor('');
+              setState('');
+              setRisk('');
+              setOosOnly(false);
+              setEdd('all');
+              setNeedsMine(false);
+            }}
+          />
+        </div>
+        <div className="tb-see">
+          <span className="wf-chip tb-count">
+            {shown.length} rows
+            {oosCount > 0 && (
+              <em className="wf-chip-warn">{oosCount} ran out at some point in the last 45 days</em>
+            )}
+          </span>
+          <div className="segment ip-layout-seg" role="group" aria-label="Layout">
+            {(['kanban', 'cards', 'list'] as LinesLayout[]).map((l) => (
+              <button key={l} type="button" className={layout === l ? 'active' : ''} aria-pressed={layout === l} onClick={() => chooseLayout(l)}>
+                {l === 'list' ? 'List' : l === 'cards' ? 'Cards' : 'Kanban'}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <div className="segment tracker-status-tabs">
-        {VIEW_TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={view === t.key ? 'active' : ''}
-            onClick={() => setView(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {viewTabs.length > 0 && (
+        <div className="ip-viewrow">
+            <div className="segment tracker-status-tabs">
+              {viewTabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={view === t.key ? 'active' : ''}
+                  onClick={() => setView(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+        </div>
+      )}
 
-      {view === 'lines' ? (
+      {view === 'lines' && layout !== 'list' ? (
+        <>
+          <LinesBoard
+            rows={sort.apply(shown)}
+            layout={layout}
+            pageFrom={pageFrom}
+            pageTo={pageTo}
+            editable={linesEditable}
+            onEdit={editInList}
+            canDecide={decides}
+          />
+          {layout === 'cards' && pagerEl}
+        </>
+      ) : view === 'lines' ? (
         <div className="table-panel wf-grid-panel">
           <div className="table-scroll">
             <table className="wide-table wf-grid">
@@ -355,7 +491,7 @@ export function ReceivablePlanClient({
                   <th rowSpan={2} className="num" {...sort.th('edd', (r) => r.expected_delivery_date ?? '')}>EDD {sort.ind('edd')}</th>
                   <th rowSpan={2} className="input-col">Receiving week / month</th>
                   <th rowSpan={2} className="num input-col">Qty expected</th>
-                  {editable && <th rowSpan={2} aria-label="Save" />}
+                  {linesEditable && <th rowSpan={2} aria-label="Save" />}
                 </tr>
                 <tr>
                   {SIZE_KEYS.map(([, label]) => (
@@ -364,19 +500,20 @@ export function ReceivablePlanClient({
                 </tr>
               </thead>
               <tbody>
-                {sort.apply(shown).map((row) => (
+                {sort.apply(shown).map((row, i) => (
                   <ReceivableRow
                     key={row.row_key}
                     row={row}
-                    editable={editable}
+                    editable={linesEditable}
                     weekOptions={weekOptions}
                     monthOptions={monthOptions}
                     onSaved={() => setMessage('Saved.')}
+                    hidden={i < pageFrom || i >= pageTo}
                   />
                 ))}
                 {!shown.length && (
                   <tr>
-                    <td colSpan={editable ? 22 : 21} className="wf-empty-cell">
+                    <td colSpan={linesEditable ? 22 : 21} className="wf-empty-cell">
                       No open receivables match.
                     </td>
                   </tr>
@@ -384,9 +521,36 @@ export function ReceivablePlanClient({
               </tbody>
             </table>
           </div>
+          {layout === 'list' && pagerEl}
         </div>
       ) : (
-        <GroupedView rows={shown} mode={view} />
+        <GroupedView
+          rows={shown}
+          mode={view}
+          layout={layout}
+          onOpenLines={(q) => { setSearch(q); setView('lines'); }}
+          canDecide={decides}
+        />
+      )}
+
+      {/* Submit sits after the PO lines: fill the rows first, then send the week. */}
+      {linesEditable && view === 'lines' && (
+        <div className="rp-submit">
+          <div className="rp-submit-text">
+            <b>Submit for approval</b>
+            <span>Sends every row you filled this week to the approver. Add a remark if something needs explaining.</span>
+          </div>
+          <input
+            className="rp-submit-remark"
+            placeholder="Remark for the approver (optional)"
+            value={submitRemark}
+            onChange={(e) => setSubmitRemark(e.target.value)}
+            aria-label="Remark for the approver"
+          />
+          <button type="button" className="wf-btn wf-btn-primary" disabled={submitting} onClick={submitAll}>
+            {submitting ? 'Submitting…' : 'Submit week for approval'}
+          </button>
+        </div>
       )}
       </>
       )}
@@ -395,7 +559,21 @@ export function ReceivablePlanClient({
 }
 
 /* ---- Read-only rollups: by product / variant / receiving month ---- */
-function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<ViewMode, 'lines'> }) {
+function GroupedView({
+  rows,
+  mode,
+  layout = 'list',
+  onOpenLines,
+  canDecide = false,
+}: {
+  rows: ReceivablePlanRow[];
+  mode: Exclude<ViewMode, 'lines'>;
+  layout?: LinesLayout;
+  /** Open the PO lines filtered to a product / variant. */
+  onOpenLines?: (query: string) => void;
+  /** The approver may decide a group's submitted lines from its card. */
+  canDecide?: boolean;
+}) {
   const groups = useMemo(() => {
     type G = {
       key: string;
@@ -407,6 +585,8 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
       planned: number;
       oos: number;
       rows: number;
+      /** Lines in this group waiting for the approver. */
+      submitted: string[];
     };
     const map = new Map<string, G>();
     for (const r of rows) {
@@ -430,7 +610,7 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
       }
       let g = map.get(key);
       if (!g) {
-        g = { key, label, sub, pos: new Set(), variants: new Set(), arriving: 0, planned: 0, oos: 0, rows: 0 };
+        g = { key, label, sub, pos: new Set(), variants: new Set(), arriving: 0, planned: 0, oos: 0, rows: 0, submitted: [] };
         map.set(key, g);
       }
       g.pos.add(r.po_number);
@@ -438,6 +618,7 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
       g.arriving += r.arriving_qty || 0;
       g.planned += Number(r.qty_expected_this_week) || 0;
       if (r.oos_flag) g.oos += 1;
+      if (r.input_status === 'submitted') g.submitted.push(r.row_key);
       g.rows += 1;
     }
     const arr = [...map.values()];
@@ -461,6 +642,70 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
 
   const head =
     mode === 'product' ? 'Product' : mode === 'variant' ? 'Variant' : 'Receiving month';
+
+  type Group = (typeof groups)[number];
+  const pctOf = (g: Group) => (g.arriving > 0 ? Math.round((g.planned / g.arriving) * 100) : 0);
+  const card = (g: Group) => {
+    const pct = pctOf(g);
+    return (
+      <article key={g.key} className={`ip-card${g.oos ? ' is-oos' : ''}`}>
+        <div className="ip-card-top">
+          <span className="ip-card-po">{head}</span>
+          {g.oos > 0 && <span className="badge danger">{g.oos} OOS</span>}
+        </div>
+        <b className={`ip-card-name${mode === 'month' ? '' : ' mono'}`}>{g.label}</b>
+        {g.sub && <span className="ip-card-meta">{g.sub}</span>}
+        <div className="ip-card-figs">
+          <span><small>POs</small>{fmt.format(g.pos.size)}</span>
+          <span><small>Arriving</small>{fmt.format(g.arriving)}</span>
+          <span><small>Planned</small>{g.planned ? fmt.format(g.planned) : '—'}</span>
+        </div>
+        <span className="ip-card-bar" aria-label={`${pct}% planned`}><i style={{ width: `${Math.min(100, pct)}%` }} /></span>
+        <div className="ip-card-foot">
+          <span className="ip-card-when">{g.arriving > 0 ? `${pct}% planned` : 'Nothing arriving'}{mode === 'product' ? ` · ${g.variants.size} variant${g.variants.size === 1 ? '' : 's'}` : ''}</span>
+        </div>
+        {canDecide && g.submitted.length > 0 && (
+          <CardDecision rowKeys={g.submitted} what={`${head} ${g.label}`} label={`Receivable plan — ${head.toLowerCase()} ${g.label} (${g.submitted.length} line${g.submitted.length === 1 ? '' : 's'})`} />
+        )}
+        {onOpenLines && mode !== 'month' && (
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm ip-card-edit" onClick={() => onOpenLines(g.label)}>
+            Show PO lines
+          </button>
+        )}
+      </article>
+    );
+  };
+
+  if (layout === 'cards') {
+    return groups.length ? <div className="ip-cards">{groups.map(card)}</div> : <p className="wf-empty-cell ip-empty">No rows match.</p>;
+  }
+  if (layout === 'kanban') {
+    const COVER: { key: string; label: string; hint: string; tone: string; test: (g: Group) => boolean }[] = [
+      { key: 'none', label: 'Not planned', hint: 'Nothing planned yet', tone: 'danger', test: (g) => g.planned <= 0 },
+      { key: 'part', label: 'Partly planned', hint: 'Some of the arriving qty planned', tone: 'warn', test: (g) => g.planned > 0 && g.planned < g.arriving },
+      { key: 'full', label: 'Fully planned', hint: 'Planned qty covers what is arriving', tone: 'success', test: (g) => g.planned > 0 && g.planned >= g.arriving },
+    ];
+    const PER_COLUMN = 40;
+    return (
+      <div className="ip-kanban">
+        {COVER.map((c) => {
+          const items = groups.filter(c.test);
+          return (
+            <section key={c.key} className="ip-kcol" aria-label={c.label}>
+              <div className="ip-kcol-head">
+                <span className={`badge ${c.tone}`}>{c.label}</span>
+                <span className="ip-kcol-n">{items.length}</span>
+              </div>
+              <small className="ip-kcol-hint">{c.hint}</small>
+              {items.slice(0, PER_COLUMN).map(card)}
+              {items.length > PER_COLUMN && <p className="ip-kcol-more">+{items.length - PER_COLUMN} more — narrow the filters or use List</p>}
+              {!items.length && <p className="ip-kcol-more">Nothing here.</p>}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="table-panel wf-grid-panel">
@@ -521,18 +766,183 @@ function GroupedView({ rows, mode }: { rows: ReceivablePlanRow[]; mode: Exclude<
   );
 }
 
+/**
+ * The approver's decision on a card: Approve, or Send back / Reject with a remark. Decides
+ * only the given rows (one PO line, or a group's submitted lines) through the same approval
+ * path as the week's batch decision — approved-month stamping, notifications and the log.
+ */
+function CardDecision({ rowKeys, label, what }: { rowKeys: string[]; label: string; what: string }) {
+  const [mode, setMode] = useState<null | 'rework' | 'reject'>(null);
+  const [notes, setNotes] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  function decide(decision: 'approve' | 'rework' | 'reject') {
+    setErr(null);
+    if (decision !== 'approve' && !notes.trim()) {
+      setErr('Add a remark: the team sees it with the line.');
+      return;
+    }
+    const fd = new FormData();
+    fd.set('entity_type', 'receivable_plan');
+    fd.set('entity_id', 'rows');
+    fd.set('entity_label', label);
+    fd.set('decision', decision);
+    fd.set('notes', notes.trim());
+    fd.set('row_keys', JSON.stringify(rowKeys));
+    start(async () => {
+      const res = await decideApproval(fd);
+      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
+      else setErr(toastError(res.error));
+    });
+  }
+  return (
+    <div className="ip-decide" role="group" aria-label={`Decision on ${what}`}>
+      <span className="ip-decide-label">Awaiting your decision{rowKeys.length > 1 ? ` · ${rowKeys.length} lines` : ''}</span>
+      {mode ? (
+        <>
+          <textarea
+            className="ip-decide-note"
+            rows={2}
+            autoFocus
+            value={notes}
+            placeholder={mode === 'rework' ? 'What should the team change?' : 'Why is it rejected?'}
+            onChange={(e) => setNotes(e.target.value)}
+            aria-label="Remark for the team"
+          />
+          <div className="ip-decide-actions">
+            <button type="button" className={`wf-btn wf-btn-sm ${mode === 'reject' ? 'wf-btn-danger' : 'wf-btn-primary'}`} disabled={pending} onClick={() => decide(mode)}>
+              {pending ? 'Working…' : mode === 'rework' ? 'Send back' : 'Reject'}
+            </button>
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => { setMode(null); setNotes(''); setErr(null); }}>Cancel</button>
+          </div>
+        </>
+      ) : (
+        <div className="ip-decide-actions">
+          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending} onClick={() => decide('approve')}>
+            {pending ? 'Working…' : rowKeys.length > 1 ? `Approve ${rowKeys.length}` : 'Approve'}
+          </button>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('rework')}>Send back</button>
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setMode('reject')}>Reject</button>
+        </div>
+      )}
+      {err && <small className="ip-decide-err" role="alert">{err}</small>}
+    </div>
+  );
+}
+
+/** Where a row is planned to land, in words: a week range or a whole month. */
+function pickLabel(r: ReceivablePlanRow): string | null {
+  if (!r.delivery_date_this_week) return null;
+  return r.receiving_granularity === 'month' ? monthLabelOf(r.delivery_date_this_week) : weekRangeLabel(r.delivery_date_this_week);
+}
+
+/** One PO line as a card (Cards and Kanban). Read-only; Edit opens it in the list. */
+function LineCard({ row, editable, onEdit, canDecide = false }: { row: ReceivablePlanRow; editable: boolean; onEdit: (r: ReceivablePlanRow) => void; canDecide?: boolean }) {
+  const planned = row.qty_expected_this_week ?? 0;
+  const pct = row.arriving_qty > 0 ? Math.round((planned / row.arriving_qty) * 100) : null;
+  const when = pickLabel(row);
+  return (
+    <article className={`ip-card${row.oos_flag ? ' is-oos' : ''}`}>
+      <div className="ip-card-top">
+        <span className="mono ip-card-po">{row.po_ref_num || row.po_number}</span>
+        {row.internal_status && <span className={`badge ${statusTone(row.internal_status)}`}>{row.internal_status}</span>}
+      </div>
+      <b className="ip-card-name">{row.product_variant}</b>
+      <span className="ip-card-meta">{row.vendor_name || row.vendor_code || '—'}{row.product_state ? ` · ${row.product_state}` : ''}</span>
+      <div className="ip-card-figs">
+        <span><small>Arriving</small>{fmt.format(row.arriving_qty)}</span>
+        <span><small>Planned</small>{planned ? fmt.format(planned) : '—'}</span>
+        <span><small>EDD</small>{row.expected_delivery_date ?? '—'}</span>
+      </div>
+      {pct != null && (
+        <span className="ip-card-bar" aria-label={`${pct}% of arriving qty planned`}><i style={{ width: `${Math.min(100, pct)}%` }} /></span>
+      )}
+      <div className="ip-card-foot">
+        <span className="ip-card-when">{when ? `Expected ${when}` : 'No week / month yet'}</span>
+        <span className="ip-card-tags">
+          {row.oos_flag && <span className="badge danger">OOS</span>}
+          {row.input_status && <span className="ip-card-status">{statusText(row.input_status, { approverEdited: row.input_approver_edited })}</span>}
+        </span>
+      </div>
+      {canDecide && row.input_status === 'submitted' && (
+        <CardDecision
+          rowKeys={[row.row_key]}
+          what={`${row.po_ref_num || row.po_number} ${row.product_variant}`}
+          label={`Receivable plan — ${row.po_ref_num || row.po_number} · ${row.product_variant}`}
+        />
+      )}
+      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm ip-card-edit" onClick={() => onEdit(row)}>
+        {editable ? 'Edit in list' : 'Show in list'}
+      </button>
+    </article>
+  );
+}
+
+/** PO lines as cards (paged like the list) or as a board by input stage. */
+function LinesBoard({
+  rows,
+  layout,
+  pageFrom,
+  pageTo,
+  editable,
+  onEdit,
+  canDecide = false,
+}: {
+  rows: ReceivablePlanRow[];
+  layout: 'cards' | 'kanban';
+  pageFrom: number;
+  pageTo: number;
+  editable: boolean;
+  onEdit: (r: ReceivablePlanRow) => void;
+  canDecide?: boolean;
+}) {
+  const PER_COLUMN = 40;
+  if (!rows.length) return <p className="wf-empty-cell ip-empty">No open receivables match.</p>;
+  if (layout === 'cards') {
+    return (
+      <div className="ip-cards">
+        {rows.slice(pageFrom, pageTo).map((r) => <LineCard key={r.row_key} row={r} editable={editable} onEdit={onEdit} canDecide={canDecide} />)}
+      </div>
+    );
+  }
+  return (
+    <div className="ip-kanban">
+      {INPUT_STAGES.map((st) => {
+        const items = rows.filter((r) => inputStage(r) === st.key);
+        return (
+          <section key={st.key} className="ip-kcol" aria-label={st.label}>
+            <div className="ip-kcol-head">
+              <span className={`badge ${st.tone}`}>{st.label}</span>
+              <span className="ip-kcol-n">{items.length}</span>
+            </div>
+            <small className="ip-kcol-hint">{st.hint}</small>
+            {items.slice(0, PER_COLUMN).map((r) => <LineCard key={r.row_key} row={r} editable={editable} onEdit={onEdit} canDecide={canDecide} />)}
+            {items.length > PER_COLUMN && (
+              <p className="ip-kcol-more">+{items.length - PER_COLUMN} more — narrow the filters or use List</p>
+            )}
+            {!items.length && <p className="ip-kcol-more">Nothing here.</p>}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function ReceivableRow({
   row,
   editable,
   weekOptions,
   monthOptions,
   onSaved,
+  hidden = false,
 }: {
   row: ReceivablePlanRow;
   editable: boolean;
   weekOptions: { value: string; label: string }[];
   monthOptions: { value: string; label: string }[];
   onSaved: () => void;
+  /** Off the current page: kept mounted (unsaved typing survives a page change), not shown. */
+  hidden?: boolean;
 }) {
   // The picker holds a tagged value: `m<date>` = a whole month (1st stored),
   // `w<date>` = a specific week (Monday stored). Empty = unset.
@@ -611,7 +1021,7 @@ function ReceivableRow({
   }
 
   return (
-    <tr className={row.oos_flag ? 'wf-row-over' : ''}>
+    <tr className={row.oos_flag ? 'wf-row-over' : ''} hidden={hidden}>
       <td className="mono wf-po-primary">
         <strong>{row.po_number}</strong>
         <small className="wf-subtle">{row.po_ref_num}</small>
@@ -675,7 +1085,7 @@ function ReceivableRow({
         <small className="wf-subtle wf-qty-meta">
           {row.input_status && (
             <span className={`badge ${approvalTone(row.input_status)}`}>
-              {STATUS_LABEL[row.input_status]}
+              {statusText(row.input_status, { approverEdited: row.input_approver_edited })}
             </span>
           )}
           {approvedMonthLabel && <span>weeks free in {approvedMonthLabel}</span>}

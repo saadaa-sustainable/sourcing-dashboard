@@ -1,5 +1,5 @@
 import { skuKey } from '@/lib/sku-key';
-import type { DoqPartialDay } from '@/lib/forms/types';
+import type { DoqPartialDay, OosCalculationRow } from '@/lib/forms/types';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
@@ -30,6 +30,8 @@ import {
   normaliseProductState,
 } from '@/lib/doq-dashboard';
 import { DoqDashboardClient } from './doq-dashboard-client';
+import type { IncludedSku } from './included-sku-panel';
+import { packRows } from '@/lib/packed-rows';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,21 +83,57 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
       });
     }
   }
-  // Same selling-price rule as OOS Calculation: Shopify SP, else product-master MRP —
-  // so Sales Leakage reconciles between the two pages. Product STATE comes from the EasyEcom
-  // product master first (the list the team maintains and the DOQ sheet reads: it knows "NPD"
-  // where the feed says "NPD - Not Launched Yet" or nothing), the feed's own state as fallback.
-  const oosMeta = oosRaw.map((m) => {
-    const p = pm[skuKey(m.sku)];
-    return {
-      ...m,
-      sales_value: m.sales_value ?? p?.mrp ?? null,
-      product_status: normaliseProductState(p?.state) ?? normaliseProductState(m.product_status),
-    };
-  });
-
   // Keyed the feed's way (no underscore) — see skuKey.
   const excluded = new Set(exclusions.map((e) => skuKey(e.sku)));
+
+  // The SKU universe is the team's OOS SKU list: the EasyEcom product master minus the exclusion
+  // list (reconciled with the DOQ sheet 2026-10-07 — the feed alone lacks ~400 of its SKUs, mostly
+  // NPD not launched yet). A SKU the feed does not carry counts with no stock and no sales: never
+  // out of stock, DOQ 0 — exactly how the sheet treats a SKU with no inventory row.
+  // Same selling-price rule as OOS Calculation: Shopify SP, else product-master MRP — so Sales
+  // Leakage reconciles between the two pages. Product STATE comes from the EasyEcom product
+  // master first, the feed's own state as fallback.
+  const oosByKey = new Map(oosRaw.map((m) => [skuKey(m.sku), m]));
+  const oosMeta = Object.entries(pm)
+    .filter(([k]) => !excluded.has(k))
+    .map(([k, p]) => {
+      const m: OosCalculationRow = oosByKey.get(k) ?? {
+        sku: k,
+        product_status: null,
+        category_with_gender: null,
+        rm_code: null,
+        dyed_fabric_sku: null,
+        product_variant: p.variant,
+        product_code: p.variant && p.variant.length > 2 ? p.variant.slice(0, -2) : p.variant,
+        product_name: p.name,
+        color: p.colour,
+        size: p.size,
+        total_inventory_days: null,
+        total_oos_days: 0,
+        total_available_days: null,
+        total_qty_sold: 0,
+        doq_45: 0,
+        launch_date: p.launch,
+        product_class: null,
+        current_stock: 0,
+        doh: null,
+        sales_value: null,
+        sales_leakage: null,
+        inprocess_stock: 0,
+        doh_with_inprocess: null,
+        cancelled: null,
+        returned: null,
+        com_status: null,
+        weave_type: p.weave,
+      };
+      return {
+        ...m,
+        weave_type: m.weave_type ?? p.weave,
+        sales_value: m.sales_value ?? p.mrp ?? null,
+        product_status: normaliseProductState(p.state) ?? normaliseProductState(m.product_status),
+      };
+    });
+  const priceFactor = rules.leakage_price_factor ?? 0.85;
 
   // Is the newest day's sales column complete? BqSync (once redeployed) anchors the windows
   // on the last complete day and says so in the meta. Until then the same check is made
@@ -140,18 +178,59 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
   // Two breakdowns per the sheet: By Product Status + By COM Status (detail).
   const tables = {} as Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   const comTables = {} as Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
+  // Last 45 days = the DOQ sheet's 45-day table: each SKU's own 45-day figures (OOS days = the
+  // feed's oos_days_45, available = 45 − OOS, qty = 45-day qty sold), not a day-by-day count —
+  // the feed's per-day stock is today's stock repeated, so it cannot see past stock-outs.
+  for (const m of oosMeta) {
+    const w = (windows[m.sku] ??= { sku: m.sku } as (typeof windows)[string]);
+    // DOQ for the window = qty ÷ avail; feeding the SKU's own 45-day DOQ over 1 makes the column
+    // the sum of the sheet's "45 Days DOQ" (incl. the 0.25 floor for a SKU never sellable).
+    // avail is used for nothing else; OOS days / SKU-days come from f45_oos and the SKU count.
+    w.f45_qty = Number(m.doq_45) || 0;
+    w.f45_avail = 1;
+    w.f45_oos = Number(m.total_oos_days) || 0;
+  }
   for (const key of DOQ_WINDOW_KEYS) {
     tables[key] = {} as Record<DoqWeave, DoqCategoryRow[]>;
     comTables[key] = {} as Record<DoqWeave, DoqCategoryRow[]>;
-    const ndays = meta?.windows?.[key]?.ndays ?? 1;
+    const ndays = key === 'f45' ? 45 : meta?.windows?.[key]?.ndays ?? 1;
+    const totalDoh = key === 'f45' ? ('rows' as const) : ('skus' as const);
     for (const weave of DOQ_WEAVES) {
-      tables[key][weave] = aggregateDoqWindow(windows, oosMeta, excluded, key, weave, ndays);
+      tables[key][weave] = aggregateDoqWindow(windows, oosMeta, excluded, key, weave, ndays, { priceFactor, totalDoh });
       comTables[key][weave] = aggregateDoqWindow(windows, oosMeta, excluded, key, weave, ndays, {
         categoryOf: (m) => comStatusOf(m.product_status, classBySku[m.sku] ?? 'D'),
         order: 'com',
+        priceFactor,
+        totalDoh,
       });
     }
   }
+
+  // The SKUs every table above counts: the feed minus the exclusion list (same filter as
+  // aggregateDoqWindow), listed for the Included SKUs panel. Packed — ~4,000 rows.
+  const included = packRows<IncludedSku>(
+    oosMeta
+      .filter((m) => !excluded.has(skuKey(m.sku)))
+      .map((m) => {
+        const cls = classBySku[m.sku] ?? 'D';
+        return {
+          sku: m.sku,
+          product_code: m.product_code,
+          product_name: m.product_name,
+          color: m.color,
+          size: m.size,
+          weave: m.weave_type?.trim() || 'Unknown',
+          product_status: m.product_status?.trim() || 'Unknown',
+          product_class: cls,
+          com_status: comStatusOf(m.product_status, cls),
+          current_stock: m.current_stock,
+          inprocess_stock: m.inprocess_stock,
+          doq_45: m.doq_45,
+          oos_days_45: m.total_oos_days,
+        };
+      })
+      .sort((a, b) => a.sku.localeCompare(b.sku)),
+  );
 
   return (
     <FormLayout
@@ -173,6 +252,7 @@ export default async function DoqDashboardPage({ searchParams }: { searchParams:
         comTables={comTables}
         meta={meta}
         exclusions={exclusions}
+        included={included}
         editable={user.role !== 'viewer'}
         summary={summary}
         snapshots={snapshots}

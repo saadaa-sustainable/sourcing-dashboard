@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
+import { ClearFiltersButton } from '@/components/clear-filters-button';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Search, Send, Trash2, X } from 'lucide-react';
 import {
@@ -13,16 +14,20 @@ import {
   saveTnaLeadtimes,
   setPoClosure,
   submitPoApproval,
+  updatePoDeleteRequestReason,
+  withdrawPoDeleteRequest,
 } from '@/lib/forms/actions';
+import { confirmDelete as askConfirmDelete } from '@/lib/confirm';
 import { addMonths, canApprove, canDeletePo, canEdit, isPlanFrozen, monthLabel, monthStart, routeApproval, STATUS_LABEL } from '@/lib/forms/approval';
 import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
 import type { CostSheetFigures } from '@/lib/cost-sheet';
-import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
+import { Field, Notice } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
+import { Combobox, type ComboOption } from '@/components/forms/combobox';
 import { PoCard, poFlag } from './po-card';
 import { PoLinesPanel } from './po-lines-panel';
 import type { PoSubmissionChecks } from '@/lib/forms/queries-modules/po-checks';
@@ -222,6 +227,8 @@ export function PoApprovalClient({
   productCodes,
   vendorCodes,
   vendorNames = {},
+  vendorTypes = {},
+  productNames = {},
   deboarded = {},
   submissions = [],
   leadtimes,
@@ -240,6 +247,10 @@ export function PoApprovalClient({
   productCodes: string[];
   vendorCodes: string[];
   vendorNames?: Record<string, string>;
+  /** PO type each vendor mainly works on, from the vendor master. */
+  vendorTypes?: Record<string, string>;
+  /** Product name per code, from the product catalog. */
+  productNames?: Record<string, string>;
   /** Approved de-boardings by upper-cased code — the vendor is flagged, not hidden. */
   deboarded?: Record<string, DeboardedVendor>;
   submissions?: PoSubmissionGroup[];
@@ -258,7 +269,8 @@ export function PoApprovalClient({
   initialEditId?: number | null;
 }) {
   const editable = canEdit(role, 'draft');
-  const initialEdit = initialEditId != null ? pos.find((p) => p.id === initialEditId && (p.status === 'draft' || p.status === 'rework')) ?? null : null;
+  // House rule: until approved, everything is amendable — any non-approved request opens for edit.
+  const initialEdit = initialEditId != null && editable ? pos.find((p) => p.id === initialEditId && p.status !== 'approved') ?? null : null;
   const [form, setForm] = useState(() => (initialEdit ? formFromPo(initialEdit) : { ...BLANK }));
   // The page: which POs are listed, the search, the tab, and whether the raise-a-PO drawer is open.
   const [filter, setFilter] = useState<Filter>('mine');
@@ -357,7 +369,7 @@ export function PoApprovalClient({
     return p;
   };
 
-  /** Load a raised PO back into the form. Only a draft or a reworked PO gets here. */
+  /** Load a raised PO back into the form. Any PO that is not yet approved gets here. */
   function startEdit(po: PoApproval) {
     setError(null);
     setMessage(null);
@@ -366,6 +378,7 @@ export function PoApprovalClient({
     setDraftId(null);
     setActiveStep('order');
     setDrawerOpen(true);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   }
 
   function cancelEdit() {
@@ -402,10 +415,46 @@ export function PoApprovalClient({
     });
   }
 
+  // The person who asked for a deletion can change the reason or withdraw the ask until the
+  // admin approves it (house rule: until approved, everything is amendable).
+  const [reasonDraft, setReasonDraft] = useState<string | null>(null);
+  function saveDeleteReason(reqId: number) {
+    if (reasonDraft == null) return;
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(reqId));
+    p.set('delete_reason', reasonDraft);
+    start(async () => {
+      const res = await updatePoDeleteRequestReason(p);
+      if (res.ok) {
+        setReasonDraft(null);
+        reloadWithToast(res.message ?? 'Saved.');
+      } else setError(toastError(res.error));
+    });
+  }
+  async function withdrawDelete(reqId: number, requestLabel: string) {
+    const ok = await askConfirmDelete({
+      title: `Withdraw the deletion request for ${requestLabel}?`,
+      body: 'The ask is removed from the admin’s queue and the PO request stays live. You can ask again later.',
+      confirmLabel: 'Withdraw request',
+    });
+    if (!ok) return;
+    setError(null);
+    const p = new FormData();
+    p.set('id', String(reqId));
+    start(async () => {
+      const res = await withdrawPoDeleteRequest(p);
+      if (res.ok) {
+        setReasonDraft(null);
+        reloadWithToast(res.message ?? 'Withdrawn.');
+      } else setError(toastError(res.error));
+    });
+  }
+
   // Spec 7.1: submit = save the draft, show the three validations as a pop-up, confirm
   // with a remark, then route it for approval.
   const [checks, setChecks] = useState<{ id: number; checks: PoSubmissionChecks } | null>(null);
-  // A raised PO stays editable until it is submitted: Edit on its row loads it back here.
+  // A raised PO stays editable until it is approved: Edit on its row loads it back here.
   const [editing, setEditing] = useState<PoApproval | null>(initialEdit);
   // The request this form is about: the one being edited, or the draft the first save made.
   const current: PoApproval | null = editing ?? (draftId != null ? pos.find((p) => p.id === draftId) ?? null : null);
@@ -471,6 +520,34 @@ export function PoApprovalClient({
     });
   }
 
+  // Dropdown rows: bold name over a grey detail line.
+  const productOptions = useMemo<ComboOption[]>(
+    () =>
+      productCodes.map((c) => {
+        const name = productNames[c.trim().toUpperCase()];
+        return { value: c, label: name ? `${c} · ${name}` : c, detail: name ? 'Standard Cost' : 'Standard Cost · no name in the catalog', keywords: name };
+      }),
+    [productCodes, productNames],
+  );
+  const vendorOptions = useMemo<ComboOption[]>(
+    () =>
+      vendorCodes.map((c) => {
+        const name = vendorNames[c];
+        const load = capacity[c.toLowerCase()];
+        const type = vendorTypes[c];
+        const typeLabel = type === 'job_work' ? 'Job Work' : type === 'efob' ? 'E-FOB' : type;
+        return {
+          value: c,
+          label: name || c,
+          detail: [c.toUpperCase(), typeLabel, load != null ? `${load.toLocaleString('en-IN')} pcs in process` : null, deboarded[c.toUpperCase()] ? 'DE-BOARDED' : null]
+            .filter(Boolean)
+            .join(', '),
+          keywords: c,
+        };
+      }),
+    [vendorCodes, vendorNames, vendorTypes, capacity, deboarded],
+  );
+
   const liveLoad = form.vendor_code
     ? capacity[form.vendor_code.toLowerCase()]
     : undefined;
@@ -502,12 +579,12 @@ export function PoApprovalClient({
   const approvedNotIssued = (p: PoApproval) => p.status === 'approved' && !p.po_issued_at;
   const mine = (p: PoApproval) =>
     (queued(p) && canApprove(role, p.status)) ||
-    ((p.status === 'draft' || p.status === 'rework') && editable) ||
+    ((p.status === 'draft' || p.status === 'rework' || p.status === 'rejected') && editable) ||
     (approvedNotIssued(p) && editable);
   const FILTERS: { key: Filter; label: string; test: (p: PoApproval) => boolean }[] = [
     { key: 'mine', label: 'Needs my action', test: mine },
     { key: 'draft', label: 'Draft', test: (p) => p.status === 'draft' || p.status === 'rework' },
-    { key: 'waiting', label: 'Awaiting approval', test: queued },
+    { key: 'waiting', label: 'Approval Pending', test: queued },
     { key: 'approved', label: 'Approved, not in EasyCom', test: approvedNotIssued },
     { key: 'issued', label: 'Issued', test: (p) => Boolean(p.po_issued_at) },
     { key: 'all', label: 'All', test: () => true },
@@ -611,26 +688,32 @@ export function PoApprovalClient({
         />
       )}
 
-      <div className="poa-pagebar">
-        <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
-          {FILTERS.map((f) => {
-            const n = f.key === 'all' ? null : pos.filter(f.test).length;
-            return (
-              <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
-                {f.label}{n != null && <span className="c">{n}</span>}
-              </button>
-            );
-          })}
+      {/* The form takes the page in place of the list — sidebar and header stay. */}
+      {!(editable && drawerOpen) && (<>
+      <div className="tb">
+        <div className="tb-find">
+          <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
+            {FILTERS.map((f) => {
+              const n = f.key === 'all' ? null : pos.filter(f.test).length;
+              return (
+                <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
+                  {f.label}{n != null && <span className="c">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <label className="poa-search tb-search-wrap">
+            <Search size={13} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
+          </label>
+          <ClearFiltersButton active={filter !== 'mine' || q !== ''} onClear={() => { setFilter('mine'); setQ(''); }} />
         </div>
-        <div className="spacer" />
-        <label className="poa-search">
-          <Search size={13} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
-        </label>
         {editable && (
-          <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); }}>
-            <Plus size={14} /> Raise a PO
-          </button>
+          <div className="tb-see">
+            <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
+              <Plus size={14} /> Raise a PO
+            </button>
+          </div>
         )}
       </div>
 
@@ -758,10 +841,11 @@ export function PoApprovalClient({
         </aside>
       </div>
 
+      </>)}
+
       {editable && drawerOpen && (
         <>
-          <div className="poa-scrim" onClick={cancelEdit} />
-          <div className="poa-drawer" role="dialog" aria-label={editing ? `Edit ${editing.request_id}` : 'Raise a PO'}>
+          <div className="poa-drawer" role="region" aria-label={editing ? `Edit ${editing.request_id}` : 'Raise a PO'}>
             <div className="poa-drawer-head">
               <h2>{current ? `${editing ? 'Edit' : 'Raise'} ${current.request_id}` : 'Raise a PO'}</h2>
               <span className="wf-subtle">Five steps — each Save &amp; continue saves what is filled and opens the next.</span>
@@ -778,11 +862,19 @@ export function PoApprovalClient({
             <div>
               <h3>
                 {editing ? `Edit ${editing.request_id}` : 'Raise a PO for approval'}
-                <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is submitted — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
+                <InfoDot text={"WHAT: where a PO is drafted before it exists in EasyEcom.\n\nHOW: quantities by colour and size, the rate against the approved Standard Cost, and the TNA timeline. Submitting sends it to Approvals — FG under 5,000 pieces to the team, larger or NPD/material to an admin.\n\nUSE: a raised PO stays editable until it is approved — use Edit on its row. Nothing is issued to the vendor until it is approved and then issued here against a real EasyEcom PO number."} />
               </h3>
               {editing && (
                 <p className="wf-subtle">
-                  Editing a saved request{editing.status === 'rework' ? ' sent back for rework' : ''} — saving updates it
+                  Editing a saved request
+                  {editing.status === 'rework'
+                    ? ' sent back for rework'
+                    : editing.status === 'rejected'
+                      ? ' that was rejected'
+                      : editing.status === 'submitted' || editing.status === 'pending_l2'
+                        ? ' awaiting approval'
+                        : ''}{' '}
+                  — saving updates it
                   rather than raising another. Its SKU quantities stay as they are.
                 </p>
               )}
@@ -820,6 +912,41 @@ export function PoApprovalClient({
               <strong>Deletion requested</strong> by {pendingDelete.requested_by} on{' '}
               {new Date(pendingDelete.requested_at).toLocaleDateString('en-IN')} — “{pendingDelete.reason}”.
               It is in the admin’s approval queue; the request stays live until they decide.
+              {editable &&
+                (pendingDelete.requested_by ?? '').trim().toLowerCase() === (userEmail ?? '').trim().toLowerCase() &&
+                Boolean(userEmail) && (
+                  <span className="wf-footer-actions">
+                    {reasonDraft != null ? (
+                      <>
+                        <input
+                          className="wf-mini-input"
+                          value={reasonDraft}
+                          onChange={(e) => setReasonDraft(e.target.value)}
+                          placeholder="Reason for deleting this request"
+                          aria-label="Reason for deleting this request"
+                        />
+                        <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={pending || reasonDraft.trim().length < 4} onClick={() => saveDeleteReason(pendingDelete.id)}>
+                          Save reason
+                        </button>
+                        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setReasonDraft(null)}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} onClick={() => setReasonDraft(pendingDelete.reason)}>
+                        Change reason
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="wf-btn wf-btn-sm wf-btn-delete"
+                      disabled={pending}
+                      onClick={() => void withdrawDelete(pendingDelete.id, pendingDelete.request_id)}
+                    >
+                      Withdraw request
+                    </button>
+                  </span>
+                )}
             </Notice>
           )}
           {declinedDelete && (
@@ -881,17 +1008,16 @@ export function PoApprovalClient({
               </select>
             </Field>
             <Field label="Product code">
-              <input
-                list="po-product-codes"
+              <Combobox
+                ariaLabel="Product code"
                 value={form.product_code}
-                placeholder="Select or type…"
-                onChange={(e) => set('product_code', e.target.value)}
+                onChange={(v) => set('product_code', v)}
+                // A PO is raised against a costed product (EasyEcom or TMP), never a typed name.
+                allowFreeText={false}
+                emptyText="No costed product matches. Add it on Standard Cost first."
+                placeholder="Search code or product name…"
+                options={productOptions}
               />
-              <datalist id="po-product-codes">
-                {productCodes.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
             </Field>
             <Field
               label="Request ID"
@@ -907,20 +1033,13 @@ export function PoApprovalClient({
                   : 'Pick a code — name fills itself'
               }
             >
-              <input
-                list="po-vendor-codes"
+              <Combobox
+                ariaLabel="Vendor"
                 value={form.vendor_code}
-                placeholder="Select or type a code…"
-                onChange={(e) => setVendorCode(e.target.value)}
+                onChange={(v) => setVendorCode(v)}
+                placeholder="Search vendor name or code…"
+                options={vendorOptions}
               />
-              <datalist id="po-vendor-codes">
-                {vendorCodes.map((c) => (
-                  <option key={c} value={c}>
-                    {vendorNames[c] ? `${c} — ${vendorNames[c]}` : c}
-                    {deboarded[c.toUpperCase()] ? ' — DE-BOARDED' : ''}
-                  </option>
-                ))}
-              </datalist>
               {deboardedPick && (
                 <Notice tone="warn">
                   <DeboardedPill flag={deboardedPick} /> This vendor’s de-boarding was approved.
@@ -936,20 +1055,12 @@ export function PoApprovalClient({
                 />
               )}
             </Field>
-            <Field label="Vendor name" hint="auto-fills from the code (or pick to back-fill the code)">
+            <Field label="Vendor name" hint="fills itself from the vendor picked — type only if the vendor is not in the master">
               <input
-                list="po-vendor-names"
                 value={form.vendor_name}
-                placeholder="Auto from code…"
+                placeholder="Fills from the vendor"
                 onChange={(e) => setVendorName(e.target.value)}
               />
-              <datalist id="po-vendor-names">
-                {Object.values(vendorNames)
-                  .filter(Boolean)
-                  .map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-              </datalist>
             </Field>
           </FormSection>
 
@@ -1273,7 +1384,7 @@ export function PoApprovalClient({
                     poRef={current.po_ref_num ?? current.request_id}
                     productCode={form.product_code.trim() || current.product_code}
                     lines={currentLines}
-                    editable={current.status === 'draft' || current.status === 'rework'}
+                    editable={current.status !== 'approved' && editable}
                     onSaved={() => reloadWithToast()}
                     onClose={() => setActiveStep('plan')}
                   />
@@ -1290,7 +1401,7 @@ export function PoApprovalClient({
                   ? 'Lines saved. Submit runs the three checks (rate vs standard, vendor load, TNA against the vendor’s history) and routes it by value.'
                   : 'Save the lines above, then submit.'
                 : current
-                  ? `Saving updates ${current.request_id}. It stays editable until it is submitted.`
+                  ? `Saving updates ${current.request_id}. It stays editable until it is approved${current.status === 'submitted' || current.status === 'pending_l2' ? ' — the approver sees the saved changes' : ''}.`
                   : 'Save & continue creates the draft and gives it its Request ID; every later save updates it.'}
             </p>
             {STEP_ORDER.indexOf(activeStep) > 0 && (
@@ -1317,15 +1428,19 @@ export function PoApprovalClient({
                 <button type="button" className="wf-btn wf-btn-ghost" onClick={cancelEdit} disabled={pending}>
                   Close
                 </button>
-                <button
-                  type="button"
-                  className="wf-btn wf-btn-primary"
-                  onClick={() => run(true)}
-                  disabled={pending || !current || !currentLines.length}
-                  title={currentLines.length ? 'Run the three checks and submit' : 'Save the SKU lines first'}
-                >
-                  <Send size={15} /> {pending ? 'Working…' : 'Submit for approval'}
-                </button>
+                {/* Already in the approval queue: saved changes reach the approver as they are,
+                    so there is nothing to submit again. */}
+                {!(current && (current.status === 'submitted' || current.status === 'pending_l2')) && (
+                  <button
+                    type="button"
+                    className="wf-btn wf-btn-primary"
+                    onClick={() => run(true)}
+                    disabled={pending || !current || !currentLines.length}
+                    title={currentLines.length ? 'Run the three checks and submit' : 'Save the SKU lines first'}
+                  >
+                    <Send size={15} /> {pending ? 'Working…' : current?.status === 'rework' || current?.status === 'rejected' ? 'Submit again' : 'Submit for approval'}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1493,13 +1608,16 @@ function PoSubmissionTable({
         </h3>
         <span>{submissions.length} open PO(s) · row-wise close</span>
       </div>
-      <div className="wf-toolbar">
-        <input
-          className="wf-search"
-          placeholder="Filter PO / vendor / product…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+      <div className="tb tb-flat">
+        <div className="tb-find">
+          <input
+            className="wf-search"
+            placeholder="Filter PO / vendor / product…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <ClearFiltersButton active={q !== ''} onClear={() => setQ('')} />
+        </div>
       </div>
       <div className="table-panel">
         <div className="table-scroll">
@@ -1546,7 +1664,10 @@ function PoSubmissionTable({
                     <td className="num strong">{nfmt(s.pending_qty)}</td>
                     <td className="wf-subtle">{s.expected_delivery_date ?? '—'}</td>
                     <td>
-                      <StatusBadge status={s.closureStatus} />
+                      {/* PO closure is not an approval: yes = closed, no = flagged (po-lines-cutting). */}
+                      <span className={`wf-status tone-${s.closureStatus === 'approved' ? 'teal' : s.closureStatus === 'rejected' ? 'red' : 'purple'}`}>
+                        {s.closureStatus === 'approved' ? 'Closed' : s.closureStatus === 'rejected' ? 'Flagged' : 'Open'}
+                      </span>
                     </td>
                     {editable && (
                       <td>

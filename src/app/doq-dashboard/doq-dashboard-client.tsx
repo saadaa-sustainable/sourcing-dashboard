@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { InfoDot } from '@/components/info-dot';
 import { OosExclusionPanel } from '@/components/forms/oos-exclusion-panel';
+import { IncludedSkuPanel, type IncludedSku } from './included-sku-panel';
+import type { PackedRows } from '@/lib/packed-rows';
 import { downloadCsv } from '@/lib/download';
 import {
   DOQ_WEAVES,
@@ -23,6 +25,7 @@ const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
 const WINDOW_TITLES: Record<DoqWindowKey, string> = {
   d1: 'Yesterday',
   l7: 'Last 7 days',
+  f45: 'Last 45 days',
   w1: 'Week −1',
   w2: 'Week −2',
   w3: 'Week −3',
@@ -48,11 +51,13 @@ const HEADERS = [
 ];
 
 const HEADER_INFO: Record<string, string> = {
+  'TOTAL COUNT OF SKU': 'WHAT: SKUs in this group. HOW: the team’s OOS SKU list — the EasyEcom product master minus the Excluded SKUs list. A SKU the stock feed does not carry yet (mostly NPD not launched) still counts, with no stock and no sales, as in the DOQ sheet. USE: the base for every % in the row.',
+  'OOS SKU COUNT': 'WHAT: SKUs that were out of stock on at least one day of the window. HOW: out of stock on a day = no sellable stock at Main Warehouse, i.e. Main stock of 3 or fewer (EasyEcom holds 3 back, so sellable = stock − 3) — the DOQ sheet’s rule. A SKU with no stock row that day is not counted. USE: how many SKUs the gaps touch.',
   DOQ: "WHAT: DOQ — Daily Order Quantity — how many pieces a day this group sells.\n\nHOW: for each SKU, pieces sold in the window ÷ days it was IN STOCK in the window (empty days are not held against it), then summed over the group. Example: 90 sold over 30 stocked days → 3 a day for that SKU.\n\nUSE: the demand rate every reorder quantity is built on. Read the 45-day version on Replenishment (IPDOQ) for ordering.",
   '% DOQ Contribution': "WHAT: how much of total daily demand this group represents.\n\nHOW: the group's DOQ ÷ the table's total DOQ. Example: 120 of 600 a day → 20%.\n\nUSE: where the sales are — the groups to keep in stock first.",
-  'DOH - Current Stock': "WHAT: DOH — Days On Hand — how many days the stock lasts at the current sales rate.\n\nHOW: per SKU, current stock ÷ its DOQ; averaged over the group. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against lead time (Rules Master: Job Work 30, E-FOB 45, FOB 75 days). Below the lead time, the next order is already late unless it is in process.",
-  'DOH - IN PROCESS': "WHAT: how many extra days the pieces on order will add.\n\nHOW: per SKU, in-process (on order, not received) ÷ its DOQ; averaged over the group.\n\nUSE: DOH stock + DOH in process = total cover. If the sum is still under the lead time, order more now.",
-  'SALES LEAKAGE (Rs)': "WHAT: the sales lost because SKUs were out of stock — in rupees.\n\nHOW: for each SKU, days out of stock in the window × its 45-day DOQ × selling price, summed. The 45-day DOQ is used (not the window's) so a SKU that was empty the whole window still counts. Example: 10 empty days × 3 a day × ₹899 → ₹26,970 lost on one SKU.\n\nUSE: the cost of the stock-out problem, in the language finance uses.",
+  'DOH - Current Stock': "WHAT: DOH — Days On Hand — how many days the stock lasts at the current sales rate.\n\nHOW: per SKU, current stock ÷ its DOQ (0 for a SKU that did not sell); averaged over every SKU in the group, as the DOQ sheet does. Example: 300 in stock, 5 a day → 60 days.\n\nUSE: read against lead time (Rules Master: Job Work 30, E-FOB 45, FOB 75 days). Below the lead time, the next order is already late unless it is in process.",
+  'DOH - IN PROCESS': "WHAT: how many extra days the pieces on order will add.\n\nHOW: per SKU, in-process (on order, not received) ÷ its DOQ (0 for a SKU that did not sell); averaged over every SKU in the group.\n\nUSE: DOH stock + DOH in process = total cover. If the sum is still under the lead time, order more now.",
+  'SALES LEAKAGE (Rs)': "WHAT: the sales lost because SKUs were out of stock — in rupees.\n\nHOW: for each SKU, days out of stock in the window × its 45-day DOQ × selling price × 0.85 (the leakage price factor in Rules Master — the DOQ sheet's rule), summed. The 45-day DOQ is used (not the window's) so a SKU that was empty the whole window still counts. Example: 10 empty days × 3 a day × ₹899 × 0.85 → ₹22,925 lost on one SKU.\n\nUSE: the cost of the stock-out problem, in the language finance uses.",
   'OOS%': "WHAT: OOS % — the share of selling opportunity lost to empty shelves in this window.\n\nHOW: empty SKU-days ÷ (SKUs × days in the window). Example: 10 SKUs over 7 days = 70 SKU-days; 14 empty → 20%.\n\nUSE: same basis as the Summary page's OOS %. Lower is better.",
   'IN STOCK RATE': "WHAT: the share of the window the group WAS on the shelf.\n\nHOW: 1 − OOS %. Example: OOS 20% → in-stock rate 80%.\n\nUSE: the positive way to quote the same number.",
   'Total sku days': "WHAT: the denominator behind OOS % — every SKU × every day in the window.\n\nHOW: SKUs in the group × days in the window. Example: 10 SKUs × 7 days = 70.\n\nUSE: shown so the OOS % can be checked by hand: OOS days ÷ this.",
@@ -157,6 +162,7 @@ export function DoqDashboardClient({
   comTables,
   meta,
   exclusions,
+  included,
   editable,
   summary = null,
   snapshots = [],
@@ -167,6 +173,8 @@ export function DoqDashboardClient({
   comTables: Record<DoqWindowKey, Record<DoqWeave, DoqCategoryRow[]>>;
   meta: DoqWindowMeta | null;
   exclusions: OosSkuExclusion[];
+  /** The SKUs the tables count (feed minus exclusions), for the Included SKUs panel. */
+  included: PackedRows<IncludedSku>;
   editable: boolean;
   /** The one-pager (KPI numbers only) and its daily history. */
   summary?: OosSummaryData | null;
@@ -191,7 +199,9 @@ export function DoqDashboardClient({
   const w = meta?.windows?.[win];
   const kicker = w
     ? `${w.label} · ${w.ndays} day${w.ndays > 1 ? 's' : ''}`
-    : 'awaiting first sync';
+    : win === 'f45'
+      ? 'not synced yet — run bqSyncDoqWindows once the 45-day columns exist'
+      : 'awaiting first sync';
 
   return (
     <>
@@ -238,9 +248,14 @@ export function DoqDashboardClient({
             <InfoDot text={"WHAT: how many SKUs are being left out of the tables below.\n\nHOW: the shared exclusion list, managed in the Excluded SKUs panel on this page; DOQ Calculation uses the same list.\n\nUSE: if a number looks too good, check nothing real is on this list."} />
           </span>
         )}
+        <span className="wf-chip">
+          {included.rows.length.toLocaleString('en-IN')} SKUs included
+          <InfoDot text="WHAT: how many SKUs the tables below count. HOW: the SKUs on the OOS feed minus the excluded ones; the full list is in the Included SKUs panel. USE: the category SKU counts in each table add up to this." />
+        </span>
       </div>
 
       <OosExclusionPanel exclusions={exclusions} editable={editable} collapsible />
+      <IncludedSkuPanel packed={included} />
 
       {/* window pills */}
       <div className="role-tabs" role="tablist" aria-label="DOQ windows">

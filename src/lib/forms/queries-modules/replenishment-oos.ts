@@ -1,4 +1,5 @@
 import 'server-only';
+import { MAIN_WAREHOUSE } from '@/lib/po-scope';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import { skuKey } from '@/lib/sku-key';
 import type {
@@ -14,9 +15,8 @@ import type {
 /** Replenishment recommendations (colours needing reorder), for the module page. */
 export async function loadReplenishment(): Promise<ReplenishmentRow[]> {
   const supabase = await client();
-  const rows: ReplenishmentRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
+  return pageAll<ReplenishmentRow>(() =>
+    supabase
       .from('sd_replenishment')
       .select('*')
       // The page shows 30 / 60 / 90-day cover: a colour that only needs a 60/90-day
@@ -24,13 +24,11 @@ export async function loadReplenishment(): Promise<ReplenishmentRow[]> {
       .or('rop_30.gt.0,rop_60.gt.0,rop_90.gt.0')
       .order('rop_30', { ascending: false })
       .order('rop_90', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_replenishment: ${error.message}`);
-    if (!data?.length) break;
-    rows.push(...(data as ReplenishmentRow[]));
-    if (data.length < PAGE_SIZE) break;
-  }
-  return rows;
+      // Tie-break so pages never overlap (many colours share the same ROPs).
+      .order('product_variant'),
+  ).catch((e: Error) => {
+    throw new Error(`sd_replenishment: ${e.message}`);
+  });
 }
 
 /** Product-code → ROP quantities, feeding the Buying Plan's computed Pending Qty. */
@@ -67,21 +65,16 @@ export async function loadVendorRecommendation(): Promise<VendorRecommendationRo
   return (data ?? []) as VendorRecommendationRow[];
 }
 
-/** The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000). */
+/**
+ * The OOS Calculation sheet — one row per SKU, read-only. Paged (can exceed 1000).
+ * Read through sd_oos_calculation_main: current stock is the Main Warehouse only and in process
+ * is the pending qty on approved POs (not the synced BigQuery figure); DOH columns recomputed.
+ */
 export async function loadOosCalculation(): Promise<OosCalculationRow[]> {
   const supabase = await client();
-  const rows: OosCalculationRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('sd_oos_calculation')
-      .select('*')
-      .order('sku')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_oos_calculation: ${error.message}`);
-    rows.push(...((data ?? []) as OosCalculationRow[]));
-    if (!data || data.length < PAGE_SIZE) break;
-  }
-  return rows;
+  return pageAll<OosCalculationRow>(() => supabase.from('sd_oos_calculation_main').select('*').order('sku')).catch((e: Error) => {
+    throw new Error(`sd_oos_calculation_main: ${e.message}`);
+  });
 }
 
 /** Team-managed SKU exclusion list for the OOS Calculation view. */
@@ -98,12 +91,16 @@ export async function loadOosExclusions(): Promise<OosSkuExclusion[]> {
   // Product names from the master, so the list reads as products, not just codes.
   const names = new Map<string, string>();
   const skus = rows.map((r) => r.sku);
-  for (let i = 0; i < skus.length; i += 200) {
-    // paging-ok: one chunk of at most 200 SKUs, one row each
-    const { data: pm } = await supabase
-      .from('sd_ee_product_master')
-      .select('sku, product_name, colour, size')
-      .in('sku', skus.slice(i, i + 200));
+  const chunks: string[][] = [];
+  for (let i = 0; i < skus.length; i += 200) chunks.push(skus.slice(i, i + 200));
+  // The ~17 chunks run together rather than one after another.
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      // paging-ok: one chunk of at most 200 SKUs, one row each
+      supabase.from('sd_ee_product_master').select('sku, product_name, colour, size').in('sku', chunk),
+    ),
+  );
+  for (const { data: pm } of results) {
     for (const r of (pm ?? []) as { sku: string; product_name: string | null; colour: string | null; size: string | null }[]) {
       names.set(skuKey(r.sku), [r.product_name, r.colour, r.size].filter(Boolean).join(' · '));
     }
@@ -135,16 +132,12 @@ export async function loadOosMeta(): Promise<{ dataAsOf: string | null; lastSync
 /** Per-SKU DOQ-dashboard window aggregates, keyed by SKU. Paged (12k+ rows). */
 export async function loadDoqWindows(): Promise<Record<string, DoqWindowRow>> {
   const supabase = await client();
+  // Ordered by the key: unordered pages are not guaranteed to be disjoint.
+  const rows = await pageAll<DoqWindowRow>(() => supabase.from('sd_doq_window').select('*').order('sku')).catch((e: Error) => {
+    throw new Error(`sd_doq_window: ${e.message}`);
+  });
   const map: Record<string, DoqWindowRow> = {};
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('sd_doq_window')
-      .select('*')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_doq_window: ${error.message}`);
-    for (const r of (data ?? []) as DoqWindowRow[]) map[r.sku] = r;
-    if (!data || data.length < PAGE_SIZE) break;
-  }
+  for (const r of rows) map[r.sku] = r;
   return map;
 }
 
@@ -155,20 +148,18 @@ export async function loadSkuClassInputs(): Promise<
 > {
   const supabase = await client();
   const map: Record<string, { doq45: number; doq365: number; oos45: number }> = {};
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('sd_inventory_planning')
-      .select('sku, doq_45, doq_365, oos_days_45')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_inventory_planning: ${error.message}`);
-    for (const r of (data ?? []) as { sku: string | null; doq_45: number | null; doq_365: number | null; oos_days_45: number | null }[]) {
-      if (!r.sku) continue;
-      const cur = (map[r.sku] ??= { doq45: 0, doq365: 0, oos45: 0 });
-      cur.doq45 = Math.max(cur.doq45, r.doq_45 ?? 0);
-      cur.doq365 = Math.max(cur.doq365, r.doq_365 ?? 0);
-      cur.oos45 = Math.max(cur.oos45, r.oos_days_45 ?? 0);
-    }
-    if (!data || data.length < PAGE_SIZE) break;
+  // Ordered by the key: unordered pages are not guaranteed to be disjoint.
+  const rows = await pageAll<{ sku: string | null; doq_45: number | null; doq_365: number | null; oos_days_45: number | null }>(() =>
+    supabase.from('sd_inventory_planning').select('sku, doq_45, doq_365, oos_days_45').eq('warehouse', MAIN_WAREHOUSE).order('row_key'),
+  ).catch((e: Error) => {
+    throw new Error(`sd_inventory_planning: ${e.message}`);
+  });
+  for (const r of rows) {
+    if (!r.sku) continue;
+    const cur = (map[r.sku] ??= { doq45: 0, doq365: 0, oos45: 0 });
+    cur.doq45 = Math.max(cur.doq45, r.doq_45 ?? 0);
+    cur.doq365 = Math.max(cur.doq365, r.doq_365 ?? 0);
+    cur.oos45 = Math.max(cur.oos45, r.oos_days_45 ?? 0);
   }
   return map;
 }
@@ -185,50 +176,61 @@ export async function loadDoqWindowMeta(): Promise<DoqWindowMeta | null> {
 }
 
 /** sku → launch date + MRP from the EasyEcom product master, for OOS fallbacks. */
-export async function loadPmLaunchPrice(): Promise<
-  Record<string, { launch: string | null; mrp: number | null; state: string | null }>
-> {
+export type PmSkuInfo = {
+  /** The master's own spelling (SDCPBL_S). */
+  sku: string;
+  launch: string | null;
+  mrp: number | null;
+  state: string | null;
+  weave: string | null;
+  name: string | null;
+  colour: string | null;
+  size: string | null;
+  variant: string | null;
+};
+
+export async function loadPmLaunchPrice(): Promise<Record<string, PmSkuInfo>> {
   const supabase = await client();
   // Keyed by skuKey: the master spells SDCPBL_S, the feed SDCPBLS — look up with skuKey too.
-  const map: Record<string, { launch: string | null; mrp: number | null; state: string | null }> = {};
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
+  const map: Record<string, PmSkuInfo> = {};
+  const rows = await pageAll<{
+    sku: string; product_launch_date: string | null; mrp: string | null; product_state: string | null;
+    weave_type: string | null; product_name: string | null; colour: string | null; size: string | null; product_variant: string | null;
+  }>(() =>
+    supabase
       .from('sd_ee_product_master')
-      .select('sku, product_launch_date, mrp, product_state')
-      .order('sku')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_ee_product_master: ${error.message}`);
-    for (const r of (data ?? []) as { sku: string; product_launch_date: string | null; mrp: string | null; product_state: string | null }[]) {
-      if (!r.sku) continue;
-      const k = skuKey(r.sku);
-      const mrp = Number(r.mrp);
-      // A junk spelling ("SMFLKBL_ 3XL") shares the key with the real SKU; the real row
-      // (plain CODE_SIZE) wins, a placeholder never overwrites it.
-      if (map[k] && !/^[A-Za-z0-9_]+$/.test(r.sku)) continue;
-      map[k] = {
-        launch: r.product_launch_date || null,
-        mrp: Number.isFinite(mrp) && mrp > 0 ? mrp : null,
-        state: r.product_state?.trim() || null,
-      };
-    }
-    if (!data || data.length < PAGE_SIZE) break;
+      .select('sku, product_launch_date, mrp, product_state, weave_type, product_name, colour, size, product_variant')
+      .order('sku'),
+  ).catch((e: Error) => {
+    throw new Error(`sd_ee_product_master: ${e.message}`);
+  });
+  for (const r of rows) {
+    if (!r.sku) continue;
+    const k = skuKey(r.sku);
+    const mrp = Number(r.mrp);
+    // A junk spelling ("SMFLKBL_ 3XL") shares the key with the real SKU; the real row
+    // (plain CODE_SIZE) wins, a placeholder never overwrites it.
+    if (map[k] && !/^[A-Za-z0-9_]+$/.test(r.sku)) continue;
+    map[k] = {
+      sku: r.sku,
+      launch: r.product_launch_date || null,
+      mrp: Number.isFinite(mrp) && mrp > 0 ? mrp : null,
+      state: r.product_state?.trim() || null,
+      weave: r.weave_type?.trim() || null,
+      name: r.product_name?.trim() || null,
+      colour: r.colour?.trim() || null,
+      size: r.size?.trim() || null,
+      variant: r.product_variant?.trim() || null,
+    };
   }
   return map;
 }
 
-/** Daily DOQ snapshot (sd_inventory_planning) — one row per SKU×warehouse. Paged (exceeds 1000). */
+/** Daily DOQ snapshot (sd_inventory_planning), Main Warehouse rows only — one row per SKU. Paged (exceeds 1000). */
 export async function loadDoqDataset(): Promise<DoqInventoryRow[]> {
   const supabase = await client();
-  const rows: DoqInventoryRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('sd_inventory_planning')
-      .select('*')
-      .order('sku')
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw new Error(`sd_inventory_planning: ${error.message}`);
-    rows.push(...((data ?? []) as DoqInventoryRow[]));
-    if (!data || data.length < PAGE_SIZE) break;
-  }
-  return rows;
+  // sku + row_key: sku alone repeats (one row per warehouse), so pages could overlap.
+  return pageAll<DoqInventoryRow>(() => supabase.from('sd_inventory_planning').select('*').eq('warehouse', MAIN_WAREHOUSE).order('sku').order('row_key')).catch((e: Error) => {
+    throw new Error(`sd_inventory_planning: ${e.message}`);
+  });
 }

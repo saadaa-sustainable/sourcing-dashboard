@@ -1,5 +1,6 @@
 'use server';
 
+import { SAADAA_PO_WAREHOUSE } from '@/lib/po-scope';
 import { randomBytes } from 'crypto';
 import { loadPoLineContext, loadPoPlanSuggestion, loadVendorPoHistory } from '../queries';
 import type { PoLineContext, PoPlanSuggestion } from '../queries-modules/po-lines-context';
@@ -105,15 +106,15 @@ export async function savePoLines(formData: FormData): Promise<ActionResult> {
     }))
     .filter((l) => l.product_variant || l.qty);
   const supabase = await supa();
-  const { data: po } = await supabase.from('sd_po_approval').select('status').eq('id', poId).maybeSingle();
+  const { data: po } = await supabase
+    .from('sd_po_approval')
+    .select('status, po_qty, category, request_id')
+    .eq('id', poId)
+    .maybeSingle();
   if (!po) return fail('PO not found.');
+  // House rule (AGENTS.md): until approved, everything is amendable — lines can be added,
+  // changed and removed in draft, pending, rework and rejected. Only approved is locked.
   if (po.status === 'approved') return fail('An approved PO cannot have its lines changed.');
-  // While the PO sits in the approval queue its quantity is what the approver is
-  // deciding on (and what routed it to team vs admin) — changing lines then would
-  // bypass the escalation rule. Edits go through Rework.
-  if (po.status === 'submitted' || po.status === 'pending_l2') {
-    return fail('This PO is awaiting approval — ask the approver to send it back for rework to change its lines.');
-  }
   // Carry each line's rework flag + reason across the replace (matched on
   // colour + size) so the approver's notes survive the team's fix-up save.
   const { data: prior } = await supabase
@@ -136,7 +137,30 @@ export async function savePoLines(formData: FormData): Promise<ActionResult> {
   }
   // PO qty is the sum of the size lines — never typed by hand.
   const poQty = clean.reduce((sum, l) => sum + (Number(l.qty) || 0), 0);
-  await supabase.from('sd_po_approval').update({ po_qty: poQty }).eq('id', poId);
+  const from = po.status as SdStatus;
+  const pending = from === 'submitted' || from === 'pending_l2';
+  // While the PO is in the approval queue its quantity decides who approves it (team vs
+  // admin). An amended quantity that now needs the admin moves it up to the admin; it is
+  // never moved down, so an amendment cannot take a PO out of the admin's queue.
+  const routed = pending ? statusOnSubmit('po_approval', poQty, po.category as string) : from;
+  const next: SdStatus = pending && from === 'submitted' && routed === 'pending_l2' ? 'pending_l2' : from;
+  await supabase
+    .from('sd_po_approval')
+    .update(next !== from ? { po_qty: poQty, status: next } : { po_qty: poQty })
+    .eq('id', poId)
+    .neq('status', 'approved');
+  const prevQty = Number(po.po_qty || 0);
+  if (from !== 'draft' && prevQty !== poQty) {
+    await writeLog(
+      'po_approval',
+      String(poId),
+      `PO request ${(po.request_id as string | null) ?? `#${poId}`} amended`,
+      from,
+      next,
+      user.email,
+      `Size lines amended — PO qty ${prevQty} → ${poQty}${next !== from ? ' (now needs admin approval)' : ''}`,
+    );
+  }
   revalidatePath('/po-approval');
   revalidatePath('/approvals');
   return done(`Saved ${clean.length} line(s) · PO qty ${poQty}.`);
@@ -248,7 +272,7 @@ export async function saveCuttingRegister(formData: FormData): Promise<ActionRes
 const PICK_LIMIT = 100;
 // Cutting is done for production POs raised at the manufacturing entity; other warehouses
 // (EBO, Amazon FBA, defective goods, etc.) are not relevant to the cutting register.
-const CUTTING_WAREHOUSE = 'SAADAA SUSTAINABLE DESIGNS AND TECHNOLOGIES PRIVATE LIMITED';
+const CUTTING_WAREHOUSE = SAADAA_PO_WAREHOUSE;
 
 /** Search POs at the SAADAA manufacturing location by PO reference / vendor (newest first). */
 /** Reads every row of a query, a page at a time. A single response stops at 1,000. */

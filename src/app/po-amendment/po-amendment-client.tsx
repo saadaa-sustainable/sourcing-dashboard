@@ -2,10 +2,10 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
-import { Download, FilePen } from 'lucide-react';
+import { Download, FilePen, Pencil } from 'lucide-react';
 import { downloadCsv } from '@/lib/download';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { createPoAmendment } from '@/lib/forms/actions';
+import { createPoAmendment, updatePoAmendment } from '@/lib/forms/actions';
 import { canApprove, canEdit } from '@/lib/forms/approval';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
@@ -56,6 +56,8 @@ export function PoAmendmentClient({
   const [agreedOn, setAgreedOn] = useState(today);
   const [reason, setReason] = useState('');
   const [evidence, setEvidence] = useState('');
+  // The amendment being changed; null = raising a new one.
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
@@ -81,10 +83,15 @@ export function PoAmendmentClient({
     () =>
       new Set(
         amendments
-          .filter((a) => a.po_ref_num === poRef && ['draft', 'submitted', 'pending_l2', 'rework'].includes(a.status))
+          .filter(
+            (a) =>
+              a.id !== editingId &&
+              a.po_ref_num === poRef &&
+              ['draft', 'submitted', 'pending_l2', 'rework'].includes(a.status),
+          )
           .map((a) => a.amendment_type),
       ),
-    [amendments, poRef],
+    [amendments, poRef, editingId],
   );
 
   const received = po ? Math.max(0, po.ordered_qty - po.pending_qty) : 0;
@@ -96,6 +103,36 @@ export function PoAmendmentClient({
     (type === 'cost' ? Number(newRate) > 0 : type === 'quantity' ? newQty !== '' : !!newDate) &&
     !!agreedOn &&
     !!reason.trim();
+
+  function resetForm() {
+    setEditingId(null);
+    setPoRef('');
+    setType('');
+    setNewRate('');
+    setNewQty('');
+    setNewDate('');
+    setAgreedOn(today);
+    setReason('');
+    setEvidence('');
+  }
+
+  function startEdit(a: PoAmendment) {
+    setError(null);
+    setMessage(null);
+    setEditingId(a.id);
+    setSearch(a.po_ref_num);
+    setPoRef(a.po_ref_num);
+    setType(a.amendment_type);
+    setNewRate(a.new_rate == null ? '' : String(Number(a.new_rate)));
+    setNewQty(a.new_qty == null ? '' : String(Number(a.new_qty)));
+    setNewDate(a.new_delivery_date ? a.new_delivery_date.slice(0, 10) : '');
+    setAgreedOn(a.agreed_with_vendor_on.slice(0, 10));
+    setReason(a.reason);
+    setEvidence(a.evidence_url ?? '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  const editing = editingId != null ? amendments.find((a) => a.id === editingId) ?? null : null;
 
   function submit() {
     setError(null);
@@ -109,18 +146,13 @@ export function PoAmendmentClient({
     fd.set('agreed_with_vendor_on', agreedOn);
     fd.set('reason', reason);
     fd.set('evidence_url', evidence);
+    if (editingId != null) fd.set('id', String(editingId));
     start(async () => {
-      const result = await createPoAmendment(fd);
+      const result = editingId != null ? await updatePoAmendment(fd) : await createPoAmendment(fd);
       if (result.ok) {
         setMessage(result.message ?? 'Submitted.');
-        setPoRef('');
-        setType('');
-        setNewRate('');
-        setNewQty('');
-        setNewDate('');
-        setReason('');
-        setEvidence('');
-        reloadWithToast();
+        resetForm();
+        reloadWithToast(result.message);
       } else setError(toastError(result.error));
     });
   }
@@ -156,7 +188,7 @@ export function PoAmendmentClient({
         <div className="panel wf-form-panel">
           <div className="panel-title">
             <h3>
-              <FilePen size={15} /> Raise an amendment
+              <FilePen size={15} /> {editingId != null ? `Amend #${editingId}` : 'Raise an amendment'}
             </h3>
           </div>
 
@@ -266,10 +298,19 @@ export function PoAmendmentClient({
 
           <div className="wf-footer-actions">
             <button type="button" className="wf-btn wf-btn-primary" disabled={!canSend || busy} onClick={submit}>
-              {busy ? 'Sending…' : 'Send for approval'}
+              {busy ? (editingId != null ? 'Saving…' : 'Sending…') : editingId != null ? 'Save changes' : 'Send for approval'}
             </button>
+            {editingId != null && (
+              <button type="button" className="wf-btn wf-btn-ghost" onClick={resetForm} disabled={busy}>
+                Cancel
+              </button>
+            )}
             {agreedOn && agreedOn !== today && (
-              <span className="wf-subtle">The agreed date is not today — Finance will not accept this one.</span>
+              <span className="wf-subtle">
+                {editing && agreedOn === editing.agreed_with_vendor_on.slice(0, 10)
+                  ? 'The original agreed date stands only if the PO, the kind and the new figure are unchanged. A new figure is a new agreement, so set the date to today.'
+                  : 'The agreed date is not today — Finance will not accept this one.'}
+              </span>
             )}
           </div>
         </div>
@@ -326,9 +367,23 @@ export function PoAmendmentClient({
                     )}
                   </td>
                   <td>
-                    <StatusBadge status={a.status} edited={a.edited_before_approval} />
+                    <StatusBadge status={a.status} edited={a.edited_before_approval} approverEdited={a.approver_edited} />
                     {a.status === 'rejected' && a.rejection_notes && <small className="wf-subtle">{a.rejection_notes}</small>}
                     {a.status === 'rework' && a.rework_notes && <small className="wf-subtle">{a.rework_notes}</small>}
+                    {canEdit(role, a.status) && (
+                      <button
+                        type="button"
+                        className="wf-btn wf-btn-ghost wf-btn-sm"
+                        onClick={() => startEdit(a)}
+                        title={
+                          a.status === 'rework' || a.status === 'rejected'
+                            ? 'Amend and send back for approval'
+                            : 'Amend — it stays in the approval queue'
+                        }
+                      >
+                        <Pencil size={12} /> Edit
+                      </button>
+                    )}
                   </td>
                   <td className="wf-subtle">
                     {a.requested_by ?? '—'}

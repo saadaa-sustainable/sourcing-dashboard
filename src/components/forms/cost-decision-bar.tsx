@@ -14,7 +14,7 @@ import {
   type ActionResult,
 } from '@/lib/forms/actions';
 import {
-  COST_STAGE_LABEL,
+  costStageText,
   COST_STAGE_TONE,
   canAcceptProposal,
   canConfirmCm,
@@ -23,7 +23,11 @@ import {
   canRenegotiate,
   canSetTarget,
   canSignOff,
+  targetSummary,
+  type RateKey,
 } from '@/lib/forms/cost';
+import { TargetInputs, targetFields } from '@/components/forms/target-inputs';
+import { CostEditApprove } from '@/components/forms/cost-edit-approve';
 import type { CostDecisionRecord, SdRole } from '@/lib/forms/types';
 
 const disp = (v: number | null | undefined) => (v == null ? '—' : String(v));
@@ -40,23 +44,30 @@ export function CostDecisionBar({
   role,
   track,
   compact = false,
+  noTarget = false,
 }: {
   cost: CostDecisionRecord;
   role: SdRole;
   track: 'fg' | 'material';
   /** On a queue card: no heading, the card already says what it is. */
   compact?: boolean;
+  /** The product page sets targets in the cost entry (under Edit cost), not here. */
+  noTarget?: boolean;
 }) {
   const isMat = track === 'material';
   const stage = cost.neg_stage ?? null;
-  const [target, setTarget] = useState('');
+  const [targets, setTargets] = useState<Partial<Record<RateKey, string>>>({});
   const [noteMode, setNoteMode] = useState<null | 'reject' | 'renegotiate'>(null);
   const [note, setNote] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
   const canDecide =
-    canSetTarget(role, stage) || canSignOff(role, stage) || canRejectCost(role, stage) || canRenegotiate(role, stage);
+    (!noTarget && canSetTarget(role, stage)) ||
+    canAcceptProposal(role, stage) ||
+    canSignOff(role, stage) ||
+    canRejectCost(role, stage) ||
+    canRenegotiate(role, stage);
   if (!canDecide) return null;
 
   function act(action: (fd: FormData) => Promise<ActionResult>, extra: Record<string, string>) {
@@ -92,7 +103,7 @@ export function CostDecisionBar({
       <textarea
         className="wf-textarea"
         rows={2}
-        placeholder={noteMode === 'reject' ? 'Reason for rejection — sent to the team' : 'What should change — sent to the team'}
+        placeholder={noteMode === 'reject' ? 'Remark for Reject / Discard (required) — sent to the team' : 'Remark for Rework / Reassign (required) — what should change, sent to the team'}
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
@@ -103,7 +114,7 @@ export function CostDecisionBar({
           disabled={busy || !note.trim()}
           onClick={() => act(noteMode === 'reject' ? rejectCost : renegotiateCost, { note })}
         >
-          {busy ? 'Working…' : noteMode === 'reject' ? 'Confirm reject' : 'Confirm renegotiate'}
+          {busy ? 'Working…' : noteMode === 'reject' ? 'Confirm Reject / Discard' : 'Confirm Rework / Reassign'}
         </button>
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => { setNoteMode(null); setNote(''); }}>
           Cancel
@@ -120,21 +131,18 @@ export function CostDecisionBar({
           title={hasRate ? 'The proposed rates become the standard cost' : 'The proposal names no rate — set a target instead'}
           onClick={() => act(acceptProposedCost, {})}
         >
-          <Check size={15} /> {busy ? 'Working…' : 'Accept proposal'}
+          <Check size={15} /> {busy ? 'Working…' : 'Approve'}
         </button>
       )}
-      {canSetTarget(role, stage) && (
+      {canSetTarget(role, stage) && !noTarget && (
         <span className="wf-inline-actions">
-          <input
-            className="wf-mini-input"
-            type="number"
-            min={0}
-            placeholder="target rate"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-            style={{ width: 120 }}
-          />
-          <button type="button" className="wf-btn wf-btn-ghost" disabled={busy || !target.trim()} onClick={() => act(setTargetCost, { target_cost: target })}>
+          <TargetInputs cost={cost} track={track} value={targets} onChange={setTargets} disabled={busy} />
+          <button
+            type="button"
+            className="wf-btn wf-btn-ghost"
+            disabled={busy || !Object.keys(targetFields(targets)).length}
+            onClick={() => act(setTargetCost, targetFields(targets))}
+          >
             Set target
           </button>
         </span>
@@ -142,7 +150,7 @@ export function CostDecisionBar({
       {canSignOff(role, stage) &&
         (isMat ? (
           <button type="button" className="wf-btn wf-btn-primary" disabled={busy} onClick={() => act(signOffCost, {})}>
-            <Check size={15} /> {busy ? 'Working…' : 'Sign off'}
+            <Check size={15} /> {busy ? 'Working…' : 'Approve'}
           </button>
         ) : canConfirmFabric(role, stage, fabricDone) ? (
           <button type="button" className="wf-btn wf-btn-primary" disabled={busy} onClick={() => act(confirmFabricRate, {})}>
@@ -150,18 +158,19 @@ export function CostDecisionBar({
           </button>
         ) : canConfirmCm(role, stage, fabricDone, cmDone) ? (
           <button type="button" className="wf-btn wf-btn-primary" disabled={busy} onClick={() => act(confirmCmRate, {})}>
-            <Check size={15} /> {busy ? 'Working…' : '2 · Confirm CMTP → sign off'}
+            <Check size={15} /> {busy ? 'Working…' : '2 · Confirm CMTP → approve'}
           </button>
         ) : null)}
       {!isMat && fabricDone && !cmDone && <span className="wf-tag-approved">fabric ✓</span>}
+      <CostEditApprove cost={cost} track={track} role={role} />
       {canRenegotiate(role, stage) && (
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setNoteMode('renegotiate')}>
-          <RotateCcw size={15} /> Renegotiate
+          <RotateCcw size={15} /> Rework / Reassign
         </button>
       )}
       {canRejectCost(role, stage) && (
         <button type="button" className="wf-btn wf-btn-ghost" onClick={() => setNoteMode('reject')}>
-          <X size={15} /> Reject
+          <X size={15} /> Reject / Discard
         </button>
       )}
     </div>
@@ -183,11 +192,17 @@ export function CostDecisionBar({
           <h3>Your decision</h3>
           <p className="wf-subtle">
             {stage === 'proposed'
-              ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target and the team comes back with the actual vendor rate; or reject it with a reason.`
-              : `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${cost.target_cost != null ? ` against your target of ${disp(cost.target_cost)}` : ''}. ${isMat ? 'Sign off to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it.`}
+              ? `The team proposed ${rates || 'a rate'}${cost.proposed_cost != null ? ` (expected ${disp(cost.proposed_cost)})` : ''}. Accept it as-is and it becomes the standard cost; set a target${noTarget ? ' (press Edit cost, then fill the Target row)' : ''} and the team comes back with the actual vendor rate; or reject it with a reason.`
+              : stage === 'rate_submitted'
+                ? `The team submitted the actual vendor rate${rates ? ` — ${rates}` : ''}${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. ${isMat ? 'Approve to make it the standard cost' : 'Confirm the fabric rate, then the CMTP, and it becomes the standard cost'}; or send it back to renegotiate, or reject it. A new target${noTarget ? ' (under Edit cost)' : ''} sends it back to the team.`
+                : stage === 'target_set' || stage === 'renegotiate'
+                  ? `Waiting for the team's vendor rate${targetSummary(cost, track) ? ` against your target of ${targetSummary(cost, track)}` : ''}. You can change the target for any rate type; the team is notified.`
+                  : stage === 'signed_off'
+                    ? 'Approved. Setting a new target starts a new round: the team comes back with a new vendor rate, and the current standard stays in use until that is approved.'
+                    : 'No proposal yet. You can set a target for any rate type now; the team is notified and comes back with the vendor rate.'}
           </p>
         </div>
-        <span className={`wf-status tone-${COST_STAGE_TONE[stage ?? ''] ?? 'purple'}`}>{COST_STAGE_LABEL[stage ?? ''] ?? '—'}</span>
+        <span className={`wf-status tone-${COST_STAGE_TONE[stage ?? ''] ?? 'purple'}`}>{costStageText(stage, cost)}</span>
       </div>
       {err && <p className="wf-inline-error">{err}</p>}
       {actions}
