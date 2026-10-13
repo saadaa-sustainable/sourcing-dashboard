@@ -18,6 +18,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { pageAll } from '@/lib/supabase/page-all';
 import {
   decideFgFounder,
   saveFgWorkflowSubmission,
@@ -63,6 +64,7 @@ type FgPoRow = {
   po_id: number | null;
   po_ref_num: string | null;
   po_number: number | null;
+} & Partial<{
   po_date: string | null;
   expected_delivery_date: string | null;
   vendor_name: string | null;
@@ -116,7 +118,7 @@ type FgPoRow = {
   po_created_location_keys: string | null;
   po_created_warehouse_c_ids: string | null;
   completed_at_timestamp: string | null;
-};
+}>;
 
 type GrnSummaryRow = {
   grn: string | number | null;
@@ -207,7 +209,7 @@ function formatNumber(value: number | null | undefined) {
   }).format(Number(value));
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null | undefined) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -458,15 +460,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
    * "canceling statement due to statement timeout".
    */
 
-  const pageQueryKey = `${page}|${search}|${activeFilter}|${selectedVendors.join(',')}|${dateSortColumn ?? ''}|${dateSortDirection}|${reloadKey}`;
-
   useEffect(() => {
     let cancelled = false;
 
     async function loadWorkflowState() {
       try {
         const [requestResult, merchandiseResult, accountsResult] = await Promise.all([
-          supabase
+          pageAll(() => supabase
             .schema('FG Closer')
             .from('fg_po_closure_requests')
             .select(`
@@ -491,15 +491,15 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
               founder_approved_by,
               founder_approved_at,
               updated_at
-            `),
-          supabase
+            `).order('id')),
+          pageAll(() => supabase
             .schema('FG Closer')
             .from('fg_merchandise_submissions')
-            .select('*'),
-          supabase
+            .select('*').order('id')),
+          pageAll(() => supabase
             .schema('FG Closer')
             .from('fg_accounts_submissions')
-            .select('*'),
+            .select('*').order('id')),
         ]);
 
         if (cancelled) return;
@@ -668,11 +668,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         // not from v_fg_po_summary (which can omit POs after their workflow
         // status changes). The PO snapshot preserves the original summary row.
         if (activeFilter === 'Closed') {
-          const { data: closedRecords, error: closedQueryError } = await supabase
+          const { data: closedRecords, error: closedQueryError } = await pageAll(() => supabase
             .schema('FG Closer')
             .from('fg_closed_po')
             .select('id, request_id, po_ref_num, po_id, po_number, po_snapshot, merchandise_sku_snapshot, merchandise_operational_snapshot, merchandise_data, merchandise_review_remarks, merchandise_document_path, merchandise_document_name, grn_snapshot, commercial_snapshot, accounts_data, accounts_review_remarks, accounts_document_path, accounts_document_name, approved_by_name, approved_by_email, approved_at, approval_remarks')
-            .order('approved_at', { ascending: false });
+            .order('approved_at', { ascending: false }).order('id'));
 
           if (cancelled) return;
           if (closedQueryError) throw closedQueryError;
@@ -691,11 +691,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           const missingSnapshotRefs = closedRefsFromWorkflow.filter((ref) => !savedClosedRefs.has(ref));
           let fallbackSummaryRows: FgPoRow[] = [];
           if (missingSnapshotRefs.length > 0) {
-            const { data: fallbackRows, error: fallbackError } = await supabase
+            const { data: fallbackRows, error: fallbackError } = await pageAll(() => supabase
               .schema('FG Closer')
               .from('v_fg_po_summary')
               .select(SUMMARY_SELECT_COLUMNS)
-              .in('po_ref_num', missingSnapshotRefs);
+              .in('po_ref_num', missingSnapshotRefs).order('po_ref_num').order('po_id'));
             if (cancelled) return;
             if (fallbackError) throw fallbackError;
             fallbackSummaryRows = (fallbackRows ?? []).map((row) => ({
@@ -791,7 +791,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         let query = supabase
           .schema('FG Closer')
           .from('v_fg_po_summary')
-          .select(SUMMARY_SELECT_COLUMNS);
+          .select(SUMMARY_SELECT_COLUMNS)
+          .range(from, to);
 
         const searchQuery = search.trim();
 
@@ -903,19 +904,19 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     return () => {
       cancelled = true;
     };
-  }, [pageQueryKey, workflowByPoRef]);
+  }, [page, search, activeFilter, selectedVendors, dateSortColumn, dateSortDirection, reloadKey, workflowByPoRef]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadReadyCount() {
       try {
-        const { data: readyRows, error: countError } = await supabase
+        const { data: readyRows, error: countError } = await pageAll(() => supabase
           .schema('FG Closer')
           .from('v_fg_po_summary')
           .select('po_ref_num, \"Merchandise Submission\", \"Accounts Submission\"')
           .eq('is_eligible', true)
-          .limit(10000);
+          .order('po_ref_num').order('po_id'));
 
         if (cancelled) return;
 
@@ -1149,7 +1150,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setPage(1);
   }
 
-  function handleFilterChange(filter: 'All' | ClosureStatus) {
+  function handleFilterChange(filter: ClosureStatus) {
     setActiveFilter(filter);
     setPage(1);
   }
@@ -1417,7 +1418,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     }
 
     try {
-      const { data, error: skuError } = await supabase
+      const { data, error: skuError } = await pageAll(() => supabase
         .schema('FG Closer')
         .from('v_fg_po_view')
         .select(`
@@ -1453,7 +1454,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           completed_at_timestamp
         `)
         .eq('po_ref_num', po.po_ref_num)
-        .order('sku', { ascending: true });
+        .order('sku', { ascending: true }).order('po_id').order('po_detail_id'));
 
       if (skuError) throw skuError;
 
@@ -1468,7 +1469,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       // JOB additionally has DG columns, while FOB/EFOB has FABRIC columns.
       setGrnLoading(true);
       try {
-        const { data: grnData, error: grnError } = await supabase
+        const { data: grnData, error: grnError } = await pageAll(() => supabase
           .schema('FG Closer')
           .from('saadaa_po_grn_mapping')
           .select(`
@@ -1481,7 +1482,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             grn_invoice_number,
             grn_receive_quantity
           `)
-          .eq('po_ref_num', po.po_ref_num);
+          .eq('po_ref_num', po.po_ref_num).order('grn_id').order('po_detail_id').order('sku'));
 
         if (grnError) throw grnError;
         setPenaltyGrnItems(((grnData ?? []) as Array<Record<string, unknown>>).map((item) => ({
@@ -1491,11 +1492,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           grn_receive_quantity: item.grn_receive_quantity == null ? null : Number(item.grn_receive_quantity),
         })));
 
-        const { data: rgOutData, error: rgOutError } = await supabase
+        const { data: rgOutData, error: rgOutError } = await pageAll(() => supabase
           .schema('FG Closer')
           .from('rg_out')
           .select(`po_ref, grn_no, rg_out_date, sku, qc_fail_reason`)
-          .eq('po_ref', po.po_ref_num);
+          .eq('po_ref', po.po_ref_num).order('id'));
 
         if (rgOutError) throw rgOutError;
         setPenaltyRgOutItems(((rgOutData ?? []) as Array<Record<string, unknown>>).map((item) => ({
@@ -1503,11 +1504,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           qc_fail_reason: item.qc_fail_reason == null ? null : String(item.qc_fail_reason),
         })));
 
-        const { data: rgInData, error: rgInError } = await supabase
+        const { data: rgInData, error: rgInError } = await pageAll(() => supabase
           .schema('FG Closer')
           .from('rg_in')
           .select(`po_ref, grn_no, rg_in_report_date`)
-          .eq('po_ref', po.po_ref_num);
+          .eq('po_ref', po.po_ref_num).order('id'));
 
         if (rgInError) throw rgInError;
 
@@ -1666,7 +1667,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
        * fabricated from cutting/fabric-consumption data.
        */
       if (getSkuCalculationType(po.po_ref_num) === 'JOB') {
-        const { data: cuttingData, error: cuttingError } = await supabase
+        const { data: cuttingData, error: cuttingError } = await pageAll(() => supabase
           .schema('FG Closer')
           .from('po_qty_cutting_register')
           .select(`
@@ -1677,7 +1678,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             avg_fabric_consumption_approved,
             fabric_consumed
           `)
-          .eq('po_number', po.po_ref_num);
+          .eq('po_number', po.po_ref_num)
+          .order('date_of_ingestion').order('date_of_cutting').order('fabric_sku_code').order('item_code'));
 
         if (cuttingError) throw cuttingError;
 
@@ -1966,7 +1968,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     void loadSkuRows(selectedPO);
   }
 
-  async function saveDepartmentReview() {
+  async function handleSaveDepartmentReview() {
     if (!selectedPO || !selectedDepartment) return;
 
     setSavingReview(true);
@@ -1992,7 +1994,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         const safeName = selectedDocument.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const documentPathPrefix =
           `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/${selectedDepartment.toLowerCase()}`;
-        documentPath = `${documentPathPrefix}/${Date.now()}-${safeName}`;
+        documentPath = `${documentPathPrefix}/${crypto.randomUUID()}-${safeName}`;
         documentName = selectedDocument.name;
 
         const attemptedDocumentPath = documentPath;
@@ -2226,7 +2228,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       const uploadReplacement = async (file: File | null, department: Department) => {
         if (!file) return null;
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const path = `${selectedPO.po_id ?? poRef}/${department.toLowerCase()}/${Date.now()}-${safeName}`;
+        const path = `${selectedPO.po_id ?? poRef}/${department.toLowerCase()}/${crypto.randomUUID()}-${safeName}`;
         const { error } = await supabase.storage.from('fg-closure-documents').upload(path, file, {
           cacheControl: '3600', upsert: false, contentType: file.type || undefined,
         });
@@ -4130,7 +4132,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                   type="button"
                   className="fg-modal-primary"
                   disabled={savingReview}
-                  onClick={saveDepartmentReview}
+                  onClick={handleSaveDepartmentReview}
                 >
                   {savingReview ? 'Saving...' : 'Save & Send'} <ArrowRight size={16} />
                 </button>

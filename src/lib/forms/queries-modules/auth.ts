@@ -7,8 +7,7 @@ import type { SdUser, SdCustomRole } from '../types';
 /* Identity                                                            */
 /* ------------------------------------------------------------------ */
 
-<<<<<<< HEAD
-export async function currentUser(): Promise<SdUser | null> {
+export const currentUser = cache(async function currentUser(): Promise<SdUser | null> {
   // Local development only: bypass authentication while keeping
   // the real Supabase data layer active.
   if (process.env.LOCAL_AUTH_BYPASS === 'true') {
@@ -33,9 +32,6 @@ export async function currentUser(): Promise<SdUser | null> {
     return user;
   }
 
-=======
-export const currentUser = cache(async function currentUser(): Promise<SdUser | null> {
->>>>>>> origin/main
   const supabase = await client();
   const { data: claims } = await supabase.auth.getClaims();
   const email =
@@ -78,19 +74,11 @@ export const currentUser = cache(async function currentUser(): Promise<SdUser | 
   // Admins and users with no custom roles are unrestricted (null).
   user.allowed_pages = null;
   if (user.role !== 'admin') {
-<<<<<<< HEAD
-    const { data: assignments } = await supabase
-      .from('sd_user_role')
-      .select('role_id, sd_custom_role(pages)')
-      .eq('user_email', user.email);
     const rows = (assignments ?? []) as unknown as {
       role_id: number;
       sd_custom_role: { pages: string[] | null } | null;
     }[];
 
-=======
-    const rows = (assignments ?? []) as unknown as { role_id: number; sd_custom_role: { pages: string[] | null } | null }[];
->>>>>>> origin/main
     if (rows.length) {
       user.custom_role_ids = rows.map((r) => r.role_id);
       user.allowed_pages = [
