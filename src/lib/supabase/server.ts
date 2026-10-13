@@ -1,8 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { createAdminClient } from './admin';
 
 export function hasSupabaseEnv() {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  );
 }
 
 /**
@@ -29,16 +33,36 @@ export function isFixtureMode(): boolean {
 }
 
 export async function createClient() {
+  // LOCAL DEVELOPMENT ONLY:
+  // When authentication bypass is explicitly enabled, use the existing
+  // server-only Supabase admin client so real Supabase data can be read
+  // without requiring a Supabase browser session.
+  //
+  // Production is completely unaffected because LOCAL_AUTH_BYPASS is not
+  // enabled there.
+  if (process.env.LOCAL_AUTH_BYPASS === 'true') {
+    return createAdminClient();
+  }
+
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error('Supabase environment variables are not configured.');
+
+  if (!url || !key) {
+    throw new Error('Supabase environment variables are not configured.');
+  }
+
   return createServerClient(url, key, {
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {
-        try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); }
-        catch { /* Server Components cannot write; proxy refreshes the session. */ }
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        } catch {
+          /* Server Components cannot write; proxy refreshes the session. */
+        }
       },
     },
   });
