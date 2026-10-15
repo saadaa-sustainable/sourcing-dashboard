@@ -97,6 +97,10 @@ type FgPoRow = {
   avg_rg_tat_days: number | null;
   min_rg_tat_days: number | null;
   max_rg_tat_days: number | null;
+  dg_entry_count?: number | null;
+  dg_serial_count?: number | null;
+  dg_issue_count?: number | null;
+  rg_return_entry_count?: number | null;
   is_eligible: boolean | null;
   skus: string | null;
   sku: string | null;
@@ -1509,6 +1513,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           rejection_rate,
           rg_out_qty,
           rg_in_qty,
+          dg_entry_count,
+          dg_serial_count,
+          dg_issue_count,
+          rg_return_entry_count,
           item_price,
           completed_at_timestamp
         `)
@@ -2571,8 +2579,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     ...commonSkuMetrics,
     {
       key: 'DG',
-      // DG is not exposed by the current FG Closer backend.
-      getValue: (_row: FgPoRow) => 0,
+      getValue: (row: FgPoRow) => Number(row.dg_serial_count ?? 0),
     },
   ];
 
@@ -2580,9 +2587,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     ...commonSkuMetrics,
     {
       key: 'DG',
-      // JOB workbook formula requires DG. Current backend does not expose it,
-      // so keep it explicitly zero until a DG source is connected.
-      getValue: (_row: FgPoRow) => 0,
+      getValue: (row: FgPoRow) => Number(row.dg_serial_count ?? 0),
     },
   ];
 
