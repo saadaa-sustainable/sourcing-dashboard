@@ -509,6 +509,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [vendorMenuOpen, setVendorMenuOpen] = useState(false);
+  const [selectedPoType, setSelectedPoType] = useState<'all' | 'job' | 'fob'>('all');
+  const [poTypeMenuOpen, setPoTypeMenuOpen] = useState(false);
   const [dateSortColumn, setDateSortColumn] = useState<string | null>('po_date');
   const [dateSortDirection, setDateSortDirection] = useState<'asc' | 'desc'>('desc');
   const [dateMenuColumn, setDateMenuColumn] = useState<string | null>(null);
@@ -813,7 +815,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             const vendor = String(row.vendor_name ?? '').toLowerCase();
             const matchesSearch = !search.trim() || poRef.includes(search.trim().toLowerCase()) || vendor.includes(search.trim().toLowerCase());
             const matchesVendor = selectedVendors.length === 0 || selectedVendors.includes(String(row.vendor_name ?? ''));
-            return Boolean(row.po_ref_num) && matchesSearch && matchesVendor;
+            const refUpper = String(row.po_ref_num ?? '').toUpperCase();
+            const matchesPoType = selectedPoType === 'all' || (selectedPoType === 'job' ? refUpper.includes('JOB') : refUpper.includes('FOB'));
+            return Boolean(row.po_ref_num) && matchesSearch && matchesVendor && matchesPoType;
           });
 
           const sortedClosedRows = [...closedRows].sort((a, b) => {
@@ -873,6 +877,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         if (selectedVendors.length > 0) {
           query = query.in('vendor_name', selectedVendors);
+        }
+
+        if (selectedPoType === 'job') {
+          query = query.ilike('po_ref_num', '%JOB%');
+        } else if (selectedPoType === 'fob') {
+          // EFOB also contains FOB, so one pattern covers both categories.
+          query = query.ilike('po_ref_num', '%FOB%');
         }
 
         if (activeFilter === 'Ready for closer') {
@@ -967,7 +978,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     return () => {
       cancelled = true;
     };
-  }, [page, search, activeFilter, selectedVendors, dateSortColumn, dateSortDirection, reloadKey, workflowByPoRef]);
+  }, [page, search, activeFilter, selectedVendors, selectedPoType, dateSortColumn, dateSortDirection, reloadKey, workflowByPoRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1090,6 +1101,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         !query || poRef.includes(query) || vendor.includes(query);
       const matchesVendor =
         selectedVendors.length === 0 || selectedVendors.includes(String(po.vendor_name ?? ''));
+      const poRefUpper = String(po.po_ref_num ?? '').toUpperCase();
+      const matchesPoType = selectedPoType === 'all' || (selectedPoType === 'job' ? poRefUpper.includes('JOB') : poRefUpper.includes('FOB'));
 
       // Workflow is keyed by PO reference; po_id may be null in the summary view.
       // Always resolve by po_ref_num so approved POs correctly appear in Closed.
@@ -1114,9 +1127,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                   status !== 'Closed'
                 : status === activeFilter;
 
-      return matchesSearch && matchesVendor && matchesStatus;
+      return matchesSearch && matchesVendor && matchesPoType && matchesStatus;
     });
-  }, [pos, search, activeFilter, workflowByPoRef, selectedVendors]);
+  }, [pos, search, activeFilter, workflowByPoRef, selectedVendors, selectedPoType]);
 
   const totalPages = total ? Math.ceil(total / PAGE_SIZE) : hasNextPage ? page + 1 : page;
   const startRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -3093,6 +3106,48 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                   ) : (
                     <span className="fg-vendor-empty">No vendors on this page</span>
                   )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="fg-vendor-filter-wrap">
+            <button
+              type="button"
+              className={selectedPoType !== 'all' ? 'fg-toolbar-button active' : 'fg-toolbar-button'}
+              onClick={() => setPoTypeMenuOpen((open) => !open)}
+              aria-expanded={poTypeMenuOpen}
+            >
+              <Filter size={16} />
+              {selectedPoType === 'all' ? 'JOB / FOB-EFOB' : selectedPoType === 'job' ? 'JOB' : 'FOB/EFOB'}
+              {selectedPoType !== 'all' && <span className="fg-filter-count">1</span>}
+              <ChevronDown size={14} />
+            </button>
+
+            {poTypeMenuOpen && (
+              <div className="fg-vendor-menu">
+                <div className="fg-vendor-menu-head">
+                  <strong>PO Type</strong>
+                  {selectedPoType !== 'all' && (
+                    <button type="button" onClick={() => { setSelectedPoType('all'); setPage(1); }}>Clear</button>
+                  )}
+                </div>
+                <div className="fg-vendor-options">
+                  {[
+                    { value: 'all' as const, label: 'All Types' },
+                    { value: 'job' as const, label: 'JOB' },
+                    { value: 'fob' as const, label: 'FOB/EFOB' },
+                  ].map((option) => (
+                    <label key={option.value} className="fg-vendor-option">
+                      <input
+                        type="radio"
+                        name="fg-po-type-filter"
+                        checked={selectedPoType === option.value}
+                        onChange={() => { setSelectedPoType(option.value); setPage(1); setPoTypeMenuOpen(false); }}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             )}
