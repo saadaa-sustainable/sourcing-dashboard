@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -3224,7 +3226,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       <div className="fg-date-header">
                         <button
                           type="button"
-                          className="fg-date-header-button"
+                          className={`fg-date-header-button${dateSortColumn === column ? ' is-sorted' : ''}`}
+                          aria-label={`${column}, ${dateSortColumn === column ? (dateSortDirection === 'asc' ? 'sorted oldest to newest' : 'sorted newest to oldest') : 'sort options'}`}
+                          title={dateSortColumn === column ? `Sorted ${dateSortDirection === 'asc' ? 'oldest to newest' : 'newest to oldest'}` : 'Sort this column'}
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             setDateMenuPosition({
@@ -3236,8 +3240,14 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                             );
                           }}
                         >
-                          {column === 'po_ref_num' ? 'PO REF NO.' : column}
-                          <ChevronDown size={12} />
+                          <span>{column === 'po_ref_num' ? 'PO REF NO.' : column}</span>
+                          {dateSortColumn === column ? (
+                            dateSortDirection === 'asc'
+                              ? <ArrowUp size={12} strokeWidth={2.5} aria-hidden="true" />
+                              : <ArrowDown size={12} strokeWidth={2.5} aria-hidden="true" />
+                          ) : (
+                            <ChevronDown size={12} aria-hidden="true" />
+                          )}
                         </button>
 
                         {dateMenuColumn === column && (
@@ -5054,41 +5064,81 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-date-header-button {
           display: inline-flex;
           align-items: center;
-          gap: 4px;
-          padding: 0;
-          border: 0;
+          gap: 5px;
+          max-width: 100%;
+          padding: 4px 6px;
+          margin: -4px -6px;
+          border: 1px solid transparent;
+          border-radius: 6px;
           background: transparent;
           color: inherit;
           font: inherit;
           letter-spacing: inherit;
           text-transform: inherit;
           cursor: pointer;
+          transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         }
 
-        .fg-date-header-button:hover { color: #20252b; }
+        .fg-date-header-button:hover {
+          color: #20252b;
+          background: #f1f5f9;
+        }
+
+        .fg-date-header-button.is-sorted {
+          color: #1d4ed8;
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          font-weight: 700;
+        }
+
+        .fg-date-header-button.is-sorted:hover {
+          background: #dbeafe;
+          border-color: #93c5fd;
+        }
+
+        .fg-date-header-button:focus-visible {
+          outline: 2px solid #93c5fd;
+          outline-offset: 2px;
+        }
 
         .fg-date-menu {
           position: fixed;
-          width: 156px;
-          padding: 4px;
+          width: 184px;
+          min-width: 184px;
+          box-sizing: border-box;
+          padding: 5px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
           background: #ffffff;
           border: 1px solid #e1e5e9;
-          border-radius: 9px;
-          box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
-          z-index: 1000;
+          border-radius: 10px;
+          box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.05);
+          z-index: 9999;
+          isolation: isolate;
         }
 
         .fg-date-menu button {
+          position: relative;
+          display: flex;
+          align-items: center;
           width: 100%;
-          height: 31px;
-          padding: 0 9px;
+          min-width: 0;
+          height: 32px;
+          flex: 0 0 32px;
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0 10px;
           border: 0;
           border-radius: 6px;
           background: transparent;
           color: #4c535b;
           text-align: left;
-          font-size: 11px;
-          font-weight: 600;
+          white-space: nowrap;
+          line-height: 1;
+          font-family: inherit;
+          font-size: 12px;
+          font-weight: 500;
           cursor: pointer;
         }
 
@@ -5098,8 +5148,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           color: #20252b;
         }
 
+        .fg-date-menu button.active { font-weight: 650; }
+
         .fg-date-menu .fg-date-clear {
-          margin-top: 3px;
+          height: 30px;
+          flex-basis: 30px;
+          margin-top: 2px;
           border-top: 1px solid #edf0f2;
           border-radius: 0 0 6px 6px;
           color: #8a919b;
