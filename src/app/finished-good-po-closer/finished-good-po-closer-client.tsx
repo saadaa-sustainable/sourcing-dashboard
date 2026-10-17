@@ -2561,15 +2561,15 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     },
     {
       key: 'Diff in Order and GRN',
-      getValue: (row: FgPoRow) => Number(row.po_qty ?? 0) - Number(row.grn_qty ?? 0),
+      getValue: (row: FgPoRow) => Math.max(0, Number(row.po_qty ?? 0) - Number(row.grn_qty ?? 0)),
     },
     {
       key: 'Diff in Order and Cutting',
-      getValue: (row: FgPoRow) => Number(row.po_qty ?? 0) - Number(row.cutting_qty ?? 0),
+      getValue: (row: FgPoRow) => Math.max(0, Number(row.po_qty ?? 0) - Number(row.cutting_qty ?? 0)),
     },
     {
       key: 'Diff in Cutting and GRN',
-      getValue: (row: FgPoRow) => Number(row.cutting_qty ?? 0) - Number(row.grn_qty ?? 0),
+      getValue: (row: FgPoRow) => Math.max(0, Number(row.cutting_qty ?? 0) - Number(row.grn_qty ?? 0)),
     },
     {
       key: 'RM SKU',
@@ -2586,7 +2586,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     {
       key: 'RG DIFF',
       getValue: (row: FgPoRow) =>
-        Number(row.rg_out_qty ?? 0) - Number(row.rg_in_qty ?? 0),
+        Math.max(0, Number(row.rg_out_qty ?? 0) - Number(row.rg_in_qty ?? 0)),
     },
   ];
 
@@ -3643,7 +3643,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         const actualValue = tnaDates[actualField];
                         const variationValue = tnaDates[variationField];
                         const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
-                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Number(variationValue))} days`;
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Math.max(0, Number(variationValue) || 0))} days`;
                         return (
                           <tr key={stage}>
                             <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
@@ -4262,7 +4262,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         const actualValue = tnaDates[actualField];
                         const variationValue = tnaDates[variationField];
                         const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
-                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Number(variationValue))} days`;
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Math.max(0, Number(variationValue) || 0))} days`;
                         return (
                           <tr key={stage}>
                             <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
