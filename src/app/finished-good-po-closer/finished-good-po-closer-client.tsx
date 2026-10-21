@@ -6328,3 +6328,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     </div>
   );
 }
+
+
+
+
+// Export the client component as default.
