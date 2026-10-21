@@ -1,8 +1,5 @@
-
 import os
 from pathlib import Path
-from datetime import date, datetime
-from decimal import Decimal
 
 from dotenv import load_dotenv
 from google.cloud import bigquery
@@ -10,45 +7,22 @@ from supabase import create_client
 
 
 # ============================================================
-# CONFIGURATION
+# CONFIG
 # ============================================================
 
-# Project structure:
-#
-# sourcing-dashboard-fg-closer/
-# ├── .env.local
-# └── backend/
-#     └── finished-good-po-closer/
-#         └── fetch_cutting.py
-#
-# Resolve the project root independently of the terminal location.
+# Always load the .env that belongs to this Finished Good
+# backend folder, regardless of where the script is executed from.
+ENV_FILE = Path(__file__).resolve().with_name(".env")
+load_dotenv(dotenv_path=ENV_FILE)
 
-ROOT = Path(__file__).resolve().parents[2]
-ENV_FILE = ROOT / ".env.local"
-
-if not ENV_FILE.is_file():
-    raise FileNotFoundError(
-        f".env.local not found at:\n{ENV_FILE}"
-    )
-
-load_dotenv(dotenv_path=ENV_FILE, override=False)
-
-# Support either Supabase URL variable name.
-SUPABASE_URL = (
-    os.getenv("SUPABASE_URL")
-    or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-    or ""
-).strip().rstrip("/")
-
-SUPABASE_SERVICE_ROLE_KEY = (
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY") or ""
-).strip()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 GCP_PROJECT = "saadaa-wh"
 
 BQ_TABLE = "saadaa-wh.MAPLEMONK.po_qty_cutting_register"
 
-# Finished Good PO Closer schema and destination table.
+# Finished Good PO Closer has its own isolated Supabase schema.
 SUPABASE_SCHEMA = "FG Closer"
 SUPABASE_TABLE = "po_qty_cutting_register"
 
@@ -56,18 +30,17 @@ BATCH_SIZE = 500
 
 
 # ============================================================
-# VALIDATE CONFIGURATION
+# VALIDATE CONFIG
 # ============================================================
 
 if not SUPABASE_URL:
     raise RuntimeError(
-        "Supabase URL is missing from .env.local.\n"
-        "Add SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL."
+        "SUPABASE_URL is missing from the Finished Good PO Closer .env file."
     )
 
 if not SUPABASE_SERVICE_ROLE_KEY:
     raise RuntimeError(
-        "SUPABASE_SERVICE_ROLE_KEY is missing from .env.local."
+        "SUPABASE_SERVICE_ROLE_KEY is missing from the Finished Good PO Closer .env file."
     )
 
 
@@ -75,53 +48,21 @@ if not SUPABASE_SERVICE_ROLE_KEY:
 # CLIENTS
 # ============================================================
 
-def create_bigquery_client():
-    print("Initializing BigQuery client...")
-    return bigquery.Client(project=GCP_PROJECT)
+bq_client = bigquery.Client(project=GCP_PROJECT)
 
-
-def create_supabase_client():
-    print("Initializing Supabase client...")
-    return create_client(
-        SUPABASE_URL,
-        SUPABASE_SERVICE_ROLE_KEY,
-    )
-
-
-# ============================================================
-# VALUE CONVERSION
-# ============================================================
-
-def serialize_value(value):
-    """
-    Convert BigQuery values into values suitable for JSON upload.
-    """
-
-    if value is None:
-        return None
-
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-
-    if isinstance(value, Decimal):
-        # Preserve decimal precision when sending numeric values
-        # to Postgres; Postgres can cast numeric strings.
-        return str(value)
-
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-
-    return value
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+)
 
 
 # ============================================================
 # FETCH FROM BIGQUERY
 # ============================================================
 
-def fetch_from_bigquery(bq_client):
-    print("\nConnecting to BigQuery...")
-    print(f"Project: {GCP_PROJECT}")
-    print(f"Source:  {BQ_TABLE}")
+def fetch_from_bigquery():
+
+    print("Connecting to BigQuery...")
 
     query = f"""
         SELECT
@@ -143,6 +84,7 @@ def fetch_from_bigquery(bq_client):
     """
 
     print("Running BigQuery query...")
+    print(f"Source: {BQ_TABLE}")
 
     query_job = bq_client.query(query)
     rows = query_job.result()
@@ -150,54 +92,45 @@ def fetch_from_bigquery(bq_client):
     records = []
 
     for row in rows:
+
         record = {
-            "date_of_cutting": serialize_value(
-                row.date_of_cutting
+            "date_of_cutting": (
+                row.date_of_cutting.isoformat()
+                if row.date_of_cutting
+                else None
             ),
-            "vendor_code": serialize_value(
-                row.vendor_code
-            ),
-            "po_number": serialize_value(
-                row.po_number
-            ),
-            "fabric_sku_code": serialize_value(
-                row.fabric_sku_code
-            ),
-            "item_code": serialize_value(
-                row.item_code
-            ),
-            "cutting_qty": serialize_value(
-                row.cutting_qty
-            ),
-            "avg_fabric_consumption_approved": serialize_value(
+
+            "vendor_code": row.vendor_code,
+            "po_number": row.po_number,
+            "fabric_sku_code": row.fabric_sku_code,
+            "item_code": row.item_code,
+            "cutting_qty": row.cutting_qty,
+
+            "avg_fabric_consumption_approved": (
                 row.avg_fabric_consumption_approved
             ),
-            "width_of_fabric": serialize_value(
-                row.width_of_fabric
+
+            "width_of_fabric": row.width_of_fabric,
+            "cutting_approval_sheet": row.cutting_approval_sheet,
+            "remarks_of_cutting": row.remarks_of_cutting,
+
+            "fabric_consumed": row.fabric_consumed,
+            "type_of_po": row.type_of_po,
+
+            "date_of_ingestion": (
+                row.date_of_ingestion.isoformat()
+                if row.date_of_ingestion
+                else None
             ),
-            "cutting_approval_sheet": serialize_value(
-                row.cutting_approval_sheet
-            ),
-            "remarks_of_cutting": serialize_value(
-                row.remarks_of_cutting
-            ),
-            "fabric_consumed": serialize_value(
-                row.fabric_consumed
-            ),
-            "type_of_po": serialize_value(
-                row.type_of_po
-            ),
-            "date_of_ingestion": serialize_value(
-                row.date_of_ingestion
-            ),
-            "ingestion_by": serialize_value(
-                row.ingestion_by
-            ),
+
+            "ingestion_by": row.ingestion_by,
         }
 
         records.append(record)
 
-    print(f"Fetched {len(records):,} rows from BigQuery.")
+    print(
+        f"Fetched {len(records):,} rows from BigQuery."
+    )
 
     return records
 
@@ -206,28 +139,21 @@ def fetch_from_bigquery(bq_client):
 # INSERT INTO SUPABASE
 # ============================================================
 
-def insert_into_supabase(supabase, records):
+def insert_into_supabase(records):
+
     total = len(records)
 
-    if total == 0:
-        print("No records to upload.")
-        return
-
-    print("\nStarting Supabase upload...")
-    print(f"Rows:   {total:,}")
-    print(f"Target: {SUPABASE_SCHEMA}.{SUPABASE_TABLE}")
-    print(f"Batch:  {BATCH_SIZE:,}")
+    print(
+        f"Starting Supabase upload: {total:,} rows"
+    )
 
     uploaded = 0
 
     for start in range(0, total, BATCH_SIZE):
-        batch = records[start:start + BATCH_SIZE]
-        batch_number = (start // BATCH_SIZE) + 1
 
-        print(
-            f"\nUploading batch {batch_number}: "
-            f"{len(batch):,} rows..."
-        )
+        batch = records[
+            start:start + BATCH_SIZE
+        ]
 
         (
             supabase
@@ -239,10 +165,12 @@ def insert_into_supabase(supabase, records):
 
         uploaded += len(batch)
 
-        print(f"Progress: {uploaded:,} / {total:,}")
+        print(
+            f"Uploaded {uploaded:,} / {total:,}"
+        )
 
     print(
-        f"\nSuccessfully inserted {uploaded:,} rows into "
+        f"Successfully loaded {uploaded:,} rows into "
         f"{SUPABASE_SCHEMA}.{SUPABASE_TABLE}."
     )
 
@@ -252,36 +180,28 @@ def insert_into_supabase(supabase, records):
 # ============================================================
 
 def main():
-    print("=" * 65)
+
+    print("=" * 60)
     print("FINISHED GOOD PO CLOSER")
-    print("CUTTING BIGQUERY → SUPABASE INITIAL SYNC")
-    print("=" * 65)
+    print("CUTTING GCP → SUPABASE INITIAL SYNC")
+    print("=" * 60)
 
-    print(f"Project root:     {ROOT}")
-    print(f"Environment file: {ENV_FILE}")
-    print(f"BigQuery source:  {BQ_TABLE}")
-    print(f"Supabase schema:  {SUPABASE_SCHEMA}")
-    print(f"Supabase table:   {SUPABASE_TABLE}")
+    print(f"Supabase schema : {SUPABASE_SCHEMA}")
+    print(f"Supabase table  : {SUPABASE_TABLE}")
+    print(f"BigQuery source : {BQ_TABLE}")
 
-    bq_client = create_bigquery_client()
-    supabase = create_supabase_client()
-
-    records = fetch_from_bigquery(bq_client)
+    records = fetch_from_bigquery()
 
     if not records:
-        print("\nNo BigQuery records found. Nothing uploaded.")
+        print("No records found.")
         return
 
-    insert_into_supabase(supabase, records)
+    insert_into_supabase(records)
 
-    print("\n" + "=" * 65)
+    print("=" * 60)
     print("INITIAL SYNC COMPLETED")
-    print("=" * 65)
+    print("=" * 60)
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as exc:
-        print(f"\nERROR: {exc}")
-        raise
+    main()
