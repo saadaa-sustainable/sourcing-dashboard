@@ -63,7 +63,7 @@ export default async function BuyingPlanPage({
   }
 
   // No month or track asked for: the landing view is the month board, one card per plan.
-  if (!params.month && !requested) {
+  /*if (!params.month && !requested) {
     const rules = await loadAnalyticsRules();
     const board = await loadBuyingPlanBoard(Math.min(28, Math.max(1, Math.round(rules.plan_approval_deadline_day ?? 7))));
     const next = addMonths(monthStart(), 1);
@@ -89,7 +89,366 @@ export default async function BuyingPlanPage({
         />
       </FormLayout>
     );
+  }*/
+  
+  // Draft Buying Plan: ask which month the user wants to create/edit.
+  
+  // Draft Buying Plan: select the planning month and track.
+  if (params.mode === 'draft' && !params.month) {
+    const currentMonth = monthStart();
+
+    const draftMonths = Array.from({ length: 12 }, (_, i) =>
+      addMonths(currentMonth, i)
+    );
+
+    return (
+      <FormLayout
+        title="Draft a buying plan"
+        subtitle="Choose the month and type for the buying plan you want to create."
+        active="/buying-plan"
+        role={user.role}
+        userEmail={user.email}
+        allowedPages={user.allowed_pages ?? null}
+      >
+        <div className="draft-plan-form">
+          <form action="/buying-plan" method="GET" className="draft-plan-card">
+            <input type="hidden" name="mode" value="input" />
+
+            {/* Planning month */}
+            <div className="draft-plan-field">
+              <label htmlFor="draft-month" className="draft-plan-label">
+                Planning month
+              </label>
+
+              <select
+                id="draft-month"
+                name="month"
+                defaultValue={addMonths(currentMonth, 1)}
+                className="draft-plan-month"
+                required
+              >
+                {draftMonths.map((month) => (
+                  <option key={month} value={month}>
+                    {monthLabel(month)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Plan type */}
+            <fieldset className="draft-plan-field draft-plan-types">
+              <legend className="draft-plan-label">Plan type</legend>
+
+              <label className="draft-plan-option">
+                <input
+                  type="radio"
+                  name="type"
+                  value="fg"
+                  defaultChecked
+                />
+
+                <span className="draft-plan-option-content">
+                  <strong>Finished Goods (FG)</strong>
+                </span>
+              </label>
+
+              <label className="draft-plan-option">
+                <input
+                  type="radio"
+                  name="type"
+                  value="material"
+                />
+
+                <span className="draft-plan-option-content">
+                  <strong>Fabric / Material</strong>
+                </span>
+              </label>
+            </fieldset>
+
+            {/* Actions */}
+            <div className="draft-plan-actions">
+              <Link href="/buying-plan" className="draft-plan-cancel">
+                Cancel
+              </Link>
+
+              <button type="submit" className="draft-plan-continue">
+                Continue <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <style>{`
+          .draft-plan-form {
+            width: 100%;
+            /*max-width: 680px;*/
+            margin: 8px auto 0;
+          }
+
+          .draft-plan-card {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 24px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+          }
+
+          .draft-plan-field {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            min-width: 0;
+            margin: 0 0 22px;
+            padding: 0;
+            border: 0;
+          }
+
+          .draft-plan-label {
+            display: block;
+            margin: 0 0 9px;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 600;
+          }
+
+          .draft-plan-month {
+            box-sizing: border-box;
+            display: block;
+            width: 100%;
+            height: 46px;
+            padding: 0 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 9px;
+            background: #fff;
+            color: #111827;
+            font: inherit;
+            font-size: 14px !important;
+          }
+
+          .draft-plan-month:focus-visible {
+            outline: 2px solid #9ca3af;
+            outline-offset: 2px;
+          }
+
+          .draft-plan-types {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+
+          .draft-plan-types legend {
+            float: none;
+            width: 100%;
+            margin-bottom: 10px;
+          }
+
+          .draft-plan-option {
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            min-height: 62px;
+            margin: 0;
+            padding: 10px 13px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
+            transition: border-color 150ms ease,
+                        background-color 150ms ease;
+          }
+
+          .draft-plan-option:has(input:checked) {
+            border-color: #111827;
+            background: #f9fafb;
+            min-height: 20px !important;
+          }
+
+          .draft-plan-option input[type="radio"] {
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            box-sizing: border-box;
+            display: grid !important;
+            place-content: center;
+            flex: 0 0 20px;
+            width: 20px !important;
+            height: 20px !important;
+            min-width: 20px !important;
+            min-height: 20px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 1.5px solid #9ca3af !important;
+            border-radius: 50% !important;
+            background: #fff !important;
+            box-shadow: none !important;
+            cursor: pointer;
+          }
+
+          .draft-plan-option input[type="radio"]::before {
+            content: "";
+            width: 9px !important;
+            height: 9px !important;
+            border-radius: 50%;
+            background: #fff;
+            transform: scale(0);
+          }
+
+          .draft-plan-option input[type="radio"]:checked {
+            border-color: #111827 !important;
+            background: #111827 !important;
+          }
+
+          .draft-plan-option input[type="radio"]:checked::before {
+            transform: scale(1);
+          }
+
+          .draft-plan-option input[type="radio"]:focus-visible {
+            outline: 3px solid #d1d5db;
+            outline-offset: 3px;
+          }
+
+          .draft-plan-option-content {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+          }
+
+          .draft-plan-option-content strong {
+            color: #111827;
+            font-size: 14px;
+            font-weight: 600;
+          }
+
+          .draft-plan-option-content small {
+            color: #6b7280;
+            font-size: 12px;
+            line-height: 1.4;
+          }
+
+          .draft-plan-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 28px;
+          }
+
+          .draft-plan-cancel,
+          .draft-plan-continue {
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 42px;
+            padding: 0 18px;
+            border-radius: 9px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+          }
+
+          .draft-plan-cancel {
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+          }
+
+          .draft-plan-cancel:hover {
+            background: #f9fafb;
+          }
+
+          .draft-plan-continue {
+            min-width: 145px;
+            border: 1px solid #111827;
+            background: #111827;
+            color: #fff;
+            transition: background-color 150ms ease;
+          }
+
+          .draft-plan-continue:hover {
+            background: #292f3a;
+          }
+
+          .draft-plan-cancel:focus-visible,
+          .draft-plan-continue:focus-visible {
+            outline: 3px solid #d1d5db;
+            outline-offset: 3px;
+          }
+
+          @media (max-width: 600px) {
+            .draft-plan-form {
+              max-width: none;
+            }
+
+            .draft-plan-card {
+              padding: 18px 14px;
+            }
+
+            .draft-plan-actions {
+              gap: 8px;
+            }
+
+            .draft-plan-cancel {
+              flex: 1;
+            }
+
+            .draft-plan-continue {
+              flex: 1.5;
+              min-width: 0;
+            }
+          }
+        `}</style>
+      </FormLayout>
+    );
   }
+
+
+  // No month or track asked for: the landing view is the month board.
+  if (!params.month && !requested) {
+    const rules = await loadAnalyticsRules();
+
+    const board = await loadBuyingPlanBoard(
+      Math.min(
+        28,
+        Math.max(
+          1,
+          Math.round(rules.plan_approval_deadline_day ?? 7)
+        )
+      )
+    );
+
+    return (
+      <FormLayout
+        title="Buying Plan"
+        subtitle="Every month's plan, FG and fabric / material, by where it stands. Open a card to fill, review or analyse that month."
+        active="/buying-plan"
+        role={user.role}
+        userEmail={user.email}
+        allowedPages={user.allowed_pages ?? null}
+      >
+        <MonthBoard
+          data={board}
+          searchPlaceholder="Search month or track…"
+          pageBar={
+            user.role !== 'viewer' ? (
+              <Link
+                className="wf-btn wf-btn-primary wf-btn-sm"
+                href="/buying-plan?mode=draft"
+              >
+                Create a Plan
+              </Link>
+            ) : null
+          }
+        />
+      </FormLayout>
+    );
+  }  
 
   // Months for the header's picker: every month with a plan on either track, plus last month,
   // this month and next month, plus the one being looked at.
