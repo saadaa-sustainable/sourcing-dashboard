@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -97,6 +99,10 @@ type FgPoRow = {
   avg_rg_tat_days: number | null;
   min_rg_tat_days: number | null;
   max_rg_tat_days: number | null;
+  dg_entry_count?: number | null;
+  dg_serial_count?: number | null;
+  dg_issue_count?: number | null;
+  rg_return_entry_count?: number | null;
   is_eligible: boolean | null;
   skus: string | null;
   sku: string | null;
@@ -403,6 +409,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [hasNextPage, setHasNextPage] = useState(false);
   const [readyCount, setReadyCount] = useState<number | null>(null);
   const [selectedPO, setSelectedPO] = useState<FgPoRow | null>(null);
+  const [tnaDates, setTnaDates] = useState<Record<string, string | number | null>>({});
   const [skuRows, setSkuRows] = useState<FgPoRow[]>([]);
   const [skuLoading, setSkuLoading] = useState(false);
   const [fabricRows, setFabricRows] = useState<FabricDetailRow[]>([]);
@@ -432,6 +439,64 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     founder: 0,
     closed: 0,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTnaDates() {
+      if (!selectedPO?.po_ref_num) {
+        setTnaDates({});
+        return;
+      }
+      // Select all columns because the source sheet uses column names containing
+      // spaces and punctuation (for example, `PP Sample TNA Date`).
+      // PostgREST cannot reliably parse filters on this source sheet's
+      // punctuation-heavy column name ("PO NO."). Read the source rows and
+      // match the exact PO reference in JavaScript instead of sending an
+      // invalid filter path to PostgREST.
+      setTnaDates({});
+      let data: Array<Record<string, unknown>>;
+      try {
+        const result = await pageAll(() => supabase
+        .schema('FG Closer')
+        .from('tna_update')
+        .select('*')
+        .order('source_row_number'));
+        data = result.data as Array<Record<string, unknown>>;
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Failed to load TNA data from FG Closer.tna_update:', error);
+        setTnaDates({});
+        return;
+      }
+      if (cancelled) return;
+      const wantedPoRef = selectedPO.po_ref_num.trim().toLowerCase();
+      const source = ((data ?? []) as Array<Record<string, unknown>>).find((row) =>
+        String(row['PO NO.'] ?? '').trim().toLowerCase() === wantedPoRef
+      );
+      if (!source) {
+        setTnaDates({});
+        console.warn(`No matching row found in FG Closer.tna_update for PO NO. ${selectedPO.po_ref_num}`);
+        return;
+      }
+      const fields = [
+        'PP Sample TNA Date', 'PP Sample Actual Date', 'PP Sample Delay Days',
+        'GPT TNA Date', 'GPT Actual Date', 'GPT Delay Days',
+        'Cutting TNA Date', 'Cutting Actual Date (First)', 'Cutting Delay Days',
+        'In Line TNA Date', 'In Line Actual Date', 'In Line QC Delay Days',
+      ];
+      const values: Record<string, string | number | null> = {};
+      for (const field of fields) {
+        const value = source[field];
+        values[field] = value == null || value === ''
+          ? null
+          : (field.toLowerCase().includes('delay') ? Number(value) : String(value));
+      }
+      setTnaDates(values);
+    }
+    void loadTnaDates();
+    return () => { cancelled = true; };
+  }, [selectedPO?.po_ref_num]);
+
   const [reviewText, setReviewText] = useState('');
   const [reviewRemarks, setReviewRemarks] = useState<Record<string, string>>({});
   const [skuCellSelection, setSkuCellSelection] = useState<Set<string>>(new Set());
@@ -446,6 +511,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [vendorMenuOpen, setVendorMenuOpen] = useState(false);
+  const [selectedPoType, setSelectedPoType] = useState<'all' | 'job' | 'fob'>('all');
+  const [poTypeMenuOpen, setPoTypeMenuOpen] = useState(false);
   const [dateSortColumn, setDateSortColumn] = useState<string | null>('po_date');
   const [dateSortDirection, setDateSortDirection] = useState<'asc' | 'desc'>('desc');
   const [dateMenuColumn, setDateMenuColumn] = useState<string | null>(null);
@@ -750,7 +817,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             const vendor = String(row.vendor_name ?? '').toLowerCase();
             const matchesSearch = !search.trim() || poRef.includes(search.trim().toLowerCase()) || vendor.includes(search.trim().toLowerCase());
             const matchesVendor = selectedVendors.length === 0 || selectedVendors.includes(String(row.vendor_name ?? ''));
-            return Boolean(row.po_ref_num) && matchesSearch && matchesVendor;
+            const refUpper = String(row.po_ref_num ?? '').toUpperCase();
+            const matchesPoType = selectedPoType === 'all' || (selectedPoType === 'job' ? refUpper.includes('JOB') : refUpper.includes('FOB'));
+            return Boolean(row.po_ref_num) && matchesSearch && matchesVendor && matchesPoType;
           });
 
           const sortedClosedRows = [...closedRows].sort((a, b) => {
@@ -810,6 +879,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         if (selectedVendors.length > 0) {
           query = query.in('vendor_name', selectedVendors);
+        }
+
+        if (selectedPoType === 'job') {
+          query = query.ilike('po_ref_num', '%JOB%');
+        } else if (selectedPoType === 'fob') {
+          // EFOB also contains FOB, so one pattern covers both categories.
+          query = query.ilike('po_ref_num', '%FOB%');
         }
 
         if (activeFilter === 'Ready for closer') {
@@ -904,7 +980,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     return () => {
       cancelled = true;
     };
-  }, [page, search, activeFilter, selectedVendors, dateSortColumn, dateSortDirection, reloadKey, workflowByPoRef]);
+  }, [page, search, activeFilter, selectedVendors, selectedPoType, dateSortColumn, dateSortDirection, reloadKey, workflowByPoRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1027,6 +1103,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         !query || poRef.includes(query) || vendor.includes(query);
       const matchesVendor =
         selectedVendors.length === 0 || selectedVendors.includes(String(po.vendor_name ?? ''));
+      const poRefUpper = String(po.po_ref_num ?? '').toUpperCase();
+      const matchesPoType = selectedPoType === 'all' || (selectedPoType === 'job' ? poRefUpper.includes('JOB') : poRefUpper.includes('FOB'));
 
       // Workflow is keyed by PO reference; po_id may be null in the summary view.
       // Always resolve by po_ref_num so approved POs correctly appear in Closed.
@@ -1051,9 +1129,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                   status !== 'Closed'
                 : status === activeFilter;
 
-      return matchesSearch && matchesVendor && matchesStatus;
+      return matchesSearch && matchesVendor && matchesPoType && matchesStatus;
     });
-  }, [pos, search, activeFilter, workflowByPoRef, selectedVendors]);
+  }, [pos, search, activeFilter, workflowByPoRef, selectedVendors, selectedPoType]);
 
   const totalPages = total ? Math.ceil(total / PAGE_SIZE) : hasNextPage ? page + 1 : page;
   const startRow = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -1450,10 +1528,14 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           rejection_rate,
           rg_out_qty,
           rg_in_qty,
+          dg_entry_count,
+          dg_serial_count,
+          dg_issue_count,
+          rg_return_entry_count,
           item_price,
           completed_at_timestamp
         `)
-        .eq('po_ref_num', po.po_ref_num)
+        .eq('po_number', po.po_number)
         .order('sku', { ascending: true }).order('po_id').order('po_detail_id'));
 
       if (skuError) throw skuError;
@@ -1482,7 +1564,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             grn_invoice_number,
             grn_receive_quantity
           `)
-          .eq('po_ref_num', po.po_ref_num).order('grn_id').order('po_detail_id').order('sku'));
+          .eq('po_number', po.po_number).order('grn_id').order('po_detail_id').order('sku'));
 
         if (grnError) throw grnError;
         setPenaltyGrnItems(((grnData ?? []) as Array<Record<string, unknown>>).map((item) => ({
@@ -2479,15 +2561,15 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     },
     {
       key: 'Diff in Order and GRN',
-      getValue: (row: FgPoRow) => Number(row.po_qty ?? 0) - Number(row.grn_qty ?? 0),
+      getValue: (row: FgPoRow) => Math.max(0, Number(row.po_qty ?? 0) - Number(row.grn_qty ?? 0)),
     },
     {
       key: 'Diff in Order and Cutting',
-      getValue: (row: FgPoRow) => Number(row.po_qty ?? 0) - Number(row.cutting_qty ?? 0),
+      getValue: (row: FgPoRow) => Math.max(0, Number(row.po_qty ?? 0) - Number(row.cutting_qty ?? 0)),
     },
     {
       key: 'Diff in Cutting and GRN',
-      getValue: (row: FgPoRow) => Number(row.cutting_qty ?? 0) - Number(row.grn_qty ?? 0),
+      getValue: (row: FgPoRow) => Math.max(0, Number(row.cutting_qty ?? 0) - Number(row.grn_qty ?? 0)),
     },
     {
       key: 'RM SKU',
@@ -2504,7 +2586,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     {
       key: 'RG DIFF',
       getValue: (row: FgPoRow) =>
-        Number(row.rg_out_qty ?? 0) - Number(row.rg_in_qty ?? 0),
+        Math.max(0, Number(row.rg_out_qty ?? 0) - Number(row.rg_in_qty ?? 0)),
     },
   ];
 
@@ -2512,15 +2594,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     ...commonSkuMetrics,
     {
       key: 'DG',
-      // DG is not exposed by the current FG Closer backend.
-      getValue: (_row: FgPoRow) => 0,
-    },
-    {
-      key: 'NET QTY',
-      getValue: (row: FgPoRow) =>
-        Number(row.grn_qty ?? 0) +
-        Number(row.rg_in_qty ?? 0) -
-        Number(row.rg_out_qty ?? 0),
+      getValue: (row: FgPoRow) => Number(row.dg_serial_count ?? 0),
     },
   ];
 
@@ -2528,17 +2602,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     ...commonSkuMetrics,
     {
       key: 'DG',
-      // JOB workbook formula requires DG. Current backend does not expose it,
-      // so keep it explicitly zero until a DG source is connected.
-      getValue: (_row: FgPoRow) => 0,
-    },
-    {
-      key: 'NET QTY',
-      // JOB workbook: GRN + RG IN - RG OUT - DG.
-      getValue: (row: FgPoRow) =>
-        Number(row.grn_qty ?? 0) +
-        Number(row.rg_in_qty ?? 0) -
-        Number(row.rg_out_qty ?? 0) - 0,
+      getValue: (row: FgPoRow) => Number(row.dg_serial_count ?? 0),
     },
   ];
 
@@ -3049,6 +3113,48 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             )}
           </div>
 
+          <div className="fg-vendor-filter-wrap">
+            <button
+              type="button"
+              className={selectedPoType !== 'all' ? 'fg-toolbar-button active' : 'fg-toolbar-button'}
+              onClick={() => setPoTypeMenuOpen((open) => !open)}
+              aria-expanded={poTypeMenuOpen}
+            >
+              <Filter size={16} />
+              {selectedPoType === 'all' ? 'JOB / FOB-EFOB' : selectedPoType === 'job' ? 'JOB' : 'FOB/EFOB'}
+              {selectedPoType !== 'all' && <span className="fg-filter-count">1</span>}
+              <ChevronDown size={14} />
+            </button>
+
+            {poTypeMenuOpen && (
+              <div className="fg-vendor-menu">
+                <div className="fg-vendor-menu-head">
+                  <strong>PO Type</strong>
+                  {selectedPoType !== 'all' && (
+                    <button type="button" onClick={() => { setSelectedPoType('all'); setPage(1); }}>Clear</button>
+                  )}
+                </div>
+                <div className="fg-vendor-options">
+                  {[
+                    { value: 'all' as const, label: 'All Types' },
+                    { value: 'job' as const, label: 'JOB' },
+                    { value: 'fob' as const, label: 'FOB/EFOB' },
+                  ].map((option) => (
+                    <label key={option.value} className="fg-vendor-option">
+                      <input
+                        type="radio"
+                        name="fg-po-type-filter"
+                        checked={selectedPoType === option.value}
+                        onChange={() => { setSelectedPoType(option.value); setPage(1); setPoTypeMenuOpen(false); }}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             className="fg-toolbar-button"
@@ -3120,7 +3226,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       <div className="fg-date-header">
                         <button
                           type="button"
-                          className="fg-date-header-button"
+                          className={`fg-date-header-button${dateSortColumn === column ? ' is-sorted' : ''}`}
+                          aria-label={`${column}, ${dateSortColumn === column ? (dateSortDirection === 'asc' ? 'sorted oldest to newest' : 'sorted newest to oldest') : 'sort options'}`}
+                          title={dateSortColumn === column ? `Sorted ${dateSortDirection === 'asc' ? 'oldest to newest' : 'newest to oldest'}` : 'Sort this column'}
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             setDateMenuPosition({
@@ -3132,8 +3240,14 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                             );
                           }}
                         >
-                          {column === 'po_ref_num' ? 'PO REF NO.' : column}
-                          <ChevronDown size={12} />
+                          <span>{column === 'po_ref_num' ? 'PO REF NO.' : column}</span>
+                          {dateSortColumn === column ? (
+                            dateSortDirection === 'asc'
+                              ? <ArrowUp size={12} strokeWidth={2.5} aria-hidden="true" />
+                              : <ArrowDown size={12} strokeWidth={2.5} aria-hidden="true" />
+                          ) : (
+                            <ChevronDown size={12} aria-hidden="true" />
+                          )}
                         </button>
 
                         {dateMenuColumn === column && (
@@ -3507,78 +3621,38 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                   </div>
                 </div>
 
-                <div style={{ width: '100%', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <div style={{ width: '100%', overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+                  <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #cbd5e1' }}>
                     <thead>
                       <tr>
-                        <th
-                          style={{
-                            width: '38%',
-                            padding: '8px 10px',
-                            textAlign: 'left',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: '#64748b',
-                            background: '#f8fafc',
-                            borderBottom: '1px solid #e2e8f0',
-                          }}
-                        >
-                          Metric
-                        </th>
-                        <th
-                          style={{
-                            padding: '8px 10px',
-                            textAlign: 'left',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: '#64748b',
-                            background: '#f8fafc',
-                            borderBottom: '1px solid #e2e8f0',
-                          }}
-                        >
-                          Value
-                        </th>
+                        {['TNA Stages', 'Planned TNA Date', 'Actual TNA Date', 'TNA Variation'].map((heading) => (
+                          <th key={heading} style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#f8fafc', background: '#111827', whiteSpace: 'normal', overflowWrap: 'anywhere', ...(heading === 'TNA Stages' ? { position: 'sticky', left: 0, zIndex: 3, minWidth: '160px', width: '25%' } : {}) }}>
+                            {heading}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {[
-                        ['Vendor Delay', selectedPO.vendor_delay_days == null ? '—' : `${formatNumber(selectedPO.vendor_delay_days)} days`],
-                        ['PP Sample Delay', selectedPO.pp_delay_days == null ? '—' : `${formatNumber(selectedPO.pp_delay_days)} days`],
-                        ['GPT Delay', selectedPO.gpt_delay_days == null ? '—' : `${formatNumber(selectedPO.gpt_delay_days)} days`],
-                        ['Inline QC Delay', selectedPO.inline_qc_delay_days == null ? '—' : `${formatNumber(selectedPO.inline_qc_delay_days)} days`],
-                        ['Planned Date', formatDate(typeof selectedPO.planned_date === 'string' ? selectedPO.planned_date : null)],
-                        ['Expected Delivery', formatDate(selectedPO.expected_delivery_date)],
-                        ['Last GRN', formatDate(selectedPO.last_grn_date)],
-                        ['Avg GRN TAT', selectedPO.avg_grn_tat_days == null ? '—' : `${formatNumber(selectedPO.avg_grn_tat_days)} days`],
-                      ].map(([label, value]) => (
-                        <tr key={label}>
-                          <th
-                            scope="row"
-                            style={{
-                              padding: '8px 10px',
-                              textAlign: 'left',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              color: '#64748b',
-                              background: '#f8fafc',
-                              borderBottom: '1px solid #e2e8f0',
-                            }}
-                          >
-                            {label}
-                          </th>
-                          <td
-                            style={{
-                              padding: '8px 10px',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              color: '#0f172a',
-                              borderBottom: '1px solid #e2e8f0',
-                            }}
-                          >
-                            {value}
-                          </td>
-                        </tr>
-                      ))}
+                        ['PP Sample', 'PP Sample TNA Date', 'PP Sample Actual Date', 'PP Sample Delay Days'],
+                        ['GPT Sample', 'GPT TNA Date', 'GPT Actual Date', 'GPT Delay Days'],
+                        ['Cutting', 'Cutting TNA Date', 'Cutting Actual Date (First)', 'Cutting Delay Days'],
+                        ['In-Line QC', 'In Line TNA Date', 'In Line Actual Date', 'In Line QC Delay Days'],
+                      ].map(([stage, plannedField, actualField, variationField]) => {
+                        const plannedValue = tnaDates[plannedField];
+                        const actualValue = tnaDates[actualField];
+                        const variationValue = tnaDates[variationField];
+                        const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Math.max(0, Number(variationValue) || 0))} days`;
+                        return (
+                          <tr key={stage}>
+                            <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, color: '#0f172a', background: '#ffffff', whiteSpace: 'nowrap' }}>{displayDate(plannedValue)}</td>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, color: '#0f172a', background: '#ffffff', whiteSpace: 'nowrap' }}>{displayDate(actualValue)}</td>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, color: '#0f172a', background: '#ffffff', whiteSpace: 'nowrap' }}>{displayVariation}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -3593,24 +3667,6 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </div>
 
                 <div className="fg-reference-review-table-wrap">
-                <div className="fg-sku-table-toolbar">
-                  <span>
-                    {skuCalculationType === 'JOB' ? 'JOB calculation' : 'FOB / EFOB calculation'} · {skuCellSelection.size > 0
-                      ? `${skuCellSelection.size} cell${skuCellSelection.size === 1 ? '' : 's'} selected`
-                      : 'Select cells to calculate a sum'}
-                  </span>
-
-                  <div className="fg-sku-selection-summary">
-                    <strong>SUM</strong>
-                    <strong>{formatNumber(selectedSkuSum)}</strong>
-                    {skuCellSelection.size > 0 && (
-                      <button type="button" onClick={clearSkuSelection}>
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 <div className="fg-sku-table-scroll">
                   <table className="fg-reference-review-table fg-sku-review-table">
                     <thead>
@@ -3629,20 +3685,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               <td className="fg-sku-label-cell">
                                 <strong>{row.sku || '—'}</strong>
                               </td>
-                              {skuMetrics.map((metric, metricIndex) => {
-                                const cellKey = getSkuCellKey(metricIndex, skuIndex);
+                              {skuMetrics.map((metric) => {
                                 const value = metric.getValue(row);
-                                const selected = skuCellSelection.has(cellKey);
                                 return (
                                   <td
                                     key={`${row.sku}-${metric.key}-${skuIndex}`}
-                                    className={`fg-sku-value-cell${selected ? ' fg-sku-cell-selected' : ''}`}
-                                    onMouseDown={(event) =>
-                                      selectSkuCell(metricIndex, skuIndex, event)
-                                    }
-                                    onMouseEnter={() =>
-                                      extendSkuSelection(metricIndex, skuIndex)
-                                    }
+                                    className="fg-sku-value-cell"
                                     title={
                                       typeof value === 'number'
                                         ? `Value: ${formatNumber(value)}`
@@ -3927,7 +3975,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                           ) : (
                             <th style={{ width: 320, minWidth: 320 }}>Merchandise Review</th>
                           )}
-                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Merchandise Review (Read Only)' : 'Accounts Review (Read Only)'}</th>
+                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Merchandise Review (Read Only)' : 'Accounts Review'}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4192,78 +4240,38 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                   </div>
                 </div>
 
-                <div style={{ width: '100%', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <div style={{ width: '100%', overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+                  <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', tableLayout: 'fixed', border: '1px solid #cbd5e1' }}>
                     <thead>
                       <tr>
-                        <th
-                          style={{
-                            width: '38%',
-                            padding: '8px 10px',
-                            textAlign: 'left',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: '#64748b',
-                            background: '#f8fafc',
-                            borderBottom: '1px solid #e2e8f0',
-                          }}
-                        >
-                          Metric
-                        </th>
-                        <th
-                          style={{
-                            padding: '8px 10px',
-                            textAlign: 'left',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: '#64748b',
-                            background: '#f8fafc',
-                            borderBottom: '1px solid #e2e8f0',
-                          }}
-                        >
-                          Value
-                        </th>
+                        {['TNA Stages', 'Planned TNA Date', 'Actual TNA Date', 'TNA Variation'].map((heading) => (
+                          <th key={heading} style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#f8fafc', background: '#111827', whiteSpace: 'normal', overflowWrap: 'anywhere', ...(heading === 'TNA Stages' ? { position: 'sticky', left: 0, zIndex: 3, minWidth: '160px', width: '25%' } : {}) }}>
+                            {heading}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {[
-                        ['Vendor Delay', selectedPO.vendor_delay_days == null ? '—' : `${formatNumber(selectedPO.vendor_delay_days)} days`],
-                        ['PP Sample Delay', selectedPO.pp_delay_days == null ? '—' : `${formatNumber(selectedPO.pp_delay_days)} days`],
-                        ['GPT Delay', selectedPO.gpt_delay_days == null ? '—' : `${formatNumber(selectedPO.gpt_delay_days)} days`],
-                        ['Inline QC Delay', selectedPO.inline_qc_delay_days == null ? '—' : `${formatNumber(selectedPO.inline_qc_delay_days)} days`],
-                        ['Planned Date', formatDate(typeof selectedPO.planned_date === 'string' ? selectedPO.planned_date : null)],
-                        ['Expected Delivery', formatDate(selectedPO.expected_delivery_date)],
-                        ['Last GRN', formatDate(selectedPO.last_grn_date)],
-                        ['Avg GRN TAT', selectedPO.avg_grn_tat_days == null ? '—' : `${formatNumber(selectedPO.avg_grn_tat_days)} days`],
-                      ].map(([label, value]) => (
-                        <tr key={label}>
-                          <th
-                            scope="row"
-                            style={{
-                              padding: '8px 10px',
-                              textAlign: 'left',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              color: '#64748b',
-                              background: '#f8fafc',
-                              borderBottom: '1px solid #e2e8f0',
-                            }}
-                          >
-                            {label}
-                          </th>
-                          <td
-                            style={{
-                              padding: '8px 10px',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              color: '#0f172a',
-                              borderBottom: '1px solid #e2e8f0',
-                            }}
-                          >
-                            {value}
-                          </td>
-                        </tr>
-                      ))}
+                        ['PP Sample', 'PP Sample TNA Date', 'PP Sample Actual Date', 'PP Sample Delay Days'],
+                        ['GPT Sample', 'GPT TNA Date', 'GPT Actual Date', 'GPT Delay Days'],
+                        ['Cutting', 'Cutting TNA Date', 'Cutting Actual Date (First)', 'Cutting Delay Days'],
+                        ['In-Line QC', 'In Line TNA Date', 'In Line Actual Date', 'In Line QC Delay Days'],
+                      ].map(([stage, plannedField, actualField, variationField]) => {
+                        const plannedValue = tnaDates[plannedField];
+                        const actualValue = tnaDates[actualField];
+                        const variationValue = tnaDates[variationField];
+                        const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Math.max(0, Number(variationValue) || 0))} days`;
+                        return (
+                          <tr key={stage}>
+                            <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, color: '#0f172a', background: '#ffffff', whiteSpace: 'nowrap' }}>{displayDate(plannedValue)}</td>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, color: '#0f172a', background: '#ffffff', whiteSpace: 'nowrap' }}>{displayDate(actualValue)}</td>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 600, color: '#0f172a', background: '#ffffff', whiteSpace: 'nowrap' }}>{displayVariation}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -4278,24 +4286,6 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </div>
 
                 <div className="fg-reference-review-table-wrap">
-                <div className="fg-sku-table-toolbar">
-                  <span>
-                    {skuCalculationType === 'JOB' ? 'JOB calculation' : 'FOB / EFOB calculation'} · {skuCellSelection.size > 0
-                      ? `${skuCellSelection.size} cell${skuCellSelection.size === 1 ? '' : 's'} selected`
-                      : 'Select cells to calculate a sum'}
-                  </span>
-
-                  <div className="fg-sku-selection-summary">
-                    <strong>SUM</strong>
-                    <strong>{formatNumber(selectedSkuSum)}</strong>
-                    {skuCellSelection.size > 0 && (
-                      <button type="button" onClick={clearSkuSelection}>
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 <div className="fg-sku-table-scroll">
                   <table className="fg-reference-review-table fg-sku-review-table">
                     <thead>
@@ -4314,20 +4304,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               <td className="fg-sku-label-cell">
                                 <strong>{row.sku || '—'}</strong>
                               </td>
-                              {skuMetrics.map((metric, metricIndex) => {
-                                const cellKey = getSkuCellKey(metricIndex, skuIndex);
+                              {skuMetrics.map((metric) => {
                                 const value = metric.getValue(row);
-                                const selected = skuCellSelection.has(cellKey);
                                 return (
                                   <td
                                     key={`${row.sku}-${metric.key}-${skuIndex}`}
-                                    className={`fg-sku-value-cell${selected ? ' fg-sku-cell-selected' : ''}`}
-                                    onMouseDown={(event) =>
-                                      selectSkuCell(metricIndex, skuIndex, event)
-                                    }
-                                    onMouseEnter={() =>
-                                      extendSkuSelection(metricIndex, skuIndex)
-                                    }
+                                    className="fg-sku-value-cell"
                                     title={
                                       typeof value === 'number'
                                         ? `Value: ${formatNumber(value)}`
@@ -5082,41 +5064,81 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-date-header-button {
           display: inline-flex;
           align-items: center;
-          gap: 4px;
-          padding: 0;
-          border: 0;
+          gap: 5px;
+          max-width: 100%;
+          padding: 4px 6px;
+          margin: -4px -6px;
+          border: 1px solid transparent;
+          border-radius: 6px;
           background: transparent;
           color: inherit;
           font: inherit;
           letter-spacing: inherit;
           text-transform: inherit;
           cursor: pointer;
+          transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         }
 
-        .fg-date-header-button:hover { color: #20252b; }
+        .fg-date-header-button:hover {
+          color: #20252b;
+          background: #f1f5f9;
+        }
+
+        .fg-date-header-button.is-sorted {
+          color: #1d4ed8;
+          background: #eff6ff;
+          border-color: #bfdbfe;
+          font-weight: 700;
+        }
+
+        .fg-date-header-button.is-sorted:hover {
+          background: #dbeafe;
+          border-color: #93c5fd;
+        }
+
+        .fg-date-header-button:focus-visible {
+          outline: 2px solid #93c5fd;
+          outline-offset: 2px;
+        }
 
         .fg-date-menu {
           position: fixed;
-          width: 156px;
-          padding: 4px;
+          width: 184px;
+          min-width: 184px;
+          box-sizing: border-box;
+          padding: 5px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
           background: #ffffff;
           border: 1px solid #e1e5e9;
-          border-radius: 9px;
-          box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
-          z-index: 1000;
+          border-radius: 10px;
+          box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.05);
+          z-index: 9999;
+          isolation: isolate;
         }
 
         .fg-date-menu button {
+          position: relative;
+          display: flex;
+          align-items: center;
           width: 100%;
-          height: 31px;
-          padding: 0 9px;
+          min-width: 0;
+          height: 32px;
+          flex: 0 0 32px;
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0 10px;
           border: 0;
           border-radius: 6px;
           background: transparent;
           color: #4c535b;
           text-align: left;
-          font-size: 11px;
-          font-weight: 600;
+          white-space: nowrap;
+          line-height: 1;
+          font-family: inherit;
+          font-size: 12px;
+          font-weight: 500;
           cursor: pointer;
         }
 
@@ -5126,8 +5148,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           color: #20252b;
         }
 
+        .fg-date-menu button.active { font-weight: 650; }
+
         .fg-date-menu .fg-date-clear {
-          margin-top: 3px;
+          height: 30px;
+          flex-basis: 30px;
+          margin-top: 2px;
           border-top: 1px solid #edf0f2;
           border-radius: 0 0 6px 6px;
           color: #8a919b;
@@ -5795,6 +5821,19 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           table-layout: auto;
         }
 
+        /* Clear grid borders make every SKU value easy to track across the row. */
+        .fg-sku-review-table th,
+        .fg-sku-review-table td {
+          border-right: 1px solid #dfe4ea;
+          border-bottom: 1px solid #dfe4ea;
+          box-sizing: border-box;
+        }
+
+        .fg-sku-review-table th:first-child,
+        .fg-sku-review-table td:first-child {
+          border-left: 1px solid #dfe4ea;
+        }
+
         /* Freeze the complete header row while scrolling vertically. */
         .fg-reference-review-table thead th {
           position: sticky;
@@ -5842,25 +5881,14 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         }
 
         .fg-sku-review-table .fg-sku-value-cell {
-          min-width: 135px;
-          width: 135px;
+          min-width: 120px;
+          width: 120px;
           height: 44px;
           padding: 0 12px;
           text-align: center;
           white-space: nowrap;
           background: #ffffff;
-          cursor: cell;
-          user-select: none;
-        }
-
-        .fg-sku-review-table .fg-sku-value-cell:hover {
-          background: #f1f5f9;
-        }
-
-        .fg-sku-review-table .fg-sku-value-cell.fg-sku-cell-selected {
-          background: #dbeafe;
-          box-shadow: inset 0 0 0 2px #3b82f6;
-          color: #0f172a;
+          user-select: text;
         }
 
         .fg-sku-review-table .fg-sku-label-cell {
@@ -5874,33 +5902,45 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         }
 
         .fg-sku-review-table .fg-po-total-cell {
+          position: sticky;
+          bottom: 0;
+          z-index: 35;
           min-width: 120px;
           width: 120px;
-          background: #f8fafc;
-          text-align: right;
+          height: 46px;
+          background: #eef2f7;
+          text-align: center;
           white-space: nowrap;
-          font-weight: 650;
+          font-weight: 700;
+          border-top: 2px solid #94a3b8;
+          box-shadow: 0 -3px 8px -7px rgba(15, 23, 42, 0.65);
         }
 
-        /* Review column stays visible at the right edge of the table. */
+        .fg-sku-review-table td.fg-po-total-cell:first-child {
+          left: 0;
+          z-index: 50;
+          text-align: left;
+          padding-left: 14px;
+          background: #e8edf4;
+        }
+
+        .fg-sku-review-table td.fg-po-total-cell:last-child {
+          right: 0;
+          z-index: 50;
+          background: #e8edf4;
+        }
+
+        /* DG / final metric column scrolls normally; only PO TOTAL stays frozen. */
         .fg-sku-review-table th:last-child,
         .fg-sku-review-table td:last-child {
-          position: sticky;
-          right: 0;
-          z-index: 21;
-          min-width: 300px;
-          width: 300px;
+          min-width: 112px;
+          width: 112px;
+          max-width: 112px;
+          text-align: center;
         }
 
-        .fg-sku-review-table thead th:last-child {
-          z-index: 45;
-          background: #111827;
-          box-shadow: -7px 0 10px -10px rgba(15, 23, 42, 0.55);
-        }
-
-        .fg-sku-review-table tbody td:last-child {
+        .fg-sku-review-table tbody td:last-child:not(.fg-po-total-cell) {
           background: #ffffff;
-          box-shadow: -7px 0 10px -10px rgba(15, 23, 42, 0.35);
         }
 
         .fg-reference-review-table td {
@@ -6250,43 +6290,98 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           background: #fff;
         }
 
+        /* Single scroll container anchors both sticky axes. */
         .fg-grn-table-scroll {
+          position: relative;
           width: 100%;
           max-height: 460px;
           overflow: auto;
+          isolation: isolate;
         }
 
         .fg-grn-review-table {
+          width: max-content;
           min-width: 2400px;
           border-collapse: separate;
           border-spacing: 0;
+          table-layout: fixed;
         }
 
-        .fg-grn-review-table th {
-          position: sticky;
-          top: 0;
-          z-index: 2;
-          white-space: nowrap;
-          font-size: 10px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-        }
-
+        .fg-grn-review-table th,
         .fg-grn-review-table td {
+          box-sizing: border-box;
+          text-align: center;
+          vertical-align: middle;
+          padding: 12px 14px;
+          border-right: 1px solid #d9e0e8;
+          border-bottom: 1px solid #d9e0e8;
+          line-height: 1.35;
+          background-clip: padding-box;
+        }
+
+        /* Freeze the entire header row vertically. */
+        .fg-grn-review-table thead th {
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 20;
+          white-space: normal;
+          min-width: 112px;
+          background: #111827 !important;
+          color: #f8fafc;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.035em;
+          text-transform: uppercase;
+          overflow-wrap: anywhere;
+        }
+
+        .fg-grn-review-table tbody td {
           white-space: nowrap;
+          min-width: 112px;
+          background: #fff;
+          color: #263244;
           font-size: 12px;
         }
 
-        .fg-grn-review-table th:first-child,
-        .fg-grn-review-table td:first-child {
-          position: sticky;
-          left: 0;
-          z-index: 3;
-          min-width: 105px;
+        .fg-grn-review-table tbody tr:nth-child(even) td {
+          background: #f8fafc;
         }
 
-        .fg-grn-review-table th:first-child {
-          z-index: 4;
+        /* Freeze GRN header and all GRN values during horizontal scrolling. */
+        .fg-grn-review-table thead th:first-child,
+        .fg-grn-review-table tbody td:first-child {
+          position: sticky !important;
+          left: 0 !important;
+          width: 185px;
+          min-width: 185px;
+          max-width: 185px;
+          box-shadow: 2px 0 5px rgba(15, 23, 42, 0.12);
+        }
+
+        .fg-grn-review-table tbody td:first-child {
+          z-index: 10;
+          font-weight: 600;
+        }
+
+        .fg-grn-review-table tbody tr:nth-child(odd) td:first-child {
+          background: #fff;
+        }
+
+        .fg-grn-review-table tbody tr:nth-child(even) td:first-child {
+          background: #f8fafc;
+        }
+
+        /* Top-left cell (GRN header) stays above both sticky axes. */
+        .fg-grn-review-table thead th:first-child {
+          top: 0 !important;
+          left: 0 !important;
+          z-index: 40 !important;
+          background: #111827 !important;
+        }
+
+        .fg-grn-review-table th:last-child,
+        .fg-grn-review-table td:last-child {
+          border-right: 0;
         }
 
         @media (max-width: 1250px) {
@@ -6319,7 +6414,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           .fg-reference-po-details { grid-template-columns: 1fr; }
           .fg-sku-table-scroll { max-height: 330px; }
           .fg-sku-review-table th:last-child,
-          .fg-sku-review-table td:last-child { min-width: 280px; width: 280px; }
+          .fg-sku-review-table td:last-child { min-width: 112px; width: 112px; max-width: 112px; position: static; }
           .fg-kpi-grid { grid-template-columns: 1fr; }
           .fg-kpi-card { min-height: 115px; }
           .fg-table-header { padding: 14px; }
