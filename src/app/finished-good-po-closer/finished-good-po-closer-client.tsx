@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   ArrowRight,
-  ArrowDown,
-  ArrowUp,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -106,6 +104,7 @@ type FgPoRow = {
   is_eligible: boolean | null;
   skus: string | null;
   sku: string | null;
+  Dyed_Fabric_SKU?: string | null;
   product_description: string | null;
   cp_id: string | null;
   po_detail_id: string | null;
@@ -1508,6 +1507,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           vendor_name,
           vendor_code,
           sku,
+          Dyed_Fabric_SKU,
           product_description,
           po_qty,
           cutting_qty,
@@ -2540,11 +2540,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
    * /JOB/  -> JOB workbook logic
    * /FOB/ or /EFOB/ (and the existing non-JOB FG references) -> FOB/EFOB logic
    *
-   * The current FG view exposes the common PO / cutting / GRN / RG quantities.
-   * JOB-only workbook fields such as STD AVG, COSTING PER PCS, RM SKU and DG
-   * are intentionally not fabricated here because those source columns are not
-   * present in v_fg_po_view yet. Once those fields are exposed by the backend,
-   * they can be added to the JOB adapter without changing the routing.
+   * RM SKU is displayed from Dyed_Fabric_SKU in v_fg_po_view, mapped by the
+   * existing SKU-wise rows. Other calculations and routing remain unchanged.
    */
   const commonSkuMetrics = [
     {
@@ -2561,19 +2558,19 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     },
     {
       key: 'Diff in Order and GRN',
-      getValue: (row: FgPoRow) => Math.max(0, Number(row.po_qty ?? 0) - Number(row.grn_qty ?? 0)),
+      getValue: (row: FgPoRow) => Number(row.po_qty ?? 0) - Number(row.grn_qty ?? 0),
     },
     {
       key: 'Diff in Order and Cutting',
-      getValue: (row: FgPoRow) => Math.max(0, Number(row.po_qty ?? 0) - Number(row.cutting_qty ?? 0)),
+      getValue: (row: FgPoRow) => Number(row.po_qty ?? 0) - Number(row.cutting_qty ?? 0),
     },
     {
       key: 'Diff in Cutting and GRN',
-      getValue: (row: FgPoRow) => Math.max(0, Number(row.cutting_qty ?? 0) - Number(row.grn_qty ?? 0)),
+      getValue: (row: FgPoRow) => Number(row.cutting_qty ?? 0) - Number(row.grn_qty ?? 0),
     },
     {
       key: 'RM SKU',
-      getValue: (_row: FgPoRow) => null,
+      getValue: (row: FgPoRow) => row.Dyed_Fabric_SKU?.trim() || null,
     },
     {
       key: 'RG OUT',
@@ -2586,7 +2583,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     {
       key: 'RG DIFF',
       getValue: (row: FgPoRow) =>
-        Math.max(0, Number(row.rg_out_qty ?? 0) - Number(row.rg_in_qty ?? 0)),
+        Number(row.rg_out_qty ?? 0) - Number(row.rg_in_qty ?? 0),
     },
   ];
 
@@ -3226,9 +3223,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       <div className="fg-date-header">
                         <button
                           type="button"
-                          className={`fg-date-header-button${dateSortColumn === column ? ' is-sorted' : ''}`}
-                          aria-label={`${column}, ${dateSortColumn === column ? (dateSortDirection === 'asc' ? 'sorted oldest to newest' : 'sorted newest to oldest') : 'sort options'}`}
-                          title={dateSortColumn === column ? `Sorted ${dateSortDirection === 'asc' ? 'oldest to newest' : 'newest to oldest'}` : 'Sort this column'}
+                          className="fg-date-header-button"
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             setDateMenuPosition({
@@ -3240,14 +3235,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                             );
                           }}
                         >
-                          <span>{column === 'po_ref_num' ? 'PO REF NO.' : column}</span>
-                          {dateSortColumn === column ? (
-                            dateSortDirection === 'asc'
-                              ? <ArrowUp size={12} strokeWidth={2.5} aria-hidden="true" />
-                              : <ArrowDown size={12} strokeWidth={2.5} aria-hidden="true" />
-                          ) : (
-                            <ChevronDown size={12} aria-hidden="true" />
-                          )}
+                          {column === 'po_ref_num' ? 'PO REF NO.' : column}
+                          <ChevronDown size={12} />
                         </button>
 
                         {dateMenuColumn === column && (
@@ -3643,7 +3632,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         const actualValue = tnaDates[actualField];
                         const variationValue = tnaDates[variationField];
                         const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
-                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Math.max(0, Number(variationValue) || 0))} days`;
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Number(variationValue))} days`;
                         return (
                           <tr key={stage}>
                             <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
@@ -3698,11 +3687,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                     }
                                   >
                                     <strong>
-                                      {value === null || value === undefined
+                                      {value === null || value === undefined || value === ''
                                         ? '—'
-                                        : formatNumber(
-                                            typeof value === 'number' && value < 0 ? 0 : value,
-                                          )}
+                                        : metric.key === 'RM SKU'
+                                          ? String(value)
+                                          : formatNumber(
+                                              typeof value === 'number' && value < 0 ? 0 : Number(value),
+                                            )}
                                     </strong>
                                   </td>
                                 );
@@ -4262,7 +4253,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         const actualValue = tnaDates[actualField];
                         const variationValue = tnaDates[variationField];
                         const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
-                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Math.max(0, Number(variationValue) || 0))} days`;
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Number(variationValue))} days`;
                         return (
                           <tr key={stage}>
                             <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
@@ -4317,11 +4308,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                     }
                                   >
                                     <strong>
-                                      {value === null || value === undefined
+                                      {value === null || value === undefined || value === ''
                                         ? '—'
-                                        : formatNumber(
-                                            typeof value === 'number' && value < 0 ? 0 : value,
-                                          )}
+                                        : metric.key === 'RM SKU'
+                                          ? String(value)
+                                          : formatNumber(
+                                              typeof value === 'number' && value < 0 ? 0 : Number(value),
+                                            )}
                                     </strong>
                                   </td>
                                 );
@@ -5064,81 +5057,41 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-date-header-button {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          max-width: 100%;
-          padding: 4px 6px;
-          margin: -4px -6px;
-          border: 1px solid transparent;
-          border-radius: 6px;
+          gap: 4px;
+          padding: 0;
+          border: 0;
           background: transparent;
           color: inherit;
           font: inherit;
           letter-spacing: inherit;
           text-transform: inherit;
           cursor: pointer;
-          transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         }
 
-        .fg-date-header-button:hover {
-          color: #20252b;
-          background: #f1f5f9;
-        }
-
-        .fg-date-header-button.is-sorted {
-          color: #1d4ed8;
-          background: #eff6ff;
-          border-color: #bfdbfe;
-          font-weight: 700;
-        }
-
-        .fg-date-header-button.is-sorted:hover {
-          background: #dbeafe;
-          border-color: #93c5fd;
-        }
-
-        .fg-date-header-button:focus-visible {
-          outline: 2px solid #93c5fd;
-          outline-offset: 2px;
-        }
+        .fg-date-header-button:hover { color: #20252b; }
 
         .fg-date-menu {
           position: fixed;
-          width: 184px;
-          min-width: 184px;
-          box-sizing: border-box;
-          padding: 5px;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
+          width: 156px;
+          padding: 4px;
           background: #ffffff;
           border: 1px solid #e1e5e9;
-          border-radius: 10px;
-          box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.05);
-          z-index: 9999;
-          isolation: isolate;
+          border-radius: 9px;
+          box-shadow: 0 8px 22px rgba(15, 23, 42, 0.10);
+          z-index: 1000;
         }
 
         .fg-date-menu button {
-          position: relative;
-          display: flex;
-          align-items: center;
           width: 100%;
-          min-width: 0;
-          height: 32px;
-          flex: 0 0 32px;
-          box-sizing: border-box;
-          margin: 0;
-          padding: 0 10px;
+          height: 31px;
+          padding: 0 9px;
           border: 0;
           border-radius: 6px;
           background: transparent;
           color: #4c535b;
           text-align: left;
-          white-space: nowrap;
-          line-height: 1;
-          font-family: inherit;
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 11px;
+          font-weight: 600;
           cursor: pointer;
         }
 
@@ -5148,12 +5101,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           color: #20252b;
         }
 
-        .fg-date-menu button.active { font-weight: 650; }
-
         .fg-date-menu .fg-date-clear {
-          height: 30px;
-          flex-basis: 30px;
-          margin-top: 2px;
+          margin-top: 3px;
           border-top: 1px solid #edf0f2;
           border-radius: 0 0 6px 6px;
           color: #8a919b;
@@ -6423,8 +6372,3 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     </div>
   );
 }
-
-
-
-
-// Export the client component as default.

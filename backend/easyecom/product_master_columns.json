@@ -1,0 +1,305 @@
+[
+  {
+    "column_name": "EANUPC",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "Flammable",
+    "suggested_type": "BIGINT",
+    "sample_value": 0,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "accounting_sku",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "accounting_unit",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "5",
+    "records_with_field": 200,
+    "non_null_values": 1
+  },
+  {
+    "column_name": "active",
+    "suggested_type": "BIGINT",
+    "sample_value": 1,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "brand",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "SAADAA",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "brand_id",
+    "suggested_type": "BIGINT",
+    "sample_value": 7169413,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "c_id",
+    "suggested_type": "BIGINT",
+    "sample_value": 167333,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "category_id",
+    "suggested_type": "BIGINT",
+    "sample_value": 290838,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "category_name",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "20CF",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "category_shelf_life",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "category_shelf_life_percentage",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "colour",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "NA",
+    "records_with_field": 200,
+    "non_null_values": 94
+  },
+  {
+    "column_name": "company_name",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "SAADAA - MATERIAL WAREHOUSE",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "cost",
+    "suggested_type": "BIGINT",
+    "sample_value": 80,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "cp_id",
+    "suggested_type": "BIGINT",
+    "sample_value": 126532611,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "cp_inventory",
+    "suggested_type": "BIGINT",
+    "sample_value": 0,
+    "records_with_field": 200,
+    "non_null_values": 184
+  },
+  {
+    "column_name": "cp_sub_products_count",
+    "suggested_type": "BIGINT",
+    "sample_value": 0,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "created_at",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "2024-01-17 12:05:34",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "custom_fields",
+    "suggested_type": "JSONB",
+    "sample_value": [],
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "description",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "20s Cotton Flax - BLACK",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "expiry_type",
+    "suggested_type": "BIGINT",
+    "sample_value": 0,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "height",
+    "suggested_type": "BIGINT",
+    "sample_value": 1,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "hsn_code",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "520811",
+    "records_with_field": 200,
+    "non_null_values": 193
+  },
+  {
+    "column_name": "inventory",
+    "suggested_type": "BIGINT",
+    "sample_value": 0,
+    "records_with_field": 200,
+    "non_null_values": 184
+  },
+  {
+    "column_name": "length",
+    "suggested_type": "BIGINT",
+    "sample_value": 1,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "material_type",
+    "suggested_type": "BIGINT",
+    "sample_value": 1,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "model_no",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "20CF/48/BL",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "mrp",
+    "suggested_type": "BIGINT",
+    "sample_value": 83,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "packaging_version_name",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "product shelf life",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "product_id",
+    "suggested_type": "BIGINT",
+    "sample_value": 26002644,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "product_image_url",
+    "suggested_type": "UNKNOWN",
+    "sample_value": null,
+    "records_with_field": 200,
+    "non_null_values": 0
+  },
+  {
+    "column_name": "product_name",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "Cotton Flax - BLACK",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "product_type",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "normal_product",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "size",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "NA",
+    "records_with_field": 200,
+    "non_null_values": 63
+  },
+  {
+    "column_name": "sku",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "20CF/48/BL",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "tax_rate",
+    "suggested_type": "NUMERIC",
+    "sample_value": 0.05,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "tax_rule_name",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "Tax_5%",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "updated_at",
+    "suggested_type": "TEXT (inspect date/number format)",
+    "sample_value": "2026-06-25 17:41:01",
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "vendor_code",
+    "suggested_type": "JSONB",
+    "sample_value": [
+      "SUS"
+    ],
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "weight",
+    "suggested_type": "BIGINT",
+    "sample_value": 1,
+    "records_with_field": 200,
+    "non_null_values": 200
+  },
+  {
+    "column_name": "width",
+    "suggested_type": "BIGINT",
+    "sample_value": 1,
+    "records_with_field": 200,
+    "non_null_values": 200
+  }
+]
