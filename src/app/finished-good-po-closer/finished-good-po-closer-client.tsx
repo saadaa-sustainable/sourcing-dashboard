@@ -105,6 +105,7 @@ type FgPoRow = {
   skus: string | null;
   sku: string | null;
   Dyed_Fabric_SKU?: string | null;
+  "Item Quantity"?: number | string | null;
   product_description: string | null;
   cp_id: string | null;
   po_detail_id: string | null;
@@ -1508,6 +1509,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           vendor_code,
           sku,
           Dyed_Fabric_SKU,
+          "Item Quantity",
           product_description,
           po_qty,
           cutting_qty,
@@ -1547,26 +1549,60 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       setSkuRows(rows);
 
       // GRN SUMMARY is required for both JOB and FOB/EFOB POs.
-      // The workbook uses the same GRN-level reconciliation structure for FOB/EFOB;
-      // JOB additionally has DG columns, while FOB/EFOB has FABRIC columns.
+      // IMPORTANT: use the PO IDs returned by v_fg_po_view as the allow-list.
+      // That view applies the warehouse rule (only SAADAA SUSTAINABLE DESIGNS
+      // AND TECHNOLOGIES PRIVATE LIMITED). Filtering only by po_number or
+      // po_ref_num can pull GRNs belonging to a different warehouse/PO ID that
+      // happens to share the same reference.
       setGrnLoading(true);
       try {
-        const { data: grnData, error: grnError } = await pageAll(() => supabase
-          .schema('FG Closer')
-          .from('saadaa_po_grn_mapping')
-          .select(`
-            po_id,
-            po_number,
-            po_ref_num,
-            grn_id,
-            sku,
-            grn_created_date,
-            grn_invoice_number,
-            grn_receive_quantity
-          `)
-          .eq('po_number', po.po_number).order('grn_id').order('po_detail_id').order('sku'));
+        const eligiblePoIds = [...new Set(
+          rows
+            .map((row) => row.po_id == null ? null : Number(row.po_id))
+            .filter((id): id is number => id !== null && Number.isFinite(id)),
+        )];
+
+        const { data: grnData, error: grnError } = eligiblePoIds.length > 0
+          ? await pageAll(() => supabase
+              .schema('FG Closer')
+              .from('saadaa_po_grn_mapping')
+              .select(`
+                po_id,
+                po_number,
+                po_ref_num,
+                grn_id,
+                sku,
+                grn_created_date,
+                grn_invoice_number,
+                grn_receive_quantity
+              `)
+              .in('po_id', eligiblePoIds)
+              .order('grn_id').order('po_detail_id').order('sku'))
+          : { data: [], error: null };
 
         if (grnError) throw grnError;
+
+        // GRN quantity/display rows come only from grn_fact_items, restricted
+        // to those same eligible PO IDs. Mapping is enrichment/status only.
+        const { data: grnFactData, error: grnFactError } = eligiblePoIds.length > 0
+          ? await pageAll(() => supabase
+              .schema('FG Closer')
+              .from('grn_fact_items')
+              .select(`
+                po_id,
+                po_ref_num,
+                grn_id,
+                sku,
+                grn_created_date,
+                received_quantity
+              `)
+              .in('po_id', eligiblePoIds)
+              .order('grn_id')
+              .order('sku'))
+          : { data: [], error: null };
+
+        if (grnFactError) throw grnFactError;
+
         setPenaltyGrnItems(((grnData ?? []) as Array<Record<string, unknown>>).map((item) => ({
           po_id: item.po_id == null ? null : Number(item.po_id),
           sku: item.sku == null ? null : String(item.sku).trim(),
@@ -1636,28 +1672,51 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           rates: Set<number>;
         };
 
-        const grouped = new Map<string, GrnAccumulator>();
+        // GRN rows must originate from grn_fact_items. The mapping table is only
+        // used to enrich those real GRNs with invoice metadata / workflow status;
+        // it must never create a display row on its own (mapping can contain a
+        // placeholder with a NULL GRN ID).
+        const mappingByGrn = new Map<string, Array<Record<string, unknown>>>();
         ((grnData ?? []) as Array<Record<string, unknown>>).forEach((item) => {
           const poId = item.po_id == null ? null : Number(item.po_id);
-          const grnId = item.grn_id == null ? null : (item.grn_id as string | number);
-          const grnKey = `${poId ?? ''}|${grnId ?? ''}|${item.grn_created_date ?? ''}`;
+          const grnId = item.grn_id == null ? '' : String(item.grn_id).trim();
+          if (!grnId) return;
+          const grnDate = item.grn_created_date == null ? '' : String(item.grn_created_date);
+          const grnKey = `${poId ?? ''}|${grnId}|${grnDate}`;
+          const existing = mappingByGrn.get(grnKey) ?? [];
+          existing.push(item);
+          mappingByGrn.set(grnKey, existing);
+        });
+
+        const grouped = new Map<string, GrnAccumulator>();
+        ((grnFactData ?? []) as Array<Record<string, unknown>>).forEach((item) => {
+          const poId = item.po_id == null ? null : Number(item.po_id);
+          const grnId = item.grn_id == null ? '' : String(item.grn_id).trim();
+          // Do not display null/blank GRN IDs as fake GRN rows.
+          if (!grnId) return;
+          const grnDate = item.grn_created_date == null ? '' : String(item.grn_created_date);
+          const grnKey = `${poId ?? ''}|${grnId}|${grnDate}`;
           const current = grouped.get(grnKey) ?? {
-            grn: grnId,
+            grn: item.grn_id as string | number,
             poId,
-            grnDate: item.grn_created_date ? String(item.grn_created_date) : null,
+            grnDate: grnDate || null,
             qty: 0,
             invoiceNumbers: new Set<string>(),
             rates: new Set<number>(),
           };
 
-          current.qty += Number(item.grn_receive_quantity ?? 0);
-          const invoice = String(item.grn_invoice_number ?? '').trim();
-          if (invoice) current.invoiceNumbers.add(invoice);
+          // Quantity and displayed GRN/date come only from grn_fact_items.
+          current.qty += Number(item.received_quantity ?? 0);
+
+          // Use the mapping only to enrich the fact row, never as the row source.
+          (mappingByGrn.get(grnKey) ?? []).forEach((mappingItem) => {
+            const invoice = String(mappingItem.grn_invoice_number ?? '').trim();
+            if (invoice) current.invoiceNumbers.add(invoice);
+          });
 
           const poRow = poId == null ? undefined : poRowsById.get(poId);
           const rate = Number(poRow?.item_price ?? NaN);
           if (Number.isFinite(rate)) current.rates.add(rate);
-
           grouped.set(grnKey, current);
         });
 
@@ -1665,23 +1724,34 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           .sort((a, b) => String(b.grnDate ?? '').localeCompare(String(a.grnDate ?? '')))
           .map((item) => {
             const poRow = item.poId == null ? undefined : poRowsById.get(item.poId);
-            const poCloserDate = poRow?.completed_at_timestamp ?? null;
+            // Match the closure workbook: PO Closer Date is the target/expected
+            // delivery date (the workbook adds any material-issue adjustment; that
+            // adjustment is zero for this workbook). Do not use completed_at_timestamp:
+            // it is the workflow completion timestamp, not the workbook's deadline.
+            const poCloserDate = poRow?.expected_delivery_date ?? null;
             const grnDate = item.grnDate;
+            const dateAsUtcDay = (value: string) => {
+              const day = String(value).slice(0, 10);
+              const [year, month, date] = day.split('-').map(Number);
+              return Date.UTC(year, month - 1, date);
+            };
             const delayDays = grnDate && poCloserDate
-              ? Math.round(
-                  (new Date(grnDate).getTime() - new Date(poCloserDate).getTime()) /
-                    86400000,
-                )
+              ? Math.floor((dateAsUtcDay(grnDate) - dateAsUtcDay(poCloserDate)) / 86400000)
               : null;
 
-            // Workbook GRN SUMMARY:
-            // <= 6 days = 0%, 7-15 days = 5%, >= 16 days = 10%.
-            const delayChargeRate =
-              delayDays == null ? null : delayDays <= 6 ? 0 : delayDays >= 16 ? 10 : 5;
-            const rate = item.rates.size === 1 ? Array.from(item.rates)[0] : null;
+            // Exact workbook GRN-summary formulas:
+            // G = 10; H = MIN(MAX(Qty * base rate * delay days * 1.5%, Qty * delay days), Qty * base rate * 15%).
+            // The workbook's rate is ₹175 before GST (the source PO rate ₹183.75 includes GST).
+            const delayChargeRate = delayDays == null ? null : 10;
+            const grossRate = item.rates.size === 1 ? Array.from(item.rates)[0] : null;
+            const rate = grossRate != null ? grossRate / 1.05 : null;
             const amount = rate != null ? item.qty * rate : null;
-            const delayAmount =
-              delayChargeRate != null ? item.qty * delayChargeRate : null;
+            const delayAmount = delayDays != null && rate != null
+              ? Math.min(
+                  Math.max(item.qty * rate * delayDays * 0.015, item.qty * delayDays),
+                  item.qty * rate * 0.15,
+                )
+              : null;
             const amountWithGst = amount != null ? amount * 1.05 : null;
             const invoice = Array.from(item.invoiceNumbers).join(', ') || null;
             const rgOut = item.grn == null ? undefined : rgOutByGrn.get(String(item.grn));
@@ -1804,29 +1874,36 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           receivedPcs: number;
           cuttingQty: number;
           fabricConsumed: number;
+          rmIssued: number | null;
         }>();
 
         rows.forEach((row) => {
           const sku = String(row.sku ?? '').trim().toUpperCase();
           const fabrics = skuToFabric.get(sku);
-          if (!fabrics || fabrics.size === 0) return;
+          const fabricList = fabrics ? Array.from(fabrics) : [];
+          const dyedFabricSku = String(row.Dyed_Fabric_SKU ?? '').trim();
 
-          /*
-           * A product SKU should normally map to one RM SKU in the cutting
-           * register. If bad source data maps it to multiple fabrics, do not
-           * duplicate the GRN quantity across every fabric.
-           */
-          const fabricList = Array.from(fabrics);
-          if (fabricList.length !== 1) return;
+          // The view's dyed fabric SKU is the canonical RM SKU for this table.
+          // Fall back to the cutting register mapping only when it is unavailable.
+          const fabric = dyedFabricSku || (fabricList.length === 1 ? fabricList[0] : '');
+          if (!fabric) return;
 
-          const fabric = fabricList[0];
           const current = fabricMap.get(fabric) ?? {
             receivedPcs: 0,
             cuttingQty: 0,
             fabricConsumed: 0,
+            rmIssued: null,
           };
 
           current.receivedPcs += Number(row.grn_qty ?? 0);
+          const itemQuantity = row['Item Quantity'] == null || row['Item Quantity'] === ''
+            ? null
+            : Number(row['Item Quantity']);
+          // Item Quantity is already aggregated by RM SKU in Supabase and repeats
+          // across garment SKUs. Store it once; never sum the repeated value.
+          if (current.rmIssued == null && itemQuantity != null && Number.isFinite(itemQuantity)) {
+            current.rmIssued = itemQuantity;
+          }
           fabricMap.set(fabric, current);
         });
 
@@ -1838,6 +1915,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             receivedPcs: 0,
             cuttingQty: 0,
             fabricConsumed: 0,
+            rmIssued: null,
           };
 
           current.cuttingQty += Number(cutting.cutting_qty ?? 0);
@@ -1866,7 +1944,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             return {
               rmSku,
               receivedPcs: values.receivedPcs,
-              rmIssued: null,
+              rmIssued: values.rmIssued,
               rmReturn: null,
               netRmIssued: null,
               rmAmount: null,
@@ -2909,13 +2987,14 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     let formula = first.formula;
 
     if (key === 'late_delivery') {
-      const flatRate = penaltyJobWork ? 5 : 10;
-      const percentRate = penaltyJobWork ? 0.01 : 0.015;
-      amount = totalDelayedQty > 0 && maxDelayedDays > 0
-        ? Math.min(penaltyTotalPOValue * 0.15, Math.max(totalDelayedQty * flatRate, penaltyTotalPOValue * percentRate * maxDelayedDays))
-        : 0;
-      basis = `Whole PO delayed quantity ${formatNumber(totalDelayedQty)} pcs; maximum delay ${formatNumber(maxDelayedDays)} days; 15% total-PO-value cap ${penaltyCurrency(penaltyTotalPOValue * 0.15)}.`;
-      formula = `Capped at 15% of total PO value; otherwise higher of ₹${flatRate} × delayed pcs and ${percentRate * 100}% of total PO value × delay days`;
+      // The Excel debit-note total is the sum of the per-GRN H-column formula,
+      // not a second whole-PO percentage calculation. Keep it blank if the GRN
+      // summary cannot calculate every row rather than silently showing zero.
+      amount = grnRows.length > 0 && grnRows.every((grn) => grn.delayAmount != null)
+        ? grnRows.reduce((sum, grn) => sum + Number(grn.delayAmount ?? 0), 0)
+        : null;
+      basis = `Workbook GRN-level delay charges summed across ${formatNumber(grnRows.length)} GRN(s); chargeable delay ${penaltyCurrency(amount)}.`;
+      formula = 'Sum per GRN: MIN(MAX(Qty × ₹175 × delay days × 1.5%, Qty × delay days), Qty × ₹175 × 15%)';
     } else if (key === 'dg_upto_2') {
       amount = totalDgQty === 0 ? 0 : (penaltyPoQty > 0 && totalDgQty / penaltyPoQty <= 0.02
         ? rows.reduce((sum, row) => sum + Number(row.dgQty ?? 0) * Number(row.unitRate ?? 0), 0)
@@ -2933,16 +3012,21 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       basis = `Total rejected quantity ${formatNumber(totalRejectedQty)} pcs; 3% PO threshold ${formatNumber(penaltyPoQty * 0.03)} pcs; chargeable excess ${formatNumber(excessRejectedQty)} pcs.`;
       formula = `₹${penaltyJobWork ? 3 : 5} × rejected pcs above 3% of total PO quantity`;
     } else if (key === 'short_shipment') {
-      const chargeableShortage = penaltyJobWork ? totalJobShortage : totalFobShortage;
-      amount = chargeableShortage > 0
-        ? Math.max(chargeableShortage * (penaltyJobWork ? 10 : 20), penaltyTotalPOValue * (penaltyJobWork ? 0.01 : 0.015))
-        : 0;
+      // Match the workbook P7 formula for FOB/EFOB exactly: compare total GRN
+      // quantity with 98% of total cutting quantity, then charge only the shortfall
+      // at ₹20/pc. Do not assess each SKU separately or impose a percentage minimum.
+      const fobThresholdQty = totalCuttingQty * 0.98;
+      const fobChargeableShortage = Math.max(0, fobThresholdQty - totalGrnQty);
+      const chargeableShortage = penaltyJobWork ? totalJobShortage : fobChargeableShortage;
+      amount = penaltyJobWork
+        ? (chargeableShortage > 0 ? Math.max(chargeableShortage * 10, penaltyTotalPOValue * 0.01) : 0)
+        : (totalCuttingQty > 0 && totalGrnQty < fobThresholdQty ? fobChargeableShortage * 20 : 0);
       basis = penaltyJobWork
         ? `Whole PO cutting ${formatNumber(totalCuttingQty)} pcs; GRN ${formatNumber(totalGrnQty)} pcs; shortage after 1% or 5-pc tolerance ${formatNumber(chargeableShortage)} pcs.`
-        : `Total chargeable shortage across SKUs failing the 98% fulfilment threshold: ${formatNumber(chargeableShortage)} pcs.`;
+        : `Workbook check: GRN ${formatNumber(totalGrnQty)} pcs vs 98% of cutting qty ${formatNumber(fobThresholdQty)} pcs; chargeable shortage ${formatNumber(chargeableShortage)} pcs.`;
       formula = penaltyJobWork
         ? 'If PO-level tolerance is breached: higher of ₹10 × shortage pcs or 1% of total PO value'
-        : 'For SKUs below 98% fulfilment: higher of ₹20 × chargeable shortage pcs or 1.5% of total PO value';
+        : 'IF(total GRN qty < total cutting qty × 98%, (total cutting qty × 98% − total GRN qty) × ₹20, otherwise ₹0)';
     } else if (key === 'overproduction') {
       amount = penaltyJobWork ? (hasOverproductionBreach ? penaltyTotalPOValue * 0.01 : 0) : 0;
       basis = hasOverproductionBreach ? 'At least one SKU exceeds the approved over-production threshold.' : 'No SKU exceeds the over-production threshold.';
@@ -3860,9 +3944,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     </div>
                   </div>
 
-                  <div className="fg-fabric-table-wrap">
-                    <div className="fg-fabric-table-scroll">
-                      <table className="fg-reference-review-table fg-fabric-review-table">
+                  <div className="fg-fabric-table-wrap fg-grn-table-wrap">
+                    <div className="fg-fabric-table-scroll fg-grn-table-scroll">
+                      <table className="fg-reference-review-table fg-fabric-review-table fg-grn-review-table">
                         <thead>
                           <tr>
                             <th>RM SKU</th>
@@ -4481,9 +4565,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     </div>
                   </div>
 
-                  <div className="fg-fabric-table-wrap">
-                    <div className="fg-fabric-table-scroll">
-                      <table className="fg-reference-review-table fg-fabric-review-table">
+                  <div className="fg-fabric-table-wrap fg-grn-table-wrap">
+                    <div className="fg-fabric-table-scroll fg-grn-table-scroll">
+                      <table className="fg-reference-review-table fg-fabric-review-table fg-grn-review-table">
                         <thead>
                           <tr>
                             <th>RM SKU</th>

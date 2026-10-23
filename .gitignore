@@ -52,3 +52,4 @@ backfill/package-lock.json
 gcp-key.json
 !backfill/.env.example
 !.env.example
+.env.example
