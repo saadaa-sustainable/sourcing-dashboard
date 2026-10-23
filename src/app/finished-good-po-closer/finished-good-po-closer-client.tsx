@@ -99,6 +99,7 @@ type FgPoRow = {
   max_rg_tat_days: number | null;
   dg_entry_count?: number | null;
   dg_serial_count?: number | null;
+  rtv_serial_count?: number | null;
   dg_issue_count?: number | null;
   rg_return_entry_count?: number | null;
   is_eligible: boolean | null;
@@ -206,13 +207,19 @@ const STATUS_FILTERS: ClosureStatus[] = [
 ];
 
 function formatNumber(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
     return '—';
   }
 
+  // Global display rule for the Finished Good PO Closer:
+  // 1) Negative numeric values display as zero.
+  // 2) Positive decimals are truncated (never rounded).
+  // 3) This changes display formatting only; calculations and stored values remain unchanged.
+  const displayValue = Math.trunc(Math.max(0, Number(value)));
   return new Intl.NumberFormat('en-IN', {
-    maximumFractionDigits: 2,
-  }).format(Number(value));
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(displayValue);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -1542,9 +1549,40 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
       if (skuError) throw skuError;
 
-      const rows = ((data ?? []) as FgPoRow[]).filter(
+      const baseRows = ((data ?? []) as FgPoRow[]).filter(
         (row) => String(row.sku ?? '').trim() !== '',
       );
+
+      // RTV is sourced from the RTV (EFOB & FOB) register, not from DG.
+      // Match on the selected PO reference and SKU, then count distinct serials.
+      // JOB POs continue to use the existing DG values and do not query RTV.
+      let rows = baseRows;
+      if (getSkuCalculationType(po.po_ref_num) !== 'JOB') {
+        const { data: rtvData, error: rtvError } = await pageAll(() => supabase
+          .schema('FG Closer')
+          .from('rtv_efob_fob')
+          .select('po_ref, sku, serial')
+          .eq('po_ref', po.po_ref_num)
+          .order('sku')
+          .order('serial'));
+
+        if (rtvError) throw rtvError;
+
+        const rtvSerialsBySku = new Map<string, Set<string>>();
+        ((rtvData ?? []) as Array<Record<string, unknown>>).forEach((item) => {
+          const skuKey = String(item.sku ?? '').trim().toUpperCase();
+          const serial = String(item.serial ?? '').trim();
+          if (!skuKey || !serial) return;
+          const serials = rtvSerialsBySku.get(skuKey) ?? new Set<string>();
+          serials.add(serial.toUpperCase());
+          rtvSerialsBySku.set(skuKey, serials);
+        });
+
+        rows = baseRows.map((row) => ({
+          ...row,
+          rtv_serial_count: rtvSerialsBySku.get(String(row.sku ?? '').trim().toUpperCase())?.size ?? 0,
+        }));
+      }
 
       setSkuRows(rows);
 
@@ -2668,8 +2706,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const fobEfoBSkuMetrics = [
     ...commonSkuMetrics,
     {
-      key: 'DG',
-      getValue: (row: FgPoRow) => Number(row.dg_serial_count ?? 0),
+      key: 'RTV',
+      getValue: (row: FgPoRow) => Number(row.rtv_serial_count ?? 0),
     },
   ];
 
@@ -3716,7 +3754,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         const actualValue = tnaDates[actualField];
                         const variationValue = tnaDates[variationField];
                         const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
-                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Number(variationValue))} days`;
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${Math.max(0, Math.trunc(Number(variationValue) || 0))} days`;
                         return (
                           <tr key={stage}>
                             <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
@@ -4337,7 +4375,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         const actualValue = tnaDates[actualField];
                         const variationValue = tnaDates[variationField];
                         const displayDate = (value: unknown) => value == null || value === '' ? '—' : formatDate(String(value));
-                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${formatNumber(Number(variationValue))} days`;
+                        const displayVariation = variationValue == null || variationValue === '' ? '—' : `${Math.max(0, Math.trunc(Number(variationValue) || 0))} days`;
                         return (
                           <tr key={stage}>
                             <th scope="row" style={{ padding: '12px 10px', textAlign: 'center', verticalAlign: 'middle', border: '1px solid #cbd5e1', fontSize: '12px', fontWeight: 700, color: '#334155', background: '#f8fafc', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, minWidth: '160px', width: '25%' }}>{stage}</th>
