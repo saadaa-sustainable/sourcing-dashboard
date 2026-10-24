@@ -1758,6 +1758,61 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           grouped.set(grnKey, current);
         });
 
+        // Restore manually selected BUSY entry dates from the latest saved
+        // submission snapshots. These dates are user-entered and are not present
+        // in the source GRN/register tables.
+        const parseSavedSnapshot = (value: unknown): Record<string, unknown> => {
+          if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+          if (typeof value === 'string' && value.trim()) {
+            try {
+              const parsed: unknown = JSON.parse(value);
+              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+            } catch { /* Ignore legacy non-JSON values. */ }
+          }
+          return {};
+        };
+        const selectedPoRef = String(po.po_ref_num ?? '').trim();
+        const savedGrnCandidates: unknown[] = [];
+        for (const department of ['Merchandise', 'Accounts'] as const) {
+          const submission = latestSubmissionByPoRef[department][selectedPoRef];
+          if (!submission) continue;
+          const directGrnRows = submission.grn_snapshot;
+          if (Array.isArray(directGrnRows)) savedGrnCandidates.push(...directGrnRows);
+          const snapshotKeys = department === 'Merchandise'
+            ? ['merchandise_data', 'operational_snapshot']
+            : ['accounts_data'];
+          snapshotKeys.forEach((key) => {
+            const snapshot = parseSavedSnapshot(submission[key]);
+            if (Array.isArray(snapshot.grn_rows)) savedGrnCandidates.push(...snapshot.grn_rows);
+          });
+        }
+        const savedDatesByGrn = new Map<string, { rgOutBusyDate: string | null; rgInBusyDate: string | null; fabricDate: string | null; trimsDate: string | null; rgOutBusyAmount: number | null; rgInBusyAmount: number | null; fabricAmount: number | null; trimsAmount: number | null }>();
+        savedGrnCandidates.forEach((candidate) => {
+          const saved = parseSavedSnapshot(candidate);
+          const grnKey = `${String(saved.grn ?? '').trim()}|${String(saved.grnDate ?? '').slice(0, 10)}`;
+          if (!grnKey || grnKey.startsWith('|')) return;
+          const existing = savedDatesByGrn.get(grnKey);
+          const rgOutBusyDate = saved.rgOutBusyDate == null ? null : String(saved.rgOutBusyDate).slice(0, 10);
+          const rgInBusyDate = saved.rgInBusyDate == null ? null : String(saved.rgInBusyDate).slice(0, 10);
+          const fabricDate = saved.fabricDate == null ? null : String(saved.fabricDate).slice(0, 10);
+          const trimsDate = saved.trimsDate == null ? null : String(saved.trimsDate).slice(0, 10);
+          const asSavedAmount = (value: unknown, fallback: number | null | undefined): number | null => {
+            if (value === null || value === undefined || value === '') return fallback ?? null;
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : (fallback ?? null);
+          };
+          savedDatesByGrn.set(grnKey, {
+            rgOutBusyDate: rgOutBusyDate || existing?.rgOutBusyDate || null,
+            rgInBusyDate: rgInBusyDate || existing?.rgInBusyDate || null,
+            fabricDate: fabricDate || existing?.fabricDate || null,
+            trimsDate: trimsDate || existing?.trimsDate || null,
+            rgOutBusyAmount: asSavedAmount(saved.rgOutBusyAmount, existing?.rgOutBusyAmount),
+            rgInBusyAmount: asSavedAmount(saved.rgInBusyAmount, existing?.rgInBusyAmount),
+            fabricAmount: asSavedAmount(saved.fabricAmount, existing?.fabricAmount),
+            trimsAmount: asSavedAmount(saved.trimsAmount, existing?.trimsAmount),
+          });
+        });
+
         const nextGrnRows: GrnSummaryRow[] = Array.from(grouped.values())
           .sort((a, b) => String(b.grnDate ?? '').localeCompare(String(a.grnDate ?? '')))
           .map((item) => {
@@ -1794,6 +1849,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             const invoice = Array.from(item.invoiceNumbers).join(', ') || null;
             const rgOut = item.grn == null ? undefined : rgOutByGrn.get(String(item.grn));
             const rgIn = item.grn == null ? undefined : rgInByGrn.get(String(item.grn));
+            const savedDates = savedDatesByGrn.get(`${String(item.grn ?? '').trim()}|${String(grnDate ?? '').slice(0, 10)}`);
 
             return {
               grn: item.grn,
@@ -1810,18 +1866,18 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
               vendorInvoiceNumber: invoice,
               invoiceAmount: null,
               rgOutPcs: rgOut?.qty ?? 0,
-              rgOutBusyDate: null,
-              rgOutBusyAmount: null,
+              rgOutBusyDate: savedDates?.rgOutBusyDate ?? null,
+              rgOutBusyAmount: savedDates?.rgOutBusyAmount ?? null,
               rgInPcs: rgIn?.qty ?? 0,
-              rgInBusyDate: null,
-              rgInBusyAmount: null,
+              rgInBusyDate: savedDates?.rgInBusyDate ?? null,
+              rgInBusyAmount: savedDates?.rgInBusyAmount ?? null,
               dgPcs: null,
               dgEntryDate: null,
               dgDnAmount: null,
-              fabricDate: null,
-              fabricAmount: null,
-              trimsDate: null,
-              trimsAmount: null,
+              fabricDate: savedDates?.fabricDate ?? null,
+              fabricAmount: savedDates?.fabricAmount ?? null,
+              trimsDate: savedDates?.trimsDate ?? null,
+              trimsAmount: savedDates?.trimsAmount ?? null,
             };
           });
 
@@ -3933,11 +3989,51 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               <td>{grn.vendorInvoiceNumber ?? '—'}</td>
                               <td>{formatNumber(grn.invoiceAmount)}</td>
                               <td>{formatNumber(grn.rgOutPcs)}</td>
-                              <td>{formatDate(grn.rgOutBusyDate)}</td>
-                              <td>{formatNumber(grn.rgOutBusyAmount)}</td>
+                              <td>
+                                <input
+                                  type="date"
+                                  aria-label={`RG OUT BUSY entry date for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgOutBusyDate ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyDate: event.target.value || null } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  aria-label={`RG OUT BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgOutBusyAmount ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
                               <td>{formatNumber(grn.rgInPcs)}</td>
-                              <td>{formatDate(grn.rgInBusyDate)}</td>
-                              <td>{formatNumber(grn.rgInBusyAmount)}</td>
+                              <td>
+                                <input
+                                  type="date"
+                                  aria-label={`RG IN BUSY entry date for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgInBusyDate ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyDate: event.target.value || null } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  aria-label={`RG IN BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgInBusyAmount ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
 
                               {skuCalculationType === 'JOB' ? (
                                 <>
@@ -3947,13 +4043,53 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 </>
                               ) : (
                                 <>
-                                  <td>{formatDate(grn.fabricDate)}</td>
-                                  <td>{formatNumber(grn.fabricAmount)}</td>
+                                  <td>
+                                    <input
+                                      type="date"
+                                      aria-label={`Fabric issue/received date for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.fabricDate ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricDate: event.target.value || null } : row))}
+                                      className="fg-grn-busy-date-input"
+                                      style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      aria-label={`Fabric amount for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.fabricAmount ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                      className="fg-grn-busy-date-input"
+                                      style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
                                 </>
                               )}
 
-                              <td>{formatDate(grn.trimsDate)}</td>
-                              <td>{formatNumber(grn.trimsAmount)}</td>
+                              <td>
+                                <input
+                                  type="date"
+                                  aria-label={`Trims issue/received date for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.trimsDate ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsDate: event.target.value || null } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  aria-label={`Trims amount for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.trimsAmount ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
                             </tr>
                           ))
                         ) : (
@@ -4554,11 +4690,51 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               <td>{grn.vendorInvoiceNumber ?? '—'}</td>
                               <td>{formatNumber(grn.invoiceAmount)}</td>
                               <td>{formatNumber(grn.rgOutPcs)}</td>
-                              <td>{formatDate(grn.rgOutBusyDate)}</td>
-                              <td>{formatNumber(grn.rgOutBusyAmount)}</td>
+                              <td>
+                                <input
+                                  type="date"
+                                  aria-label={`RG OUT BUSY entry date for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgOutBusyDate ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyDate: event.target.value || null } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  aria-label={`RG OUT BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgOutBusyAmount ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
                               <td>{formatNumber(grn.rgInPcs)}</td>
-                              <td>{formatDate(grn.rgInBusyDate)}</td>
-                              <td>{formatNumber(grn.rgInBusyAmount)}</td>
+                              <td>
+                                <input
+                                  type="date"
+                                  aria-label={`RG IN BUSY entry date for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgInBusyDate ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyDate: event.target.value || null } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  aria-label={`RG IN BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.rgInBusyAmount ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
 
                               {skuCalculationType === 'JOB' ? (
                                 <>
@@ -4568,13 +4744,53 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 </>
                               ) : (
                                 <>
-                                  <td>{formatDate(grn.fabricDate)}</td>
-                                  <td>{formatNumber(grn.fabricAmount)}</td>
+                                  <td>
+                                    <input
+                                      type="date"
+                                      aria-label={`Fabric issue/received date for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.fabricDate ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricDate: event.target.value || null } : row))}
+                                      className="fg-grn-busy-date-input"
+                                      style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      aria-label={`Fabric amount for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.fabricAmount ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                      className="fg-grn-busy-date-input"
+                                      style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
                                 </>
                               )}
 
-                              <td>{formatDate(grn.trimsDate)}</td>
-                              <td>{formatNumber(grn.trimsAmount)}</td>
+                              <td>
+                                <input
+                                  type="date"
+                                  aria-label={`Trims issue/received date for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.trimsDate ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsDate: event.target.value || null } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  aria-label={`Trims amount for GRN ${grn.grn ?? index + 1}`}
+                                  value={grn.trimsAmount ?? ''}
+                                  onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                  className="fg-grn-busy-date-input"
+                                  style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
+                                />
+                              </td>
                             </tr>
                           ))
                         ) : (
