@@ -957,7 +957,7 @@ export async function loadPoReviewItems(poList: PoApproval[]): Promise<ApprovalQ
           .join(' · ') || undefined,
       vendorCode: vendor || null,
       vendorInProcessQty: vendor
-        ? inProcessByVendor.get(vendor.toLowerCase()) ?? null
+        ? inProcessByVendor.get(vendor.toLowerCase()) ?? 0
         : null,
       vendorCapacityPerMonth: capModel?.entered ? capModel.capacityPerMonth : null,
       vendorPoCapacity: capModel?.entered ? capModel.poCapacity : null,

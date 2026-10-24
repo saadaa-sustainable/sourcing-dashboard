@@ -11,7 +11,7 @@ in `.git/info/exclude`, so it is never committed — but it exists on the machin
 every agent must read and maintain it). It is the single running record of what is
 done, deferred, blocked, or awaiting confirmation across all concurrent sessions.
 
-Rules for **all** Claude agents working here:
+Rules for **all** coding agents working here, including Codex:
 - **Read `docs/PENDENCY.md` first** when picking up work, to see current state.
 - **Update it in the same turn** whenever you complete, defer, discover, or hand off
   work — mark the row (✅ / 🟡 / ⏸️ / ❌ / ❓) and note migrations/commits.
@@ -56,3 +56,18 @@ all count as "not approved".
   2026-10-09). It keeps its own lifecycle: a plan awaiting approval is edited only after the
   approver sends it back for rework, only draft / rework plans are submitted (`canSubmitPlan`),
   and approved plans change through amendments. Every other tab follows the rule.
+
+# Working in this repository
+
+- This is a Next.js 16 app. Before changing Next.js APIs or conventions, read the relevant
+  guide under `node_modules/next/dist/docs/` and follow its current guidance.
+- Use `npm run typecheck`, `npm test`, and `npm run build` for validation as appropriate.
+  `npm run build` also runs `scripts/check-unpaged-reads.mjs`; run `npm run check:reads` for
+  that guard alone. `npm run lint` is available, but the current installed ESLint 8 setup
+  has a known incompatibility with `eslint.config.mjs`; report config/tooling failures instead
+  of changing lint configuration as an unrelated workaround.
+- Treat `ARCHITECTURE.md` as useful background, not a complete current route or migration
+  inventory; inspect nearby implementation and `supabase/migrations/` for current behavior.
+- See `README.md` for project setup and `package.json` for authoritative scripts and runtime
+  requirements. Keep migrations ordered and scoped; never apply a remote migration unless the
+  user explicitly authorizes it.

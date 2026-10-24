@@ -1,9 +1,14 @@
 'use client';
 
+import { invalidPoTnaFields } from '@/lib/po-tna-validation';
+import { missingPoOrderFields } from '@/lib/po-order-validation';
+import { scopedPoRework, canEditPoSection, poReworkLabel, awaitingTnaReworkSave } from '@/lib/po-rework';
+import Link from 'next/link';
+import { poBoardStage, PO_BOARD_STAGES } from '@/lib/po-board';
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { ClearFiltersButton } from '@/components/clear-filters-button';
-import { reloadWithToast, toastError } from '@/lib/toast';
+import { flashToast, reloadWithToast, toastError } from '@/lib/toast';
 import { CalendarCheck, CheckCircle, ChevronDown, ChevronRight, FileSpreadsheet, Plus, Save, Search, Send, Trash2, X } from 'lucide-react';
 import {
   checkPlanMembership,
@@ -74,7 +79,7 @@ const BLANK = {
   margin_pct: '',
   po_qty: '',
   cad_folder_url: '',
-  // Spec 7.3 — the critical path is entered as days from the EasyCom PO issue date.
+  // Spec 7.3 — the critical path is entered as days from the EasyEcom PO issue date.
   tna_days_pp_sample: '',
   tna_days_gpt: '',
   tna_days_cutting: '',
@@ -91,7 +96,7 @@ const BLANK = {
 const AD_HOC_REASONS = ['Urgent replenishment', 'Stock ran out', 'New product / NPD', 'Customer or channel order', 'Plan missed this product'];
 
 /**
- * The critical path, stage by stage, as day counts from the EasyCom PO issue date
+ * The critical path, stage by stage, as day counts from the EasyEcom PO issue date
  * (spec 7.3). `standard` names the matching column on the standard lead-times, which is
  * what the placeholder and the "use the standard" button fill from.
  */
@@ -123,12 +128,8 @@ const dayLabel = (iso: string | null) =>
       })
     : '—';
 
-type Filter = 'mine' | 'draft' | 'waiting' | 'approved' | 'issued' | 'all';
+type Filter = 'mine' | 'rework' | 'draft' | 'waiting' | 'approved' | 'issued' | 'all';
 const inr = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
-/** ₹1.42 Cr / ₹8.3 L / ₹64,300 — the short money form the tiles use. */
-const inrShort = (v: number) =>
-  v >= 1e7 ? `₹${(v / 1e7).toFixed(2)} Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(1)} L` : inr(v);
-
 /** A raised PO as the form holds it — for Edit (list drawer) and ?edit= (from the PO's page). */
 function formFromPo(po: PoApproval): typeof BLANK {
   return {
@@ -206,15 +207,20 @@ function FormSection({
   active,
   hint,
   children,
+  locked = false,
+  className = '',
 }: {
+  className?: string;
+  locked?: boolean;
   active: boolean;
   hint?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="poa-steppanel" role="tabpanel" hidden={!active}>
+    <section className={`poa-steppanel ${className}`} role="tabpanel" hidden={!active}>
       {hint && <p className="wf-subtle poa-steppanel-hint">{hint}</p>}
-      <div className="wf-form-grid">{children}</div>
+      {locked && <p className="wf-subtle">Read-only: this section was not selected for rework.</p>}
+      <fieldset disabled={locked} className="poa-section-fields" aria-label="PO section fields"><div className="wf-form-grid">{children}</div></fieldset>
     </section>
   );
 }
@@ -231,6 +237,7 @@ export function PoApprovalClient({
   productNames = {},
   deboarded = {},
   submissions = [],
+  grnReceivedByPo = {},
   leadtimes,
   stdCm = {},
   role,
@@ -241,6 +248,7 @@ export function PoApprovalClient({
   initialEditId = null,
 }: {
   pos: PoApproval[];
+  grnReceivedByPo?: Record<string, boolean>;
   cycle: Record<string, PoCycleTime>;
   linesByPo: Record<string, PoApprovalLine[]>;
   capacity: Record<string, number>;
@@ -273,13 +281,14 @@ export function PoApprovalClient({
   const initialEdit = initialEditId != null && editable ? pos.find((p) => p.id === initialEditId && p.status !== 'approved') ?? null : null;
   const [form, setForm] = useState(() => (initialEdit ? formFromPo(initialEdit) : { ...BLANK }));
   // The page: which POs are listed, the search, the tab, and whether the raise-a-PO drawer is open.
-  const [filter, setFilter] = useState<Filter>('mine');
+  const [view, setView] = useState<'kanban' | 'list'>('kanban');
+  const [filter, setFilter] = useState<Filter>('all');
   const [q, setQ] = useState('');
-  const [tab, setTab] = useState<'pos' | 'closure' | 'deleted'>('pos');
+  const [tab, setTab] = useState<'pos' | 'closure' | 'deleted' | 'analytics'>('pos');
   const [drawerOpen, setDrawerOpen] = useState(Boolean(initialEdit) && editable);
   // Which step of the form is showing, and the draft a first save created (so later saves
   // update it and the SKU step can open on it before the list has refreshed).
-  const [activeStep, setActiveStep] = useState<StepKey>('order');
+  const [activeStep, setActiveStep] = useState<StepKey>(() => { const sections = scopedPoRework(initialEdit); return sections ? sections.includes('cost') ? 'cost' : sections.includes('tna') ? 'tna' : 'lines' : 'order'; });
   const [draftId, setDraftId] = useState<number | null>(null);
   // One clock read for the page's "this month" and "older than a week" figures.
   const [now] = useState(() => Date.now());
@@ -361,6 +370,7 @@ export function PoApprovalClient({
   const buildPayload = () => {
     const p = new FormData();
     Object.entries(form).forEach(([k, v]) => p.set(k, v));
+    p.set('saved_section', activeStep);
     // With an id the server updates that request (draft / rework only) instead of raising
     // another one — same validation either way. `editing` is declared below; by the time
     // this runs (a click) it is set.
@@ -376,7 +386,8 @@ export function PoApprovalClient({
     setEditing(po);
     setForm(formFromPo(po));
     setDraftId(null);
-    setActiveStep('order');
+    const sections = scopedPoRework(po);
+    setActiveStep(sections ? sections.includes('cost') ? 'cost' : sections.includes('tna') ? 'tna' : 'lines' : 'order');
     setDrawerOpen(true);
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   }
@@ -466,16 +477,45 @@ export function PoApprovalClient({
       ? latestDelete
       : null;
   const declinedDelete = latestDelete?.status === 'rejected' ? latestDelete : null;
-  // What the stage dates are counted from: the EasyCom issue date once the PO exists
+  // What the stage dates are counted from: the EasyEcom issue date once the PO exists
   // there, otherwise today — the honest "if it issued now" projection.
   const tnaBase = tnaBaseFor({ po_issued_at: current?.po_issued_at ?? null });
   /** Save this step and move to the next tab. The first save creates the draft (Request ID). */
   function saveAndNext(next: StepKey) {
     setError(null);
+    const missingOrder = !scopedPoRework(current) ? missingPoOrderFields(form) : [];
+    if (missingOrder.length) {
+      setError(toastError(`Required fields: ${missingOrder.join(', ')}.`));
+      return;
+    }
+    if (activeStep === 'cost' && (!form.rate.trim() || !Number.isFinite(Number(form.rate)) || Number(form.rate) < 0)) {
+      setError(toastError('Rate is required. Enter a valid non-negative rate before continuing.'));
+      return;
+    }
+    if (activeStep === 'tna' && form.po_type === 'FOB' && !form.cad_folder_url.trim()) {
+      setError(toastError('CAD file folder link is required for FOB POs.'));
+      return;
+    }
+    if (activeStep === 'tna') {
+      const invalid = invalidPoTnaFields(form);
+      if (invalid.length) {
+        setError(toastError(`Enter non-negative whole days for: ${invalid.join(', ')}.`));
+        return;
+      }
+    }
+    if (activeStep === 'plan' && membership && !membership.inPlan && !form.ad_hoc_reason.trim()) {
+      setError(toastError('Select a reason for the ad-hoc purchase before continuing.'));
+      return;
+    }
     setMessage(null);
     start(async () => {
       const saved = await savePoApproval(buildPayload());
       if (!saved.ok) return setError(toastError(saved.error));
+      if (editing?.status === 'rework' && activeStep === 'tna') {
+        flashToast(saved.message ?? 'TNA changes saved.');
+        window.location.assign(`/po-approval/${editing.id}`);
+        return;
+      }
       if (!editing && saved.id) setDraftId(saved.id);
       setActiveStep(next);
       reloadWithToast(saved.message ?? 'Saved.');
@@ -582,19 +622,19 @@ export function PoApprovalClient({
     ((p.status === 'draft' || p.status === 'rework' || p.status === 'rejected') && editable) ||
     (approvedNotIssued(p) && editable);
   const FILTERS: { key: Filter; label: string; test: (p: PoApproval) => boolean }[] = [
-    { key: 'mine', label: 'Needs my action', test: mine },
-    { key: 'draft', label: 'Draft', test: (p) => p.status === 'draft' || p.status === 'rework' },
-    { key: 'waiting', label: 'Approval Pending', test: queued },
-    { key: 'approved', label: 'Approved, not in EasyCom', test: approvedNotIssued },
-    { key: 'issued', label: 'Issued', test: (p) => Boolean(p.po_issued_at) },
     { key: 'all', label: 'All', test: () => true },
+    { key: 'draft', label: 'Draft', test: (p) => p.status === 'draft' },
+    { key: 'rework', label: 'Rework', test: (p) => p.status === 'rework' },
+    { key: 'waiting', label: 'Pending Approval', test: queued },
+    { key: 'approved', label: 'Approved, not yet on EasyEcom', test: (p) => poBoardStage(p, grnReceivedByPo[String(p.id)] === true) === 'approved' },
+    { key: 'issued', label: 'On EasyEcom, receiving not started', test: (p) => poBoardStage(p, grnReceivedByPo[String(p.id)] === true) === 'on-easycom' },
   ];
   const needle = q.trim().toLowerCase();
   const inSearch = (p: PoApproval) =>
     !needle ||
     [p.request_id, p.product_code, p.vendor_name, p.vendor_code, p.easycom_po_no, p.po_ref_num]
       .some((v) => (v ?? '').toLowerCase().includes(needle));
-  const shown = pos.filter((p) => (FILTERS.find((f) => f.key === filter)?.test(p) ?? true) && inSearch(p));
+  const shown = pos.filter((p) => (filter === 'mine' ? mine(p) : FILTERS.find((f) => f.key === filter)?.test(p) ?? true) && inSearch(p));
 
   // Tiles — every one is a count that exists today, never a dash.
   const tnaToConfirm = pos.filter((p) => queued(p) && !p.tna_confirmed && canApprove(role, p.status)).length;
@@ -603,11 +643,8 @@ export function PoApprovalClient({
     .filter((w): w is { po: PoApproval; days: number } => w.days != null)
     .sort((a, b) => b.days - a.days);
   const oldest = waitingList[0] ?? null;
-  const monthKey = new Date(now + 5.5 * 3600_000).toISOString().slice(0, 7);
-  const issuedThisMonth = pos.filter((p) => p.po_issued_at && dateOnly(p.po_issued_at)?.startsWith(monthKey));
-  const issuedPcs = issuedThisMonth.reduce((s, p) => s + Number(p.po_qty || 0), 0);
-  const issuedValue = issuedThisMonth.reduce((s, p) => s + Number(p.po_qty || 0) * Number(p.rate || 0), 0);
-  const issuedVendors = new Set(issuedThisMonth.map((p) => (p.vendor_code ?? p.vendor_name ?? '').toLowerCase()).filter(Boolean)).size;
+  const receivingNotStarted = pos.filter((po) => poBoardStage(po, grnReceivedByPo[String(po.id)] === true) === 'on-easycom');
+  const receivingNotStartedPcs = receivingNotStarted.reduce((total, po) => total + Number(po.po_qty || 0), 0);
   const flagged = pos
     .filter(queued)
     .map((p) => poFlag(p, { deleteRequest: deleteRequests[String(p.id)], review: reviewById[String(p.id)], stdCm: p.product_code ? stdCm[p.product_code.trim()] : undefined, role }))
@@ -619,7 +656,7 @@ export function PoApprovalClient({
   const oldDrafts = pos.filter((p) => (p.status === 'draft' || p.status === 'rework') && now - Date.parse(p.timestamp_created ?? p.created_at) > 7 * 86_400_000).length;
   const toIssue = pos.filter(approvedNotIssued).sort((a, b) => (a.po_closing_date ?? '9999').localeCompare(b.po_closing_date ?? '9999'));
 
-  // Cycle times, same arithmetic as before: request → approval → EasyCom, and the critical path.
+  // Cycle times, same arithmetic as before: request → approval → EasyEcom, and the critical path.
   const cycleRows = Object.values(cycle);
   const avg = (pick: (c: PoCycleTime) => number | null) => {
     const vals = cycleRows.map(pick).filter((v): v is number => v != null);
@@ -690,67 +727,30 @@ export function PoApprovalClient({
 
       {/* The form takes the page in place of the list — sidebar and header stay. */}
       {!(editable && drawerOpen) && (<>
-      <div className="tb">
-        <div className="tb-find">
-          <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
-            {FILTERS.map((f) => {
-              const n = f.key === 'all' ? null : pos.filter(f.test).length;
-              return (
-                <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
-                  {f.label}{n != null && <span className="c">{n}</span>}
-                </button>
-              );
-            })}
-          </div>
-          <label className="poa-search tb-search-wrap">
-            <Search size={13} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyCom PO…" aria-label="Search purchase orders" />
-          </label>
-          <ClearFiltersButton active={filter !== 'mine' || q !== ''} onClear={() => { setFilter('mine'); setQ(''); }} />
-        </div>
-        {editable && (
-          <div className="tb-see">
-            <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
-              <Plus size={14} /> Raise a PO
-            </button>
-          </div>
-        )}
-      </div>
-
       <div className="poa-tiles">
-        <div className={`poa-tile${pos.filter(mine).length ? ' hot' : ''}`}>
-          <div className="label">Waiting on me <InfoDot text={"WHAT: POs that need something from you.\n\nHOW: POs you can approve (at their stage), drafts and reworks you can edit, and approved POs still to be linked to an EasyCom PO.\n\nUSE: the 'Needs my action' filter shows exactly these."} /></div>
-          <div className="value">{pos.filter(mine).length}</div>
-          <div className="sub">{tnaToConfirm ? `${tnaToConfirm} need TNA dates confirmed first` : 'nothing blocked on TNA'}</div>
+        <div className={`poa-tile${pos.filter(queued).length ? ' hot' : ''}`}>
+          <div className="label">Pending approval <InfoDot text="PO requests awaiting an approval decision, including Submitted and Pending admin approval. Matches the Approval Pending filter and Pending approval Kanban lane." /></div>
+          <div className="value">{pos.filter(queued).length}</div>
+          <div className="sub">{nfmt(pos.filter(queued).reduce((total, po) => total + Number(po.po_qty || 0), 0))} pcs awaiting approval</div>
         </div>
         <div className="poa-tile">
-          <div className="label">Approved, not in EasyCom <InfoDot text={"WHAT: approved here, but no PO exists in EasyCom yet, so nothing has started.\n\nHOW: status Approved with no EasyCom PO number; the days count from the approval.\n\nUSE: the critical path cannot begin until the PO is created there — link it from the card."} /></div>
+          <div className="label">Approved, not in EasyEcom <InfoDot text={"WHAT: approved here, but no PO exists in EasyEcom yet, so nothing has started.\n\nHOW: status Approved with no EasyEcom PO number; the days count from the approval.\n\nUSE: the critical path cannot begin until the PO is created there — link it from the card."} /></div>
           <div className="value">{waitingList.length}{oldest && <small>oldest {oldest.days} d</small>}</div>
-          <div className="sub">{oldest ? `${oldest.po.request_id} since ${dayLabel(dateOnly(oldest.po.approved_at))}` : 'every approved PO is in EasyCom'}</div>
+          <div className="sub">{oldest ? `${oldest.po.request_id} since ${dayLabel(dateOnly(oldest.po.approved_at))}` : 'every approved PO is in EasyEcom'}</div>
         </div>
         <div className="poa-tile">
-          <div className="label">Issued this month <InfoDot text={"WHAT: POs created in EasyCom this calendar month.\n\nHOW: count, pieces, and value = pieces × rate on the PO.\n\nUSE: the pace of ordering against the buying plan."} /></div>
-          <div className="value">{issuedThisMonth.length}{issuedValue > 0 && <small>{inrShort(issuedValue)}</small>}</div>
-          <div className="sub">{issuedThisMonth.length ? `${nfmt(issuedPcs)} pcs · ${issuedVendors} vendor${issuedVendors === 1 ? '' : 's'}` : 'none yet this month'}</div>
+          <div className="label">On EasyEcom, receiving not started <InfoDot text="Approved PO requests linked to EasyEcom with no positive-quantity GRN matching their PO number or reference. Uses the same classification as the matching Kanban stage, across all months." /></div>
+          <div className="value">{receivingNotStarted.length}</div>
+          <div className="sub">{nfmt(receivingNotStartedPcs)} pcs awaiting receiving</div>
         </div>
         <div className="poa-tile">
-          <div className="label">Flags on POs awaiting approval <InfoDot text={"WHAT: how many POs in the queue carry a warning.\n\nHOW: TNA dates not confirmed, vendor over capacity with this PO, CMTP above the standard, outside the buying plan, or a deletion request pending.\n\nUSE: each card's pill names its flag; the right column counts them."} /></div>
-          <div className="value">{flagged.length}</div>
-          <div className="sub">
-            {flagged.length
-              ? [
-                  flagCount('tna') ? `${flagCount('tna')} TNA` : null,
-                  flagCount('capacity') ? `${flagCount('capacity')} over capacity` : null,
-                  flagCount('standard') ? `${flagCount('standard')} above standard` : null,
-                  flagCount('not in plan') ? `${flagCount('not in plan')} not in plan` : null,
-                  flagCount('deletion') ? `${flagCount('deletion')} deletion` : null,
-                ].filter(Boolean).join(' · ')
-              : 'nothing flagged in the queue'}
-          </div>
+          <div className="label">Rework <InfoDot text="PO requests sent back for rework or reassignment. Matches the Rework filter and Kanban lane." /></div>
+          <div className="value">{pos.filter((po) => po.status === 'rework').length}</div>
+          <div className="sub">{nfmt(pos.filter((po) => po.status === 'rework').reduce((total, po) => total + Number(po.po_qty || 0), 0))} pcs in rework</div>
         </div>
       </div>
 
-      <div className="poa-layout">
+      <div className="poa-layout poa-layout-tabs">
         <section>
           <div className="poa-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'pos'} className={tab === 'pos' ? 'active' : ''} onClick={() => setTab('pos')}>
@@ -764,9 +764,80 @@ export function PoApprovalClient({
                 Deleted requests <span className="c">{deletedRequests.length}</span>
               </button>
             )}
+            <button type="button" role="tab" aria-selected={tab === 'analytics'} className={tab === 'analytics' ? 'active' : ''} onClick={() => setTab('analytics')}>
+              Analytics
+            </button>
           </div>
 
           {tab === 'pos' && (
+      <div className="tb poa-purchase-toolbar">
+        <div className="tb-find">
+          <div className="poa-segment" role="tablist" aria-label="Filter purchase orders">
+            {FILTERS.map((f) => {
+              const n = f.key === 'all' ? null : pos.filter(f.test).length;
+              return (
+                <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? 'active' : ''} onClick={() => setFilter(f.key)}>
+                  {f.label}{n != null && <span className="c">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <label className="poa-search tb-search-wrap">
+            <Search size={13} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Request, product, vendor, EasyEcom PO…" aria-label="Search purchase orders" />
+          </label>
+        </div>
+        <div className="tb-see poa-toolbar-actions">
+          <label className="poa-toolbar-view">
+            <span>View:</span>
+            <select value={view} onChange={(event) => setView(event.target.value === 'list' ? 'list' : 'kanban')}>
+              <option value="kanban">Kanban</option>
+              <option value="list">List</option>
+            </select>
+          </label>
+          {editable && <button type="button" className="wf-btn wf-btn-primary" onClick={() => { cancelEdit(); setActiveStep('order'); setDrawerOpen(true); window.scrollTo({ top: 0 }); }}>
+            <Plus size={14} /> Raise a PO
+          </button>}
+        </div>
+      </div>
+          )}
+
+          {tab === 'pos' && view === 'kanban' && (
+            <>
+              <p className="wf-subtle">Receiving starts when a positive-quantity GRN matches the linked EasyEcom PO number or reference number. Open a card to review or update the PO.</p>
+              <div className="poa-kanban" role="region" aria-label="PO approval stages" tabIndex={0}>
+                {PO_BOARD_STAGES.map((stage) => {
+                  const cards = shown.filter((po) => poBoardStage(po, grnReceivedByPo[String(po.id)] === true) === stage.key);
+                  return (
+                    <section key={stage.key} className="poa-lane" data-stage={stage.key} aria-label={stage.label}>
+                      <header className="poa-lane-head">
+                        <h3>{stage.label}</h3><span className="poa-lane-count">{cards.length}</span>
+                        <p>{nfmt(cards.reduce((sum, po) => sum + Number(po.po_qty || 0), 0))} pcs</p>
+                      </header>
+                      <div className="poa-lane-cards">
+                        {cards.map((po) => (
+                          <Link key={po.id} href={`/po-approval/${po.id}`} className="poa-board-card">
+                            <div className="poa-board-card-top"><strong>{po.request_id}</strong><ChevronRight size={14} aria-hidden="true" /></div>
+                            <b>{po.product_code || 'Product not set'}</b>
+                            <span>{po.vendor_name || po.vendor_code || 'Vendor not set'}</span>
+                            <div className="poa-board-card-top"><span>{nfmt(Number(po.po_qty || 0))} pcs</span><span>{inr(Number(po.po_qty || 0) * Number(po.rate || 0))}</span></div>
+                            {po.status === 'rework' && po.rework_notes && <small>Rework: {po.rework_notes}</small>}
+                            {po.easycom_po_no && <small>EasyEcom PO: {po.easycom_po_no}</small>}
+                            <small>EasyEcom reference: {po.po_ref_num?.trim() || 'Not provided'}</small>
+                            {po.critical_path_first_delivery && <small>First delivery due: {dayLabel(po.critical_path_first_delivery)}</small>}
+                            {po.first_actual_delivery_date && <small>First received: {dayLabel(po.first_actual_delivery_date)}</small>}
+                            <span className="poa-board-status">{STATUS_LABEL[po.status]}</span>
+                          </Link>
+                        ))}
+                        {!cards.length && <div className="poa-lane-empty">No POs in this stage</div>}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {tab === 'pos' && view === 'list' && (
             <div className="poa-list">
               {shown.map((po, i) => (
                 <PoCard
@@ -792,9 +863,8 @@ export function PoApprovalClient({
           )}
           {tab === 'closure' && <PoSubmissionTable submissions={submissions} editable={editable} />}
           {tab === 'deleted' && role === 'admin' && <DeletedRequestsTable rows={deletedRequests} />}
-        </section>
-
-        <aside className="poa-rail">
+          {tab === 'analytics' && (
+        <div className="poa-rail poa-analytics-panels">
           <div className="panel">
             <div className="panel-title"><h3>Needs attention</h3><span>open POs</span></div>
             <div className="panel-body poa-attn">
@@ -803,14 +873,14 @@ export function PoApprovalClient({
               <a href="#" className={flagCount('standard') ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('waiting'); }}><span>CMTP above standard</span><b>{flagCount('standard')}</b></a>
               <a href="#" className={adHocQueued ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('waiting'); }}><span>Outside the buying plan</span><b>{adHocQueued}</b></a>
               <a href="#" className={deletionsPending ? 'bad' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('all'); }}><span>Deletion requests pending</span><b>{deletionsPending}</b></a>
-              <a href="#" className={stale14 ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('approved'); }}><span>Approved &gt; 14 d, not in EasyCom</span><b>{stale14}</b></a>
+              <a href="#" className={stale14 ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('approved'); }}><span>Approved &gt; 14 d, not in EasyEcom</span><b>{stale14}</b></a>
               <a href="#" className={oldDrafts ? 'warn' : ''} onClick={(e) => { e.preventDefault(); setTab('pos'); setFilter('draft'); }}><span>Drafts older than a week</span><b>{oldDrafts}</b></a>
             </div>
           </div>
 
           <div className="panel">
             <div className="panel-title">
-              <h3>To issue <InfoDot text={"WHAT: approved POs with no EasyCom PO yet, soonest closing date first.\n\nHOW: status Approved, no EasyCom PO number recorded.\n\nUSE: the queue to clear — link each one from its card."} /></h3>
+              <h3>To issue <InfoDot text={"WHAT: approved POs with no EasyEcom PO yet, soonest closing date first.\n\nHOW: status Approved, no EasyEcom PO number recorded.\n\nUSE: the queue to clear — link each one from its card."} /></h3>
               <span>{toIssue.length} approved</span>
             </div>
             <div className="panel-body poa-week">
@@ -827,18 +897,22 @@ export function PoApprovalClient({
 
           <div className="panel">
             <div className="panel-title">
-              <h3>Cycle times <InfoDot text={"WHAT: how long a PO takes to move.\n\nHOW: request → approval and approval → EasyCom PO, averaged over the POs that have those dates. Critical path met = issued POs whose actual first delivery was on or before the approved date.\n\nUSE: the middle gap is ours alone — an approval with no EasyCom PO behind it has started nothing."} /></h3>
+              <h3>Cycle times <InfoDot text={"WHAT: how long a PO takes to move.\n\nHOW: request → approval and approval → EasyEcom PO, averaged over the POs that have those dates. Critical path met = issued POs whose actual first delivery was on or before the approved date.\n\nUSE: the middle gap is ours alone — an approval with no EasyEcom PO behind it has started nothing."} /></h3>
               <span>all POs</span>
             </div>
             <div className="panel-body poa-kv">
               <span>Request → approval</span><span>{toApproveDays == null ? 'no data' : `${toApproveDays} d`}</span>
-              <span>Approval → EasyCom PO</span><span>{toIssueDays == null ? 'no data' : `${toIssueDays} d`}</span>
+              <span>Approval → EasyEcom PO</span><span>{toIssueDays == null ? 'no data' : `${toIssueDays} d`}</span>
               <span>Critical path met</span><span>{delivered.length ? `${onTime} of ${delivered.length}` : 'none delivered yet'}</span>
             </div>
           </div>
 
           {editable && leadtimes && <TnaLeadtimesPanel leadtimes={leadtimes} />}
-        </aside>
+        </div>
+          )}
+        </section>
+
+
       </div>
 
       </>)}
@@ -956,6 +1030,11 @@ export function PoApprovalClient({
               something has changed.
             </Notice>
           )}
+          {scopedPoRework(current) && <Notice tone="warn">
+            Rework required: <strong>{poReworkLabel(current?.rework_sections)}</strong>.
+            Only these sections can be edited. Other sections are read-only.
+            {current?.rework_notes && <p>{current.rework_notes}</p>}
+          </Notice>}
           <StepTabs
             active={activeStep}
             onSelect={setActiveStep}
@@ -980,10 +1059,13 @@ export function PoApprovalClient({
           />
           <FormSection
             active={activeStep === 'order'}
+            className="poa-order-panel"
+            locked={Boolean(scopedPoRework(current))}
             hint="What is being bought, and from whom. Category and PO type decide how it is approved and how long it takes."
           >
-            <Field label="Category" hint={activeCat?.hint}>
-              <select
+            <p className="poa-required-note"><em className="wf-required-mark">*</em> Required fields</p>
+            <Field hintPlacement="below" required label="Category" hint={activeCat?.hint}>
+              <select required aria-required="true"
                 value={form.category}
                 onChange={(e) => set('category', e.target.value)}
               >
@@ -994,8 +1076,8 @@ export function PoApprovalClient({
                 ))}
               </select>
             </Field>
-            <Field label="PO type">
-              <select
+            <Field hintPlacement="below" required label="PO type">
+              <select required aria-required="true"
                 value={form.po_type}
                 onChange={(e) => set('po_type', e.target.value)}
               >
@@ -1007,9 +1089,10 @@ export function PoApprovalClient({
                 ))}
               </select>
             </Field>
-            <Field label="Product code">
+            <Field hintPlacement="below" required label="Product code">
               <Combobox
                 ariaLabel="Product code"
+                required
                 value={form.product_code}
                 onChange={(v) => set('product_code', v)}
                 // A PO is raised against a costed product (EasyEcom or TMP), never a typed name.
@@ -1019,14 +1102,15 @@ export function PoApprovalClient({
                 options={productOptions}
               />
             </Field>
-            <Field
+            <Field hintPlacement="below"
               label="Request ID"
-              hint={current ? 'Assigned when this request was saved' : 'Assigned when you save — the EasyCom PO number is linked to it at issuance'}
+              hint={current ? 'Assigned when this request was saved' : 'Assigned when you save — the EasyEcom PO number is linked to it at issuance'}
             >
               <input value={current ? current.request_id : 'Assigned on save'} disabled readOnly className="wf-fixed-value" />
             </Field>
-            <Field
-              label="Vendor code"
+            <div className="poa-vendor-field">
+            <Field hintPlacement="below"
+              required label="Vendor code"
               hint={
                 liveLoad != null
                   ? `Live load: ${liveLoad.toLocaleString('en-IN')} pcs in process`
@@ -1035,6 +1119,7 @@ export function PoApprovalClient({
             >
               <Combobox
                 ariaLabel="Vendor"
+                required
                 value={form.vendor_code}
                 onChange={(v) => setVendorCode(v)}
                 placeholder="Search vendor name or code…"
@@ -1046,6 +1131,7 @@ export function PoApprovalClient({
                   Raise a PO to them only if it is a deliberately agreed last order.
                 </Notice>
               )}
+            </Field>
               {/* Spec 7.8 — what this vendor has actually taken, PO by PO, before you commit. */}
               {form.vendor_code.trim() && (
                 <VendorHistoryButton
@@ -1054,9 +1140,10 @@ export function PoApprovalClient({
                   label="See their PO history"
                 />
               )}
-            </Field>
-            <Field label="Vendor name" hint="fills itself from the vendor picked — type only if the vendor is not in the master">
+            </div>
+            <Field hintPlacement="below" required label="Vendor name" hint="fills itself from the vendor picked — type only if the vendor is not in the master">
               <input
+                required aria-required="true"
                 value={form.vendor_name}
                 placeholder="Fills from the vendor"
                 onChange={(e) => setVendorName(e.target.value)}
@@ -1066,6 +1153,7 @@ export function PoApprovalClient({
 
           <FormSection
             active={activeStep === 'cost'}
+            locked={!canEditPoSection(current, 'cost')}
             hint="Start with the cost sheet — read it in and the figures below fill themselves. Per piece: the rate is checked against the approved Standard Cost when you submit, CMTP is what the vendor controls, grey and fabric are commodity."
           >
             <Field
@@ -1151,8 +1239,8 @@ export function PoApprovalClient({
                 </button>
               )}
             </div>
-            <Field label="Rate" hint="filled with the cost sheet — required to submit">
-              <input
+            <Field required label="Rate" hint="filled with the cost sheet — required to submit">
+              <input required aria-required="true"
                 type="number"
                 min={0}
                 value={form.rate}
@@ -1219,24 +1307,25 @@ export function PoApprovalClient({
 
           <FormSection
             active={activeStep === 'tna'}
-            hint="Days, not dates. Nothing can start before the PO exists in EasyCom, so every stage is counted from the day it is created there — fill these once and the dates follow, however late the PO issues."
+            locked={!canEditPoSection(current, 'tna')}
+            hint="Days, not dates. Nothing can start before the PO exists in EasyEcom, so every stage is counted from the day it is created there — fill these once and the dates follow, however late the PO issues."
           >
             <div style={{ gridColumn: '1 / -1' }}>
               <Notice tone={tnaBase.source === 'issued' ? 'ok' : 'info'}>
                 {tnaBase.source === 'issued' ? (
                   <>
-                    Counting from the <strong>EasyCom PO issue date, {dayLabel(tnaBase.date)}</strong>.
+                    Counting from the <strong>EasyEcom PO issue date, {dayLabel(tnaBase.date)}</strong>.
                   </>
                 ) : (
                   <>
-                    No EasyCom PO yet, so the dates below are <strong>projected from today</strong> and move with
-                    the calendar. They are fixed the day the PO is created in EasyCom.
+                    No EasyEcom PO yet, so the dates below are <strong>projected from today</strong> and move with
+                    the calendar. They are fixed the day the PO is created in EasyEcom.
                   </>
                 )}
               </Notice>
             </div>
             {TNA_DAY_FIELDS.map((f) => (
-              <Field
+              <Field required
                 key={f.key}
                 label={f.label}
                 hint={
@@ -1246,13 +1335,14 @@ export function PoApprovalClient({
                       }`
                     : leadtimes?.[f.standard] != null
                       ? `standard ${leadtimes[f.standard]}d`
-                      : 'days from the EasyCom PO'
+                      : 'days from the EasyEcom PO'
                 }
               >
                 <div className="wf-issue-row">
-                  <input
+                  <input required aria-required="true"
                     type="number"
                     min={0}
+                    step={1}
                     value={form[f.key]}
                     placeholder={leadtimes?.[f.standard] != null ? String(leadtimes[f.standard]) : 'days'}
                     onChange={(e) => set(f.key, e.target.value)}
@@ -1280,8 +1370,8 @@ export function PoApprovalClient({
               />
             </Field>
             {form.po_type === 'FOB' && (
-              <Field label="CAD file folder link" hint="FOB POs only">
-                <input
+              <Field required label="CAD file folder link" hint="Required for FOB POs">
+                <input required aria-required="true" type="url"
                   value={form.cad_folder_url}
                   placeholder="https://…"
                   onChange={(e) => set('cad_folder_url', e.target.value)}
@@ -1292,6 +1382,7 @@ export function PoApprovalClient({
 
           <FormSection
             active={activeStep === 'plan'}
+            locked={Boolean(scopedPoRework(current))}
             hint="Which month's plan this draws on. The quantity is the sum of the SKU lines — add them on the row after saving."
           >
             <Field label="Buying plan month" hint="The plan this PO draws on — closed months are locked">
@@ -1320,7 +1411,7 @@ export function PoApprovalClient({
 
             {/* Spec item 6 — plan membership is shown, never enforced. */}
             {form.product_code.trim() && membership && (
-              <div style={{ gridColumn: '1 / -1' }}>
+              <div className="poa-plan-membership" style={{ gridColumn: '1 / -1' }}>
                 {membership.inPlan ? (
                   <Notice tone="ok">
                     <strong>{form.product_code.trim()} is in the {monthLabel(membership.planMonth)} buying plan</strong> — approved{' '}
@@ -1346,9 +1437,9 @@ export function PoApprovalClient({
                   </Notice>
                 )}
                 {!membership.inPlan && (
-                  <Field label="Reason for the ad-hoc purchase" hint="optional — shown to the approver">
+                  <Field required label="Reason for the ad-hoc purchase" hint="Required — shown to the approver">
                     <div className="wf-issue-row">
-                      <select
+                      <select required aria-required="true"
                         value={AD_HOC_REASONS.includes(form.ad_hoc_reason) ? form.ad_hoc_reason : form.ad_hoc_reason ? '__other' : ''}
                         onChange={(e) => set('ad_hoc_reason', e.target.value === '__other' ? ' ' : e.target.value)}
                       >
@@ -1359,7 +1450,7 @@ export function PoApprovalClient({
                         <option value="__other">Other…</option>
                       </select>
                       {form.ad_hoc_reason && !AD_HOC_REASONS.includes(form.ad_hoc_reason) && (
-                        <input
+                        <input required aria-required="true"
                           value={form.ad_hoc_reason.trim()}
                           placeholder="type the reason"
                           onChange={(e) => set('ad_hoc_reason', e.target.value || ' ')}
@@ -1384,7 +1475,7 @@ export function PoApprovalClient({
                     poRef={current.po_ref_num ?? current.request_id}
                     productCode={form.product_code.trim() || current.product_code}
                     lines={currentLines}
-                    editable={current.status !== 'approved' && editable}
+                    editable={current.status !== 'approved' && editable && canEditPoSection(current, 'sku')}
                     onSaved={() => reloadWithToast()}
                     onClose={() => setActiveStep('plan')}
                   />
@@ -1430,7 +1521,7 @@ export function PoApprovalClient({
                 </button>
                 {/* Already in the approval queue: saved changes reach the approver as they are,
                     so there is nothing to submit again. */}
-                {!(current && (current.status === 'submitted' || current.status === 'pending_l2')) && (
+                {!awaitingTnaReworkSave(current) && !(current && (current.status === 'submitted' || current.status === 'pending_l2')) && (
                   <button
                     type="button"
                     className="wf-btn wf-btn-primary"

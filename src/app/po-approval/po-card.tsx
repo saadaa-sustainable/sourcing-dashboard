@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { canEditPoSection, scopedPoRework, poReworkLabel, awaitingTnaReworkSave } from '@/lib/po-rework';
+import { useId, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { CalendarCheck, ChevronDown, FileCheck, FileDown, FilePen, Layers, ListChecks, Send } from 'lucide-react';
 import { issuePoApproval, previewPoSubmission, submitPoApproval } from '@/lib/forms/actions';
@@ -9,7 +10,7 @@ import { awaitingEasycomDays } from '@/lib/business-logic';
 import { reloadWithToast, toastError } from '@/lib/toast';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { ApprovalBar } from '@/components/forms/approval-bar';
-import { PoReviewPanels } from '@/components/forms/po-review-panels';
+import { PoReviewPanels, PoVendorCapacity } from '@/components/forms/po-review-panels';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { PoDetailPanel } from './po-detail-panel';
 import { PoLinesPanel } from './po-lines-panel';
@@ -27,9 +28,9 @@ export const dayLabel = (iso: string | null) =>
 export const typeLabel = (po: PoApproval) =>
   po.po_type === 'job_work' ? 'Job Work' : po.po_type === 'efob' ? 'E-FOB' : po.po_type === 'FOB' ? 'FOB' : po.category.toUpperCase();
 
-export const STAGE_LABELS = ['Drafted', 'Submitted', 'Approved', 'EasyCom', 'Delivering'];
+export const STAGE_LABELS = ['Drafted', 'Submitted', 'Approved', 'EasyEcom', 'Delivering'];
 
-/** Where the PO stands on the five-step strip: drafted → submitted → approved → EasyCom → delivering. */
+/** Where the PO stands on the five-step strip: drafted → submitted → approved → EasyEcom → delivering. */
 export function poStage(po: PoApproval): { step: number; tone: 'done' | 'now' | 'bad' | 'wait' } {
   if (po.status === 'rejected') return { step: 2, tone: 'bad' };
   if (po.status === 'draft' || po.status === 'rework') return { step: 0, tone: po.status === 'rework' ? 'bad' : 'now' };
@@ -69,7 +70,7 @@ export function poFlag(
   }
   if (po.status === 'approved' && !po.po_issued_at) {
     const d = awaitingEasycomDays(po);
-    return { tone: d != null && d > 14 ? 'warn' : 'wait', text: d != null ? `${d} d waiting for an EasyCom PO` : 'Waiting for an EasyCom PO' };
+    return { tone: d != null && d > 14 ? 'warn' : 'wait', text: d != null ? `${d} d waiting for an EasyEcom PO` : 'Waiting for an EasyEcom PO' };
   }
   if (po.first_actual_delivery_date && po.critical_path_first_delivery && po.first_actual_delivery_date > po.critical_path_first_delivery) {
     return { tone: 'warn', text: `Delivered late · ${dayLabel(po.first_actual_delivery_date)}` };
@@ -105,17 +106,17 @@ export function nextStep(po: PoApproval, role: SdRole, lines: PoApprovalLine[], 
       const approver = po.status === 'pending_l2' ? 'the admin' : 'the approver';
       if (!canApprove(role, po.status)) return { who: 'other', title: `Awaiting ${approver}`, detail: `Submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}${po.submit_remark && /[A-Za-z0-9]/.test(po.submit_remark) ? ` with the remark “${po.submit_remark}”` : ''}. Nothing to do here until they decide.`, focus: null };
       if (!po.tna_confirmed) return { who: 'you', title: 'Confirm the TNA dates, then decide', detail: 'Check the critical-path dates in the TNA panel against the quantity and the vendor’s history, adjust if needed, and confirm. Approve unlocks after that; Rework / Reassign and Reject / Discard are open now.', focus: 'tna' };
-      return { who: 'you', title: 'Approve, Rework / Reassign or Reject / Discard', detail: 'The four panels below are the review: stock, cost against standard, the confirmed TNA, and the vendor’s load with this PO. Decide under them; a remark is mandatory for Rework / Reassign and Reject / Discard.', focus: 'decide' };
+      return { who: 'you', title: 'Review the PO request for your approval', detail: 'Review Cost, TNA and SKU quantities to proceed ahead with the approval, rework and rejection.', focus: 'decide' };
     }
     case 'approved': {
       if (!po.po_issued_at) {
         const d = awaitingEasycomDays(po);
         return canWork
-          ? { who: 'you', title: 'Create the PO in EasyCom and link it here', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}${d != null ? `, ${d} day${d === 1 ? '' : 's'} ago` : ''}. The critical path cannot start until the PO exists in EasyCom. Enter its number below; the TNA dates are rebased on the issue date.`, focus: 'easycom' }
-          : { who: 'other', title: 'Waiting to be created in EasyCom', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}. The sourcing team links the EasyCom PO; the critical path starts from that date.`, focus: null };
+          ? { who: 'you', title: 'Create the PO in EasyEcom and link it here', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}${d != null ? `, ${d} day${d === 1 ? '' : 's'} ago` : ''}. The critical path cannot start until the PO exists in EasyEcom. Enter its number below; the TNA dates are rebased on the issue date.`, focus: 'easycom' }
+          : { who: 'other', title: 'Waiting to be created in EasyEcom', detail: `Approved ${dayLabel(dateOnly(po.approved_at))}. The sourcing team links the EasyEcom PO; the critical path starts from that date.`, focus: null };
       }
       if (po.first_actual_delivery_date) return { who: 'done', title: 'Delivering', detail: `First delivery landed ${dayLabel(po.first_actual_delivery_date)}${po.critical_path_first_delivery ? ` against ${dayLabel(po.critical_path_first_delivery)} planned` : ''}. Receipts and closure are tracked under Submission & closure and PO Closure.`, focus: null };
-      return { who: 'done', title: 'In production', detail: `Issued in EasyCom ${dayLabel(dateOnly(po.po_issued_at))}${po.critical_path_first_delivery ? `; first delivery due ${dayLabel(po.critical_path_first_delivery)}` : ''}. Record the first actual delivery date under Signing details when it lands.`, focus: null };
+      return { who: 'done', title: 'In production', detail: `Issued in EasyEcom ${dayLabel(dateOnly(po.po_issued_at))}${po.critical_path_first_delivery ? `; first delivery due ${dayLabel(po.critical_path_first_delivery)}` : ''}. Record the first actual delivery date under Signing details when it lands.`, focus: null };
     }
     case 'rejected':
       return { who: 'done', title: 'Rejected / Discarded', detail: `${po.rejection_notes ? `“${po.rejection_notes}”. ` : ''}A rejected request is closed; raise a new PO if the purchase is still needed.`, focus: null };
@@ -165,7 +166,7 @@ type BodyProps = {
 
 /**
  * Everything that can be read or done on a PO: the review panels with the decision under
- * them, the EasyCom link, submit, SKU lines, the full record. The card body and the PO's
+ * them, the EasyEcom link, submit, SKU lines, the full record. The card body and the PO's
  * own page are this one component.
  */
 export function PoCardBody({
@@ -173,13 +174,10 @@ export function PoCardBody({
   cycle,
   lines,
   role,
+  editHref,
   deleteRequest,
   review,
   stdCm = {},
-  onEdit,
-  editHref,
-  editingId = null,
-  defaultLinesOpen = false,
   defaultDetailOpen = false,
   reviewAlways = false,
 }: BodyProps) {
@@ -189,8 +187,16 @@ export function PoCardBody({
   // small button among six — it is the box with the accent border and the label on it.
   const step = nextStep(po, role, lines, deleteRequest);
   const focus = step.who === 'you' ? step.focus : null;
-  const [linesOpen, setLinesOpen] = useState(defaultLinesOpen || focus === 'lines');
-  const [detailOpen, setDetailOpen] = useState(defaultDetailOpen);
+  const [recordTab, setRecordTab] = useState<'sku' | 'edit' | 'detail'>(defaultDetailOpen ? 'detail' : 'sku');
+  const recordTabId = useId();
+  const linesOpen = recordTab !== 'detail';
+  const editingSku = recordTab === 'edit';
+  const detailOpen = recordTab === 'detail';
+  function selectRecordTab(tab: 'sku' | 'edit' | 'detail') {
+    if (tab === recordTab) return;
+    if (editingSku && !window.confirm('Discard unsaved quantity changes? Use Save to keep them.')) return;
+    setRecordTab(tab);
+  }
   const [signingOpen, setSigningOpen] = useState(false);
   const [rowChecks, setRowChecks] = useState<PoSubmissionChecks | null>(null);
 
@@ -199,15 +205,18 @@ export function PoCardBody({
   const queued = po.status === 'submitted' || po.status === 'pending_l2';
   const isApprover = queued && canApprove(role, po.status);
   // House rule: until approved, everything is amendable (draft, pending, rework, rejected).
-  const linesEditable = po.status !== 'approved' && canIssue;
-  const editableHere = linesEditable && canEdit(role, po.status);
-  const isEditing = editingId === po.id;
+  const editableHere = po.status !== 'approved' && canIssue && canEdit(role, po.status);
+  const reworkSections = scopedPoRework(po);
+  const needsTnaSave = awaitingTnaReworkSave(po);
+  const headerRework = reworkSections?.filter((section) => section === 'cost' || section === 'tna' && needsTnaSave) ?? [];
   const stdCmForPo = po.product_code ? stdCm[po.product_code.trim()] : undefined;
   const aboveStdCm = po.cm_cost != null && stdCmForPo != null && po.cm_cost > stdCmForPo + 0.005;
   const exceptionLogged = Boolean(po.cm_override_at);
   const needsCostOverride = aboveStdCm && !exceptionLogged && !issued;
   const [costOverrideNote, setCostOverrideNote] = useState('');
   const [benchmark, setBenchmark] = useState(false);
+  const [issuanceError, setIssuanceError] = useState<string | null>(null);
+  const [issuanceMessage, setIssuanceMessage] = useState<string | null>(null);
   const [iss, setIss] = useState({
     easycom_po_no: po.easycom_po_no ?? '',
     po_ref_num: po.po_ref_num ?? '',
@@ -247,9 +256,10 @@ export function PoCardBody({
     });
   }
   function saveIssuance() {
-    setError(null);
+    setIssuanceError(null);
+    setIssuanceMessage(null);
     if (needsCostOverride && !costOverrideNote.trim()) {
-      setError('This PO is above the standard CMTP — confirm with a reason to issue.');
+      setIssuanceError(toastError('This PO is above the standard CMTP — confirm with a reason to issue.'));
       return;
     }
     const p = new FormData();
@@ -261,9 +271,19 @@ export function PoCardBody({
       p.set('cost_override_note', costOverrideNote);
     }
     start(async () => {
-      const res = await issuePoApproval(p);
-      if (res.ok) reloadWithToast(res.message ?? 'Saved.');
-      else setError(toastError(res.error));
+      try {
+        const res = await issuePoApproval(p);
+        if (!res.ok) {
+          setIssuanceError(toastError(res.error));
+          return;
+        }
+        const message = issued ? 'Signing details saved.' : `EasyEcom PO ${iss.easycom_po_no.trim()} linked successfully.`;
+        setIssuanceMessage(res.message || message);
+        reloadWithToast(message);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not link the EasyEcom PO. Please try again.';
+        setIssuanceError(toastError(message));
+      }
     });
   }
 
@@ -289,50 +309,111 @@ export function PoCardBody({
         </Notice>
       )}
 
+      {queued && review?.submitNote && <p className="poa-note">{review.submitNote}</p>}
+
       {/* ---- The review: the four panels, from the same item the Approvals queue reads. */}
-      {showReview && review && <PoReviewPanels item={review} role={role} spotlightTna={focus === 'tna'} />}
+      {showReview && review && <PoReviewPanels hideVendor item={review} role={role} spotlightTna={focus === 'tna'} />}
       {queued && !review?.poDetail && (
         <p className="wf-subtle">Approval Pending{po.submit_remark ? ` — remark: ${po.submit_remark}` : ''}.</p>
       )}
-      {queued && review?.submitNote && <p className="poa-note">{review.submitNote}</p>}
 
-      {/* ---- The decision, right under the review. */}
-      {isApprover && (
-        <div className={`poa-decide${focus === 'decide' ? ' poa-focus' : ''}`} id={focus === 'decide' ? 'poa-focus' : undefined}>
-          {focus === 'decide' && <div className="poa-focus-label">Your next step · decide</div>}
-          {!po.tna_confirmed && <p className="wf-subtle">Approve unlocks once the TNA dates are confirmed above. Rework and Reject are open.</p>}
-          <ApprovalBar
-            entityType="po_approval"
-            entityId={String(po.id)}
-            entityLabel={`PO request ${po.request_id}`}
-            onDone={(r) => { if (r.ok) reloadWithToast(r.message ?? 'Saved.'); }}
+      {editableHere && headerRework.length > 0 && (
+        <Notice tone="warn">
+          <p>Rework required: <strong>{poReworkLabel(reworkSections)}</strong>. Edit the selected sections, save your changes, then submit again. Other sections remain read-only.</p>
+          <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={editHref ?? `/po-approval?edit=${po.id}`}>
+            <FilePen size={14} /> Edit {poReworkLabel(headerRework)}
+          </Link>
+        </Notice>
+      )}
+
+      {/* ---- Everything else that can be done from here. */}
+      <div className="poa-actions">
+        <div className="poa-record-tabs" role="tablist" aria-label="PO request views"
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+            const index = tabs.indexOf(event.target as HTMLButtonElement);
+            if (index < 0) return;
+            event.preventDefault();
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+              : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+            tabs[next].focus(); tabs[next].click();
+          }}>
+          <button type="button" role="tab" id={`${recordTabId}-sku-tab`} aria-controls={`${recordTabId}-sku-panel`}
+            aria-selected={recordTab === 'sku'} tabIndex={recordTab === 'sku' ? 0 : -1} onClick={() => selectRecordTab('sku')}>
+            <Layers size={14} /> SKU lines ({lines.length})
+          </button>
+          {editableHere && canEditPoSection(po, 'sku') && (
+            <button type="button" role="tab" id={`${recordTabId}-edit-tab`} aria-controls={`${recordTabId}-edit-panel`}
+              aria-selected={editingSku} tabIndex={editingSku ? 0 : -1} onClick={() => selectRecordTab('edit')}>
+              <FilePen size={14} /> Edit PO Quantity
+            </button>
+          )}
+          <button type="button" role="tab" id={`${recordTabId}-detail-tab`} aria-controls={`${recordTabId}-detail-panel`}
+            aria-selected={detailOpen} tabIndex={detailOpen ? 0 : -1} onClick={() => selectRecordTab('detail')}>
+            <ListChecks size={14} /> View PO Request Detail
+          </button>
+        </div>
+        {po.status === 'approved' && issued && canIssue && !signingOpen && (
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setSigningOpen(true)}>
+            <CalendarCheck size={14} /> Signing details
+          </button>
+        )}
+        {po.status === 'approved' && (
+          <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/api/po/${po.id}/pdf`} title={`Download ${po.request_id} as a PDF`}>
+            <FileDown size={14} /> PDF
+          </a>
+        )}
+        <span className="poa-datelog">
+          Raised {dayLabel(raisedOn)}
+          {po.submitted_for_approval_at ? ` · submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}` : ''}
+          {po.approved_at ? ` · approved ${dayLabel(dateOnly(po.approved_at))}${cycle?.days_to_approve != null ? ` (${cycle.days_to_approve} d)` : ''}` : ''}
+          {po.po_issued_at ? ` · EasyEcom ${dayLabel(dateOnly(po.po_issued_at))}${cycle?.days_to_issue != null ? ` (${cycle.days_to_issue} d)` : ''}` : ''}
+        </span>
+      </div>
+
+      {linesOpen && (
+        <div role="tabpanel" id={`${recordTabId}-${recordTab}-panel`} aria-labelledby={`${recordTabId}-${recordTab}-tab`} tabIndex={0}>
+          {focus === 'lines' && (
+            <div className="poa-focus-label">
+              Your next step · add the SKU quantities — paste the team’s sheet or fill the size matrix, save, then Submit for approval
+            </div>
+          )}
+          <PoLinesPanel
+            key={editingSku ? 'editing' : 'viewing'}
+            inlineEdit
+            poId={po.id}
+            poRef={po.po_ref_num ?? po.request_id}
+            productCode={po.product_code}
+            lines={lines.filter((line) => Number(line.qty) > 0)}
+            editable={editingSku && editableHere && canEditPoSection(po, 'sku')}
+            onSaved={() => { setRecordTab('sku'); reloadWithToast(); }}
+            onClose={() => selectRecordTab('sku')}
           />
         </div>
       )}
-      {queued && !isApprover && (
-        <p className="wf-subtle">Awaiting {po.status === 'pending_l2' ? 'the admin' : 'the approver'} — submitted {dayLabel(dateOnly(po.submitted_for_approval_at))}.</p>
-      )}
-
-      {/* ---- Approved: link the EasyCom PO (the critical path starts there). */}
+      {showReview && review && <PoVendorCapacity item={review} highlighted />}
+      {/* ---- Approved: link the EasyEcom PO (the critical path starts there). */}
+      {issuanceMessage && <div role="status"><Notice tone="ok">{issuanceMessage}</Notice></div>}
       {showIssuance && (
-        <div className={`poa-issue${focus === 'easycom' ? ' poa-focus' : ''}`} id={focus === 'easycom' ? 'poa-focus' : undefined}>
-          {focus === 'easycom' && <div className="poa-focus-label">Your next step · link the EasyCom PO</div>}
+        <div className="poa-issue" id={focus === 'easycom' ? 'poa-focus' : undefined}>
+          {focus === 'easycom' && <div className="poa-issue-title">Enter EasyEcom PO Detail</div>}
           <div className="poa-issue-head">
-            <strong>{issued ? 'Signing details' : 'Link the EasyCom PO'}</strong>
+            <strong>{issued ? 'Signing details' : 'Link the EasyEcom PO'}</strong>
             <span className="wf-subtle">
               {issued
                 ? `Issued ${dayLabel(dateOnly(po.po_issued_at))}`
-                : 'Approved — nothing starts until the PO exists in EasyCom. Enter its number to link it; the TNA dates are rebased on the issue date.'}
+                : 'Approved — nothing starts until the PO exists in EasyEcom. Enter its number to link it; the TNA dates are rebased on the issue date.'}
             </span>
           </div>
           <div className="wf-form-grid">
-            <Field label="EasyCom PO no." hint={`links the real PO to ${po.request_id}`}>
-              <input value={iss.easycom_po_no} placeholder="EasyCom PO #" onChange={(e) => setI('easycom_po_no', e.target.value)} />
+            <Field label="EasyEcom PO no." hint={`links the real PO to ${po.request_id}`}>
+              <input value={iss.easycom_po_no} placeholder="EasyEcom PO #" onChange={(e) => setI('easycom_po_no', e.target.value)} />
             </Field>
-            <Field label="EasyCom PO reference" hint="as EasyCom shows it — optional">
+            <Field label="EasyEcom PO reference" hint="as EasyEcom shows it — optional">
               <input value={iss.po_ref_num} placeholder="e.g. FY26-27/FOB/SDRPT/REG-01" onChange={(e) => setI('po_ref_num', e.target.value)} />
             </Field>
-            <Field label="First actual delivery date" hint="EasyCom">
+            <Field label="First actual delivery date" hint="EasyEcom">
               <input type="date" value={iss.first_actual_delivery_date} onChange={(e) => setI('first_actual_delivery_date', e.target.value)} />
             </Field>
           </div>
@@ -355,14 +436,15 @@ export function PoCardBody({
           {exceptionLogged && (
             <p className="wf-subtle">Above-standard cost approved{po.cm_override_by ? ` by ${po.cm_override_by}` : ''}{po.cm_override_note ? ` — ${po.cm_override_note}` : ''}.</p>
           )}
+          {issuanceError && <div role="alert"><Notice tone="error">{issuanceError}</Notice></div>}
           <div className="wf-footer-actions">
             <button
               type="button"
-              className="wf-btn wf-btn-primary wf-btn-sm"
+              className="wf-btn wf-btn-primary poa-link-button"
               onClick={saveIssuance}
               disabled={pending || (!issued && !iss.easycom_po_no.trim()) || (needsCostOverride && !costOverrideNote.trim())}
             >
-              <FileCheck size={14} /> {issued ? 'Save signing details' : 'Link EasyCom PO'}
+              <FileCheck size={14} /> {pending ? (issued ? 'Saving signing details...' : 'Linking EasyEcom PO...') : issued ? 'Save signing details' : 'Link EasyEcom PO'}
             </button>
             {issued && (
               <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setSigningOpen(false)}>Close</button>
@@ -371,66 +453,31 @@ export function PoCardBody({
         </div>
       )}
 
-      {/* ---- Everything else that can be done from here. */}
-      <div className="poa-actions">
-        {editableHere && editHref && (
-          <Link className={`wf-btn wf-btn-sm ${focus === 'cost' ? 'wf-btn-primary poa-btn-focus' : 'wf-btn-ghost'}`} href={editHref} title="Open this request in the form">
-            <FilePen size={14} /> {focus === 'cost' ? 'Add the cost' : 'Edit'}
-          </Link>
-        )}
-        {editableHere && !editHref && (
-          <button type="button" className={`wf-btn wf-btn-sm ${isEditing || focus === 'cost' ? 'wf-btn-primary' : 'wf-btn-ghost'}${focus === 'cost' && !isEditing ? ' poa-btn-focus' : ''}`} onClick={() => onEdit?.(po)} title="Open this request in the form">
-            <FilePen size={14} /> {isEditing ? 'Editing' : focus === 'cost' ? 'Add the cost' : 'Edit'}
-          </button>
-        )}
-        {canSubmit(role, po.status) && (
-          <button type="button" className={`wf-btn wf-btn-primary wf-btn-sm${focus === 'submit' ? ' poa-btn-focus' : ''}`} onClick={submit} disabled={pending || !qty} title={qty ? 'Run the three checks and submit' : 'Add SKU lines first'}>
-            <Send size={14} /> Submit for approval
-          </button>
-        )}
-        <button type="button" className={`wf-btn wf-btn-sm ${linesOpen || focus === 'lines' ? 'wf-btn-primary' : 'wf-btn-ghost'}${focus === 'lines' ? ' poa-btn-focus' : ''}`} onClick={() => setLinesOpen((v) => !v)}>
-          <Layers size={14} /> {focus === 'lines' ? 'Add the SKU quantities' : `SKU lines (${lines.length})`}
+      <div className="poa-submit-row">
+      {canSubmit(role, po.status) && !needsTnaSave && (
+        <button type="button" className="wf-btn wf-btn-primary poa-submit-button" onClick={submit} disabled={pending || editingSku || !qty} title={qty ? 'Run the three checks and submit' : 'Add SKU lines first'}>
+          <Send size={14} /> {po.status === 'rework' || po.status === 'rejected' ? 'Re-Submit for Approval' : 'Submit for approval'}
         </button>
-        <button type="button" className={`wf-btn wf-btn-sm ${detailOpen ? 'wf-btn-primary' : 'wf-btn-ghost'}`} onClick={() => setDetailOpen((v) => !v)}>
-          <ListChecks size={14} /> Full record
-        </button>
-        {po.status === 'approved' && issued && canIssue && !signingOpen && (
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setSigningOpen(true)}>
-            <CalendarCheck size={14} /> Signing details
-          </button>
-        )}
-        {po.status === 'approved' && (
-          <a className="wf-btn wf-btn-ghost wf-btn-sm" href={`/api/po/${po.id}/pdf`} title={`Download ${po.request_id} as a PDF`}>
-            <FileDown size={14} /> PDF
-          </a>
-        )}
-        <span className="poa-datelog">
-          Raised {dayLabel(raisedOn)}
-          {po.submitted_for_approval_at ? ` · submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}` : ''}
-          {po.approved_at ? ` · approved ${dayLabel(dateOnly(po.approved_at))}${cycle?.days_to_approve != null ? ` (${cycle.days_to_approve} d)` : ''}` : ''}
-          {po.po_issued_at ? ` · EasyCom ${dayLabel(dateOnly(po.po_issued_at))}${cycle?.days_to_issue != null ? ` (${cycle.days_to_issue} d)` : ''}` : ''}
-        </span>
+      )}
       </div>
+      {detailOpen && <div role="tabpanel" id={`${recordTabId}-detail-panel`} aria-labelledby={`${recordTabId}-detail-tab`} tabIndex={0}><PoDetailPanel po={po} lines={lines} cycle={cycle} /></div>}
 
-      {linesOpen && (
-        <div className={focus === 'lines' ? 'poa-focus' : undefined} id={focus === 'lines' ? 'poa-focus' : undefined}>
-          {focus === 'lines' && (
-            <div className="poa-focus-label">
-              Your next step · add the SKU quantities — paste the team’s sheet or fill the size matrix, save, then Submit for approval
-            </div>
-          )}
-          <PoLinesPanel
-            poId={po.id}
-            poRef={po.po_ref_num ?? po.request_id}
-            productCode={po.product_code}
-            lines={lines}
-            editable={linesEditable}
-            onSaved={() => reloadWithToast()}
-            onClose={() => setLinesOpen(false)}
+      {/* ---- The decision follows the review, SKU quantities and record controls. */}
+      {isApprover && editingSku && <p className="wf-subtle">Save or cancel SKU changes before making an approval decision.</p>}
+      {isApprover && !editingSku && (
+        <div className="poa-decide" id={focus === 'decide' ? 'poa-focus' : undefined}>
+          {!po.tna_confirmed && <p className="wf-subtle">Approve unlocks once the TNA dates are confirmed above. Rework and Reject are open.</p>}
+          <ApprovalBar
+            entityType="po_approval"
+            entityId={String(po.id)}
+            entityLabel={`PO request ${po.request_id}`}
+            onDone={(r) => { if (r.ok) reloadWithToast(r.message ?? 'Saved.'); }}
           />
         </div>
       )}
-      {detailOpen && <PoDetailPanel po={po} lines={lines} cycle={cycle} />}
+      {queued && !isApprover && (
+        <p className="wf-subtle">Awaiting {po.status === 'pending_l2' ? 'the admin' : 'the approver'} — submitted {dayLabel(dateOnly(po.submitted_for_approval_at))}.</p>
+      )}
     </div>
   );
 }
@@ -478,7 +525,7 @@ export function PoCard({
       : queued
         ? `submitted ${dayLabel(dateOnly(po.submitted_for_approval_at))}`
         : `${po.status === 'rework' ? 'rework' : po.status === 'rejected' ? 'rejected' : 'draft'}, ${dayLabel(raisedOn)}`,
-    po.easycom_po_no ? `EasyCom ${po.easycom_po_no}` : null,
+    po.easycom_po_no ? `EasyEcom ${po.easycom_po_no}` : null,
   ]
     .filter(Boolean)
     .join(' · ');

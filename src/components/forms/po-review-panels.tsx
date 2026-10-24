@@ -95,7 +95,7 @@ function Verdict({ ok, text }: { ok: boolean | null; text: string }) {
  * that are always visible, each with the headline figure first, a verdict, and the numbers
  * behind it. Nothing hides behind a button: the card is the review.
  */
-export function PoReviewPanels({ item, role, spotlightTna = false }: { item: ApprovalQueueItem; role: SdRole; /** The TNA card is the next step: give it the accent border and the anchor. */ spotlightTna?: boolean }) {
+export function PoReviewPanels({ item, role, spotlightTna = false, hideVendor = false }: { item: ApprovalQueueItem; role: SdRole; /** The TNA card is the next step: give it the accent border and the anchor. */ spotlightTna?: boolean; hideVendor?: boolean }) {
   const d = item.poDetail!;
   const std = d.stdCost;
   const stdForType = std
@@ -111,16 +111,11 @@ export function PoReviewPanels({ item, role, spotlightTna = false }: { item: App
   const cmDelta = d.poCm != null && d.stdCm != null ? d.poCm - d.stdCm : null;
   const fabricDelta =
     d.poFinishedFabric != null && d.stdFinishedFabric != null ? d.poFinishedFabric - d.stdFinishedFabric : null;
-  const inproc = item.vendorInProcessQty ?? null;
-  const cap = item.vendorPoCapacity ?? null;
-  const headroom = cap != null && inproc != null ? cap - inproc : null;
-  const util = item.vendorCapacityUtil ?? null;
-  const utilWithPo = cap && cap > 0 && inproc != null ? Math.round(((inproc + d.poQty) / cap) * 1000) / 10 : null;
   const days = d.inventory?.daysOfStock ?? null;
   const typeLabel = d.poType === 'job_work' ? 'Job Work' : d.poType === 'efob' ? 'E-FOB' : d.poType ? 'FOB' : '—';
 
   return (
-    <div className="wf-verify-grid">
+    <div className={`wf-verify-grid${hideVendor ? " poa-review-three" : ""}`}>
       {/* ---- Stock */}
       <section className="wf-verify-card">
         <div className="wf-verify-head">
@@ -202,11 +197,26 @@ export function PoReviewPanels({ item, role, spotlightTna = false }: { item: App
         )}
       </section>
 
-      {/* ---- Vendor */}
-      <section className="wf-verify-card">
+      {!hideVendor && <PoVendorCapacity item={item} />}
+    </div>
+  );
+}
+
+
+export function PoVendorCapacity({ item, highlighted = false }: { item: ApprovalQueueItem; highlighted?: boolean }) {
+  const d = item.poDetail!;
+  const inproc = item.vendorInProcessQty ?? null;
+  const cap = item.vendorPoCapacity ?? null;
+  const headroom = cap != null && inproc != null ? cap - inproc : null;
+  const loadAfterPo = inproc != null ? inproc + d.poQty : null;
+  const remainingAfterPo = headroom != null ? headroom - d.poQty : null;
+  const util = item.vendorCapacityUtil ?? null;
+  const utilWithPo = cap && cap > 0 && inproc != null ? Math.round(((inproc + d.poQty) / cap) * 1000) / 10 : null;
+  return (
+      <section className={`wf-verify-card${highlighted ? " poa-vendor-capacity" : ""}`}>
         <div className="wf-verify-head">
           <h4>
-            Vendor <InfoDot text={"WHAT: can the vendor take this PO on top of what they already have.\n\nHOW: PO capacity = what the vendor can make inside this PO type's lead time (the one capacity model, from the Vendor Capacity sheet and Rules Master). Headroom = PO capacity − pieces already in process. 'With this PO' = (in process + this PO) ÷ PO capacity.\n\nUSE: past 100% with this PO, something will be late — decide which."} />
+            Vendor capacity <InfoDot text={"WHAT: can the vendor take this PO on top of what they already have.\n\nHOW: PO capacity = what the vendor can make inside this PO type's lead time (the one capacity model, from the Vendor Capacity sheet and Rules Master). Headroom = PO capacity − pieces already in process. 'With this PO' = (in process + this PO) ÷ PO capacity.\n\nUSE: past 100% with this PO, something will be late — decide which."} />
           </h4>
           {cap == null ? (
             <Verdict ok={null} text="capacity not entered" />
@@ -214,14 +224,19 @@ export function PoReviewPanels({ item, role, spotlightTna = false }: { item: App
             <Verdict ok={utilWithPo != null && utilWithPo <= 100} text={utilWithPo != null ? `${utilisationLabel(utilWithPo)} with this PO` : '—'} />
           )}
         </div>
+        {item.vendorCode && <p className="wf-subtle">Vendor: {item.vendorCode}</p>}
         <dl>
-          <div><dt>In process</dt><dd>{inproc == null ? 'no open POs' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle"> · {utilisationLabel(util)} of PO capacity</small> : null}</dd></div>
-          <div><dt>PO capacity ({item.vendorLeadDays ?? '—'}-day lead)</dt><dd>{cap == null ? 'not entered' : `${fmtNum(cap)} pcs`}</dd></div>
-          <div><dt>Headroom</dt><dd className={headroom != null && headroom < d.poQty ? 'wf-error-text' : undefined}>{headroom != null ? `${fmtNum(headroom)} pcs` : '—'}{headroom != null && headroom < d.poQty ? ' — less than this PO' : ''}</dd></div>
-          <div><dt>Capacity / month</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : '—'}{item.vendorCapacityUpdatedAt ? ` · ${fmtDate(item.vendorCapacityUpdatedAt)}` : ''}</dd></div>
+          <div><dt>Monthly capacity</dt><dd>{item.vendorCapacityPerMonth != null ? `${fmtNum(item.vendorCapacityPerMonth)} pcs` : 'Not entered'}</dd></div>
+          <div><dt>Capacity for this PO ({item.vendorLeadDays ?? '—'} days)</dt><dd><strong>{cap == null ? 'Not entered' : `${fmtNum(cap)} pcs`}</strong></dd></div>
+          <div><dt>Current in-process load</dt><dd>{inproc == null ? 'Unavailable' : `${fmtNum(inproc)} pcs`}{util != null ? <small className="wf-subtle">{utilisationLabel(util)} utilised</small> : null}</dd></div>
+          <div><dt>This PO adds</dt><dd>{fmtNum(d.poQty)} pcs</dd></div>
+          <div><dt>Load with this PO</dt><dd>{loadAfterPo != null ? `${fmtNum(loadAfterPo)} pcs` : '—'}</dd></div>
+          <div><dt>Available after this PO</dt><dd className={remainingAfterPo != null && remainingAfterPo < 0 ? 'wf-error-text' : undefined}>{remainingAfterPo != null ? `${fmtNum(remainingAfterPo)} pcs` : '—'}</dd></div>
         </dl>
+        {remainingAfterPo != null && remainingAfterPo < 0 && <p className="wf-error-text">This PO exceeds available capacity by {fmtNum(Math.abs(remainingAfterPo))} pcs.</p>}
+        {cap == null && <p className="wf-subtle">Capacity has not been entered. Update Vendor Capacity to assess this PO.</p>}
+        {item.vendorCapacityUpdatedAt && <p className="wf-subtle">Capacity updated: {fmtDate(item.vendorCapacityUpdatedAt)}</p>}
+
       </section>
-    </div>
   );
 }
-

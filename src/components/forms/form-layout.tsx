@@ -138,20 +138,25 @@ export function Notice({
 
 export function Field({
   label,
+  required = false,
   hint,
+  hintPlacement = 'above',
   children,
 }: {
   label: string;
+  required?: boolean;
   hint?: string;
+  hintPlacement?: 'above' | 'below';
   children: React.ReactNode;
 }) {
   return (
     <label className="field wf-field">
       <span>
-        {label}
-        {hint && <small>{hint}</small>}
+        <b className="wf-field-label">{label}{required && <em className="wf-required-mark" aria-label="required"> *</em>}</b>
+        {hint && hintPlacement === 'above' && <small>{hint}</small>}
       </span>
       {children}
+      {hint && hintPlacement === 'below' && <small className="wf-field-help">{hint}</small>}
     </label>
   );
 }

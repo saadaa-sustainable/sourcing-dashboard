@@ -1,5 +1,6 @@
 'use client';
 
+import { CapacityComplianceView } from './vendor-capacity-compliance-view';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { FileDown, Send, RefreshCw } from 'lucide-react';
@@ -144,14 +145,15 @@ export function VendorCapacityMonthView({
         </div>
       </section>
 
+      {data.compliance && <CapacityComplianceView reports={[data.compliance]} />}
       <div className="vcm-tiles">
         <div className="vcm-tile">
-          <span>Weekly input</span>
+          <span>Monthly compliance</span>
           <b>{t.compliancePct == null ? '—' : `${Math.round(t.compliancePct)}%`}</b>
-          <small>{t.vendorWeeksUpdated} of {t.vendorWeeksExpected} vendor-weeks updated</small>
+          <small>{t.vendorWeeksUpdated} of {t.vendorWeeksExpected} completed vendor-weeks updated</small>
         </div>
         <div className={`vcm-tile${t.neverUpdated ? ' is-warn' : ''}`}>
-          <span>Never updated this month</span>
+          <span>No updates in completed weeks</span>
           <b>{t.neverUpdated}</b>
           <small>of {t.active} active vendors</small>
         </div>

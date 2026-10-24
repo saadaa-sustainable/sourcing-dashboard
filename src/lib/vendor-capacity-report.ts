@@ -36,7 +36,7 @@ const ist = (iso: string | null) =>
 
 export function complianceText(a: VendorCapacityMonth): string {
   const t = a.totals;
-  return t.compliancePct == null ? 'no weeks to update yet' : `${Math.round(t.compliancePct)}% of vendor-weeks updated (${t.vendorWeeksUpdated} of ${t.vendorWeeksExpected})`;
+  return t.compliancePct == null ? 'not available: no verified completed vendor-weeks' : `${Math.round(t.compliancePct)}% of completed vendor-weeks updated (${t.vendorWeeksUpdated} of ${t.vendorWeeksExpected})`;
 }
 
 /** The month report as an A4 PDF. Pure: no I/O. */
@@ -62,8 +62,8 @@ export function renderVendorCapacityReportPdf(a: VendorCapacityMonth): Buffer {
     head: [['Headline', 'Figure']],
     body: [
       ['Active vendors', num(t.active)],
-      ['Weekly input', complianceText(a)],
-      ['Vendors never updated this month', num(t.neverUpdated)],
+      ['Monthly update compliance (completed weeks)', complianceText(a)],
+      ['Current vendors without updates in completed weeks', num(t.neverUpdated)],
       ['Capacity declared (pcs / month), first week -> last week', `${num(t.capStart)} -> ${num(t.capEnd)} (${change(t.capEnd, t.capStart)})`],
       ['PO capacity at month end (pcs)', num(t.poCapEnd)],
       ['On order at month end (pcs)', num(t.onOrderEnd)],

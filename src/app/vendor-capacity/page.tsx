@@ -1,3 +1,6 @@
+import { ComplianceKpis } from './vendor-capacity-compliance-view';
+import { loadCapacityCompliance } from '@/lib/vendor-capacity-compliance-server';
+import { complianceKey } from '@/lib/vendor-capacity-compliance';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
@@ -19,7 +22,6 @@ import {
 
 import {
   capacityRulesFrom,
-  eeVendorActive,
   vendorCapacityModel,
 } from '@/lib/business-logic';
 
@@ -47,6 +49,7 @@ export default async function VendorCapacityPage({
 }: {
   searchParams: Promise<{
     view?: string;
+    tab?: string;
     week?: string;
     month?: string;
   }>;
@@ -99,30 +102,9 @@ export default async function VendorCapacityPage({
     ]),
   );
 
-  // EasyEcom is the authoritative source for active vendor status.
-  // Fall back to Vendor_Type_Master while EasyEcom status is unavailable.
-  const statusByCode = new Map(
-    vendorTypes.map((row) => [key(row.vendor_code), row.status]),
-  );
-
-  const statusByName = new Map(
-    vendorTypes.map((row) => [key(row.vendor_name), row.status]),
-  );
-
-  const isActive = (master: (typeof vendorMasters)[number]) => {
-    const ee = eeVendorActive(master.ee_status);
-
-    if (ee !== null) return ee;
-
-    const status =
-      statusByCode.get(key(master.vendor_code)) ??
-      statusByName.get(key(master.vendor_name));
-
-    return key(status) === 'active';
-  };
-
+  // Vendor activity is determined by the source is_active flag.
   const vendors = vendorMasters
-    .filter((master) => key(master.vendor_code) && isActive(master))
+    .filter((master) => key(master.vendor_code) && master.is_active === true)
     .map((master) => {
       const code = key(master.vendor_code);
 
@@ -154,13 +136,13 @@ export default async function VendorCapacityPage({
   // Each update is shown under the calendar month in which it
   // happened. The weekly history logic remains separate below.
   if (!params.view) {
-    const board = await loadVendorCapacityMonthBoard(
+    const [board, complianceReports] = await Promise.all([loadVendorCapacityMonthBoard(
       vendors.map((v) => ({
         code: v.vendor_code,
         name: v.vendor_name,
         signed: Number(v.capacitySigned) || 0,
       })),
-    );
+    ), loadCapacityCompliance()]);
 
     return (
       <FormLayout
@@ -171,12 +153,18 @@ export default async function VendorCapacityPage({
         userEmail={user.email}
         allowedPages={user.allowed_pages ?? null}
       >
+        <section className="vc-compliance vc-compliance-summary" aria-label="Weekly update compliance">
+          <h2>Weekly update compliance</h2>
+          <ComplianceKpis rows={complianceReports[0]?.rows ?? []} currentWeek={capacityWeekStart()} />
+          <Link className="vc2-btn vc-compliance-link" href="/vendor-capacity?view=entry&amp;tab=compliance">View Vendor Capacity Update compliance</Link>
+          <p className="vc-compliance-note">Weekly compliance counts one update per eligible completed week. Monthly activity cards below retain their separate minimum of two updates per calendar month.</p>
+        </section>
         <MonthBoard
           data={board}
           searchPlaceholder="Search month…"
           pageBar={
             <Link
-              className="wf-btn wf-btn-primary wf-btn-sm"
+              className="vc2-btn vc-compliance-link"
               href={`/vendor-capacity?view=month&month=${monthStart()}`}
             >
               Monthly Analytics
@@ -355,6 +343,9 @@ export default async function VendorCapacityPage({
     })),
   );
 
+  const complianceReports = asOf ? [] : await loadCapacityCompliance();
+  const complianceRows = new Map(complianceReports[0]?.rows.map((r) => [complianceKey(r.code), r]) ?? []);
+
   const headerWeeks: HeaderWeek[] = board.cards.map((c) => {
     const [done, total] = (c.list[0] ?? '0 / 0')
       .split('/')
@@ -385,7 +376,9 @@ export default async function VendorCapacityPage({
       {variation && <VariationReportPanel report={variation} />}
 
       <VendorCapacityClient
-        vendors={shown}
+        vendors={shown.map((v) => ({ ...v, compliance: complianceRows.get(complianceKey(v.vendor_code)) }))}
+        complianceReports={complianceReports}
+        initialTab={params.tab}
         asOf={asOf}
         role={user.role}
         allocations={allocations}

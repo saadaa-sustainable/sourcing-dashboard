@@ -132,7 +132,7 @@ export function MonthBoard({
 
     return data.cards
 
-      .filter((c) => (filter === 'all' || displayStatus(c.status) === filter) && (!q || `${c.label} ${c.track ?? ''}`.toLowerCase().includes(q)))
+      .filter((c) => (filter === 'all' || displayStatus(c.status) === filter) && (!q || `${c.label} ${c.track ?? ''} ${c.searchText ?? ''}`.toLowerCase().includes(q)))
 
       .sort((a, b) => b.month.localeCompare(a.month) || (a.track ?? '').localeCompare(b.track ?? ''));
 
@@ -368,7 +368,8 @@ export function MonthBoard({
 
                       )}
 
-                      {open && <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={open.href}>{open.label}</Link>}
+                      {data.listActions === 'all' ? c.actions.map(action => <Link key={action.label} className="wf-btn wf-btn-ghost wf-btn-sm" href={action.href}>{action.label}</Link>)
+                        : open && <Link className="wf-btn wf-btn-ghost wf-btn-sm" href={open.href}>{open.label}</Link>}
 
                     </td>
 

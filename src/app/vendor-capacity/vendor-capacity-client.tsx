@@ -1,5 +1,8 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { CapacityComplianceView, ComplianceCells, ComplianceKpis } from './vendor-capacity-compliance-view';
+import type { ComplianceMonth, ComplianceRow } from '@/lib/vendor-capacity-compliance';
 import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast, toastError } from '@/lib/toast';
@@ -46,6 +49,7 @@ type Vendor = {
   capacitySigned: number;
   inProcessQty: number;
   current: VendorCapacityLog | null;
+  compliance?: ComplianceRow;
   deboarded?: DeboardedVendor | null;
 };
 
@@ -83,6 +87,7 @@ function ageLabel(iso: string | null, now: number | null) {
 const TABS = [
   ['entry', 'Entry'],
   ['allocation', 'Product Allocation'],
+  ['compliance', 'Update Compliance'],
   ['rules', 'Rules'],
   ['reporting', 'Reporting'],
 ] as const;
@@ -159,6 +164,8 @@ function EntryForWeek(props: Parameters<typeof EntryTab>[0]) {
 
 export function VendorCapacityClient({
   vendors,
+  complianceReports = [],
+  initialTab,
   role,
   allocations = [],
   catalog = [],
@@ -168,6 +175,8 @@ export function VendorCapacityClient({
   asOf = null,
 }: {
   vendors: Vendor[];
+  complianceReports?: ComplianceMonth[];
+  initialTab?: string;
   role: SdRole;
   /** A past week opened from the board: vendors carry that week's figures; read-only. */
   asOf?: { week: string; label: string; inProcessKept: boolean } | null;
@@ -179,7 +188,7 @@ export function VendorCapacityClient({
   /** Every capacity number reads these; from Rules Master (capacityRulesFrom). */
   rules?: CapacityRules;
 }) {
-  const [tab, setTab] = useState<TabId>('entry');
+  const [tab, setTab] = useState<TabId>(initialTab === 'compliance' && !asOf ? 'compliance' : 'entry');
   // Click-through: Reporting → Entry/Allocation focused on one vendor.
   const [focusVendor, setFocusVendor] = useState('');
 
@@ -246,6 +255,7 @@ export function VendorCapacityClient({
           rules={rules}
         />
       )}
+      {tab === 'compliance' && <CapacityComplianceView reports={complianceReports} />}
       {tab === 'allocation' && (
         <ProductAllocationTab
           vendors={vendors}
@@ -325,6 +335,7 @@ function EntryTab({
     setFilter('all');
   };
   const [edits, setEdits] = useState<Record<string, Edit>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [now, setNow] = useState<number | null>(null);
@@ -437,6 +448,8 @@ function EntryTab({
 
   async function saveAll() {
     if (!dirtyRows.length) return;
+    const missing = dirtyRows.filter((d) => (d.m.over || (d.effective.active_karigar !== '' && num(d.effective.active_karigar) < 15)) && !reasons[d.code]?.trim());
+    if (missing.length) { setErrors(Object.fromEntries(missing.map((d) => [d.code, 'Enter a reason before saving.']))); return; }
     setSaving(true);
     const failed: Record<string, string> = {};
     let saved = 0;
@@ -447,6 +460,7 @@ function EntryTab({
       payload.set('machines_allocated', d.effective.machines_allocated);
       payload.set('active_karigar', d.effective.active_karigar);
       payload.set('capacity_per_month', String(d.m.capacityPerMonth || ''));
+      payload.set('update_reason', reasons[d.code] ?? '');
       const result = await saveVendorCapacityRow(payload);
       if (result.ok) saved += 1;
       else failed[d.code] = toastError(result.error);
@@ -630,6 +644,18 @@ function EntryTab({
                         <span><code>{vendor.vendor_code}</code>{vendor.merchant ? ` · ${vendor.merchant}` : ''} · {type} · {m.leadDays} d lead</span>
                       </div>
                       <DeboardedPill flag={vendor.deboarded} />
+                      {vendor.current?.update_reason?.trim() && (
+                        <div className="vc-saved-reason"><span>Reason of Over Utilization/Karigar Deficit:</span><p>{vendor.current.update_reason}</p></div>
+                      )}
+                      {editable && !saving && d.dirty && d.shown.active_karigar !== (d.thisWeek ? d.last.active_karigar : '') && (m.over || (d.effective.active_karigar !== '' && num(d.effective.active_karigar) < 15)) && (
+                        <label className="vc-update-reason">
+                           <span className="vc-update-reason-label">Mention the reason for Capacity Over Utilised/Active Karigars Allocated less than 15. <span className="vc-required">*</span></span>
+                          <textarea required disabled={saving} value={reasons[d.code] ?? ''}
+                            aria-label={`Capacity update reason for ${vendor.vendor_name || vendor.vendor_code}`}
+                            rows={3} placeholder="Explain the capacity allocation"
+                            onChange={(e) => setReasons((cur) => ({ ...cur, [d.code]: e.target.value }))} />
+                        </label>
+                      )}
                     </td>
                     {!m.entered && !editable ? (
                       <td colSpan={8} className="vc2-none">
@@ -681,7 +707,7 @@ function EntryTab({
         <div className="vc2-savebar" role="region" aria-label="Unsaved changes">
           <span>{dirtyRows.length} vendor{dirtyRows.length === 1 ? '' : 's'} changed</span>
           <span className="vc2-savebar-actions">
-            <button type="button" className="vc2-btn vc2-btn-ghost" disabled={saving} onClick={() => { setEdits({}); setErrors({}); }}>Discard</button>
+            <button type="button" className="vc2-btn vc2-btn-ghost" disabled={saving} onClick={() => { setEdits({}); setErrors({}); setReasons({}); }}>Discard</button>
             <button type="button" className="vc2-btn vc2-btn-save" disabled={saving} onClick={saveAll}>{saving ? 'Saving…' : 'Save'}</button>
           </span>
         </div>
@@ -836,6 +862,7 @@ function LiveEntryTab({
 
   return (
     <div className="vc-section">
+      <ComplianceKpis rows={filtered.flatMap(({ vendor }) => vendor.compliance ? [vendor.compliance] : [])} currentWeek={capacityWeekStart()} />
       <div className="vc-metrics">
         <CapacityMetric
           label="PO capacity"
@@ -1017,6 +1044,7 @@ function LiveEntryTab({
                 <th className="num">Machine Utilisation % <HeaderInfo label="Machine Utilisation %" /></th>
                 <th className="num">Capacity Utilisation % <HeaderInfo label="Capacity Utilisation %" /></th>
                 <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')} <HeaderInfo label="Last updated" /></th>
+                <th>Vendor status</th><th>This week</th><th className="num">Monthly compliance</th><th className="num">Consecutive missed weeks</th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
@@ -1035,7 +1063,7 @@ function LiveEntryTab({
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
+                  <td colSpan={editable ? 17 : 16} className="wf-empty-cell">
                     {staleOnly
                       ? 'No stale vendors — everyone is up to date.'
                       : 'No vendors match your filters.'}
@@ -1144,6 +1172,7 @@ function CapacityRow({
   /** An admin can correct a locked row; the team waits for Monday. */
   isAdmin?: boolean;
 }) {
+  const router = useRouter();
   // The vendor's last saved figures. Every calculation (here and on every other page) keeps
   // using them until a new update is saved.
   const last = {
@@ -1156,6 +1185,8 @@ function CapacityRow({
     lastUpdated != null && Date.parse(lastUpdated) >= Date.parse(`${capacityWeekStart()}T00:00:00+05:30`);
   const initial = enteredThisWeek ? last : { machines_allocated: '', active_karigar: '' };
   const [fields, setFields] = useState(initial);
+  const [reason, setReason] = useState('');
+  const [savedReason, setSavedReason] = useState(vendor.current?.update_reason ?? '');
   const [saved, setSaved] = useState<string | null>(lastUpdated);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -1192,15 +1223,21 @@ function CapacityRow({
 
   function save() {
     setError(null);
+    if ((model.over || (effective.active_karigar !== '' && karigar < 15)) && !reason.trim()) { setError('Enter a reason before saving.'); return; }
     const payload = new FormData();
     payload.set('vendor_code', vendor.vendor_code);
     payload.set('vendor_name', vendor.vendor_name);
     payload.set('machines_allocated', effective.machines_allocated);
     payload.set('active_karigar', effective.active_karigar);
     payload.set('capacity_per_month', String(model.capacityPerMonth || ''));
+    payload.set('update_reason', reason);
     start(async () => {
       const result = await saveVendorCapacityRow(payload);
-      if (result.ok) setSaved(new Date().toISOString());
+      if (result.ok) {
+        setSaved(new Date().toISOString());
+        setSavedReason(model.over || karigar < 15 ? reason.trim() : '');
+        router.refresh();
+      }
       else setError(toastError(result.error));
     });
   }
@@ -1211,6 +1248,7 @@ function CapacityRow({
         <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
         <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
         <DeboardedPill flag={vendor.deboarded} />
+        {savedReason.trim() && <div className="vc-saved-reason"><span>Reason of Over Utilization/Karigar Deficit:</span><p>{savedReason}</p></div>}
       </td>
       <td>
         <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>
@@ -1275,8 +1313,14 @@ function CapacityRow({
           </span>
         )}
         {isStale && !dirty && !locked && <span className="vc-pill vc-pill-amber">Stale</span>}
+        {canType && !pending && dirty && fields.active_karigar !== initial.active_karigar && (model.over || (effective.active_karigar !== '' && karigar < 15)) && (
+          <label className="vc-update-reason"><span className="vc-update-reason-label">Mention the reason for Capacity Over Utilised/Active Karigars Allocated less than 15. <span className="vc-required">*</span></span>
+            <textarea required rows={3} placeholder="Explain the capacity allocation" value={reason} disabled={pending} onChange={(e) => setReason(e.target.value)} aria-label={`Capacity update reason for ${vendor.vendor_name || vendor.vendor_code}`} />
+          </label>
+        )}
         {error && <small className="wf-error-text">{error}</small>}
       </td>
+      <ComplianceCells row={vendor.compliance} />
       {editable && (
         <td>
           {locked && !isAdmin ? (
