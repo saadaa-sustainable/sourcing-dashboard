@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
+import { createSessionClient, hasSupabaseEnv } from '@/lib/supabase/server';
 
 // OAuth (Google) redirect target. Supabase sends the user here with a `?code`
 // after Google sign-in; we exchange it for a session, then enforce the
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   if (oauthError) return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(oauthError.replace(/\+/g, ' '))}`);
   if (!hasSupabaseEnv() || !code) return NextResponse.redirect(`${origin}/login`);
 
-  const supabase = await createClient();
+  const supabase = await createSessionClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
 

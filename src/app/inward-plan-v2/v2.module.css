@@ -1,0 +1,106 @@
+.card { padding: 24px; margin: 18px 0; border: 1px solid var(--border, #dde2e5); border-radius: 12px; background: var(--surface, #fff); }
+.card h2 { margin: 0 0 12px; font-size: 19px; }
+.card h3 { margin: 18px 0 12px; font-size: 16px; }
+.card p { margin: 10px 0; }
+.toolbar, .heading, .buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.toolbar, .heading { justify-content: space-between; }
+.buttons { margin: 12px 0; }
+.form { display: grid; gap: 14px; margin-top: 16px; }
+.form label, .buttons label { display: grid; gap: 6px; font-size: 13px; }
+.fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.grid { display: grid; grid-template-columns: 2fr 1fr 1.2fr; align-items: start; gap: 16px; margin-bottom: 16px; }
+.grid > label { align-content: start; min-width: 0; }
+.scroll { overflow-x: auto; max-width: 100%; }
+.table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.table th { background: #f5f7f8; font-weight: 600; }
+.table td, .table th { padding: 12px 10px; vertical-align: top; border-bottom: 1px solid var(--border, #e1e5e8); }
+.table input, .table select { min-width: 110px; width: 100%; }
+.table input[type=date] { min-width: 145px; }
+.table select { max-width: 300px; }
+.status { display: inline-block; padding: 4px 10px; border-radius: 20px; background: #e8f4f0; color: #205b49; font-size: 12px; font-weight: 600; }
+.muted { color: var(--muted, #616d75); font-size: 13px; }
+.source { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border, #e1e5e8); }
+.history { padding-left: 22px; }
+.history li { padding: 10px 0 14px; border-bottom: 1px solid var(--border, #e1e5e8); }
+.history details { font-size: 13px; }
+.history summary { cursor: pointer; }
+.history dl > div { display: grid; grid-template-columns: 160px 1fr; gap: 10px; padding: 6px 0; }
+.history dd { margin: 0; overflow-wrap: anywhere; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 720px) { .card { padding: 16px; } .grid { grid-template-columns: 1fr; } .history dl > div { grid-template-columns: 1fr; gap: 4px; } }
+
+.inventory { min-width: 1150px; }
+.inventory td, .inventory th { border: 1px solid var(--border, #e1e5e8); vertical-align: middle; }
+.inventory td { text-align: right; }
+.inventory th { white-space: nowrap; }
+
+.poDialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; height: fit-content; width: min(1500px, 95vw); max-height: 85vh; overflow: auto; padding: 24px; border: 1px solid var(--border, #dde2e5); border-radius: 12px; background: var(--surface, #fff); color: inherit; }
+.poDialog::backdrop { background: rgb(0 0 0 / 45%); }
+
+.poTable { min-width: 1300px; }
+.poTable td, .poTable th { vertical-align: middle; border: 1px solid var(--border, #e1e5e8); white-space: nowrap; }
+
+.inventoryScroll { max-height: min(60vh, 560px); overflow: auto; border: 1px solid var(--border, #e1e5e8); }
+.inventoryScroll .inventory { border-collapse: separate; border-spacing: 0; }
+.inventoryScroll .inventory thead th { position: sticky; top: 0; z-index: 5; background: #fafafa; box-shadow: 0 1px 0 var(--border, #e1e5e8); }
+.inventoryScroll:focus-visible { outline: 2px solid #205b49; outline-offset: 2px; }
+
+
+
+.summaryAboveEditor { margin-bottom: 24px; }
+
+.reportNav:has(+ .planBoard) { margin-bottom: 0; }
+.planBoard { margin-top: 0; }
+.planBoard :global(.mb) { gap: 16px; }
+.planBoard :global(.mb .tb) { padding: 14px; background: #fff; border: 1px solid var(--border, #dde2e5); border-radius: 14px; margin: 0; box-shadow: 0 2px 2px rgb(0 0 0 / 4%); }
+.planBoard :global(.mb-col) { border-top-width: 1px; }
+.planBoard :global(.mb-col.mb-t-draft) { background: #eaf3ff; }
+.planBoard :global(.mb-col.mb-t-pending) { background: #fff5da; }
+.planBoard :global(.mb-col.mb-t-live) { background: #e4f4ee; }
+.planBoard :global(.mb-col.mb-t-back) { background: #fcefeb; }
+.planBoard :global(.mb-card) { box-shadow: none; }
+.planBoard :global(.mb-view-control) { white-space: nowrap; }
+.planBoard :global(.mb .tb-see > .wf-btn-primary) { background: #191919; border-color: #191919; color: #fff; }
+
+.sourceSearch { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+.sourceSearch > label { display: grid; gap: 6px; font-size: 13px; }
+.sourceSearch > label > input, .sourceSearch > label > select { height: 35px; box-sizing: border-box; }
+.sourceSearch > button { align-self: flex-end; height: 35px; min-height: 35px; box-sizing: border-box; }
+
+/* Body row labels are th for accessibility, but must not inherit global sticky headers. */
+.inventory tbody th { position: static; top: auto; z-index: auto; font-family: inherit; font-size: inherit; font-weight: 500; letter-spacing: normal; text-transform: none; color: var(--ink-2, #43474a); background: var(--surface, #fff); box-shadow: none; }
+.inventory tbody th[scope=rowgroup] { font-weight: 600; }
+
+.poDialog .poTable tbody td { vertical-align: middle; }
+.poCell { display: flex; align-items: center; min-height: 32px; }
+
+.card .buttons .approvalButton { min-height: 44px; min-width: 140px; padding: 11px 22px; font-size: 14px; }
+
+.historyDisclosure > summary { cursor: pointer; }
+.historyDisclosure > summary > h2 { display: inline; margin: 0; }
+
+.titleHint { color: var(--muted, #616d75); font-size: 11px; line-height: 1.4; }
+
+.reportNav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px; margin: 0 0 8px; background: #fff; border: 1px solid var(--line, #dde2e5); border-radius: 12px; box-shadow: 0 1px 2px rgb(0 0 0 / 3%); }
+.reportNav > a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; border-radius: 8px; color: var(--ink-2, #43474a); font-size: 12px; font-weight: 600; line-height: 1.3; text-decoration: none; transition: background-color .15s, color .15s; }
+.reportNav > a:hover { background: #f1f2f3; color: #171717; }
+.reportNav > a[aria-current=page] { background: #171717; color: #fff; }
+.reportNav > a:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+@media (max-width: 540px) { .reportNav > a { flex: 1 1 auto; padding: 8px 10px; } }
+
+.trackerFilter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+.trackerFilter > label { display: grid; align-content: start; gap: 6px; font-size: 13px; }
+.card .trackerFilter select, .card .trackerFilter > button { height: 35px; min-height: 35px; box-sizing: border-box; }
+.trackerFilter > button { align-self: flex-end; }
+
+.trackerHelp { color: var(--muted, #616d75); font-size: 11px; line-height: 1.5; }
+
+.trackerFields { display: grid; gap: 16px; }
+.trackerFields > .grid { margin-bottom: 0; }
+.trackerFields > p { margin: 0; }
+.trackerFields > button { justify-self: start; margin-top: 4px; }
+
+/* One gap owns each reporting section; avoid stacking card margins with flex gaps. */
+.reportNav:has(+ .reportContent) { margin-bottom: 0; }
+.reportContent { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.reportContent > .card { margin: 0; }

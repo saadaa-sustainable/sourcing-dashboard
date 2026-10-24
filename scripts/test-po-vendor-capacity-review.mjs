@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import ts from 'typescript';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
+const require=createRequire(import.meta.url);
+const compile=(file,resolver)=>{const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{exports,require:resolver,console,Date});return exports;};
+const util=compile('src/lib/utilisation.ts',require);
+const Null=()=>null;
+const {PoReviewPanels}=compile('src/components/forms/po-review-panels.tsx',name=>{
+ if(name==='react'||name==='react/jsx-runtime')return require(name);
+ if(name==='@/lib/utilisation')return util;
+ if(name==='@/lib/forms/approval')return {canApprove:()=>false};
+ if(name==='next/link')return {default:({children})=>React.createElement('a',null,children)};
+ return new Proxy({},{get:()=>Null});
+});
+const item={vendorCode:'V1',vendorInProcessQty:100,vendorPoCapacity:1000,vendorCapacityPerMonth:600,vendorCapacityUtil:10,vendorLeadDays:50,poDetail:{stdCost:null,poType:'fob',poQty:200,writtenRate:50,inventory:null,tna:{tnaConfirmed:true}}};
+const render=overrides=>renderToStaticMarkup(React.createElement(PoReviewPanels,{item:{...item,...overrides},role:'viewer'}));
+let html=render({});
+for(const label of ['Vendor capacity','Monthly capacity','Capacity for this PO','Current in-process load','This PO adds','Load with this PO','Available after this PO'])assert.ok(html.includes(label),label);
+assert.ok(html.includes('300 pcs'));assert.ok(html.includes('700 pcs'));
+html=render({vendorInProcessQty:0});assert.ok(html.includes('800 pcs'));
+html=render({vendorInProcessQty:950});assert.ok(html.includes('100% Over Utilised'));assert.ok(html.includes('exceeds available capacity by 150 pcs'));
+html=render({vendorPoCapacity:null,vendorCapacityPerMonth:null});assert.ok(html.includes('Capacity has not been entered'));assert.ok(!html.includes('exceeds available capacity'));
+console.log('14 actual review-render checks passed: available, zero load, over capacity and missing data.');

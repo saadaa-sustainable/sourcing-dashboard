@@ -157,15 +157,15 @@ export function PoDetailPanel({
         <Block title="Date log">
           <Row label="Request raised">{stamp(po.submitted_for_approval_at)}</Row>
           <Row label="Approved">{stamp(po.approved_at)}</Row>
-          <Row label="EasyCom PO created">
+          <Row label="EasyEcom PO created">
             {po.po_issued_at ? stamp(po.po_issued_at) : 'not yet — the critical path has not started'}
           </Row>
           <Row label="Request → approval">{cycle?.days_to_approve != null ? `${cycle.days_to_approve} days` : '—'}</Row>
-          <Row label="Approval → EasyCom">{cycle?.days_to_issue != null ? `${cycle.days_to_issue} days` : '—'}</Row>
+          <Row label="Approval → EasyEcom">{cycle?.days_to_issue != null ? `${cycle.days_to_issue} days` : '—'}</Row>
           <Row label="Days requested at submission">{po.requested_total_days != null ? `${po.requested_total_days} days` : '—'}</Row>
         </Block>
 
-        <Block title={`Critical path — ${base.source === 'issued' ? `from the EasyCom PO, ${day(base.date)}` : `projected from today, ${day(base.date)}`}`}>
+        <Block title={`Critical path — ${base.source === 'issued' ? `from the EasyEcom PO, ${day(base.date)}` : `projected from today, ${day(base.date)}`}`}>
           {stages.map((s) => (
             <Row key={s.label} label={s.label}>
               {s.days == null
@@ -204,8 +204,8 @@ export function PoDetailPanel({
         </Block>
 
         <Block title="Issuance & signing">
-          <Row label="EasyCom PO number">{text(po.easycom_po_no)}</Row>
-          <Row label="EasyCom reference">{text(po.po_ref_num)}</Row>
+          <Row label="EasyEcom PO number">{text(po.easycom_po_no)}</Row>
+          <Row label="EasyEcom reference">{text(po.po_ref_num)}</Row>
           <Row label="Signed PO">
             <Link href={po.signed_po_document_url} />
           </Row>

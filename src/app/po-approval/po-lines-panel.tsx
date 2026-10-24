@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { toastError } from '@/lib/toast';
-import { ClipboardPaste, Grid3x3, Save, Upload, Wand2, X } from 'lucide-react';
+import { ClipboardPaste, Grid3x3, Plus, Save, Trash2, Upload, Wand2 } from 'lucide-react';
+import { Combobox } from '@/components/forms/combobox';
 import { Notice } from '@/components/forms/form-layout';
 import { InfoDot } from '@/components/info-dot';
 import { HeaderInfo } from '@/components/header-info';
 import { getPoLineContext, getPoPlanSuggestion, savePoLines } from '@/lib/forms/actions';
 import {
   checkLines,
+  skuOf,
   fromMatrix,
   parsePastedLines,
   toMatrix,
@@ -35,6 +37,7 @@ export function PoLinesPanel({
   productCode,
   lines,
   editable,
+  inlineEdit = false,
   onSaved,
   onClose,
 }: {
@@ -43,6 +46,7 @@ export function PoLinesPanel({
   productCode: string | null;
   lines: PoApprovalLine[];
   editable: boolean;
+  inlineEdit?: boolean;
   onSaved: () => void;
   onClose: () => void;
 }) {
@@ -50,6 +54,10 @@ export function PoLinesPanel({
   const [mode, setMode] = useState<Mode>(editable ? 'matrix' : 'paste');
   const [ctx, setCtx] = useState<PoLineContext | null>(null);
   const [text, setText] = useState('');
+  const [matrixRows, setMatrixRows] = useState<string[]>(() => {
+    const variants = [...new Set(lines.filter((line) => Number(line.qty) > 0).map((line) => (line.product_variant ?? '').toUpperCase()).filter(Boolean))];
+    return variants.length ? variants : [''];
+  });
   const [grid, setGrid] = useState<Record<string, Record<string, string>>>(() => {
     const g: Record<string, Record<string, string>> = {};
     for (const l of lines) {
@@ -96,6 +104,8 @@ export function PoLinesPanel({
       g[l.product_variant][l.size] = String(l.qty);
     }
     setGrid(g);
+    const variants = [...new Set(draft.map((line) => line.product_variant))];
+    setMatrixRows(variants.length ? variants : ['']);
     setMode('matrix');
   }
 
@@ -103,10 +113,28 @@ export function PoLinesPanel({
     () => toMatrix(draft, ctx?.variants ?? [], ctx?.sizes ?? []),
     [draft, ctx],
   );
-  const { checks, totalQty, totalPending, over } = useMemo(
+  const { totalQty, totalPending, over } = useMemo(
     () => checkLines(draft, ctx?.pending ?? [], ctx?.variants ?? []),
     [draft, ctx],
   );
+
+  const reviewMatrix = useMemo(() => {
+    const sizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
+    const groups = new Map<string, { variant: string; quantities: Record<string, number>; total: number }>();
+    for (const line of (editable ? draft : lines)) {
+      const qty = Number(line.qty);
+      const variant = (line.product_variant ?? '').trim().toUpperCase();
+      const size = (line.size ?? '').trim().toUpperCase();
+      if (!variant || (!inlineEdit || !editable) && !(qty > 0)) continue;
+      if (!sizes.includes(size)) sizes.push(size);
+      const group = groups.get(variant) ?? { variant, quantities: {}, total: 0 };
+      group.quantities[size] = (group.quantities[size] ?? 0) + qty;
+      group.total += qty;
+      groups.set(variant, group);
+    }
+    const pending = new Map((ctx?.pending ?? []).map((row) => [row.sku.toUpperCase(), row.pendingQty]));
+    return { sizes, groups: [...groups.values()], pending };
+  }, [lines, ctx, inlineEdit, editable, draft]);
 
   function readText(raw: string) {
     const r = parsePastedLines(raw, ctx?.colours ?? {});
@@ -141,8 +169,9 @@ export function PoLinesPanel({
         setSuggestion(s);
         if (s?.lines.length) {
           setDraft(s.lines);
+          setMatrixRows([...new Set(s.lines.map((line) => line.product_variant))]);
           setIssues([]);
-          setGrid({});
+          setGrid(Object.fromEntries([...new Set(s.lines.map((line) => line.product_variant))].map((variant) => [variant, Object.fromEntries(s.lines.filter((line) => line.product_variant === variant).map((line) => [line.size, String(line.qty)]))])));
         }
       })
       .finally(() => setSuggesting(false));
@@ -173,12 +202,9 @@ export function PoLinesPanel({
           SKU quantities — {poRef ?? `PO #${poId}`}
           <InfoDot text={"WHAT: the pieces this PO orders, per SKU (colour + size).\n\nHOW: three ways in, all landing on the same rows — Paste (copy the block straight out of Excel: either colour/size/quantity columns, or sizes across the top with a colour per row), Matrix (type into a grid of this product's colours × sizes), or a CSV file. Every row is matched against the pieces already pending for that SKU on open POs before you save.\n\nUSE: the PO quantity is the sum of these lines — it is never typed."} />
         </strong>
-        <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={onClose} aria-label="Close">
-          <X size={14} />
-        </button>
       </div>
 
-      {editable && (
+      {editable && !inlineEdit && (
         <div className="role-tabs pl-tabs" role="tablist" aria-label="How to enter quantities">
           <button role="tab" aria-selected={mode === 'matrix'} className={mode === 'matrix' ? 'active' : ''} onClick={openMatrix}>
             <Grid3x3 size={13} /> Fill the table
@@ -227,7 +253,7 @@ export function PoLinesPanel({
         </Notice>
       )}
 
-      {editable && mode === 'paste' && (
+      {editable && !inlineEdit && mode === 'paste' && (
         <div className="pl-paste">
           <textarea
             className="wf-textarea pl-textarea"
@@ -257,7 +283,7 @@ export function PoLinesPanel({
         </div>
       )}
 
-      {editable && mode === 'csv' && (
+      {editable && !inlineEdit && mode === 'csv' && (
         <div className="pl-csv">
           <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv" onChange={(e) => onFile(e.target.files?.[0])} />
           <p className="wf-subtle pl-hint">
@@ -279,32 +305,51 @@ export function PoLinesPanel({
         </p>
       )}
 
-      {editable && mode === 'matrix' && (
+      {editable && !inlineEdit && mode === 'matrix' && (
         <div className="table-scroll pl-matrix">
           {!ctx ? (
             <p className="wf-subtle">Loading this product’s colours…</p>
           ) : (
             <table className="wide-table wf-grid pl-fill">
+              <colgroup>
+                <col style={{width: '16%'}} />
+                <col style={{width: '13%'}} />
+                <col style={{width: '11%'}} />
+                {matrix.sizes.map((size) => <col key={size} style={{width: `${49 / Math.max(matrix.sizes.length, 1)}%`}} />)}
+                <col style={{width: '7%'}} /><col style={{width: '4%'}} />
+              </colgroup>
               <thead>
                 <tr>
+                  <th>Variant code <HeaderInfo label="Product SKU" text="The colour variant code; with the size it makes the SKU (e.g. SDCPBL + _S)." /></th>
                   <th>Dyed fabric SKU <HeaderInfo label="Dyed fabric SKU" text="The dyed fabric this colour is cut from, as the product master holds it." /></th>
                   <th>Colour</th>
-                  <th>Product SKU <HeaderInfo label="Product SKU" text="The colour variant code; with the size it makes the SKU (e.g. SDCPBL + _S)." /></th>
                   {matrix.sizes.map((s) => (
                     <th key={s} className="num">{s}</th>
                   ))}
-                  <th className="num">Total</th>
+                  <th className="num">Total</th><th aria-label="Row actions" />
                 </tr>
               </thead>
               <tbody>
-                {matrix.variants.map((v) => {
+                {matrixRows.map((v, rowIndex) => {
                   const info = ctx.variantInfo?.[v];
                   const rowTotal = matrix.sizes.reduce((sum, s) => sum + (Number(grid[v]?.[s]) || 0), 0);
                   return (
-                    <tr key={v} className={rowTotal ? 'is-filled' : undefined}>
+                    <tr key={rowIndex} className={rowTotal ? 'is-filled' : undefined}>
+                      <td className="pl-variant-picker">
+                        <Combobox ariaLabel={`Variant code row ${rowIndex + 1}`} value={v} allowFreeText={false} disabled={pending}
+                          placeholder="Choose variant code"
+                          options={ctx.variants.filter((variant) => variant === v || !matrixRows.includes(variant)).map((variant) => ({value: variant, label: variant, detail: ctx.variantInfo[variant]?.colour ?? undefined}))}
+                          onChange={(variant) => {
+                            if (variant && matrixRows.some((row, index) => index !== rowIndex && row === variant)) return;
+                            setMatrixRows((rows) => rows.map((row, index) => index === rowIndex ? variant : row));
+                            const next = {...grid};
+                            if (v) delete next[v];
+                            if (variant) next[variant] = {};
+                            applyMatrix(next);
+                          }} />
+                      </td>
                       <td className="mono">{info?.dyedFabricSku ?? <span className="wf-subtle">—</span>}</td>
                       <td>{info?.colour ?? <span className="wf-subtle">—</span>}</td>
-                      <td className="mono pl-matrix-row">{v}</td>
                       {matrix.sizes.map((s) => {
                         // A size the master has no SKU for is greyed, but can still be typed into.
                         const known = !info?.sizes.length || info.sizes.includes(s);
@@ -312,6 +357,8 @@ export function PoLinesPanel({
                           <td key={s} className={`num input-col${known ? '' : ' pl-nosku'}`}>
                             <input
                               type="number"
+                              disabled={!v || pending}
+                              step={1}
                               min={0}
                               aria-label={`${v} ${s}`}
                               title={known ? `${v}_${s}` : `${v}_${s} is not in the product master`}
@@ -323,23 +370,28 @@ export function PoLinesPanel({
                         );
                       })}
                       <td className="num">{rowTotal ? fmt.format(rowTotal) : '—'}</td>
+                      <td><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending} aria-label={`Remove variant row ${rowIndex + 1}`}
+                        onClick={() => {
+                          setMatrixRows((rows) => rows.filter((_, index) => index !== rowIndex));
+                          const next = {...grid}; if (v) delete next[v]; applyMatrix(next);
+                        }}><Trash2 size={14} /></button></td>
                     </tr>
                   );
                 })}
-                {matrix.variants.length > 0 && (
+                {matrixRows.length > 0 && (
                   <tr className="pl-fill-total">
                     <td colSpan={3}>Total</td>
                     {matrix.sizes.map((s) => {
-                      const t = matrix.variants.reduce((sum, v) => sum + (Number(grid[v]?.[s]) || 0), 0);
+                      const t = matrixRows.filter(Boolean).reduce((sum, v) => sum + (Number(grid[v]?.[s]) || 0), 0);
                       return <td key={s} className="num">{t ? fmt.format(t) : '—'}</td>;
                     })}
-                    <td className="num">{fmt.format(totalQty)}</td>
+                    <td className="num">{fmt.format(totalQty)}</td><td />
                   </tr>
                 )}
-                {!matrix.variants.length && (
+                {!matrixRows.length && (
                   <tr>
-                    <td colSpan={matrix.sizes.length + 4} className="wf-empty-cell">
-                      {ctx.npd
+                    <td colSpan={matrix.sizes.length + 5} className="wf-empty-cell">
+                      {ctx.variants.length ? 'Click Add variant row to choose a variant and enter size quantities.' : ctx.npd
                         ? `No colour code could be read from the NPD SKU code of ${productCode ?? 'this product'} — use Paste instead, or fix the SKU code on NPD Tracker V7.`
                         : `No colours on record for ${productCode ?? 'this product'} in the product master — use Paste instead.`}
                     </td>
@@ -348,6 +400,10 @@ export function PoLinesPanel({
               </tbody>
             </table>
           )}
+          {ctx && <div className="pl-add-row">
+            <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" disabled={pending || matrixRows.includes('') || matrixRows.filter(Boolean).length >= ctx.variants.length}
+              onClick={() => setMatrixRows((rows) => [...rows, ''])}><Plus size={14} /> Add variant row</button>
+          </div>}
         </div>
       )}
 
@@ -386,75 +442,54 @@ export function PoLinesPanel({
         )}
       </div>
 
-      <div className="table-scroll">
-        <table className="wide-table wf-grid">
-          <thead>
-            <tr>
-              <th>SKU <HeaderInfo label="SKU" /></th>
-              <th>Colour <HeaderInfo label="Colour" /></th>
-              <th>Size <HeaderInfo label="Size" /></th>
-              <th className="num">This PO <HeaderInfo label="Qty" text="Pieces this PO orders for the SKU." /></th>
-              <th className="num">
-                Already pending
-                <HeaderInfo label="Already pending" text={"WHAT: pieces of this exact SKU still to arrive on other open POs.\n\nHOW: summed from every open PO line for the product, matched on colour + size.\n\nUSE: ordering more than is outstanding is allowed, but it should be deliberate — the approver sees the same comparison."} />
-              </th>
-              <th className="num">
-                Difference
-                <HeaderInfo label="Difference" text="This PO minus what is already pending for the SKU. Red when this PO orders more than is still outstanding." />
-              </th>
-              <th>Line status <HeaderInfo label="Line status" /></th>
-            </tr>
-          </thead>
-          <tbody>
-            {checks.map((c) => {
-              const was = lines.find(
-                (l) => (l.product_variant ?? '').toUpperCase() === c.product_variant && (l.size ?? '').toUpperCase() === c.size,
-              );
-              return (
-                <tr key={c.sku} className={c.unknownVariant ? 'pl-unknown' : undefined}>
-                  <td className="mono">{c.sku}</td>
-                  <td className="mono">
-                    {c.product_variant}
-                    {c.unknownVariant && <small className="wf-error-text"> not an active colour</small>}
-                  </td>
-                  <td>{c.size || '—'}</td>
-                  <td className="num">{fmt.format(c.qty)}</td>
-                  <td className="num">{c.pendingQty ? fmt.format(c.pendingQty) : '—'}</td>
-                  <td className={`num${c.delta > 0 && c.pendingQty > 0 ? ' wf-error-text' : ''}`}>
-                    {c.pendingQty ? `${c.delta > 0 ? '+' : ''}${fmt.format(c.delta)}` : '—'}
-                  </td>
-                  <td>
-                    {was?.line_status === 'rework' ? (
-                      <span className="wf-over-tag" title={was.rework_notes ?? ''}>rework</span>
-                    ) : (
-                      <span className="wf-subtle">—</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {!checks.length && (
-              <tr>
-                <td colSpan={7} className="wf-empty-cell">
-                  No SKU quantities yet — paste them, type them in the matrix, or upload a CSV.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
+        <div className="table-scroll">
+          <table className="wide-table wf-grid pl-review-matrix" aria-label="SKU quantities by colour and size">
+            <thead><tr>
+              <th scope="col">Colour</th><th scope="col">Variant Code</th><th scope="col">Quantity</th>
+              {reviewMatrix.sizes.map((size) => <th scope="col" className="num" key={size}>{size || 'Unspecified'}</th>)}
+              <th scope="col" className="num">Total PO Qty</th>
+            </tr></thead>
+            <tbody>
+              {reviewMatrix.groups.map((group) => (
+                <Fragment key={group.variant}>
+                  <tr>
+                    <th rowSpan={2} scope="rowgroup">{ctx?.variantInfo[group.variant]?.colour || group.variant}</th>
+                    <td rowSpan={2} className="mono">{group.variant}</td>
+                    <th scope="row">PO Qty</th>
+                    {reviewMatrix.sizes.map((size) => <td key={size} className="num">
+                      {inlineEdit && editable ? <input type="number" min="0" step="1" disabled={pending}
+                        aria-label={`PO quantity ${group.variant} ${size || 'unspecified'}`}
+                        value={group.quantities[size] || ''}
+                        onChange={(event) => {
+                          const qty = Math.max(0, Math.floor(Number(event.target.value) || 0));
+                          setDraft((rows) => [...rows.filter((row) => row.product_variant !== group.variant || row.size !== size),
+                            {product_variant: group.variant, size, qty}]);
+                        }} /> : group.quantities[size] ? fmt.format(group.quantities[size]) : '—'}
+                    </td>)}
+                    <td rowSpan={2} className="num"><strong>{fmt.format(group.total)}</strong></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">In-Process Qty</th>
+                    {reviewMatrix.sizes.map((size) => <td key={size} className="num">{ctx ? fmt.format(reviewMatrix.pending.get(skuOf(group.variant, size)) ?? 0) : 'Loading…'}</td>)}
+                  </tr>
+                </Fragment>
+              ))}
+              {!reviewMatrix.groups.length && <tr><td colSpan={reviewMatrix.sizes.length + 4} className="wf-empty-cell">{editable ? 'Add a variant row and fill its size quantities to see the summary.' : 'No saved SKU quantities. Click Edit to add quantities.'}</td></tr>}
+            </tbody>
+          </table>
+          <p className="wf-subtle pl-review-help">In-Process Qty shows pending quantities on open POs for the same variant and size.</p>
+        </div>
       {editable && (
         <div className="wf-footer-actions">
-          <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={save} disabled={pending || !draft.length}>
+          <button type="button" className="wf-btn wf-btn-sm pl-save-button" onClick={save} disabled={pending || !draft.length}>
             <Save size={14} /> {pending ? 'Saving…' : `Save ${fmt.format(draft.length)} SKU${draft.length === 1 ? '' : 's'} · ${fmt.format(totalQty)} pcs`}
           </button>
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setDraft([]); setText(''); setGrid({}); setIssues([]); }} disabled={pending}>
+          {!inlineEdit && <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => { setDraft([]); setText(''); setGrid({}); setMatrixRows(['']); setIssues([]); }} disabled={pending}>
             Clear
-          </button>
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={onClose} disabled={pending}>
-            Close
-          </button>
+          </button>}
+          {inlineEdit && <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={onClose} disabled={pending}>
+            Cancel
+          </button>}
         </div>
       )}
     </div>

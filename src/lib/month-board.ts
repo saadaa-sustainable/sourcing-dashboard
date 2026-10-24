@@ -16,6 +16,8 @@ export type MonthBoardTrackProgress = {
 };
 
 export type MonthBoardCard = {
+  /** Optional extra search terms without changing displayed card labels. */
+  searchText?: string;
   id: string;
   /** YYYY-MM-01, for sorting. */
   month: string;
@@ -85,6 +87,7 @@ export type MonthBoardDetail = {
 };
 
 export type MonthBoardData = {
+  listActions?: 'all';
   columns: MonthBoardColumn[];
   /** Cards actually shown in the board. */
   cards: MonthBoardCard[];

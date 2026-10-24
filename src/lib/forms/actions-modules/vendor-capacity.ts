@@ -5,8 +5,10 @@ import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
 import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
 import { createPublicClient } from '@/lib/supabase/public';
-import { computeClosureCompliance } from '@/lib/business-logic';
+import { capacityRulesFrom, vendorCapacityModel, computeClosureCompliance } from '@/lib/business-logic';
 import { recomputeExpectedCost } from '@/lib/standard-cost';
+import { pageAll } from '@/lib/supabase/page-all';
+import { loadAnalyticsRules } from '../queries';
 import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
 import { CAPACITY_WEEKLY_LOCK, canApprove, canEdit, canSubmit, capacityLocked, capacityWeekNext, statusOnSubmit } from '../approval';
 import {
@@ -60,6 +62,32 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
     }
   }
 
+  const machines = numOrNull(formData.get('machines_allocated'));
+  const karigar = numOrNull(formData.get('active_karigar'));
+  if (machines == null || karigar == null || !Number.isInteger(machines) || !Number.isInteger(karigar) || machines < 0 || karigar < 0) {
+    return fail('Enter valid non-negative whole numbers for machines and karigars.');
+  }
+  let model;
+  try {
+    const [masters, types, loads, rules] = await Promise.all([
+      pageAll(() => supabase.from('vendor_master_data').select('vendor_code, primary_type').order('vendor_code')),
+      pageAll(() => supabase.from('vendor_type_master').select('vendor_code, vendor_type').order('vendor_code')),
+      pageAll(() => supabase.from('sd_vendor_in_process').select('vendor_code, in_process_qty').order('vendor_code')),
+      loadAnalyticsRules(),
+    ]);
+    const key = (value: unknown) => String(value ?? '').trim().toLowerCase();
+    const code = key(vendor_code);
+    const master = masters.data.find((v) => key(v.vendor_code) === code);
+    const type = types.data.find((v) => key(v.vendor_code) === code);
+    const load = loads.data.find((v) => key(v.vendor_code) === code);
+    model = vendorCapacityModel({ machines, karigar, vendorType: master?.primary_type || type?.vendor_type || '', inProcessQty: Number(load?.in_process_qty) || 0 }, capacityRulesFrom(rules));
+  } catch {
+    return fail('Could not verify current vendor capacity. Please try again.');
+  }
+  const reasonRequired = model.over || karigar < 15;
+  const reason = String(formData.get('update_reason') ?? '').trim();
+  if (reasonRequired && !reason) return fail('A reason is required when capacity is overutilized or active karigars allocated is fewer than 15.');
+
   // One current row per vendor: this save overwrites just this vendor's record and
   // re-stamps entry_date, without touching or requiring any other vendor.
   const now = new Date().toISOString();
@@ -68,7 +96,8 @@ export async function saveVendorCapacityRow(formData: FormData): Promise<ActionR
     vendor_name: formData.get('vendor_name') ? String(formData.get('vendor_name')) : null,
     machines_allocated: numOrNull(formData.get('machines_allocated')),
     active_karigar: numOrNull(formData.get('active_karigar')),
-    capacity_per_month: numOrNull(formData.get('capacity_per_month')),
+    capacity_per_month: model.capacityPerMonth,
+    update_reason: reasonRequired ? reason : null,
     submitted_by: user.email,
     submitted_at: now,
     entry_date: now,
@@ -122,4 +151,3 @@ export async function deleteVendorProductAllocation(formData: FormData): Promise
   revalidatePath('/vendor-capacity');
   return done('Allocation removed.');
 }
-

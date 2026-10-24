@@ -827,6 +827,7 @@ export type VendorCapacityLog = {
   machines_allocated: number | null;
   active_karigar: number | null;
   capacity_per_month: number | null;
+  update_reason?: string | null;
   machines_at_onboarding: number | null;
   capacity_signed: number | null;
   submitted_by: string;
@@ -1578,6 +1579,8 @@ export type PoApproval = {
   edited_before_approval?: boolean | null;
   /** The approver changed submitted values when approving (Edit & approve). */
   approver_edited?: boolean | null;
+  rework_sections?: ('cost' | 'tna' | 'sku')[] | null;
+  tna_rework_saved_at?: string | null;
   rework_notes?: string | null;
   reworked_by?: string | null;
   reworked_at?: string | null;

@@ -57,6 +57,7 @@ export const ALL_VIEWS: ViewDef[] = [
   { path: '/vendor-invoices', label: 'Vendor Invoices', group: 'PO Workflow' },
   { path: '/po-manual-adjustment', label: 'Manual Data Ingestion', group: 'Governance & Data' },
   { path: '/receivable-plan', label: 'Inward Plan', group: 'Planning' },
+  { path: '/inward-plan-v2', label: 'Inward Plan V2', group: 'Planning' },
   { path: '/cash-flow', label: 'Cash Flow', group: 'PO Workflow', adminOnly: true },
   { path: '/discontinue', label: 'Discontinued Products View', group: 'Governance & Data' },
   { path: '/vendor-deboarding', label: 'Vendor De-Boarding', group: 'Governance & Data' },

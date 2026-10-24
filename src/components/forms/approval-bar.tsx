@@ -1,5 +1,6 @@
 'use client';
 
+import { PO_REWORK_SECTIONS, type PoReworkSection } from '@/lib/po-rework';
 import { useState, useTransition } from 'react';
 import { toastError } from '@/lib/toast';
 import { Check, PencilLine, RotateCcw, X } from 'lucide-react';
@@ -30,15 +31,22 @@ export function ApprovalBar({
 }) {
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<null | 'reject' | 'rework'>(null);
+  const [sections, setSections] = useState<PoReworkSection[]>([]);
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const canEditApprove = (EDITABLE_APPROVALS as readonly string[]).includes(entityType);
+  const isPoApproval = entityType === 'po_approval';
+  const rejectLabel = isPoApproval ? 'Reject PO' : 'Reject / Discard';
+  const canEditApprove = !isPoApproval && (EDITABLE_APPROVALS as readonly string[]).includes(entityType);
 
   function decide(decision: 'approve' | 'reject' | 'rework') {
     setError(null);
     if ((decision === 'reject' || decision === 'rework') && !notes.trim()) {
-      setError('A remark is mandatory for Rework / Reassign and Reject / Discard.');
+      setError(`A remark is mandatory for Rework / Reassign and ${rejectLabel}.`);
+      return;
+    }
+    if (entityType === 'po_approval' && decision === 'rework' && !sections.length) {
+      setError('Select at least one section requiring rework.');
       return;
     }
     const payload = new FormData();
@@ -47,6 +55,7 @@ export function ApprovalBar({
     payload.set('entity_label', entityLabel);
     payload.set('decision', decision);
     payload.set('notes', notes);
+    if (entityType === 'po_approval' && decision === 'rework') payload.set('rework_sections', JSON.stringify(sections));
 
     start(async () => {
       const result = await decideApproval(payload);
@@ -54,6 +63,7 @@ export function ApprovalBar({
       else {
         setMode(null);
         setNotes('');
+        setSections([]);
       }
       onDone?.(result);
     });
@@ -61,12 +71,26 @@ export function ApprovalBar({
 
   return (
     <div className="wf-approval-bar">
+      {entityType === 'po_approval' && mode === 'rework' && (
+        <fieldset disabled={pending} className="poa-rework-sections">
+          <legend>Sections requiring rework (select at least one)</legend>
+          {PO_REWORK_SECTIONS.map((section) => (
+            <label key={section.key}>
+              <input type="checkbox" checked={sections.includes(section.key)}
+                onChange={(event) => setSections((current) => event.target.checked
+                  ? [...current, section.key] : current.filter((key) => key !== section.key))} />
+              {section.label}
+            </label>
+          ))}
+          <p>Only selected sections can be edited for resubmission.</p>
+        </fieldset>
+      )}
       <textarea
         className="wf-textarea"
         rows={2}
         placeholder={
           mode === 'reject'
-            ? 'Remark for Reject / Discard (required) — sent to the submitter'
+            ? `Remark for ${rejectLabel} (required) - sent to the submitter`
             : mode === 'rework'
               ? 'Remark for Rework / Reassign (required) — sent to the submitter'
               : 'Comment (optional) — recorded with your approval'
@@ -87,7 +111,7 @@ export function ApprovalBar({
               {pending
                 ? 'Working…'
                 : mode === 'reject'
-                  ? 'Confirm Reject / Discard'
+                  ? `Confirm ${rejectLabel}`
                   : 'Confirm Rework / Reassign'}
             </button>
             <button
@@ -109,7 +133,7 @@ export function ApprovalBar({
               disabled={pending}
               onClick={() => decide('approve')}
             >
-              <Check size={15} /> {pending ? 'Working…' : 'Approve'}
+              <Check size={15} /> {pending ? 'Working…' : isPoApproval ? 'Approve PO' : 'Approve'}
             </button>
             {canEditApprove && (
               <button type="button" className="wf-btn wf-btn-ghost" disabled={pending} onClick={() => setEditing(true)}>
@@ -128,7 +152,7 @@ export function ApprovalBar({
               className="wf-btn wf-btn-ghost"
               onClick={() => setMode('reject')}
             >
-              <X size={15} /> Reject / Discard
+              <X size={15} /> {rejectLabel}
             </button>
           </>
         )}

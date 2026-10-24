@@ -37,6 +37,7 @@ export type VendorType = {
 };
 
 export type VendorMaster = {
+  is_active?: boolean | null;
   vendor_code: string;
   vendor_name: string | null;
   onboarding_date: string | null;

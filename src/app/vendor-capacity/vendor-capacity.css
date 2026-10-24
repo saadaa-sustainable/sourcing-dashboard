@@ -436,3 +436,61 @@
 .ui-view-vendor-capacity .vc2-metric + .vc2-metric { border-left-color: #d2d5d8; }
 .ui-view-vendor-capacity .vc2-n { box-shadow: 0 0 0 1px #d2d5d8; }
 .ui-view-vendor-capacity .vc2-tab[aria-selected="true"] { box-shadow: inset 0 0 0 1px #c9cccf; }
+
+/* Capacity exception reason: keep label, control and helper aligned. */
+.ui-view-vendor-capacity .vc-update-reason { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 12px 0 0; width: 100%; min-width: 220px; max-width: 320px; white-space: normal; text-align: left; }
+.ui-view-vendor-capacity .vc-update-reason .vc-update-reason-label { display: block; margin: 0; color: #303330; font-size: 11px; font-weight: 500; line-height: 1.5; }
+.ui-view-vendor-capacity .vc-update-reason .vc-required { display: inline; color: #b0261a; }
+.ui-view-vendor-capacity .vc-update-reason textarea { box-sizing: border-box; display: block; width: 100%; min-height: 76px; margin: 0; padding: 8px 10px; border: 1px solid #b8bdb9; border-radius: 6px; background: #fff; color: #303330; font: inherit; font-size: 12px; line-height: 1.5; resize: vertical; }
+.ui-view-vendor-capacity .vc-update-reason textarea:focus { outline: 2px solid #303330; outline-offset: 2px; }
+.ui-view-vendor-capacity .vc-update-reason small { display: block; margin: 0; color: #616a64; font-size: 11px; font-weight: 400; line-height: 1.4; }
+
+.ui-view-vendor-capacity .vc-saved-reason { margin-top: 10px; max-width: 320px; white-space: normal; text-align: left; }
+.ui-view-vendor-capacity .vc-saved-reason > span { display: block; color: #616a64; font-size: 9px; font-weight: 500; line-height: 1.4; }
+.ui-view-vendor-capacity .vc-saved-reason > p { margin: 4px 0 0; color: #303330; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Update compliance: reporting discipline, separate from capacity utilization. */
+.ui-view-vendor-capacity .vc-compliance { display: grid; gap: 16px; padding: 16px 0; }
+.ui-view-vendor-capacity .vc-compliance-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.ui-view-vendor-capacity .vc-compliance-heading h2 { margin: 0 0 6px; font-size: 18px; }
+.ui-view-vendor-capacity .vc-compliance-heading p, .ui-view-vendor-capacity .vc-compliance-note { margin: 0; color: #616a64; font-size: 12px; line-height: 1.5; }
+.ui-view-vendor-capacity .vc-compliance label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #303330; }
+.ui-view-vendor-capacity .vc-compliance input:not([type=checkbox]), .ui-view-vendor-capacity .vc-compliance select { min-height: 38px; padding: 7px 10px; border: 1px solid #b8bdb9; border-radius: 6px; background: #fff; color: #303330; font: inherit; }
+.ui-view-vendor-capacity .vc-compliance-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.ui-view-vendor-capacity label.vc-compliance-toggle { flex-direction: row; align-items: center; min-height: 38px; }
+.ui-view-vendor-capacity .vc-compliance-detail { display: block; margin-top: 4px; font-size: 11px; color: #616a64; line-height: 1.5; white-space: normal; }
+.ui-view-vendor-capacity .vc-compliance-table { min-width: 980px; width: 100%; }
+.ui-view-vendor-capacity .vc-compliance-table td { vertical-align: top; }
+.ui-view-vendor-capacity .vc-compliance-weeks { display: flex; flex-wrap: wrap; gap: 6px; min-width: 190px; }
+.ui-view-vendor-capacity .vc-compliance-week { display: inline-block; padding: 4px 6px; border: 1px solid #d2d5d8; border-radius: 4px; font-size: 10px; white-space: nowrap; color: #616a64; }
+.ui-view-vendor-capacity .vc-compliance-week.is-updated { background: #edf7f1; color: #24583d; }
+.ui-view-vendor-capacity .vc-compliance-week.is-missed { background: #fff4e5; color: #825400; }
+.ui-view-vendor-capacity .vc-compliance-method { font-size: 12px; color: #616a64; line-height: 1.7; }
+.ui-view-vendor-capacity .vc-compliance-method summary { cursor: pointer; color: #303330; font-weight: 600; }
+
+.ui-view-vendor-capacity .vc-compliance-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 760px) { .ui-view-vendor-capacity .vc-compliance-kpis { grid-template-columns: 1fr; } }
+
+.ui-view-vendor-capacity .vc-vendor-status { display: inline-block; padding: 3px 7px; border: 1px solid #d2d5d8; border-radius: 4px; font-size: 11px; line-height: 1.4; white-space: nowrap; }
+.ui-view-vendor-capacity .vc-vendor-status.is-active { color: #24583d; background: #edf7f1; }
+.ui-view-vendor-capacity .vc-vendor-status.is-inactive { color: #616a64; background: #f0f1f0; }
+
+/* Yellow attention cue for capacity updates that are due this week. */
+.ui-view-vendor-capacity .vc-compliance-due,
+.ui-view-vendor-capacity .vc-compliance-week.is-due { background: #fff1a8; color: #654b00; border: 1px solid #e4bd35; font-weight: 600; }
+.ui-view-vendor-capacity .vc-compliance-due { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; line-height: 1.4; }
+
+.ui-view-vendor-capacity a.vc-compliance-link { justify-self: start; width: fit-content; height: auto; min-height: 34px; padding: 8px 12px; background: #ededed; color: #303330; border: 1px solid #d2d5d8; box-shadow: none; white-space: normal; line-height: 1.4; }
+.ui-view-vendor-capacity a.vc-compliance-link:hover { background: #e2e2e2; color: #1f211f; }
+.ui-view-vendor-capacity a.vc-compliance-link:focus-visible { outline: 2px solid #616a64; outline-offset: 2px; }
+
+/* Landing summary uses one spacing rhythm without stacked child margins. */
+.ui-view-vendor-capacity .vc-compliance-summary { gap: 12px; padding: 0; margin: 0; }
+.ui-view-vendor-capacity .vc-compliance-summary > h2,
+.ui-view-vendor-capacity .vc-compliance-summary > .vc-compliance-kpis,
+.ui-view-vendor-capacity .vc-compliance-summary > .vc-compliance-link,
+.ui-view-vendor-capacity .vc-compliance-summary > .vc-compliance-note { margin: 0; }
+
+.ui-view-vendor-capacity .vc-compliance-summary > .vc-compliance-note { font-size: 11px; line-height: 1.5; }
+
+.ui-view-vendor-capacity .vc-compliance-kpis .vc-metric::after { content: none; }
