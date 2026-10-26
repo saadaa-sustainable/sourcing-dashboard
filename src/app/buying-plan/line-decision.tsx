@@ -41,6 +41,7 @@ export function LineDecision({
   lineKey,
   lineStatus,
   approverEdited,
+  autoApproved,
   label,
   entityLabel,
   edits = null,
@@ -50,6 +51,7 @@ export function LineDecision({
   planId: number;
   lineKey: string;
   lineStatus: string | null;
+  autoApproved?: boolean;
   approverEdited?: boolean;
   label: string;
   entityLabel: string;
@@ -63,7 +65,7 @@ export function LineDecision({
   if (!lineId) return <span className="wf-subtle">Not saved</span>;
   if (lineStatus === 'approved' || lineStatus === 'rejected' || lineStatus === 'rework') {
     const tone = lineStatus === 'approved' ? 'green' : 'red';
-    return <span className={`bp-badge ${tone}`}>{statusText(lineStatus as SdStatus, { approverEdited })}</span>;
+    return <span className={`bp-badge ${tone}`}>{statusText(lineStatus as SdStatus, { autoApproved, approverEdited })}</span>;
   }
 
   function run(kind: 'approve' | 'rework' | 'reject') {

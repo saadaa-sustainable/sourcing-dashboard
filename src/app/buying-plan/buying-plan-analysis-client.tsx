@@ -479,18 +479,18 @@ function AnalysisFunnel({ products, planMonth }: { products: BuyingPlanAnalysisP
     ];
     const max = Math.max(...stages.map((stage) => stage.value), 1);
     return (
-      <div key={metric} style={{ minWidth: 0, border: '1px solid var(--wf-border, #dedbd3)', borderRadius: 12, padding: 14 }}>
-        <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 750 }}>{isQty ? 'Quantity Funnel' : 'Value Funnel (INR)'}</h3>
+      <div key={metric} style={{ minWidth: 0, border: '1px solid var(--wf-border, #dedbd3)', borderRadius: 12, padding: 10 }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 750 }}>{isQty ? 'Quantity Funnel' : 'Value Funnel (INR)'}</h3>
         <div style={{ overflowX: 'auto', paddingBottom: 2 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(128px, 1fr))', gap: 10, minWidth: 820 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(128px, 1fr))', gap: 8, minWidth: 820 }}>
             {stages.map((stage, i) => (
-              <div key={stage.label} style={{ minWidth: 0, padding: 11, border: '1px solid var(--wf-border, #e5e2dc)', borderRadius: 10 }}>
+              <div key={stage.label} style={{ minWidth: 0, padding: 9, border: '1px solid var(--wf-border, #e5e2dc)', borderRadius: 10 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: 'var(--wf-muted-fg, #6b6861)' }}>{String(i + 1).padStart(2, '0')} · {stage.label}</span>
                   <span style={{ width: 7, height: 7, borderRadius: 99, background: stage.tone, flexShrink: 0 }} />
                 </div>
-                <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-.03em', margin: '9px 0 7px', overflowWrap: 'anywhere' }}>{format(stage.value)}</div>
-                <div style={{ height: 6, background: 'var(--wf-muted, #f0eee9)', borderRadius: 99, overflow: 'hidden', marginBottom: 7 }}>
+                <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-.03em', margin: '6px 0 5px', overflowWrap: 'anywhere' }}>{format(stage.value)}</div>
+                <div style={{ height: 6, background: 'var(--wf-muted, #f0eee9)', borderRadius: 99, overflow: 'hidden', marginBottom: 5 }}>
                   <div style={{ height: '100%', width: `${Math.min(100, (stage.value / max) * 100)}%`, background: stage.tone, borderRadius: 99 }} />
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--wf-muted-fg, #6b6861)', lineHeight: 1.4 }}>{stage.detail}</div>
@@ -503,15 +503,15 @@ function AnalysisFunnel({ products, planMonth }: { products: BuyingPlanAnalysisP
   };
 
   return (
-    <section className="bp-card" style={{ margin: '16px 0', padding: 20, border: '1px solid var(--wf-border, #dedbd3)', borderRadius: 16, background: 'var(--wf-card, #fff)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
+    <section className="bp-card bp-analysis-funnel" style={{ margin: 0, padding: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 750 }}>Buying Plan Analysis</h2>
           <p className="wf-subtle" style={{ margin: '5px 0 0', fontSize: 12 }}>Analysis only · {monthLabel(planMonth)} · quantity and value shown separately</p>
         </div>
-        <div style={{ display: 'flex', gap: 4, padding: 3, border: '1px solid var(--wf-border, #dedbd3)', borderRadius: 10 }} aria-label="Buying plan track">
-          <button type="button" className={`wf-btn wf-btn-sm ${track === 'fg' ? '' : 'wf-btn-ghost'}`} onClick={() => setTrack('fg')} aria-pressed={track === 'fg'}>Finished Goods</button>
-          <button type="button" className={`wf-btn wf-btn-sm ${track === 'material' ? '' : 'wf-btn-ghost'}`} onClick={() => setTrack('material')} aria-pressed={track === 'material'}>Material</button>
+        <div className="bp-analysis-track-switch" role="group" aria-label="Buying plan track">
+          <button type="button" className={track === 'fg' ? 'active' : ''} onClick={() => setTrack('fg')} aria-pressed={track === 'fg'}>Finished Goods</button>
+          <button type="button" className={track === 'material' ? 'active' : ''} onClick={() => setTrack('material')} aria-pressed={track === 'material'}>Material</button>
         </div>
       </div>
       {track === 'material' ? (
@@ -519,12 +519,12 @@ function AnalysisFunnel({ products, planMonth }: { products: BuyingPlanAnalysisP
           Material funnel data is not part of the current Analysis payload. Connect the approved Material plan and actual Material PO totals before showing accurate figures. No Material values are estimated or copied from Finished Goods.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
           {renderFunnel('qty')}
           {renderFunnel('value')}
         </div>
       )}
-      <p className="wf-subtle" style={{ margin: '12px 0 0', fontSize: 11 }}>Planned Buying is the issued PO amount covered by the plan, Un-Planned Buying is the issued amount above plan, and Short Buying is the approved amount not yet ordered. Total Buying = Planned Buying + Un-Planned Buying. Over Buying = max(0, Total Buying − Budgeted). Value is calculated using the existing planned and issued value fields.</p>
+      <p className="wf-subtle" style={{ margin: '8px 0 0', fontSize: 11 }}>Planned Buying is the issued PO amount covered by the plan, Un-Planned Buying is the issued amount above plan, and Short Buying is the approved amount not yet ordered. Total Buying = Planned Buying + Un-Planned Buying. Over Buying = max(0, Total Buying − Budgeted). Value is calculated using the existing planned and issued value fields.</p>
     </section>
   );
 }
@@ -725,27 +725,8 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
       <AnalysisFunnel products={products} planMonth={planMonth} />
 
       {/* Budgeted vs actual summary table */}
-      <section
-        className="bp-card"
-        style={{
-          margin: '16px 0',
-          overflow: 'hidden',
-          border: '1px solid var(--wf-border, #dedbd3)',
-          borderRadius: 16,
-          background: 'var(--wf-card, #fff)',
-        }}
-      >
-        <div
-          style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid var(--wf-border, #e5e1d8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-          }}
-        >
+      <section className="bp-card bp-analysis-budget">
+        <div className="bp-cardhead bp-analysis-budget-head">
           <div>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 750 }}>Budgeted vs actual</h2>
             <p className="wf-subtle" style={{ margin: '4px 0 0', fontSize: 12 }}>
@@ -755,48 +736,48 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
           <span className="wf-subtle" style={{ fontSize: 12 }}>Variance = actual − budgeted</span>
         </div>
         <div className="table-scroll">
-          <table className="wf-grid" style={{ minWidth: 760, width: '100%', borderCollapse: 'collapse', border: '1px solid var(--wf-border, #d6d3d1)' }}>
+          <table className="wf-grid bp-analysis-budget-table">
             <thead>
               <tr>
-                <th style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)', textAlign: 'left' }}>Metric</th>
-                <th className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)' }}>Budgeted</th>
-                <th className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)' }}>Actual issued</th>
-                <th className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)' }}>Variance</th>
-                <th className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)' }}>Variance %</th>
-                <th className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)' }}>Actual / budget</th>
-                <th style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '12px 14px', background: 'var(--wf-muted, #f5f3ef)', textAlign: 'center' }}>Details</th>
+                <th style={{ textAlign: 'left' }}>Metric</th>
+                <th className="num">Budgeted</th>
+                <th className="num">Actual issued</th>
+                <th className="num">Variance</th>
+                <th className="num">Variance %</th>
+                <th className="num">Actual / budget</th>
+                <th style={{ textAlign: 'center' }}>Details</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <th scope="row" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', textAlign: 'left' }}>Quantity (pcs)</th>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px' }}>{num.format(m.plannedQty)}</td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px' }}>{num.format(m.issuedQty)}</td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', color: m.issuedQty > m.plannedQty ? '#b45309' : m.issuedQty < m.plannedQty ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
+                <th scope="row" style={{ textAlign: 'left' }}>Quantity (pcs)</th>
+                <td className="num">{num.format(m.plannedQty)}</td>
+                <td className="num">{num.format(m.issuedQty)}</td>
+                <td className="num" style={{ color: m.issuedQty > m.plannedQty ? '#b45309' : m.issuedQty < m.plannedQty ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
                   {signed(m.issuedQty - m.plannedQty)}
                 </td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', color: m.issuedQty > m.plannedQty ? '#b45309' : m.issuedQty < m.plannedQty ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
+                <td className="num" style={{ color: m.issuedQty > m.plannedQty ? '#b45309' : m.issuedQty < m.plannedQty ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
                   {pctText(m.qtyVarPct)}
                 </td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', fontWeight: 700 }}>
+                <td className="num" style={{ fontWeight: 700 }}>
                   {m.plannedQty > 0 ? `${((m.issuedQty / m.plannedQty) * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', textAlign: 'center' }}>—</td>
+                <td style={{ textAlign: 'center' }}>—</td>
               </tr>
               <tr>
-                <th scope="row" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', textAlign: 'left' }}>Value (INR)</th>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px' }}>{money.format(m.plannedValue)}</td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px' }}>{money.format(m.issuedValue)}</td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', color: m.issuedValue > m.plannedValue ? '#b45309' : m.issuedValue < m.plannedValue ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
+                <th scope="row" style={{ textAlign: 'left' }}>Value (INR)</th>
+                <td className="num">{money.format(m.plannedValue)}</td>
+                <td className="num">{money.format(m.issuedValue)}</td>
+                <td className="num" style={{ color: m.issuedValue > m.plannedValue ? '#b45309' : m.issuedValue < m.plannedValue ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
                   {money.format(m.issuedValue - m.plannedValue)}
                 </td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', color: m.issuedValue > m.plannedValue ? '#b45309' : m.issuedValue < m.plannedValue ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
+                <td className="num" style={{ color: m.issuedValue > m.plannedValue ? '#b45309' : m.issuedValue < m.plannedValue ? '#b91c1c' : '#0f766e', fontWeight: 700 }}>
                   {pctText(m.valueVarPct)}
                 </td>
-                <td className="num" style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', fontWeight: 700 }}>
+                <td className="num" style={{ fontWeight: 700 }}>
                   {m.plannedValue > 0 ? `${((m.issuedValue / m.plannedValue) * 100).toFixed(1)}%` : '—'}
                 </td>
-                <td style={{ border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px', textAlign: 'center' }}>—</td>
+                <td style={{ textAlign: 'center' }}>—</td>
               </tr>
               {(() => {
                 const issuedNotBudgeted = exceptions.notBudgeted.reduce((a, r) => ({ qty: a.qty + r.issuedQty, value: a.value + r.issuedValue }), { qty: 0, value: 0 });
@@ -812,40 +793,39 @@ export function BuyingPlanAnalysisClient({ analysis, isAdmin = false }: { analys
                   plannedValue: a.plannedValue + r.plannedValue,
                   issuedValue: a.issuedValue + r.issuedValue,
                 }), { plannedQty: 0, issuedQty: 0, plannedValue: 0, issuedValue: 0 });
-                const cellStyle = { border: '1px solid var(--wf-border, #d6d3d1)', padding: '13px 14px' };
-                return <>
-                  <tr style={{ background: 'rgba(192, 57, 43, 0.045)' }}>
-                    <th scope="row" style={{ ...cellStyle, textAlign: 'left', color: '#c0392b' }}>
+                                return <>
+                  <tr>
+                    <th scope="row" style={{ textAlign: 'left', color: '#c0392b' }}>
                       <div>Issued but NOT budgeted</div>
                     </th>
-                    <td className="num" style={cellStyle}>—</td>
-                    <td className="num" style={cellStyle}>{num.format(issuedNotBudgeted.qty)} pcs<br />{money.format(issuedNotBudgeted.value)}</td>
-                    <td className="num" style={{ ...cellStyle, color: '#c0392b', fontWeight: 700 }}>+{num.format(issuedNotBudgeted.qty)} pcs<br />+{money.format(issuedNotBudgeted.value)}</td>
-                    <td className="num" style={cellStyle}>—</td>
-                    <td className="num" style={cellStyle}>—</td>
-                    <td style={{ ...cellStyle, textAlign: 'center' }}><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => scrollToDetailSection('issued-not-budgeted-details')}>View Detail</button></td>
+                    <td className="num">—</td>
+                    <td className="num">{num.format(issuedNotBudgeted.qty)} pcs<br />{money.format(issuedNotBudgeted.value)}</td>
+                    <td className="num" style={{ color: '#c0392b', fontWeight: 700 }}>+{num.format(issuedNotBudgeted.qty)} pcs<br />+{money.format(issuedNotBudgeted.value)}</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                    <td style={{ textAlign: 'center' }}><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => scrollToDetailSection('issued-not-budgeted-details')}>View Detail</button></td>
                   </tr>
-                  <tr style={{ background: 'rgba(217, 119, 6, 0.055)' }}>
-                    <th scope="row" style={{ ...cellStyle, textAlign: 'left', color: '#9a6b12' }}>
+                  <tr>
+                    <th scope="row" style={{ textAlign: 'left', color: '#9a6b12' }}>
                       <div>Issued ABOVE approved quantity</div>
                     </th>
-                    <td className="num" style={cellStyle}>{num.format(overApproved.plannedQty)} pcs<br />{money.format(overApproved.plannedValue)}</td>
-                    <td className="num" style={cellStyle}>{num.format(overApproved.issuedQty)} pcs<br />{money.format(overApproved.issuedValue)}</td>
-                    <td className="num" style={{ ...cellStyle, color: '#9a6b12', fontWeight: 700 }}>+{num.format(overApproved.issuedQty - overApproved.plannedQty)} pcs<br />+{money.format(overApproved.issuedValue - overApproved.plannedValue)}</td>
-                    <td className="num" style={cellStyle}>{overApproved.plannedQty > 0 ? `${(((overApproved.issuedQty - overApproved.plannedQty) / overApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{overApproved.plannedValue > 0 ? `${(((overApproved.issuedValue - overApproved.plannedValue) / overApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
-                    <td className="num" style={cellStyle}>{overApproved.plannedQty > 0 ? `${((overApproved.issuedQty / overApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{overApproved.plannedValue > 0 ? `${((overApproved.issuedValue / overApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
-                    <td style={{ ...cellStyle, textAlign: 'center' }}><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => scrollToDetailSection('issued-above-approved-details')}>View Detail</button></td>
+                    <td className="num">{num.format(overApproved.plannedQty)} pcs<br />{money.format(overApproved.plannedValue)}</td>
+                    <td className="num">{num.format(overApproved.issuedQty)} pcs<br />{money.format(overApproved.issuedValue)}</td>
+                    <td className="num" style={{ color: '#9a6b12', fontWeight: 700 }}>+{num.format(overApproved.issuedQty - overApproved.plannedQty)} pcs<br />+{money.format(overApproved.issuedValue - overApproved.plannedValue)}</td>
+                    <td className="num">{overApproved.plannedQty > 0 ? `${(((overApproved.issuedQty - overApproved.plannedQty) / overApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{overApproved.plannedValue > 0 ? `${(((overApproved.issuedValue - overApproved.plannedValue) / overApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
+                    <td className="num">{overApproved.plannedQty > 0 ? `${((overApproved.issuedQty / overApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{overApproved.plannedValue > 0 ? `${((overApproved.issuedValue / overApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
+                    <td style={{ textAlign: 'center' }}><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => scrollToDetailSection('issued-above-approved-details')}>View Detail</button></td>
                   </tr>
-                  <tr style={{ background: 'rgba(110, 105, 94, 0.055)' }}>
-                    <th scope="row" style={{ ...cellStyle, textAlign: 'left', color: '#6e695e' }}>
+                  <tr>
+                    <th scope="row" style={{ textAlign: 'left', color: '#6e695e' }}>
                       <div>Issued BELOW approved quantity</div>
                     </th>
-                    <td className="num" style={cellStyle}>{num.format(belowApproved.plannedQty)} pcs<br />{money.format(belowApproved.plannedValue)}</td>
-                    <td className="num" style={cellStyle}>{num.format(belowApproved.issuedQty)} pcs<br />{money.format(belowApproved.issuedValue)}</td>
-                    <td className="num" style={{ ...cellStyle, color: '#6e695e', fontWeight: 700 }}>{signed(belowApproved.issuedQty - belowApproved.plannedQty)} pcs<br />{money.format(belowApproved.issuedValue - belowApproved.plannedValue)}</td>
-                    <td className="num" style={cellStyle}>{belowApproved.plannedQty > 0 ? `${(((belowApproved.issuedQty - belowApproved.plannedQty) / belowApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{belowApproved.plannedValue > 0 ? `${(((belowApproved.issuedValue - belowApproved.plannedValue) / belowApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
-                    <td className="num" style={cellStyle}>{belowApproved.plannedQty > 0 ? `${((belowApproved.issuedQty / belowApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{belowApproved.plannedValue > 0 ? `${((belowApproved.issuedValue / belowApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
-                    <td style={{ ...cellStyle, textAlign: 'center' }}><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => scrollToDetailSection('issued-below-approved-details')}>View Detail</button></td>
+                    <td className="num">{num.format(belowApproved.plannedQty)} pcs<br />{money.format(belowApproved.plannedValue)}</td>
+                    <td className="num">{num.format(belowApproved.issuedQty)} pcs<br />{money.format(belowApproved.issuedValue)}</td>
+                    <td className="num" style={{ color: '#6e695e', fontWeight: 700 }}>{signed(belowApproved.issuedQty - belowApproved.plannedQty)} pcs<br />{money.format(belowApproved.issuedValue - belowApproved.plannedValue)}</td>
+                    <td className="num">{belowApproved.plannedQty > 0 ? `${(((belowApproved.issuedQty - belowApproved.plannedQty) / belowApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{belowApproved.plannedValue > 0 ? `${(((belowApproved.issuedValue - belowApproved.plannedValue) / belowApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
+                    <td className="num">{belowApproved.plannedQty > 0 ? `${((belowApproved.issuedQty / belowApproved.plannedQty) * 100).toFixed(1)}%` : '—'}<br />{belowApproved.plannedValue > 0 ? `${((belowApproved.issuedValue / belowApproved.plannedValue) * 100).toFixed(1)}%` : '—'}</td>
+                    <td style={{ textAlign: 'center' }}><button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => scrollToDetailSection('issued-below-approved-details')}>View Detail</button></td>
                   </tr>
                 </>;
               })()}

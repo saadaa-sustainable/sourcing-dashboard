@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { pageAll } from '@/lib/forms/queries-modules/_shared';
 
 /**
  * Item 2 — line-item CMTP revision audit. One row per changed CMTP line (old → new
@@ -27,16 +28,15 @@ export async function loadCmtpRevisions(
   productCodes?: string[],
 ): Promise<Record<string, CmtpRevision[]>> {
   const supabase = await createClient();
-  let query = supabase
+  const codes = (productCodes ?? []).map((c) => c.trim()).filter(Boolean);
+  const data = await pageAll<CmtpRevision>(() => {
+    let query = supabase
     .from('sd_cmtp_revision')
     .select('id, product_code, category, label, old_amount, new_amount, cm_before, cm_after, reason, revised_by, revised_at')
-    .order('revised_at', { ascending: false });
-
-  const codes = (productCodes ?? []).map((c) => c.trim()).filter(Boolean);
-  if (codes.length) query = query.in('product_code', codes);
-
-  const { data, error } = await query;
-  if (error || !data) return {};
+    .order('revised_at', { ascending: false }).order('id', { ascending: false });
+    if (codes.length) query = query.in('product_code', codes);
+    return query;
+  });
 
   const out: Record<string, CmtpRevision[]> = {};
   for (const row of data as CmtpRevision[]) {

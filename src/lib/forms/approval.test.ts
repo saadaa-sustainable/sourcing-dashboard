@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { buyingPlanMonthColumn, unstartedBuyingPlanTrack } from '../buying-plan-board';
 import {
   approversFor,
   canDecide,
+  canEdit,
   canDeletePo,
   canRework,
   sheetStatusText,
@@ -17,6 +19,30 @@ import {
 } from './approval';
 
 describe('approval workflow v2', () => {
+  it('keeps past approved months Closed and current approved months Approved', () => {
+    const card = (status: string, hasPlan = true) => ({ status, metrics: { hasPlan } });
+    assert.equal(buyingPlanMonthColumn([card('closed'), card('closed')]), 'closed');
+    assert.equal(buyingPlanMonthColumn([card('closed')]), 'closed');
+    assert.equal(buyingPlanMonthColumn([card('live'), card('draft', false)]), 'live');
+    assert.equal(buyingPlanMonthColumn([card('pending'), card('closed')]), 'pending');
+    assert.equal(buyingPlanMonthColumn([card('draft'), card('live')]), 'draft');
+    assert.equal(buyingPlanMonthColumn([card('draft', false), card('draft', false)]), 'draft');
+  });
+  it('closes unstarted past tracks only after the IST month boundary', () => {
+    assert.deepEqual(unstartedBuyingPlanTrack('2026-09-01', new Date('2026-09-30T18:29:59.999Z')),
+      { status: 'draft', label: 'Not started' });
+    assert.deepEqual(unstartedBuyingPlanTrack('2026-09-01', new Date('2026-09-30T18:30:00Z')),
+      { status: 'closed', label: 'Auto-Approved via Workflow' });
+    assert.equal(unstartedBuyingPlanTrack('2026-11-01', new Date('2026-10-24T00:00:00Z')).status, 'draft');
+  });
+  it('labels workflow approval separately without changing the approved lifecycle', () => {
+    assert.equal(statusText('approved', { autoApproved: true }), 'Auto-Approved via Workflow');
+    assert.equal(statusText('approved', { autoApproved: true, approverEdited: true }), 'Auto-Approved via Workflow');
+    assert.equal(statusText('approved', { autoApproved: false }), 'First time Approved');
+    assert.equal(statusText('approved', { approverEdited: true }), 'Edited & Approved');
+    assert.equal(statusText('pending_l2', { autoApproved: true }), 'Approval Pending');
+    assert.equal(canEdit('team', 'approved'), false);
+  });
   it('lets a reworked record be re-submitted like a draft', () => {
     assert.equal(canSubmit('team', 'rework'), true);
     assert.equal(canSubmit('team', 'draft'), true);

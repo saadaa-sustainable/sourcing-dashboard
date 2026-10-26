@@ -5,7 +5,7 @@ import { TrimHistoryPanel, type TrimSpread } from './trim-history-panel';
 import type { TrimChange } from '@/lib/forms/queries-modules/trim-history';
 import type { CostDocument } from '@/lib/cost-documents';
 import { confirmDelete } from '@/lib/confirm';
-import { useState, useTransition } from 'react';
+import { useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Link2, Lock, Pencil, Trash2, X } from 'lucide-react';
@@ -15,7 +15,6 @@ import { emitToast, toastError } from '@/lib/toast';
 import { COST_STAGE_TONE, costStageText, nextActor, targetParts } from '@/lib/forms/cost';
 import { canEdit } from '@/lib/forms/approval';
 import { CostRow, CostDetail, RateHistoryPanel } from '../standard-cost-client';
-import { CostDecisionBar } from '@/components/forms/cost-decision-bar';
 import type {
   CmtpComponent,
   ProductCatalogItem,
@@ -27,6 +26,8 @@ import type {
 } from '@/lib/forms/types';
 import type { TempProductInfo } from '@/lib/temp-product.server';
 import type { CmtpRevision } from '@/lib/standard-cost-revisions.server';
+import { CadPdfLinks } from '../workflow-panel';
+import type { CostSnapshot } from '@/lib/standard-cost-workflow';
 
 /** Mirrors the fabric buildup shape the cost sheet passes down. */
 type FabricBuildup = { grey: number | null; processing: number | null; finished: number | null };
@@ -75,6 +76,9 @@ export function StandardCostDetailClient({
   costDocs,
   trims,
   userEmail = '',
+  cadFiles = [],
+  workflowPanel,
+  initiallyEditing = false,
 }: {
   cost: StandardCost;
   productName: string | null;
@@ -101,8 +105,11 @@ export function StandardCostDetailClient({
   /** Trim History (FG only): this product's trim changes + each trim's spread across products. */
   trims?: { ready: boolean; changes: TrimChange[]; spread: Record<string, TrimSpread> } | null;
   userEmail?: string;
+  cadFiles?: CostSnapshot['documents']['files'];
+  workflowPanel?: ReactNode;
+  initiallyEditing?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initiallyEditing && track === 'material');
   const stageKey = cost.neg_stage ?? '';
   const latest = history[0] ?? null;
   const updatedOn = longDate(latest?.accepted_at ?? cost.updated_at);
@@ -110,8 +117,9 @@ export function StandardCostDetailClient({
   // Nothing on this page is editable until "Edit cost" is pressed. Reading a cost record and
   // changing one are different jobs, and a page full of live inputs invites the accidental
   // edit. The role/frozen check still applies on top: pressing the button cannot grant rights.
-  const canChange = editing && rateEditable;
+  const canChange = track === 'material' && editing && rateEditable;
   const isMat = track === 'material';
+  const hasApprovedMaterialCost = isMat && (cost.status === 'approved' || cost.neg_stage === 'signed_off' || history.length > 0);
   // Material relabels the three rate slots; the underlying columns are the same.
   const rateLabels = isMat
     ? { job: 'FOB Fabric', fob: 'Billing', efob: 'Standard Fabric' }
@@ -124,9 +132,9 @@ export function StandardCostDetailClient({
         <Link href={backHref} className="sc-page-back">
           <ArrowLeft size={15} /> {isMat ? 'All materials' : 'All products'}
         </Link>
-        <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
+        {!(isMat && stageKey === 'signed_off') && <span className={`wf-status tone-${COST_STAGE_TONE[stageKey] ?? 'purple'}`}>
           {costStageText(stageKey, cost)}
-        </span>
+        </span>}
         {cost.frozen && (
           <span className="sc-page-frozen">
             <Lock size={12} /> Frozen{cost.frozen_at ? ` · ${longDate(cost.frozen_at)}` : ''}
@@ -147,7 +155,7 @@ export function StandardCostDetailClient({
             {updatedOn ? ` · Current cost updated ${updatedOn}` : ''}
           </p>
         </div>
-        <button
+        {isMat && <button
           type="button"
           className={`wf-btn ${editing ? 'wf-btn-ghost' : 'wf-btn-primary'}`}
           onClick={() => setEditing((v) => !v)}
@@ -158,9 +166,11 @@ export function StandardCostDetailClient({
           }
         >
           {editing ? <X size={15} /> : <Pencil size={15} />}
-          {editing ? 'Close editing' : 'Edit cost'}
-        </button>
+          {editing ? 'Close editor' : hasApprovedMaterialCost ? 'Amend/Update Standard Cost' : 'Add Standard Cost'}
+        </button>}
       </header>
+
+      {workflowPanel}
 
       {!isMat && !catalog.some((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase()) ? (
         <LinkPanel
@@ -184,14 +194,15 @@ export function StandardCostDetailClient({
         />
       ) : null}
 
+      <div className={isMat ? 'sc-material-cost-workspace' : 'sc-cost-record-workspace'}>
       {editing && (
-        <section className="sc-page-edit" aria-label="Change the cost">
+        <section className={`sc-page-edit${isMat ? ' sc-material-cost-editor' : ''}`} aria-label="Change the cost">
           <div className="sc-page-edit-head">
-            <h2>Change the cost</h2>
+            <h2>{hasApprovedMaterialCost ? 'Amend/Update Standard Cost' : 'Add Standard Cost'}</h2>
             <p className="wf-subtle">
-              Fill the rate(s) that apply and propose. The product then follows its usual path:
-              the approver accepts the proposal or sets a target, the team returns with the actual
-              vendor rate, and approval makes it the standard the Buying Plan values from.
+              Enter the proposed material rates and submit them for approval. The approver sets the
+              benchmark targets for the first approval; approved rates remain in use until a later
+              amendment is approved.
             </p>
           </div>
           <CostRow
@@ -203,28 +214,28 @@ export function StandardCostDetailClient({
             // A product not in EasyEcom is deleted from the panel at the top; one delete, not two.
             canRemove={isMat || catalog.some((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase())}
           />
+          <p className="wf-subtle sc-page-workflow-definitions">
+            <strong>Proposed</strong> is the rate submitted for approval. <strong>Target</strong> is
+            set by the approver at first approval as the benchmark for future amendments.{' '}
+            <strong>Expected</strong> is optional and records the anticipated cost.
+          </p>
         </section>
       )}
 
-      <section className="sc-page-detail" aria-label="Cost record">
+      {!isMat && !workflowPanel && <section className="sc-page-detail" aria-label="Cost record">
         <p className="sc-page-mode">
           {canChange
             ? isMat
-              ? 'Editing — propose a rate above. Material rates have no cost sheet to fill in.'
+              ? 'Editing — complete the rate-only submission above. Material rates have no cost sheet to fill in.'
               : 'Editing — change the cost sheet below, then save. Rate changes go through approval.'
             : editing && !rateEditable
               ? cost.frozen
                 ? 'Read only — this product is frozen because a PO has been issued against it.'
                 : 'Read only — your role cannot change this cost.'
               : isMat
-                ? 'Read only. Press Edit cost to propose a new rate.'
-                : 'Read only. Press Edit cost to change the cost sheet.'}
+                ? 'Read only. Open the submission or amendment editor to propose material rates.'
+                : 'Approved cost record. Use the submission / amendment editor above to propose changes.'}
         </p>
-        {isMat ? (
-          <div className="wf-cost-detail">
-            <RateHistoryPanel history={history} hideRevisions rateLabels={rateLabels} />
-          </div>
-        ) : (
         <CostDetail
           cost={cost}
           lines={lines}
@@ -238,6 +249,7 @@ export function StandardCostDetailClient({
           editable={canChange}
           marginPct={marginPct}
           extraFabrics={extraFabrics}
+          cadPlans={<CadPdfLinks code={cost.product_code} files={cadFiles} />}
           // Documents tab (FG): RFP sheet link + CAD plan library, changed under Edit cost.
           documents={
             costDocs ? (
@@ -256,51 +268,21 @@ export function StandardCostDetailClient({
           }
           trimHistory={trims ? <TrimHistoryPanel ready={trims.ready} changes={trims.changes} spread={trims.spread} /> : undefined}
         />
-        )}
-      </section>
+      </section>}
 
       {/* The headline rates sit with the decision, after the full record, so they are read
           last, right before acting. */}
-      <section className="sc-page-rates" aria-label="Current rates">
-        {[
-          ...(isMat
-            ? [
-                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
-                { label: `${rateLabels.job} rate`, value: cost.job_cost },
-              ]
-            : [
-                { label: `${rateLabels.job} rate`, value: cost.job_cost },
-                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
-              ]),
-          { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
-          { label: 'Proposed', value: cost.proposed_cost },
-        ].map((r) => (
-          <div className="sc-page-rate" key={r.label}>
-            <span>{r.label}</span>
-            <strong>{money(r.value)}</strong>
-          </div>
-        ))}
-        {/* The target names the rate it is aimed at (Job / FOB / E-FOB), not one bare figure. */}
-        <div className="sc-page-rate">
-          <span>Target</span>
-          {targetParts(cost, isMat ? 'material' : 'fg').length ? (
-            <div className="sc-page-targets">
-              {targetParts(cost, isMat ? 'material' : 'fg').map((t) => (
-                <strong key={t.label}>
-                  <small>{t.label}</small> {money(t.value)}
-                </strong>
-              ))}
-            </div>
-          ) : (
-            <strong>—</strong>
-          )}
-        </div>
-      </section>
+      {!workflowPanel && <StandardCostRateCards cost={cost} track={track} />}
+      </div>
 
-      {/* The approver decides here, after the whole cost record (CMTP, fabric cost, history)
-          above it, without opening the editor. Renders nothing when the signed-in role has no
-          decision to make at this stage. */}
-      <CostDecisionBar cost={cost} role={role} track={isMat ? 'material' : 'fg'} noTarget />
+      {isMat && (
+        <section className="sc-material-rate-history-section" aria-label="Accepted rate history">
+          <div className="wf-cost-detail sc-material-rate-history">
+            <RateHistoryPanel history={history} hideRevisions rateLabels={rateLabels} materialHelp />
+          </div>
+        </section>
+      )}
+
     </div>
   );
 }
@@ -569,5 +551,47 @@ function LinkPanel({
         </div>
       )}
     </section>
+  );
+}
+
+export function StandardCostRateCards({ cost, track = 'fg' }: { cost: StandardCost; track?: 'fg' | 'material' }) {
+  const isMat = track === 'material';
+  const rateLabels = isMat ? { job: 'FOB Fabric', fob: 'Billing', efob: 'Standard Fabric' } : { job: 'Job', fob: 'FOB', efob: 'E-FOB' };
+  return (
+      <section className="sc-page-rates" aria-label="Current rates">
+        {[
+          ...(isMat
+            ? [
+                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
+                { label: `${rateLabels.job} rate`, value: cost.job_cost },
+              ]
+            : [
+                { label: `${rateLabels.job} rate`, value: cost.job_cost },
+                { label: `${rateLabels.fob} rate`, value: cost.fob_cost },
+              ]),
+          { label: `${rateLabels.efob} rate`, value: cost.efob_cost },
+          { label: 'Proposed', value: cost.proposed_cost },
+        ].map((r) => (
+          <div className="sc-page-rate" key={r.label}>
+            <span>{r.label}</span>
+            <strong>{money(r.value)}</strong>
+          </div>
+        ))}
+        {/* The target names the rate it is aimed at (Job / FOB / E-FOB), not one bare figure. */}
+        <div className="sc-page-rate">
+          <span>Target</span>
+          {targetParts(cost, isMat ? 'material' : 'fg').length ? (
+            <div className="sc-page-targets">
+              {targetParts(cost, isMat ? 'material' : 'fg').map((t) => (
+                <strong key={t.label}>
+                  <small>{t.label}</small> {money(t.value)}
+                </strong>
+              ))}
+            </div>
+          ) : (
+            <strong>—</strong>
+          )}
+        </div>
+      </section>
   );
 }

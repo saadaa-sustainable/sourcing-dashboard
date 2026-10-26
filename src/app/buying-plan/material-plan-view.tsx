@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
-import { FilterTable, type Column } from '@/components/filter-table';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { ClearFiltersButton } from '@/components/clear-filters-button';
-import { PlanLineViews, approvalColumn, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
+import { approvalColumn, type CardTone, type KanbanOption, type PlanCard } from './plan-line-views';
 import { InfoDot } from '@/components/info-dot';
 import { addMonths, statusText } from '@/lib/forms/approval';
 import type { MaterialCode, MaterialType, SdStatus } from '@/lib/forms/types';
@@ -34,6 +33,7 @@ export type MaterialViewItem = {
     uom: string;
     remark: string;
     line_status: SdStatus | null;
+    auto_approved?: boolean;
     approver_edited: boolean;
   };
   cost: { job: number; fob: number } | null;
@@ -59,7 +59,7 @@ export function toMaterialCard(
   return {
     key: v.row.key,
     code: v.row.material_code,
-    status: { text: ls ? statusText(ls, { approverEdited: v.row.approver_edited }) : statusText(status), tone },
+    status: { text: ls ? statusText(ls, { autoApproved: v.row.auto_approved, approverEdited: v.row.approver_edited }) : statusText(status), tone },
     context: [TYPE_LABEL[v.row.material_type], meta?.fabric_name, v.colour].filter(Boolean).join(' · '),
     figs: [
       { label: 'Job Work', value: job ? `${fmt.format(job)} ${unit}` : null },
@@ -85,7 +85,7 @@ export function toMaterialCard(
     ],
     sort: { value: v.value, qty: job + buy, pct: 0 },
     groups: {
-      approval: approvalColumn(ls, v.row.approver_edited),
+      approval: approvalColumn(ls, v.row.approver_edited, v.row.auto_approved),
       type: v.row.material_type,
       route: !job && !buy ? 'noqty' : job && buy ? 'both' : job ? 'job' : 'purchase',
       validation: !job && !buy ? 'noqty' : v.missingCost ? 'nocost' : 'ready',
@@ -94,7 +94,6 @@ export function toMaterialCard(
   };
 }
 
-type GroupBy = 'type' | 'base' | 'uom' | 'code';
 
 export const MAT_KANBAN: KanbanOption[] = [
   {
@@ -105,6 +104,7 @@ export const MAT_KANBAN: KanbanOption[] = [
       { key: 'pending', title: 'Approval Pending', tone: 'yellow' },
       { key: 'edited', title: 'Edited & Approved', tone: 'green' },
       { key: 'first', title: 'First time Approved', tone: 'green' },
+      { key: 'auto', title: 'Auto-Approved via Workflow', tone: 'green' },
       { key: 'rework', title: 'Rework / Reassign', tone: 'red' },
       { key: 'rejected', title: 'Rejected / Discarded', tone: 'gray' },
     ],
@@ -129,7 +129,6 @@ export const MAT_KANBAN: KanbanOption[] = [
   },
   { key: 'base', label: 'Base fabric' },
 ];
-const GROUP_LABEL: Record<GroupBy, string> = { type: 'material type', base: 'base fabric', uom: 'unit', code: 'material code' };
 
 /** "1,200 metres · 30 kg" — quantities never add across units. */
 function qtyByUom(items: MaterialViewItem[]) {
@@ -167,29 +166,20 @@ export function MaterialPlanView({
   planLocked,
   status,
   closedOn = null,
-  planMonth,
-  decision,
-  bulk,
+  onEdit,
 }: {
-  /** Per-line decision control for the approver (Plan detail column); omitted otherwise. */
-  decision?: (item: MaterialViewItem) => React.ReactNode;
-  /** Approver: tick several lines on the cards and decide them together. */
-  bulk?: { pickable: (key: string) => boolean; bar: (keys: string[], clear: () => void) => React.ReactNode };
   view: MaterialViewItem[];
   codeMap: Map<string, MaterialCode>;
   planLocked: boolean;
   status: SdStatus;
   /** Plan month when the month is over: cards read as the month's final figures. */
   closedOn?: string | null;
-  planMonth: string;
+  onEdit?: () => void;
 }) {
   const closed = Boolean(closedOn);
   const [search, setSearch] = useState('');
   const [typeF, setTypeF] = useState<'' | MaterialType>('');
-  const [routeF, setRouteF] = useState<'' | 'job' | 'purchase'>('');
-  const [groupBy, setGroupBy] = useState<GroupBy>('type');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [detailExpanded, setDetailExpanded] = useState(false);
 
   // Same rule as FG: rejected lines and lines with no quantity are out of every total.
   const planned = view.filter(
@@ -197,15 +187,13 @@ export function MaterialPlanView({
   );
   const matches = (v: MaterialViewItem) => {
     if (typeF && v.row.material_type !== typeF) return false;
-    if (routeF === 'job' && !num(v.row.job_qty)) return false;
-    if (routeF === 'purchase' && !num(v.row.purchase_qty)) return false;
     const q = search.trim().toLowerCase();
     if (!q) return true;
     const meta = codeMap.get(v.row.material_code);
     return [v.row.material_code, meta?.fabric_name, meta?.base_fabric_code, v.colour, v.row.remark]
       .some((s) => (s ?? '').toLowerCase().includes(q));
   };
-  const hasFilters = Boolean(search || typeF || routeF);
+  const hasFilters = Boolean(search || typeF);
   const rows = planned.filter(matches);
 
   const totals = planned.reduce(
@@ -225,14 +213,7 @@ export function MaterialPlanView({
   };
   const attentionTotal = attention.missingCost + attention.approvalPending;
 
-  const groupKey = (v: MaterialViewItem) =>
-    groupBy === 'type'
-      ? TYPE_LABEL[v.row.material_type]
-      : groupBy === 'base'
-        ? codeMap.get(v.row.material_code)?.base_fabric_code || 'No base fabric'
-        : groupBy === 'uom'
-          ? v.row.uom || 'No unit'
-          : v.row.material_code;
+  const groupKey = (v: MaterialViewItem) => TYPE_LABEL[v.row.material_type];
   const groupMap = new Map<string, MaterialViewItem[]>();
   rows.forEach((v) => {
     const k = groupKey(v);
@@ -244,35 +225,6 @@ export function MaterialPlanView({
   const frozenOn = closedOn
     ? new Date(Date.parse(addMonths(closedOn, 1)) - 86_400_000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
     : '';
-
-  const cols: Column<MaterialViewItem>[] = [
-    { key: 'code', label: 'Material code', kind: 'mono', source: 'supabase', accessor: (v) => v.row.material_code },
-    { key: 'type', label: 'Type', kind: 'text', source: 'supabase', accessor: (v) => TYPE_LABEL[v.row.material_type] },
-    { key: 'name', label: 'Fabric name', kind: 'text', source: 'supabase', accessor: (v) => codeMap.get(v.row.material_code)?.fabric_name ?? '—' },
-    { key: 'base', label: 'Base fabric', kind: 'text', source: 'supabase', accessor: (v) => codeMap.get(v.row.material_code)?.base_fabric_code ?? '—' },
-    { key: 'colour', label: 'Colour', kind: 'text', source: 'supabase', accessor: (v) => v.colour ?? '—' },
-    { key: 'job_rate', label: 'Job rate', kind: 'num', source: 'computed', accessor: (v) => v.cost?.job ?? 0,
-      render: (v) => (v.cost?.job ? money.format(v.cost.job) : <span className="wf-subtle">—</span>) },
-    { key: 'buy_rate', label: 'Purchase rate', kind: 'num', source: 'computed', accessor: (v) => v.cost?.fob ?? 0,
-      render: (v) => (v.cost?.fob ? money.format(v.cost.fob) : <span className="wf-subtle">—</span>) },
-    { key: 'job', label: 'Job qty', kind: 'num', source: 'supabase', accessor: (v) => num(v.row.job_qty) },
-    { key: 'purchase', label: 'Purchase qty', kind: 'num', source: 'supabase', accessor: (v) => num(v.row.purchase_qty) },
-    { key: 'uom', label: 'UOM', kind: 'text', source: 'supabase', accessor: (v) => v.row.uom },
-    { key: 'value', label: 'Total value', kind: 'num', source: 'computed', accessor: (v) => v.value,
-      render: (v) => (v.value ? money.format(v.value) : <span className="wf-subtle">—</span>) },
-    { key: 'remark', label: 'Remark', kind: 'text', source: 'supabase', accessor: (v) => v.row.remark || '—' },
-    { key: 'approval', label: 'Approval', kind: 'text', source: 'supabase',
-      accessor: (v) => (v.row.line_status ? statusText(v.row.line_status, { approverEdited: v.row.approver_edited }) : '—') },
-    ...(decision
-      ? [{ key: 'decision', label: 'Your decision', kind: 'text' as const, source: 'supabase' as const, accessor: (v: MaterialViewItem) => v.row.line_status || 'pending', render: (v: MaterialViewItem) => (num(v.row.job_qty) + num(v.row.purchase_qty) > 0 ? decision(v) : <span className="wf-subtle">—</span>) }]
-      : []),
-  ];
-
-  // Plan detail as cards / kanban: lines with quantity, after the filters.
-  const cards: PlanCard[] = view
-    .filter((v) => num(v.row.job_qty) + num(v.row.purchase_qty) > 0)
-    .filter(matches)
-    .map((v) => toMaterialCard(v, { codeMap, status, total }));
 
   const attentionItems = closed
     ? [
@@ -289,7 +241,7 @@ export function MaterialPlanView({
     <div className="bp-layout">
       <div className="bp-stack">
         {/* Overview */}
-        <section className="bp-card">
+        <section className="bp-card bp-material-overview">
           <div className="bp-cardhead">
             <h2>
               {closed ? 'How the month closed' : 'Plan overview'}
@@ -348,11 +300,24 @@ export function MaterialPlanView({
               </div>
             )}
           </div>
-        </section>
 
+        {/* Grouped plan */}
+          <div className="bp-cardhead">
+            <h2>
+              Material plan by material type
+              <InfoDot text={"WHAT: the material plan rolled up by the Group By choice.\n\nHOW: value and quantity (per unit) summed within each group, after the filters above.\n\nUSE: to see where the month's material money goes."} />
+            </h2>
+            <div className="bp-actions">
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setCollapsed(Object.fromEntries(groups.map(([g]) => [g, true])))}>
+                Collapse all
+              </button>
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setCollapsed({})}>
+                Expand all
+              </button>
+            </div>
+          </div>
         {/* Filters */}
-        <div className="bp-sticky">
-          <div className="bp-card bp-toolbar-card">
+          <div className="bp-toolbar-card bp-material-view-filters">
             <div className="tb tb-flat">
               <div className="tb-find">
                 <input
@@ -366,47 +331,14 @@ export function MaterialPlanView({
                   <option value="">Type: All</option>
                   {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
                 </select>
-                <select aria-label="Route" value={routeF} onChange={(e) => setRouteF(e.target.value as typeof routeF)}>
-                  <option value="">Route: All</option>
-                  <option value="job">Job Work</option>
-                  <option value="purchase">Purchase</option>
-                </select>
-                <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
-                  <option value="type">Group by: Material type</option>
-                  <option value="base">Group by: Base fabric</option>
-                  <option value="uom">Group by: Unit</option>
-                  <option value="code">Group by: Material code</option>
-                </select>
                 <ClearFiltersButton
                   active={hasFilters}
-                  onClear={() => { setSearch(''); setTypeF(''); setRouteF(''); }}
+                  onClear={() => { setSearch(''); setTypeF(''); }}
                 />
               </div>
-              <div className="tb-see">
-                <span className="tb-count">
-                  {rows.length} of {planned.length} shown
-                </span>
-              </div>
             </div>
           </div>
-        </div>
 
-        {/* Grouped plan */}
-        <section className="bp-card">
-          <div className="bp-cardhead">
-            <h2>
-              Material plan by {GROUP_LABEL[groupBy]}
-              <InfoDot text={"WHAT: the material plan rolled up by the Group By choice.\n\nHOW: value and quantity (per unit) summed within each group, after the filters above.\n\nUSE: to see where the month's material money goes."} />
-            </h2>
-            <div className="bp-actions">
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setCollapsed(Object.fromEntries(groups.map(([g]) => [g, true])))}>
-                Collapse all
-              </button>
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setCollapsed({})}>
-                Expand all
-              </button>
-            </div>
-          </div>
           <div className="bp-cardbody">
             {!planned.length ? (
               <div className="empty-state">
@@ -464,56 +396,15 @@ export function MaterialPlanView({
               })
             )}
           </div>
-        </section>
-
-        {/* Plan detail */}
-        <section className={`bp-card bp-plan-detail${detailExpanded ? ' is-expanded' : ''}`}>
-          <div className="bp-cardhead">
-            <h2>
-              Plan detail
-              <InfoDot text={"WHAT: every line on this month's material plan.\n\nHOW: one row per material code with its Job Work / Purchase quantities, the approved rates, value and approval status.\n\nUSE: read-only here — search, sort, filter, download or expand. Quantities are entered on the Input view."} />
-            </h2>
-            <div className="bp-plan-detail-head-actions">
-              <span className="wf-subtle">{view.length} lines · filter or sort any column</span>
-              <button
-                type="button"
-                className="wf-btn wf-btn-ghost wf-btn-sm bp-plan-detail-toggle"
-                aria-expanded={detailExpanded}
-                onClick={() => setDetailExpanded((e) => !e)}
-              >
-                {detailExpanded ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
-                {detailExpanded ? 'Restore' : 'Expand'}
+          {onEdit && (
+            <div className="bp-cardbody" style={{ paddingTop: 0 }}>
+              <button type="button" className="bp-material-edit-link" onClick={onEdit}>
+                Edit and submit for approval
               </button>
             </div>
-          </div>
-          <div className="bp-cardbody bp-cardbody-flush">
-            <PlanLineViews
-              items={cards}
-              storageKey="material-plan-detail-view"
-              bulk={bulk}
-              noun="material line"
-              qtyUnit={null}
-              kanban={MAT_KANBAN}
-              decision={decision ? (key) => {
-                const v = view.find((x) => x.row.key === key);
-                return v ? decision(v) : null;
-              } : undefined}
-              table={
-                <FilterTable
-                  rows={view.filter(matches)}
-                  columns={cols}
-                  rowKey={(v) => v.row.key}
-                  defaultSource="supabase"
-                  unit="lines"
-                  pageSize={100}
-                  searchPlaceholder="Material code or status"
-                  emptyText="No lines in this plan."
-                  download={{ filename: `material-buying-plan-${planMonth.slice(0, 7)}` }}
-                />
-              }
-            />
-          </div>
+          )}
         </section>
+
       </div>
 
       {/* Right column */}

@@ -79,6 +79,22 @@ function shape(r: Raw): NpdProduct {
 
 const launched = (status: string | null) => (status ?? '').trim().toUpperCase() === 'LAUNCHED';
 
+/** Cost-sheet master search includes all nondeleted tracker products, including launched. */
+export async function loadNpdCostMasterOptions(): Promise<NpdOption[]> {
+  const db = npdClient();
+  const rows = (await pageAll<Raw>(() => db.from('products').select(SELECT).is('deleted_at', null).order('id'))).map(shape);
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const code = row.item_code?.toUpperCase();
+    if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  return rows.map(row => {
+    const code = row.item_code?.toUpperCase() ?? '';
+    const blocked = !CODE_RE.test(code) ? 'A valid NPD item code is required.' : counts.get(code)! > 1 ? 'Duplicate NPD item code.' : null;
+    return { ...row, code: CODE_RE.test(code) ? code : null, blocked };
+  });
+}
+
 /** Every live, not-launched NPD product. */
 async function loadEligibleRows(): Promise<NpdProduct[]> {
   const db = npdClient();

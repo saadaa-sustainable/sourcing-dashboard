@@ -186,12 +186,15 @@ export async function loadDynamicLinks(): Promise<DynamicLink[]> {
 /** product_code + product_name for the "Add Product" picker (search by either). */
 export async function loadProductCatalog(): Promise<ProductCatalogItem[]> {
   const supabase = await client();
-  const { data } = await supabase
-    .from('sd_product_catalog')
+  // Local bypass uses an admin client without an email JWT; the public catalog
+  // view requires that email. Keep authenticated production reads on the view.
+  const source = process.env.NODE_ENV !== 'production' && process.env.LOCAL_AUTH_BYPASS === 'true'
+    ? 'sd_product_catalog_mv' : 'sd_product_catalog';
+  return pageAll<ProductCatalogItem>(() => supabase
+    .from(source)
     .select('product_code, product_name, category, sub_category')
-    .order('product_code')
-    .limit(PAGE_SIZE);
-  return (data ?? []) as ProductCatalogItem[];
+    .order('product_code'));
+
 }
 
 /** Monthly EFOB fabric-cost benchmarks, most recent first (spec §6). */

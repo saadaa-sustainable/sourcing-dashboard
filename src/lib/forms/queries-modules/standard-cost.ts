@@ -10,15 +10,13 @@ import type {
 } from '../types';
 
 /** Every standard-cost row, for the Standard Cost sheet page. */
-export async function loadStandardCosts(): Promise<StandardCost[]> {
+export async function loadStandardCosts(includeHidden = false): Promise<StandardCost[]> {
   const supabase = await client();
-  const { data } = await supabase
-    .from('sd_standard_cost')
-    .select('*')
-    .eq('hidden', false) // soft-deleted (hidden) rows are kept but not listed
-    .order('product_code')
-    .limit(PAGE_SIZE);
-  return (data ?? []) as StandardCost[];
+  return pageAll<StandardCost>(() => {
+    let query = supabase.from('sd_standard_cost').select('*').order('product_code');
+    if (!includeHidden) query = query.eq('hidden', false);
+    return query;
+  });
 }
 
 /** Product codes soft-deleted from the Standard Cost worklist (fg or material) — so
@@ -260,6 +258,7 @@ export async function loadStandardCostRateHistory(): Promise<Record<string, Stan
       .from('sd_standard_cost_rate_history')
       .select('*')
       .order('accepted_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`sd_standard_cost_rate_history: ${error.message}`);
     if (!data?.length) break;

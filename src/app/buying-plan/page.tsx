@@ -468,7 +468,7 @@ export default async function BuyingPlanPage({
       allowedPages={user.allowed_pages ?? null}
     >
       {planType === 'analysis' ? (
-        <>
+        <div className="bp-analysis-workspace">
           <PlanHeader
             planMonth={planMonth}
             planType="analysis"
@@ -479,7 +479,7 @@ export default async function BuyingPlanPage({
             ]}
           />
           <AnalysisTrack planMonth={planMonth} isAdmin={user.role === 'admin'} />
-        </>
+        </div>
       ) : planType === 'material' ? (
         <MaterialTrack planMonth={planMonth} role={user.role} startInInput={params.mode === 'input'} planMonths={planMonths} />
       ) : (

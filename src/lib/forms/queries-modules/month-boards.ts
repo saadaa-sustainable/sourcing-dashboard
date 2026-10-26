@@ -1,4 +1,5 @@
 import 'server-only';
+import { buyingPlanMonthColumn, unstartedBuyingPlanTrack } from '@/lib/buying-plan-board';
 import { client, pageAll } from './_shared';
 import { loadApprovedMaterialCosts, loadApprovedStandardCosts } from './standard-cost';
 import { loadReplenishmentByProduct } from './replenishment-oos';
@@ -83,6 +84,7 @@ type PlanLine = {
   standard_value: number | null;
   line_status: string | null;
   approver_edited: boolean | null;
+  auto_approved: boolean;
   material_type: string | null;
   colour: string | null;
   uom: string | null;
@@ -94,13 +96,13 @@ const MATERIAL_TYPE_WORD: Record<string, string> = { raw: 'Raw material', dyed: 
 export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardData> {
   const supabase = await client();
   const [plans, lines, actuals, costs, catalog, log, matCosts, demand] = await Promise.all([
-    pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null; approver_edited: boolean | null }>(() =>
-      supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes, approver_edited').order('id'),
+    pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null; approver_edited: boolean | null; auto_approved: boolean }>(() =>
+      supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes, approver_edited, auto_approved').order('id'),
     ),
     pageAll<PlanLine>(() =>
       supabase
         .from('sd_buying_plan_line')
-        .select('plan_id, product_code, product_status, job_work_qty, fob_qty, efob_qty, standard_value, line_status, approver_edited, material_type, colour, uom, rework_notes')
+        .select('plan_id, product_code, product_status, job_work_qty, fob_qty, efob_qty, standard_value, line_status, approver_edited, auto_approved, material_type, colour, uom, rework_notes')
         .order('id'),
     ),
     pageAll<{ product_code: string; plan_month: string; issued_qty: number | null; issued_value: number | null; po_count: number | null }>(() =>
@@ -183,8 +185,9 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     if (!decided.length) return null;
     const count = (st: string[]) => decided.filter((l) => st.includes(l.line_status ?? '')).length;
     const parts: [string, number, Tone][] = [
-      ['Edited & Approved', decided.filter((l) => l.line_status === 'approved' && l.approver_edited).length, 'live'],
-      ['First time Approved', decided.filter((l) => l.line_status === 'approved' && !l.approver_edited).length, 'live'],
+      ['Edited & Approved', decided.filter((l) => l.line_status === 'approved' && !l.auto_approved && l.approver_edited).length, 'live'],
+      ['First time Approved', decided.filter((l) => l.line_status === 'approved' && !l.auto_approved && !l.approver_edited).length, 'live'],
+      ['Auto-Approved via Workflow', decided.filter((l) => l.line_status === 'approved' && l.auto_approved).length, 'live'],
       ['Approval Pending', count(['submitted', 'pending_l2']), 'pending'],
       ['Rework / Reassign', count(['rework']), 'back'],
       ['Rejected / Discarded', count(['rejected']), 'closed'],
@@ -226,7 +229,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       facts.push(`Submit by ${deadlineDay} ${short(p.plan_month).split(' ')[0]}`);
     }
     if (status === 'pending' && p.submitted_at) facts.push(`Waiting ${daysSince(p.submitted_at)} days for approval`);
-    if (p.approved_at) facts.push(`Approved ${day(p.approved_at)}`);
+    if (p.approved_at) facts.push(`${p.auto_approved ? 'Auto-Approved via Workflow' : 'Approved'} ${day(p.approved_at)}`);
     if (frozen && status === 'pending') facts.push('Month is over · still not approved');
     if (frozen && status === 'closed') facts.push('Month over · plan frozen');
     let warn: MonthBoardCard['warn'];
@@ -400,7 +403,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
             num(n(l.fob_qty)),
             l.uom ?? '—',
             lineValue(l) > 0 ? inrShort(lineValue(l)) : '—',
-            l.line_status ? statusText(l.line_status as SdStatus, { approverEdited: l.approver_edited }) : 'Draft',
+            l.line_status ? statusText(l.line_status as SdStatus, { autoApproved: l.auto_approved, approverEdited: l.approver_edited }) : 'Draft',
           ],
         })),
         empty: 'No materials on this plan yet.',
@@ -506,7 +509,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           {
             kind: 'table',
             title: `${short(prevMonth)} plan, as a starting point`,
-            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { approverEdited: prev.approver_edited })}).` : undefined,
+            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { autoApproved: prev.auto_approved, approverEdited: prev.approver_edited })}).` : undefined,
             columns: [{ label: 'Product' }, { label: 'Category' }, { label: 'Job', num: true }, { label: 'E-FOB', num: true }, { label: 'FOB', num: true }, { label: 'Total', num: true }, { label: 'Value', num: true }],
             rows: prevLines
               .slice()
@@ -564,7 +567,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           {
             kind: 'table',
             title: `${short(prevMonth)} plan, as a starting point`,
-            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { approverEdited: prev.approver_edited })}).` : undefined,
+            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { autoApproved: prev.auto_approved, approverEdited: prev.approver_edited })}).` : undefined,
             columns: [{ label: 'Material' }, { label: 'Type' }, { label: 'Colour' }, { label: 'Job work', num: true }, { label: 'Purchase', num: true }, { label: 'Unit' }, { label: 'Value', num: true }],
             rows: prevLines.map((l) => ({
               cells: [
@@ -600,14 +603,10 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     const combinedValue = plannedMetrics.length && valueParts.every((v): v is number => v != null)
       ? valueParts.reduce((sum, v) => sum + v, 0)
       : null;
-    const fgStatus = fg?.status ?? 'draft';
-    const matStatus = material?.status ?? 'draft';
-    // A missing historical track is not treated as an unstarted draft. Current/next-month
-    // placeholders are real cards and therefore do participate in the aggregate status.
-    const statuses = monthCards.map((c) => c.status);
-    const status = statuses.includes('pending') ? 'pending'
-      : statuses.includes('draft') ? 'draft'
-      : statuses.every((s) => s === 'closed') ? 'closed' : 'live';
+    const unstarted = unstartedBuyingPlanTrack(month);
+    const fgStatus = fgMetrics?.hasPlan ? fg!.status : unstarted.status;
+    const matStatus = matMetrics?.hasPlan ? material!.status : unstarted.status;
+    const status = buyingPlanMonthColumn(monthCards);
     const fgQty = fgMetrics?.quantity ?? 0;
     const fgIssued = fgMetrics?.issued ?? null;
     const matLines = matMetrics?.lines ?? 0;
@@ -636,8 +635,14 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       const labels: Record<string, string> = { draft: 'Draft', pending: 'Approval Pending', live: 'Approved', closed: 'Closed', back: 'Sent back' };
       return `${track} · ${labels[value] ?? value}`;
     };
-    const fgApprovalLabel = fgMetrics?.hasPlan ? statusLabel('FG', fgStatus) : 'FG · Not started';
-    const materialApprovalLabel = matMetrics?.hasPlan ? statusLabel('Material', matStatus) : 'Material · Not started';
+    const approvalLabel = (track: string, key: string, value: string) => {
+      const plan = planFor(key, month);
+      return plan?.status === 'approved' && plan.auto_approved
+        ? `${track} · Auto-Approved via Workflow`
+        : statusLabel(track, value);
+    };
+    const fgApprovalLabel = fgMetrics?.hasPlan ? approvalLabel('FG', 'fg', fgStatus) : `FG · ${unstarted.label}`;
+    const materialApprovalLabel = matMetrics?.hasPlan ? approvalLabel('Material', 'material', matStatus) : `Material · ${unstarted.label}`;
     const facts = [
       `FG: ${fg ? fg.sub ?? fgApprovalLabel : 'Not started'}`,
       `Material: ${material ? material.sub ?? materialApprovalLabel : 'Not started'}`,

@@ -5,10 +5,10 @@ import { createPortal } from 'react-dom';
 import { Columns3, LayoutGrid, Table2, X } from 'lucide-react';
 
 /** Kanban "Approval" column of a line, in the approval workflow's statuses. */
-export function approvalColumn(lineStatus: string | null | undefined, approverEdited?: boolean | null): string {
+export function approvalColumn(lineStatus: string | null | undefined, approverEdited?: boolean | null, autoApproved?: boolean): string {
   if (!lineStatus) return 'draft';
   if (lineStatus === 'submitted' || lineStatus === 'pending_l2') return 'pending';
-  if (lineStatus === 'approved') return approverEdited ? 'edited' : 'first';
+  if (lineStatus === 'approved') return autoApproved ? 'auto' : approverEdited ? 'edited' : 'first';
   return lineStatus;
 }
 
@@ -96,6 +96,7 @@ export function PlanLineViews({
   noun = 'line',
   qtyUnit = 'pcs',
   defaultView = 'kanban',
+  tableOnly = false,
 }: {
   items: PlanCard[];
   table: ReactNode;
@@ -110,6 +111,8 @@ export function PlanLineViews({
   /** Unit for kanban column totals; null when quantities are in mixed units. */
   qtyUnit?: string | null;
   defaultView?: View;
+  /** Render the supplied table directly, without view controls or saved-view preferences. */
+  tableOnly?: boolean;
 }) {
   const view = useSyncExternalStore(
     subscribe,
@@ -253,6 +256,8 @@ export function PlanLineViews({
       {decided(it.key)}
     </article>
   );
+
+  if (tableOnly) return <>{table}</>;
 
   return (
     <>
