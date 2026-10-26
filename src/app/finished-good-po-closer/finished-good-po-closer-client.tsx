@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
@@ -518,8 +518,27 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [vendorMenuOpen, setVendorMenuOpen] = useState(false);
+  const vendorFilterRef = useRef<HTMLDivElement>(null);
   const [selectedPoType, setSelectedPoType] = useState<'all' | 'job' | 'fob'>('all');
   const [poTypeMenuOpen, setPoTypeMenuOpen] = useState(false);
+  const poTypeFilterRef = useRef<HTMLDivElement>(null);
+
+  // Close either filter dropdown when the user clicks anywhere outside it.
+  useEffect(() => {
+    function handleOutsideClick(event: Event) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (vendorFilterRef.current && !vendorFilterRef.current.contains(target)) {
+        setVendorMenuOpen(false);
+      }
+      if (poTypeFilterRef.current && !poTypeFilterRef.current.contains(target)) {
+        setPoTypeMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
   const [dateSortColumn, setDateSortColumn] = useState<string | null>('po_date');
   const [dateSortDirection, setDateSortDirection] = useState<'asc' | 'desc'>('desc');
   const [dateMenuColumn, setDateMenuColumn] = useState<string | null>(null);
@@ -3225,6 +3244,21 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         </div>
       )}
 
+      <div className="fg-table-card">
+        <div className="fg-table-header">
+          <div>
+            <h2>Finished Good Purchase Orders</h2>
+            <p>
+              {loading
+                ? 'Loading purchase orders...'
+                : total
+                  ? `Showing ${startRow}–${endRow} of ${total} purchase orders`
+                  : `${pos.length} purchase orders shown on this page`}
+            </p>
+          </div>
+        </div>
+
+        <div className="fg-table-controls">
       <div className="fg-toolbar">
         <div className="fg-search">
           <Search size={18} />
@@ -3246,7 +3280,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         </div>
 
         <div className="fg-toolbar-actions">
-          <div className="fg-vendor-filter-wrap">
+          <div className="fg-vendor-filter-wrap" ref={vendorFilterRef}>
             <button
               type="button"
               className={selectedVendors.length ? 'fg-toolbar-button active' : 'fg-toolbar-button'}
@@ -3288,7 +3322,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             )}
           </div>
 
-          <div className="fg-vendor-filter-wrap">
+          <div className="fg-vendor-filter-wrap" ref={poTypeFilterRef}>
             <button
               type="button"
               className={selectedPoType !== 'all' ? 'fg-toolbar-button active' : 'fg-toolbar-button'}
@@ -3366,18 +3400,6 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         ))}
       </div>
 
-      <div className="fg-table-card">
-        <div className="fg-table-header">
-          <div>
-            <h2>Finished Good Purchase Orders</h2>
-            <p>
-              {loading
-                ? 'Loading purchase orders...'
-                : total
-                  ? `Showing ${startRow}–${endRow} of ${total} purchase orders`
-                  : `${pos.length} purchase orders shown on this page`}
-            </p>
-          </div>
         </div>
 
         <div className="fg-table-scroll">
@@ -5301,7 +5323,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         }
 
         .fg-search:focus-within { border-color: #b9c1ca; box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.045); }
-        .fg-search input { width: 100%; border: 0; outline: 0; background: transparent; color: #20252b; font: inherit; font-size: 13px; }
+        .fg-search input { width: 100%; min-width: 0; border: 0 !important; outline: none !important; box-shadow: none !important; background: transparent; color: #20252b; font: inherit; font-size: 13px; appearance: none; }
+        .fg-search input:focus, .fg-search input:focus-visible { border: 0 !important; outline: none !important; box-shadow: none !important; }
         .fg-search input::placeholder { color: #9aa1aa; }
         .fg-search-clear { border: 0; background: transparent; padding: 2px; display: flex; align-items: center; color: #9aa1aa; cursor: pointer; }
 
@@ -5532,6 +5555,29 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           align-items: center;
           justify-content: space-between;
           border-bottom: 1px solid #e8eaed;
+        }
+
+        .fg-table-controls {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding: 14px 18px;
+          border-bottom: 1px solid #e8eaed;
+          background: #ffffff;
+        }
+
+        .fg-table-controls .fg-toolbar {
+          flex-wrap: wrap;
+        }
+
+        .fg-table-controls .fg-search {
+          flex: 1 1 300px;
+          width: auto;
+          min-width: 220px;
+        }
+
+        .fg-table-controls .fg-filter-bar {
+          width: fit-content;
         }
 
         .fg-table-header h2 { margin: 0; font-size: 14px; font-weight: 650; color: #22272e; }
@@ -6706,6 +6752,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           .fg-reference-po-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .fg-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .fg-toolbar { flex-direction: column; align-items: stretch; }
+          .fg-toolbar-actions { flex-wrap: wrap; height: auto; }
+          .fg-table-controls { padding: 12px 14px; }
+          .fg-table-controls .fg-filter-bar { width: 100%; }
           .fg-primary-button { width: 100%; }
           .fg-filter-bar { width: 100%; }
           .fg-table-scroll { max-height: 62vh; }
