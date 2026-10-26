@@ -751,6 +751,21 @@ h1, h2, h3, h4 { font-family: var(--font-sans); letter-spacing: -0.01em; }
 .tone-blue { --card-accent: #3b6fd4; --card-soft: #d6e1f5; --card-glow: rgba(59,111,212,.13); }
 .tone-orange { --card-accent: #b57514; --card-soft: #faf1dc; --card-glow: rgba(232,200,122,.20); }
 .tone-red { --card-accent: #c0392b; --card-soft: #fdecea; --card-glow: rgba(224,82,82,.13); }
+.sc-fg-sheet .wf-status,
+.scw-material-sheet .wf-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  color: var(--card-accent, #6e695e);
+  background: var(--card-soft, #f1f1f1);
+  border: 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.sc-status-badge.tone-neutral { color: #59616b; background: #eef0f2; }
 .segment { background: #f0ede6; border-color: #e7e2d2; }
 .segment button { color: #6e695e; transition: color .18s ease, background .18s ease, box-shadow .18s ease; }
 .segment button.active { color: #2c2420; background: #fff; box-shadow: var(--shadow-sm); }

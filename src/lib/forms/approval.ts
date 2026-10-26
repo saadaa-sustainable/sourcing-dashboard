@@ -237,8 +237,8 @@ export const SUB_STATUS = {
 } as const;
 
 /** Approved's sub status: the admin edited the values before approving, or approved as submitted. */
-export function approvedSubStatus(opts: { approverEdited?: boolean | null }): string {
-  return opts.approverEdited ? SUB_STATUS.edited : SUB_STATUS.firstTime;
+export function approvedSubStatus(opts: { autoApproved?: boolean | null; approverEdited?: boolean | null }): string {
+  return opts.autoApproved ? 'Auto-Approved via Workflow' : opts.approverEdited ? SUB_STATUS.edited : SUB_STATUS.firstTime;
 }
 
 /**
@@ -248,7 +248,7 @@ export function approvedSubStatus(opts: { approverEdited?: boolean | null }): st
  */
 export function statusText(
   status: SdStatus,
-  opts: { approverEdited?: boolean | null; edited?: boolean | null } = {},
+  opts: { autoApproved?: boolean | null; approverEdited?: boolean | null; edited?: boolean | null } = {},
 ): string {
   if (status === 'approved') return approvedSubStatus(opts);
   return STATUS_LABEL[status];
@@ -258,7 +258,7 @@ export function statusText(
  * The inward-plan sheet keeps its own words in approval_status ('Pending', 'Approved',
  * 'RE-WORK', 'Rejected'); this shows them the same way as every other module.
  */
-export function sheetStatusText(raw: string | null | undefined, opts: { approverEdited?: boolean | null } = {}): string {
+export function sheetStatusText(raw: string | null | undefined, opts: { autoApproved?: boolean | null; approverEdited?: boolean | null } = {}): string {
   const s = (raw ?? '').trim().toUpperCase();
   if (s === 'APPROVED') return approvedSubStatus(opts);
   if (s === 'RE-WORK' || s === 'REWORK') return STATUS_LABEL.rework;

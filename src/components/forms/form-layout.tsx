@@ -114,16 +114,18 @@ export function StatusBadge({
   status,
   edited,
   approverEdited,
+  autoApproved,
 }: {
   status: SdStatus;
   /** Went through a rework round before approval. */
   edited?: boolean | null;
   /** The approver changed values when approving (Edit & approve). */
+  autoApproved?: boolean;
   approverEdited?: boolean | null;
 }) {
   // An approved record says how it got there: with the approver's edits, after rework, or
   // first time — this also drives the "% of approvals that needed edits" metric.
-  return <span className={`wf-status tone-${STATUS_TONE[status]}`}>{statusText(status, { edited, approverEdited })}</span>;
+  return <span className={`wf-status tone-${STATUS_TONE[status]}`}>{statusText(status, { edited, autoApproved, approverEdited })}</span>;
 }
 
 export function Notice({

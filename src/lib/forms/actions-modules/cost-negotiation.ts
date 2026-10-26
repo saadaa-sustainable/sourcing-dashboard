@@ -1,41 +1,30 @@
 'use server';
 
-import { notifyCostTargetSlack } from '@/lib/slack';
 import { createNotification } from '@/lib/notifications.server';
-import { randomBytes } from 'crypto';
+import { notifyCostTargetSlack } from '@/lib/slack';
 import { revalidatePath } from 'next/cache';
-import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
-import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
-import { createPublicClient } from '@/lib/supabase/public';
-import { computeClosureCompliance } from '@/lib/business-logic';
-import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
-import { targetSummary,
-  canEditApproveCost,
+import { canEdit } from '../approval';
+import {
   canAcceptProposal,
-  canConfirmCm,
-  canConfirmFabric,
+  canEditApproveCost,
   canPropose,
   canRejectCost,
   canRenegotiate,
   canSetTarget,
   canSignOff,
   canSubmitRate,
+  targetSummary,
 } from '../cost';
-import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from '../types';
-import { INWARD_PLAN_STATUSES } from '../types';
+import { currentUser } from '../queries';
+import type { ApprovalEntity, SdStatus } from '../types';
 import {
   type ActionResult,
-  type LinkResult,
-  fail,
   done,
-  supa,
-  writeLog,
-  recordCommitment,
+  fail,
   numOrNull,
-  dateOrNull,
+  supa,
   textOrNull,
+  writeLog,
 } from './_shared';
 
 // Accepted-rate history table per track (material got its own history 2026-09-08).
@@ -109,6 +98,9 @@ type CostRow = {
   job_cost: number | null;
   fob_cost: number | null;
   efob_cost?: number | null; // both tracks (material's efob_cost = Standard Fabric rate)
+  target_job?: number | null;
+  target_fob?: number | null;
+  target_efob?: number | null;
 };
 
 async function loadCostRow(track: CostTrack, id: number) {
@@ -116,7 +108,7 @@ async function loadCostRow(track: CostTrack, id: number) {
   const table = COST_TABLE[track];
   const { data } = await supabase
     .from(table)
-    .select('id, product_code, status, frozen, neg_stage, job_cost, fob_cost, efob_cost')
+    .select('id, product_code, status, frozen, neg_stage, job_cost, fob_cost, efob_cost, target_job, target_fob, target_efob')
     .eq('id', id)
     .maybeSingle();
   return { supabase, table, row: (data as CostRow | null) ?? null };
@@ -127,6 +119,7 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
@@ -169,6 +162,12 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
   // Guarded on the stage the guard saw, so a proposal approved/rejected meanwhile is never
   // silently overwritten (a pending proposal is revised in place; approved = locked).
   const stageNow = row.neg_stage;
+  if (stageNow === 'signed_off') {
+    delete patch.target_job;
+    delete patch.target_fob;
+    delete patch.target_efob;
+    delete patch.target_cost;
+  }
   let q = supabase.from(table).update(patch, { count: 'exact' }).eq('id', id);
   q = stageNow ? q.eq('neg_stage', stageNow) : q.is('neg_stage', null);
   const { error, count } = await q;
@@ -188,6 +187,7 @@ export async function proposeCost(formData: FormData): Promise<ActionResult> {
     .join(' · ');
   await writeLog(costEntity(track), String(id), costLabel(track, row.product_code), row.status, 'draft', user.email, `${revising ? 'Proposal revised' : 'Proposed'}${detail ? ` (${detail})` : ''}`);
   revalidatePath('/standard-cost');
+  revalidatePath(`/standard-cost/${encodeURIComponent(row.product_code)}`);
   return done(revising ? 'Proposal updated — still awaiting approval.' : 'Proposed for costing.');
 }
 
@@ -201,6 +201,7 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
@@ -244,6 +245,7 @@ export async function setTargetCost(formData: FormData): Promise<ActionResult> {
     /* ignore */
   }
   revalidatePath('/standard-cost');
+  revalidatePath(`/standard-cost/${encodeURIComponent(row.product_code)}`);
   return done(`Target set: ${summary}. The team has been notified.`);
 }
 
@@ -252,6 +254,7 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
@@ -262,6 +265,15 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
     return fail('The proposal names no rate — set a target instead of accepting.');
   }
 
+  const targets = {
+    target_job: numOrNull(formData.get('target_job')),
+    target_fob: numOrNull(formData.get('target_fob')),
+    target_efob: numOrNull(formData.get('target_efob')),
+  };
+  const firstApproval = row.target_job == null && row.target_fob == null && row.target_efob == null;
+  if (track === 'material' && firstApproval && Object.values(targets).some(value => value == null)) {
+    return fail('Set all three target rates before approving the first material cost.');
+  }
   const patch: Record<string, unknown> = {
     neg_stage: 'signed_off',
     status: 'approved',
@@ -270,6 +282,7 @@ export async function acceptProposedCost(formData: FormData): Promise<ActionResu
     updated_at: new Date().toISOString(),
   };
   if (track === 'fg') patch.documented = true;
+  if (track === 'material' && firstApproval) Object.assign(patch, targets, { target_cost: null });
   // Guarded on the stage so a concurrent reject/target can't be overwritten.
   const { error } = await supabase.from(table).update(patch).eq('id', id).eq('neg_stage', 'proposed');
   if (error) return fail(error.message);
@@ -290,6 +303,7 @@ export async function submitActualRate(formData: FormData): Promise<ActionResult
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
@@ -329,6 +343,7 @@ export async function signOffCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   if (!id) return fail('Invalid cost row.');
   const { supabase, table, row } = await loadCostRow(track, id);
@@ -371,6 +386,7 @@ export async function editAndApproveCost(formData: FormData): Promise<ActionResu
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
@@ -450,6 +466,7 @@ export async function renegotiateCost(formData: FormData): Promise<ActionResult>
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
@@ -474,6 +491,7 @@ export async function rejectCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const track = costTrackOf(formData);
+  if (costTrackOf(formData) === 'fg') return fail('Use the Standard Cost submission / amendment workflow on the product page.');
   const id = Number(formData.get('id'));
   const note = String(formData.get('note') ?? '').trim();
   if (!id) return fail('Invalid cost row.');
@@ -615,76 +633,14 @@ export async function saveCostStandards(formData: FormData): Promise<ActionResul
 
 /** Sequential sign-off, step 1 (FG): the approver confirms the fabric rate first. */
 export async function confirmFabricRate(formData: FormData): Promise<ActionResult> {
-  const user = await currentUser();
-  if (!user) return fail('Not signed in.');
-  const id = Number(formData.get('id'));
-  if (!id) return fail('Invalid cost row.');
-  const supabase = await supa();
-  const { data: row } = await supabase
-    .from('sd_standard_cost')
-    .select('id, product_code, status, neg_stage, fabric_confirmed_at')
-    .eq('id', id)
-    .maybeSingle();
-  if (!row) return fail('Cost not found.');
-  if (!canConfirmFabric(user.role, row.neg_stage as string | null, !!row.fabric_confirmed_at)) {
-    return fail('Fabric rate cannot be confirmed right now.');
-  }
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from('sd_standard_cost')
-    .update({ fabric_confirmed_at: now, fabric_confirmed_by: user.email, updated_at: now })
-    .eq('id', id);
-  if (error) return fail(error.message);
-  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, row.status as SdStatus, user.email, 'Fabric rate confirmed');
-  revalidatePath('/standard-cost');
-  return done('Fabric rate confirmed. Now confirm CM / other.');
+  void formData;
+  return fail('Use the Standard Cost submission / amendment workflow on the product page.');
 }
 
 /** Sequential sign-off, step 2 (FG): confirm CM/other → signs off = standard cost. */
 export async function confirmCmRate(formData: FormData): Promise<ActionResult> {
-  const user = await currentUser();
-  if (!user) return fail('Not signed in.');
-  const id = Number(formData.get('id'));
-  if (!id) return fail('Invalid cost row.');
-  const supabase = await supa();
-  const { data: row } = await supabase
-    .from('sd_standard_cost')
-    .select('id, product_code, status, neg_stage, frozen, fabric_confirmed_at, cm_confirmed_at, job_cost, fob_cost, efob_cost')
-    .eq('id', id)
-    .maybeSingle();
-  if (!row) return fail('Cost not found.');
-  if (row.frozen) return fail('This cost is frozen (a PO was issued on it) and cannot be changed.');
-  if (!canConfirmCm(user.role, row.neg_stage as string | null, !!row.fabric_confirmed_at, !!row.cm_confirmed_at)) {
-    return fail('Confirm the fabric rate first.');
-  }
-  const now = new Date().toISOString();
-  const { data: updated, error } = await supabase
-    .from('sd_standard_cost')
-    .update({
-      cm_confirmed_at: now,
-      cm_confirmed_by: user.email,
-      neg_stage: 'signed_off',
-      status: 'approved',
-      approved_by: user.email,
-      approved_at: now,
-      documented: true,
-      updated_at: now,
-    })
-    .eq('id', id)
-    .eq('neg_stage', 'rate_submitted')
-    .select('id');
-  if (error) return fail(error.message);
-  if (!updated?.length) return fail('Already processed.');
-  await recordAcceptedRate(
-    supabase, 'fg', row.product_code as string,
-    { job: row.job_cost as number | null, fob: row.fob_cost as number | null, efob: row.efob_cost as number | null },
-    user.email, 'Approved — CM confirmed',
-  );
-  await writeLog('standard_cost', String(id), `Standard cost — ${row.product_code}`, row.status as SdStatus, 'approved', user.email, 'CM confirmed — approved');
-  await tellTeam('fg', row.product_code, 'cost_signed_off', `Approved: ${row.product_code}`, 'The vendor rate is now the standard cost.', user.email);
-  revalidatePath('/standard-cost');
-  revalidatePath('/buying-plan');
-  return done('Approved. This is now the standard cost.');
+  void formData;
+  return fail('Use the Standard Cost submission / amendment workflow on the product page.');
 }
 
 /* ================================================================== */

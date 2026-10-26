@@ -110,6 +110,7 @@ export function StandardCostClient({
   materialNames = {},
   role,
   track = 'fg',
+  initialStageFilter = 'all',
 }: {
   costs: StandardCost[];
   standards?: CostStandards;
@@ -124,6 +125,7 @@ export function StandardCostClient({
   materialNames?: Record<string, string>;
   role: SdRole;
   track?: 'fg' | 'material';
+  initialStageFilter?: string;
   /** Final-price margin as a fraction (e.g. 0.15), from Rules Master (margin_pct). */
 }) {
   const isMat = track === 'material';
@@ -140,24 +142,24 @@ export function StandardCostClient({
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState('');
   const [addOpen, setAddOpen] = useState(false);
-  const [stageFilter, setStageFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState(initialStageFilter);
   // Cards carry no column headers, so the ordering the table's headers gave gets an
   // explicit control rather than quietly disappearing.
   const [cardSort, setCardSort] = useState<'code' | 'job' | 'fob' | 'efob' | 'stage' | 'updated'>('code');
-  // Cards / Kanban / Table, remembered per browser (both tracks share the choice).
-  const [view, setView] = useState<SheetView>('kanban');
+  // Materials open on the compact list view, matching the Finished Goods cost sheet.
+  const [view, setView] = useState<SheetView>(isMat ? 'table' : 'kanban');
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('sc-sheet-view-v2');
+      const saved = localStorage.getItem(`sc-sheet-view-v3-${track}`);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from storage on mount
-      if (saved === 'cards' || saved === 'kanban' || saved === 'table') setView(saved);
+      if (saved === 'kanban' || saved === 'table' || (!isMat && saved === 'cards')) setView(saved);
     } catch {
       /* storage blocked: keep kanban */
     }
   }, []);
   const chooseView = (v: SheetView) => {
     setView(v);
-    try { localStorage.setItem('sc-sheet-view-v2', v); } catch { /* ignore */ }
+    try { localStorage.setItem(`sc-sheet-view-v3-${track}`, v); } catch { /* ignore */ }
   };
   const addCloseRef = useRef<HTMLButtonElement>(null);
   const [newCode, setNewCode] = useState('');
@@ -204,7 +206,7 @@ export function StandardCostClient({
 
   // Rows waiting on the signed-in user's side of the negotiation.
   // An approver opens the sheet on what is waiting for them; everyone else on everything.
-  const [mineOnly, setMineOnly] = useState(() => role === 'admin' && costs.some((c) => isAdminTurn(c.neg_stage)));
+  const [mineOnly, setMineOnly] = useState(() => !isMat && role === 'admin' && costs.some((c) => isAdminTurn(c.neg_stage)));
   // Proposals ticked on the "Needs approval" view for a group decision.
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const togglePick = (id: number) =>
@@ -235,11 +237,16 @@ export function StandardCostClient({
       if (!isMat && stageFilter === 'not_in_easyecom') {
         // Products the product master does not know: typed codes and TMP-xxxx temporaries.
         if (productNames.has(c.product_code.toUpperCase())) return false;
-      } else if (!isMat && stageFilter !== 'all' && (c.neg_stage ?? 'not_started') !== stageFilter) return false;
+      } else if (stageFilter === 'summary_not_added' && (c.neg_stage ?? 'not_started') !== 'not_started') return false;
+      else if (stageFilter === 'summary_pending' && !['proposed', 'target_set', 'rate_submitted'].includes(c.neg_stage ?? '')) return false;
+      else if (stageFilter === 'summary_partial') return false;
+      else if (stageFilter === 'summary_resubmit' && !['renegotiate', 'rejected'].includes(c.neg_stage ?? '')) return false;
+      else if (stageFilter !== 'all' && stageFilter !== 'summary_not_added' && stageFilter !== 'summary_pending' && stageFilter !== 'summary_partial' && stageFilter !== 'summary_resubmit' && (c.neg_stage ?? 'not_started') !== stageFilter) return false;
       return !q || c.product_code.toLowerCase().includes(q) ||
-        (!isMat && (productNames.get(c.product_code.toUpperCase()) ?? '').toLowerCase().includes(q));
+        (!isMat && (productNames.get(c.product_code.toUpperCase()) ?? '').toLowerCase().includes(q)) ||
+        (isMat && (materialNames[c.product_code.toUpperCase()] ?? '').toLowerCase().includes(q));
     });
-  }, [costs, filter, mineOnly, myTurn, isMat, stageFilter, productNames]);
+  }, [costs, filter, mineOnly, myTurn, isMat, stageFilter, productNames, materialNames]);
   const sort = useColumnSort<StandardCost>();
 
   useEffect(() => {
@@ -259,11 +266,11 @@ export function StandardCostClient({
 
   function exportFinishedGoods() {
     downloadCsv(
-      'standard-cost-finished-goods',
-      ['Product code', 'Product name', 'Status', 'Proposed', 'Target', 'Job', 'FOB', 'E-FOB', 'Next step'],
+      isMat ? 'standard-cost-materials' : 'standard-cost-finished-goods',
+      [codeLabel, isMat ? 'Material' : 'Product name', 'Status', 'Proposed', 'Target', jobLabel, fobLabel, efobLabel, 'Next step'],
       (isMat ? sort.apply(shown) : sortCards(shown)).map((c) => [
         c.product_code,
-        productNames.get(c.product_code.toUpperCase()) ?? '',
+        isMat ? materialNames[c.product_code.toUpperCase()] ?? '' : productNames.get(c.product_code.toUpperCase()) ?? '',
         costStageText(c.neg_stage, c),
         c.proposed_cost,
         targetSummary(c, isMat ? 'material' : 'fg') ?? '',
@@ -366,6 +373,12 @@ export function StandardCostClient({
   const missingName = isMat ? 'Not in the material master' : 'Product name unavailable';
   const detailHref = (cost: StandardCost) =>
     `/standard-cost/${encodeURIComponent(cost.product_code)}${isMat ? '?track=material' : ''}`;
+  const workflowHref = (cost: StandardCost) =>
+    `${detailHref(cost)}${isMat ? '&' : '?'}edit=1`;
+  const hasApprovedBaseline = (cost: StandardCost) =>
+    cost.status === 'approved' || cost.neg_stage === 'signed_off' || (rateHistory[cost.product_code]?.length ?? 0) > 0;
+  const workflowAction = (cost: StandardCost) =>
+    hasApprovedBaseline(cost) ? 'Amend/Update Standard Cost' : 'Add Standard Cost';
   // Rates in each track's own order and words (Material: Billing, FOB Fabric, Standard Fabric).
   const rateCols: { label: string; get: (c: StandardCost) => number | null }[] = isMat
     ? [
@@ -381,7 +394,20 @@ export function StandardCostClient({
   const updatedOf = (cost: StandardCost) => shortDate(rateHistory[cost.product_code]?.[0]?.accepted_at ?? cost.updated_at);
   const stageBadge = (cost: StandardCost) => {
     const key = cost.neg_stage ?? '';
-    return <span className={`wf-status tone-${COST_STAGE_TONE[key] ?? 'purple'}`}>{costStageText(key, cost)}</span>;
+    // The list is an approval worklist, so use the concise status vocabulary from
+    // the Finished Goods sheet instead of exposing the internal negotiation stage.
+    const label =
+      key === 'signed_off' || cost.status === 'approved'
+        ? 'Approved'
+        : key === 'proposed' || key === 'rate_submitted' || key === 'target_set'
+          ? 'Approval Pending'
+          : key === 'renegotiate'
+            ? 'Rework'
+            : key === 'rejected'
+              ? 'Rejected'
+              : 'Draft';
+    const tone = label === 'Approved' ? 'teal' : label === 'Approval Pending' ? 'orange' : label === 'Rejected' ? 'red' : label === 'Rework' ? 'purple' : 'neutral';
+    return <span className={`wf-status sc-status-badge tone-${tone}`}>{label}</span>;
   };
   const pickBox = (cost: StandardCost) =>
     pickable(cost) ? (
@@ -406,9 +432,9 @@ export function StandardCostClient({
 
   const viewSwitch = (
     <div className="segment sc-view-seg" role="group" aria-label="View">
-      {(['kanban', 'cards', 'table'] as SheetView[]).map((v) => (
+      {((isMat ? ['kanban', 'table'] : ['kanban', 'cards', 'table']) as SheetView[]).map((v) => (
         <button key={v} type="button" className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => chooseView(v)}>
-          {v === 'cards' ? 'Cards' : v === 'kanban' ? 'Kanban' : 'Table'}
+          {v === 'cards' ? 'Cards' : v === 'kanban' ? 'Kanban' : isMat ? 'List' : 'Table'}
         </button>
       ))}
     </div>
@@ -452,6 +478,25 @@ export function StandardCostClient({
         </div>
       );
     }
+    if (view === 'table' && isMat) {
+      return <div className="table-scroll"><table className="wf-grid scw-product-table scw-material-product-table"><thead><tr>
+        <th {...sort.th('code', c => c.product_code)}>Material code {sort.ind('code')}</th>
+        <th {...sort.th('name', c => nameOf(c) ?? '')}>Material name {sort.ind('name')}</th>
+        <th>Master</th>
+        <th {...sort.th('stage', c => costStageText(c.neg_stage, c))}>Status {sort.ind('stage')}</th>
+        {rateCols.map(rate => <th key={rate.label} {...sort.th(`rate-${rate.label}`, c => rate.get(c) == null ? null : Number(rate.get(c)))}>{rate.label} {sort.ind(`rate-${rate.label}`)}</th>)}
+        <th {...sort.th('updated', c => rateHistory[c.product_code]?.[0]?.accepted_at ?? c.updated_at ?? '')}>Standard Cost updated date {sort.ind('updated')}</th>
+        <th>Standard cost</th>
+      </tr></thead><tbody>{sort.apply(list).map(cost => <tr key={cost.product_code}>
+        <td className="mono">{cost.product_code}</td>
+        <td>{nameOf(cost) || <span className="wf-subtle">{missingName}</span>}</td>
+        <td>{nameOf(cost) ? 'Material Master' : '—'}</td>
+        <td>{stageBadge(cost)}</td>
+        {rateCols.map(rate => <td key={rate.label}>{rateDisplay(rate.get(cost))}</td>)}
+        <td>{updatedOf(cost) ?? '—'}</td>
+        <td><Link className="wf-btn wf-btn-ghost wf-btn-sm" href={workflowHref(cost)}>{workflowAction(cost)}</Link></td>
+      </tr>)}{!list.length && <tr><td colSpan={9} className="wf-empty-cell">{emptyText}</td></tr>}</tbody></table></div>;
+    }
     if (view === 'table') {
       return (
         <div className="table-scroll sc-table-wrap">
@@ -483,7 +528,7 @@ export function StandardCostClient({
                   <td className="wf-subtle">{targetSummary(cost, isMat ? 'material' : 'fg') ?? '—'}</td>
                   <td className="wf-subtle">{nextActor(cost.neg_stage)}</td>
                   <td className="wf-subtle">{updatedOf(cost) ?? '—'}</td>
-                  <td><Link className="wf-btn wf-btn-ghost wf-btn-sm" href={detailHref(cost)}>Cost Details</Link></td>
+                  <td><Link className="wf-btn wf-btn-ghost wf-btn-sm" href={workflowHref(cost)}>{workflowAction(cost)}</Link></td>
                 </tr>
               ))}
               {!list.length && (
@@ -689,76 +734,42 @@ export function StandardCostClient({
 
   return (
     <>
-      <Notice tone="info">
+      {!isMat && <Notice tone="info">
         Cost is <strong>negotiated</strong>, not just approved: team{' '}
         <strong>proposes</strong> (fill the {jobLabel} / {fobLabel} / {efobLabel} rate that
         applies) → the approver <strong>accepts the proposal as-is</strong>, <strong>rejects</strong> it, or
         sets a <strong>target</strong> → team returns with the <strong>actual vendor rate</strong> →
         the approver <strong>approves</strong> it, and that becomes the Standard Cost the Buying Plan values
         from. {signedOff} of {costs.length} {isMat ? 'materials' : 'products'} are approved.
-      </Notice>
+      </Notice>}
 
       {message && <Notice tone="ok">{message}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
       {/* EFOB rate lives on the Material track — fabrics are the materials there (the
           /RM codes). Its fabric options are the material codes themselves. */}
-      {isMat && (
-        <EfobFabricCostPanel
-          rows={efob}
-          fabricCodes={costs.map((c) => c.product_code)}
-          editable={editable}
-        />
-      )}
-
       {isMat ? (
-        <>
-
-      <div className="tb">
-        <div className="tb-find">
-          <input
-            className="wf-search"
-            placeholder="Filter code…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-          {/* Always-visible filter so approvers can jump straight to what needs them,
-              without scrolling the whole list. */}
-          <div className="segment fb-seg">
-            <button type="button" className={!mineOnly ? 'active' : ''} onClick={() => setMineOnly(false)}>
-              All
-            </button>
-            <button
-              type="button"
-              className={mineOnly ? 'active' : ''}
-              onClick={() => setMineOnly(true)}
-              title={role === 'admin' ? 'Only costs waiting on your approval' : 'Only costs waiting on your input'}
-            >
-              {role === 'admin' ? 'Needs approval' : 'Needs your input'} ({awaitingCount})
-            </button>
+        <section id="material-cost-sheet" className="scw-panel scw-material-sheet" aria-label="Material cost sheet">
+          <h2>Material cost sheet</h2>
+          <p className="wf-subtle">Search a material from the Material Master to add or update its standard cost.</p>
+          <div className="scw-table-filters">
+            <label className="field wf-field"><span>Search material</span><input type="search" value={filter} placeholder="Material code or name" onChange={(e) => setFilter(e.target.value)} /></label>
+            <label className="field wf-field"><span>Status</span><select aria-label="Filter by status" value={stageFilter} onChange={(e) => setStageFilter(e.target.value)}><option value="all">All statuses</option><option value="summary_not_added">Cost Not Added</option><option value="summary_pending">Approval Pending</option><option value="signed_off">Approved</option><option value="summary_partial">Partially Approved</option><option value="summary_resubmit">Re-Submit</option>{KANBAN_STAGES.filter(Boolean).map(stage => <option key={stage} value={stage}>{COST_STAGE_LABEL[stage]}</option>)}</select></label>
+            <div className="scw-table-actions">
+              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm scw-export-csv" disabled={!shown.length} onClick={exportFinishedGoods}><Download size={15} strokeWidth={1.75} aria-hidden="true" />Export CSV</button>
+              <div className="segment scw-view-switch" role="group" aria-label="Material cost sheet view">
+                <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => chooseView('kanban')}>Kanban</button>
+                <button type="button" className={view === 'table' ? 'active' : ''} aria-pressed={view === 'table'} onClick={() => chooseView('table')}>List</button>
+              </div>
+            </div>
           </div>
-          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-        </div>
-        <div className="tb-see">
-          <span className="wf-subtle tb-count">{shown.length} shown</span>
-          {viewSwitch}
-          {editable && (
-            <>
-              <span className="tb-divider" />
-              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" onClick={openAdd}>
-                <Plus size={14} /> Add Material to Input Standard Cost
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Material codes get the same three views as Finished Goods. Rate entry happens on the
-          code's own page. */}
-      <div className="table-panel wf-grid-panel">
-        {sheetViews(sortCards(shown))}
-      </div>
-        </>
+          <div className="table-panel wf-grid-panel">{sheetViews(sortCards(shown))}</div>
+          <EfobFabricCostPanel
+            rows={efob}
+            fabricCodes={costs.map((c) => c.product_code)}
+            editable={editable}
+          />
+        </section>
       ) : (
         <div className="sc-fg">
           <div className="sc-fg-metrics" aria-label="Finished Goods cost overview">
@@ -814,18 +825,14 @@ export function StandardCostClient({
                 {viewSwitch}
               </div>
             </div>
-            {role === 'admin' && mineOnly && (
-              <ListBulkDecide items={shown} track={isMat ? 'material' : 'fg'} picked={picked} setPicked={setPicked} pickable={pickable} />
+            {isMat && role === 'admin' && mineOnly && (
+              <ListBulkDecide items={shown} track="material" picked={picked} setPicked={setPicked} pickable={pickable} />
             )}
             {sheetViews(sortCards(shown))}
             <div className="sc-fg-sheet-foot"><span>{shown.length} of {costs.length} products shown</span><span>Rates in ₹ per piece</span></div>
           </section>
 
-          <div className="sc-fg-context">
-            <div><h3>Two cost owners, one finished price</h3><p>Fabric Cost comes from the Fabric Cost master, owned by the fabric team. CMTP is built by the costing team. Final Cost combines both with the Rules Master margin.</p></div>
-            <div><h3>After approval</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
-          </div>
-          {standards && <StandardFieldsPanel standards={standards} editable={editable} />}
+          <FinishedGoodsCostSupport standards={standards} editable={editable} />
 
         </div>
       )}
@@ -845,6 +852,51 @@ export function StandardCostClient({
       )}
     </>
   );
+}
+
+export function FinishedGoodsCostSupport({ standards, cmtpSubitems, editable }: { standards?: CostStandards; cmtpSubitems?: Record<string,string[]>; editable: boolean }) {
+  return <div className="scw-cost-support">
+    <div className="sc-fg-context">
+      <div><h3>Two cost owners, one finished price</h3><p>Fabric Cost comes from the Fabric Cost master, owned by the fabric team. CMTP is built by the costing team. Final Cost combines both with the Rules Master margin.</p></div>
+      <div><h3>After approval</h3><p>The accepted Job, FOB, and E-FOB rates become the live standard for the Buying Plan. A new proposal starts a revision; first PO issuance freezes the record.</p></div>
+    </div>
+    {standards && <StandardFieldsPanel standards={standards} editable={editable} />}
+    {cmtpSubitems && <CmtpSubitemMasterPanel subitems={cmtpSubitems} editable={editable} />}
+  </div>;
+}
+
+function CmtpSubitemMasterPanel({ subitems, editable }: { subitems: Record<string,string[]>; editable: boolean }) {
+  const [category, setCategory] = useState(CMTP_HEADS[0]?.key ?? '');
+  const [name, setName] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+  const listed = subitems[category] ?? [];
+
+  function add() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const fd = new FormData();
+    fd.set('category', category);
+    fd.set('name', trimmed);
+    start(async () => {
+      const result = await addCmtpSubitem(fd);
+      if (!result.ok) { setMessage(result.error); return; }
+      setName('');
+      reloadWithToast(result.message ?? `Added “${trimmed}” to the CMTP master.`);
+    });
+  }
+
+  return <details className="wf-standards-panel scw-cmtp-master" open={false}>
+    <summary>CMTP sub-item master</summary>
+    <p className="wf-subtle">Add a standardized sub-item here before using it in a Standard Cost. Cost sheets use this master search, so names stay consistent.</p>
+    {message && <Notice tone="error">{message}</Notice>}
+    <div className="wf-form-grid">
+      <Field label="CMTP head"><select value={category} disabled={!editable || busy} onChange={event => setCategory(event.target.value)}>{CMTP_HEADS.map(head => <option key={head.key} value={head.key}>{head.label}</option>)}</select></Field>
+      <Field label="New sub-item"><input value={name} disabled={!editable || busy} placeholder="e.g. Handwork" onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }} /></Field>
+      {editable && <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy || !name.trim()} onClick={add}><Plus size={13} /> {busy ? 'Adding…' : 'Add to master'}</button>}
+    </div>
+    <div className="scw-cmtp-master-values" aria-live="polite"><strong>Current {CMTP_HEADS.find(head => head.key === category)?.label} values</strong>{listed.length ? <span>{listed.join(' · ')}</span> : <span className="wf-subtle">No active values yet.</span>}</div>
+  </details>;
 }
 
 /** Document-once standard fields — the same across all products. */
@@ -1056,12 +1108,14 @@ export function CostRow({
   const mayPropose = canPropose(role, stage) && !cost.frozen && reviseHere;
   const maySubmitRate = canSubmitRate(role, stage) && reviseHere;
   const rateEditable = (mayPropose || maySubmitRate) && !cost.frozen;
-  const targetEditable = canSetTarget(role, stage) && !cost.frozen;
+  const materialFirstApproval = isMat && stage === 'proposed' && !keys.some((key) => cost[`target_${key}` as const] != null);
+  const targetEditable = canSetTarget(role, stage) && !cost.frozen && (!isMat || materialFirstApproval);
   const showExpected = mayPropose || cost.proposed_cost != null;
   const rateRow = stage === 'rate_submitted' ? 'Vendor rate' : stage === 'signed_off' ? 'Standard' : 'Proposed';
   const typedTarget = keys.some((k) => cost[`target_${k}` as const] != null);
   const legacyTarget = !typedTarget && cost.target_cost != null;
   const rateFields = { job_cost: rates.job, fob_cost: rates.fob, efob_cost: rates.efob };
+  const materialTargetsComplete = keys.every((key) => (targets[key] ?? '').trim() !== '');
 
   function act(action: (fd: FormData) => Promise<ActionResult>, extra: Record<string, string>) {
     setErr(null);
@@ -1176,11 +1230,11 @@ export function CostRow({
       </div>
       </div>
 
-      <aside className="sc-entry-side" aria-label="Status and actions">
-        <div className="sc-entry-stage">
+      <aside className={`sc-entry-side${isMat && stage === 'signed_off' ? ' sc-material-approved-action' : ''}`} aria-label="Status and actions">
+        {!isMat && <div className="sc-entry-stage">
           <span className={`wf-status tone-${COST_STAGE_TONE[stageKey]}`}>{costStageText(stageKey, cost)}</span>
           <small className="wf-subtle">{nextActor(stage)}</small>
-        </div>
+        </div>}
         {stage === 'rejected' && cost.rejection_notes && <p className="wf-subtle sc-entry-note">Rejected / Discarded: {cost.rejection_notes}</p>}
       {stage === 'renegotiate' && cost.negotiation_notes && <p className="wf-subtle sc-entry-note">Rework / Reassign: {cost.negotiation_notes}</p>}
         <div className="sc-entry-actions">
@@ -1189,12 +1243,18 @@ export function CostRow({
         {mayPropose && (
           <button
             type="button"
-            className="wf-btn wf-btn-primary wf-btn-sm"
+            className={`wf-btn wf-btn-primary wf-btn-sm${isMat ? ' sc-material-submit' : ''}`}
             disabled={busy}
-            title={`Fill the ${labels.job} / ${labels.fob} / ${labels.efob} rate(s) that apply, then Propose. The expected figure is optional.`}
+            title={`Fill the ${labels.job} / ${labels.fob} / ${labels.efob} rate(s) that apply, then submit. The expected figure is optional.`}
             onClick={() => act(proposeCost, { proposed_cost: proposed, ...rateFields })}
           >
-            {stage === 'proposed' ? 'Update proposal' : 'Propose'}
+            {isMat
+              ? stage === 'proposed'
+                ? 'Save draft / changes'
+                : stage === 'signed_off'
+                  ? 'Submit for approval'
+                  : 'Submit for approval'
+              : stage === 'proposed' ? 'Update proposal' : 'Propose'}
           </button>
         )}
 
@@ -1203,16 +1263,16 @@ export function CostRow({
             {canAcceptProposal(role, stage) && (
               <button
                 type="button"
-                className="wf-btn wf-btn-primary wf-btn-sm"
-                disabled={busy}
+                className={`wf-btn wf-btn-primary wf-btn-sm${isMat ? ' sc-material-review-action' : ''}`}
+                disabled={busy || (isMat && materialFirstApproval && !materialTargetsComplete)}
                 title="Approve the proposed rates as-is — they become the standard cost"
-                onClick={() => act(acceptProposedCost, {})}
+                onClick={() => act(acceptProposedCost, isMat ? targetFields(targets) : {})}
               >
                 Approve
               </button>
             )}
-            <CostEditApprove cost={cost} track={track} role={role} small />
-            <button
+            {!isMat && <CostEditApprove cost={cost} track={track} role={role} small />}
+            {!isMat && <button
               type="button"
               className="wf-btn wf-btn-ghost wf-btn-sm"
               disabled={busy || !Object.keys(targetFields(targets)).length}
@@ -1220,9 +1280,9 @@ export function CostRow({
               onClick={() => act(setTargetCost, targetFields(targets))}
             >
               Set target
-            </button>
+            </button>}
             {canRejectCost(role, stage) && stage === 'proposed' && (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
+              <button type="button" className={`wf-btn wf-btn-ghost wf-btn-sm${isMat ? ' sc-material-review-action' : ''}`} onClick={() => setNoteMode('reject')}>
                 Reject / Discard
               </button>
             )}
@@ -1236,14 +1296,14 @@ export function CostRow({
             disabled={busy}
             onClick={() => act(submitActualRate, rateFields)}
           >
-            <Save size={13} /> {stage === 'rate_submitted' ? 'Update rate' : 'Submit rate'}
+            <Save size={13} /> {isMat ? (stage === 'rate_submitted' ? 'Save draft / changes' : 'Submit for approval') : (stage === 'rate_submitted' ? 'Update rate' : 'Submit rate')}
           </button>
         )}
 
         {canSignOff(role, stage) && (
           <>
             {isMat ? (
-              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm" disabled={busy} onClick={() => act(signOffCost, {})}>
+              <button type="button" className="wf-btn wf-btn-primary wf-btn-sm sc-material-review-action" disabled={busy} onClick={() => act(signOffCost, {})}>
                 Approve
               </button>
             ) : canConfirmFabric(role, stage, !!cost.fabric_confirmed_at) ? (
@@ -1262,7 +1322,7 @@ export function CostRow({
               </button>
             )}
             {canRejectCost(role, stage) && (
-              <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => setNoteMode('reject')}>
+              <button type="button" className={`wf-btn wf-btn-ghost wf-btn-sm${isMat ? ' sc-material-review-action' : ''}`} onClick={() => setNoteMode('reject')}>
                 Reject / Discard
               </button>
             )}
@@ -1286,7 +1346,7 @@ export function CostRow({
           </span>
         )}
       </div>
-        {canManageList && (
+        {canManageList && !isMat && (
           <button
             type="button"
             className="wf-btn wf-btn-ghost wf-btn-sm sc-entry-remove"
@@ -1426,6 +1486,7 @@ export function CostDetail({
   marginPct,
   extraFabrics = [],
   documents,
+  cadPlans,
   trimHistory,
 }: {
   cost: StandardCost;
@@ -1443,6 +1504,7 @@ export function CostDetail({
   extraFabrics?: StandardCostExtraFabric[];
   /** The CAD plan library (product page only) — shown as the Documents tab. */
   documents?: React.ReactNode;
+  cadPlans?: React.ReactNode;
   /** Trim History (product page only) — every trim value change, its own tab after Rate History. */
   trimHistory?: React.ReactNode;
 }) {
@@ -1620,7 +1682,7 @@ export function CostDetail({
           <button type="button" className={view === 'cmtp' ? 'active' : ''} onClick={() => setView('cmtp')}>CMTP</button>
           <button type="button" className={view === 'fabric' ? 'active' : ''} onClick={() => setView('fabric')}>Fabric Cost</button>
           {documents && (
-            <button type="button" className={view === 'documents' ? 'active' : ''} onClick={() => setView('documents')}>Documents</button>
+            <button type="button" className={view === 'documents' ? 'active' : ''} onClick={() => setView('documents')}>Files and Links</button>
           )}
           <button type="button" className={view === 'final' ? 'active' : ''} onClick={() => setView('final')}>Final Cost</button>
           <button type="button" className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>
@@ -1639,6 +1701,7 @@ export function CostDetail({
         <CmtpBreakdown cost={cost} cmtp={cmtp} subitems={cmtpSubitems} editable={editable} />
       ) : view === 'fabric' ? (
         <div className="wf-fabric-view">
+          {cadPlans}
           <div className="wf-form-grid">
             <label className="field wf-field">
               <span>
@@ -1892,6 +1955,7 @@ export function RateHistoryPanel({
   revisions = [],
   hideRevisions = false,
   rateLabels,
+  materialHelp = false,
 }: {
   history: StandardCostRateHistory[];
   revisions?: CmtpRevision[];
@@ -1899,6 +1963,8 @@ export function RateHistoryPanel({
   hideRevisions?: boolean;
   /** Column headers for the three rate slots (job / fob / efob). Material relabels them. */
   rateLabels?: { job: string; fob: string; efob: string };
+  /** Material presents accepted rates as a separate explanatory section. */
+  materialHelp?: boolean;
 }) {
   const lbl = rateLabels ?? { job: 'Job', fob: 'FOB', efob: 'E-FOB' };
   const when = (iso: string) =>
@@ -1907,7 +1973,18 @@ export function RateHistoryPanel({
     });
   const amt = (v: number | null) => (v == null ? '—' : String(v));
   return (
-    <div className="wf-history-view">
+    <div className={`wf-history-view${materialHelp ? ' sc-material-history-view' : ''}`}>
+      {materialHelp && (
+        <div className="sc-material-history-intro">
+          <h2>Accepted rate history</h2>
+          <ul>
+            <li>Each approved rate is kept as a historical record.</li>
+            <li>The newest approved row is the current standard rate used by Buying Plans.</li>
+            <li>When a Buying Plan is submitted, it preserves the rate at that time, so later rate changes do not change that submitted plan.</li>
+          </ul>
+          <p>It is helpful only if users need to understand rate history and frozen plan values.</p>
+        </div>
+      )}
       <p className="wf-subtle">
         Every accepted rate over time — a cost can be re-proposed and re-accepted. The
         top (latest) row is the <strong>live standard cost</strong> the Buying Plan values

@@ -428,6 +428,203 @@
 .ui-shopify .badge.info,
 .ui-shopify .wf-status.tone-blue { color: #2463a8; background: #eaf4ff; }
 
+/* Standard Cost list statuses use the compact Finished Goods reference pills. */
+.ui-shopify .sc-status-badge.tone-neutral { color: #59616b !important; background: #eef0f2 !important; }
+.ui-shopify .sc-status-badge.tone-orange { color: #a76500 !important; background: #fff2d2 !important; }
+.ui-shopify .sc-status-badge.tone-teal { color: #007b64 !important; background: #e2f6ef !important; }
+.ui-shopify .sc-status-badge.tone-purple { color: #6941a3 !important; background: #f1eafd !important; }
+.ui-shopify .sc-status-badge.tone-red { color: #c0392b !important; background: #fdecea !important; }
+
+/* Material cost list: compact, scan-friendly columns rather than an evenly stretched grid. */
+.ui-shopify .scw-material-product-table {
+  width: 1220px;
+  min-width: 1220px;
+  table-layout: fixed;
+}
+.ui-shopify .scw-material-product-table th,
+.ui-shopify .scw-material-product-table td {
+  height: 52px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.ui-shopify .scw-material-product-table th { font-size: 9px; }
+.ui-shopify .scw-material-product-table th:nth-child(1) { width: 105px; }
+.ui-shopify .scw-material-product-table th:nth-child(2) { width: 285px; }
+.ui-shopify .scw-material-product-table th:nth-child(3) { width: 105px; }
+.ui-shopify .scw-material-product-table th:nth-child(4) { width: 105px; }
+.ui-shopify .scw-material-product-table th:nth-child(5) { width: 70px; }
+.ui-shopify .scw-material-product-table th:nth-child(6) { width: 90px; }
+.ui-shopify .scw-material-product-table th:nth-child(7) { width: 115px; }
+.ui-shopify .scw-material-product-table th:nth-child(8) { width: 170px; }
+.ui-shopify .scw-material-product-table th:nth-child(9) { width: 175px; }
+.ui-shopify .scw-material-product-table td:nth-child(2),
+.ui-shopify .scw-material-product-table td:nth-child(3) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-shopify .scw-material-product-table td:last-child .wf-btn {
+  min-height: 32px;
+  padding-inline: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Rate-only Material editor: match the compact Standard Cost sheet rhythm. */
+.ui-shopify .sc-material-cost-editor .sc-page-edit-head { padding: 16px 20px 0; }
+.ui-shopify .sc-material-cost-editor .sc-page-edit-head h2 { margin-bottom: 5px; font-size: 16px; }
+.ui-shopify .sc-material-cost-editor .sc-page-edit-head p { max-width: 76ch; margin-bottom: 8px; }
+.ui-shopify .sc-material-cost-editor .sc-entry {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px 20px;
+  padding: 8px 20px 12px;
+}
+.ui-shopify .sc-material-cost-editor .sc-entry-main { gap: 8px; }
+.ui-shopify .sc-material-cost-editor .sc-entry-grid th,
+.ui-shopify .sc-material-cost-editor .sc-entry-grid td { padding: 10px 12px; }
+.ui-shopify .sc-material-cost-editor .sc-entry-grid tbody th { width: 130px; }
+.ui-shopify .sc-material-cost-editor .sc-entry-grid td.input-col input { max-width: 150px; height: 36px; }
+.ui-shopify .sc-material-cost-editor .sc-entry-side { width: min(350px, 100%); gap: 10px; padding: 14px; }
+.ui-shopify .sc-material-cost-editor .sc-page-workflow-definitions {
+  margin: 0 20px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, #e7e2d2);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.ui-shopify .sc-cost-record-workspace { display: contents; }
+.ui-shopify .sc-material-cost-workspace {
+  --material-workspace-inset: 16px;
+  display: flex;
+  flex-direction: column;
+  margin-inline: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+}
+.ui-shopify .sc-material-cost-workspace .sc-page-edit,
+.ui-shopify .sc-material-cost-workspace .sc-page-detail {
+  overflow: visible;
+  border: 0 !important;
+  border-radius: 0;
+}
+.ui-shopify .sc-material-cost-workspace .sc-page-detail,
+.ui-shopify .sc-material-cost-workspace .sc-page-rates {
+  position: relative;
+  border-top: 0;
+}
+.ui-shopify .sc-material-cost-workspace .sc-page-detail::before,
+.ui-shopify .sc-material-cost-workspace .sc-page-rates::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: var(--material-workspace-inset);
+  left: var(--material-workspace-inset);
+  height: 1px;
+  background: var(--line, #e7e2d2);
+}
+.ui-shopify .sc-material-cost-workspace .sc-page-rates {
+  margin: 0;
+  padding: 14px var(--material-workspace-inset) 18px;
+  background: var(--panel, #fff);
+}
+/* Let the action card participate in the workspace so it can follow every rate section. */
+.ui-shopify .sc-material-cost-workspace .sc-material-cost-editor,
+.ui-shopify .sc-material-cost-workspace .sc-material-cost-editor .sc-entry { display: contents; }
+.ui-shopify .sc-material-cost-workspace .sc-material-cost-editor .sc-page-edit-head {
+  padding-inline: var(--material-workspace-inset);
+}
+.ui-shopify .sc-material-cost-workspace .sc-material-cost-editor .sc-entry-main { padding: 8px var(--material-workspace-inset) 12px; }
+.ui-shopify .sc-material-cost-workspace .sc-material-cost-editor .sc-page-workflow-definitions {
+  margin-inline: var(--material-workspace-inset);
+}
+.ui-shopify .sc-material-cost-workspace .sc-material-cost-editor .sc-entry-side {
+  order: 1;
+  gap: 8px;
+  margin: 0 var(--material-workspace-inset) 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.ui-shopify .sc-material-cost-workspace .sc-material-submit {
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.ui-shopify .sc-material-cost-workspace .sc-material-submit:hover:not(:disabled) {
+  background: #303030;
+}
+.ui-shopify .sc-material-cost-workspace .sc-entry-actions:has(.sc-material-review-action) {
+  flex-direction: row;
+  align-items: stretch;
+}
+.ui-shopify .sc-material-cost-workspace .sc-entry-actions .sc-material-review-action {
+  flex: 1 1 0;
+  width: auto;
+}
+.ui-shopify .sc-material-cost-workspace .sc-material-approved-action {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+@media (max-width: 1100px) {
+  .ui-shopify .sc-material-cost-editor .sc-entry { grid-template-columns: 1fr; }
+}
+@media (max-width: 650px) {
+  .ui-shopify .sc-material-cost-workspace { margin-inline: 0; }
+  .ui-shopify .sc-material-rate-history-section { margin-inline: 0; border-right: 0; border-left: 0; border-radius: 0; }
+  .ui-shopify .sc-material-cost-workspace .sc-entry-actions:has(.sc-material-review-action) { flex-direction: column; }
+}
+
+/* Keep Material rate history aligned with the compact rate-only editor. */
+.ui-shopify .sc-material-cost-detail .sc-page-mode {
+  position: relative;
+  padding: 9px var(--material-workspace-inset);
+  border-bottom: 0 !important;
+  background: var(--panel, #fff);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ui-shopify .sc-material-cost-detail .sc-page-mode::after {
+  content: '';
+  position: absolute;
+  right: var(--material-workspace-inset);
+  bottom: 0;
+  left: var(--material-workspace-inset);
+  height: 1px;
+  background: var(--line, #e7e2d2);
+}
+.ui-shopify .sc-material-rate-history { gap: 8px; padding: 10px var(--material-workspace-inset) 14px; }
+.ui-shopify .sc-material-rate-history .wf-history-view { margin: 0; }
+.ui-shopify .sc-material-rate-history .wf-history-view > .wf-subtle { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+.ui-shopify .sc-material-rate-history .table-panel { margin: 0; }
+.ui-shopify .sc-material-rate-history .wf-grid th { height: 38px; padding: 8px 12px; font-size: 9px; }
+.ui-shopify .sc-material-rate-history .wf-grid td { height: 44px; padding: 8px 12px; font-size: 12px; }
+.ui-shopify .sc-material-rate-history .wf-grid .wf-empty-cell { padding: 16px 12px; text-align: center; }
+.ui-shopify .sc-material-rate-history .wf-grid th:first-child { width: 30%; }
+.ui-shopify .sc-material-rate-history-section {
+  margin: 14px 16px 0;
+  overflow: hidden;
+  border: 1px solid var(--line, #e7e2d2);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+}
+.ui-shopify .sc-material-rate-history-section .sc-material-rate-history { padding: 16px; }
+.ui-shopify .sc-material-history-view > .wf-subtle { display: none; }
+.ui-shopify .sc-material-history-intro { margin: 0 0 14px; }
+.ui-shopify .sc-material-history-intro h2 { margin: 0 0 8px; font-size: 14px; }
+.ui-shopify .sc-material-history-intro ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; line-height: 1.45; list-style: disc outside; }
+.ui-shopify .sc-material-history-intro li + li { margin-top: 4px; }
+.ui-shopify .sc-material-history-intro p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+
 /* Dense toolbars and tables. */
 .ui-shopify .filter-bar,
 .ui-shopify .wf-filter-bar {

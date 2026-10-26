@@ -765,6 +765,7 @@ export type NpdPromotionCandidate = {
 /* ------------------------------------------------------------------ */
 
 export type BuyingPlan = {
+  auto_approved?: boolean;
   id: number;
   plan_month: string; // first day of month, ISO
   plan_type: 'fg' | 'material';
@@ -783,6 +784,7 @@ export type BuyingPlan = {
 };
 
 export type BuyingPlanLine = {
+  auto_approved?: boolean;
   id: number;
   plan_id: number;
   product_code: string;

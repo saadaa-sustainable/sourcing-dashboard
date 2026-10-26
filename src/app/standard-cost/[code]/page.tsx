@@ -17,7 +17,7 @@ import {
   loadAnalyticsRules,
   NotConfiguredError,
 } from '@/lib/forms/queries';
-import { StandardCostDetailClient } from './cost-detail-client';
+import { StandardCostDetailClient, StandardCostRateCards } from './cost-detail-client';
 import { loadCostDocuments } from '@/lib/forms/queries-modules/cost-documents';
 import { loadTrimHistory } from '@/lib/forms/queries-modules/trim-history';
 import { standardCostVariation } from '@/lib/forms/queries-modules/variation-reports';
@@ -26,6 +26,11 @@ import type { StandardCost, StandardCostRateHistory } from '@/lib/forms/types';
 import { loadCmtpRevisions } from '@/lib/standard-cost-revisions.server';
 import { loadProductFabricMap } from '@/lib/product-fabric.server';
 import { loadTempProductMap } from '@/lib/temp-product.server';
+import { costSnapshot, loadCostWorkflow } from '@/lib/standard-cost-workflow.server';
+import { CostWorkflowPanel, CostWorkflowHistory } from '../workflow-panel';
+import { RateHistoryPanel } from '../standard-cost-client';
+import { TrimHistoryPanel } from './trim-history-panel';
+import type { CostRevision } from '@/lib/standard-cost-workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,10 +44,10 @@ export default async function StandardCostDetailPage({
   searchParams,
 }: {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ track?: string }>;
+  searchParams: Promise<{ track?: string; edit?: string }>;
 }) {
   const { code: raw } = await params;
-  const { track: trackParam } = await searchParams;
+  const { track: trackParam, edit } = await searchParams;
   const code = decodeURIComponent(raw);
   const track = trackParam === 'material' ? 'material' : 'fg';
 
@@ -164,6 +169,15 @@ export default async function StandardCostDetailPage({
       : catalog.find((p) => p.product_code.toUpperCase() === cost.product_code.toUpperCase())
           ?.product_name ?? null;
 
+  const workflow = track === 'fg' ? await loadCostWorkflow(cost.product_code) : null;
+  const snapshot = workflow?.ready ? await costSnapshot(cost.product_code) : null;
+  const trimEvents = workflow?.events.filter(event => {
+    const previous = event.before_data as Partial<CostRevision> | null;
+    const next = event.after_data as Partial<CostRevision> | null;
+    const before = event.event === 'approve' ? previous?.base : previous?.payload;
+    return JSON.stringify(before?.cmtp.filter(row => /trim/i.test(row.category)) ?? []) !== JSON.stringify(next?.payload?.cmtp.filter(row => /trim/i.test(row.category)) ?? []);
+  }) ?? [];
+
   return (
     <FormLayout
       title="Standard Cost"
@@ -176,6 +190,21 @@ export default async function StandardCostDetailPage({
     >
       {variation && <VariationReportPanel report={variation} />}
       <StandardCostDetailClient
+        workflowPanel={workflow && <CostWorkflowPanel
+        rateCards={<StandardCostRateCards cost={cost} />}
+        key={`${cost.product_code}-${workflow.revisions[0]?.id ?? 0}-${workflow.revisions[0]?.version ?? 0}`}
+        code={cost.product_code} initial={snapshot} revisions={workflow.revisions} events={workflow.events}
+        initiallyEditing={edit === '1'}
+        cmtpSubitems={cmtpSubitems as Record<string,string[]>}
+        rateHistoryCount={history.length}
+        marginPct={rules.margin_pct / 100}
+        fabricBase={fabricByCode}
+        rateHistoryContent={<><RateHistoryPanel history={history} revisions={cmtpRevisions[cost.product_code] ?? []} /><CostWorkflowHistory events={workflow.events.filter(event => event.sections.includes('rates'))} title="Rate amendment history" /></>}
+        trimHistoryContent={<><TrimHistoryPanel ready={trimChanges.ready} changes={trimChanges.changes} spread={trimSpread} /><CostWorkflowHistory events={trimEvents} title="Trim amendment history" /></>}
+        ready={workflow.ready} error={workflow.error} role={user.role} email={user.email}
+        initiallyApproved={cost.status === 'approved' || cost.neg_stage === 'signed_off' || history.length > 0}
+        references={costs.map(c => ({ code: c.product_code, name: catalog.find(p => p.product_code === c.product_code)?.product_name ?? '' }))}
+      />}
         cost={cost}
         productName={productName}
         lines={lines.filter((l) => l.product_code === cost.product_code)}
@@ -201,11 +230,14 @@ export default async function StandardCostDetailPage({
           .map(([k]) => k)}
         role={user.role}
         marginPct={rules.margin_pct / 100}
+
         track={track}
         // Documents tab between Fabric Cost and Final Cost (FG only).
         costDocs={track !== 'material' ? costDocs : null}
         trims={track !== 'material' ? { ...trimChanges, spread: trimSpread } : null}
         userEmail={user.email}
+        cadFiles={snapshot?.documents.files}
+        initiallyEditing={edit === '1'}
       />
     </FormLayout>
   );

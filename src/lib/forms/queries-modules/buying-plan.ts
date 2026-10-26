@@ -1,4 +1,5 @@
 import 'server-only';
+import { materialItemCodes, type MaterialItem } from '@/lib/material-item-codes';
 import { client, pageAll, PAGE_SIZE } from './_shared';
 import { monthStart } from '../approval';
 import { loadApprovedStandardCosts, loadApprovedMaterialCosts } from './standard-cost';
@@ -6,7 +7,6 @@ import { loadReplenishmentByProduct } from './replenishment-oos';
 import type {
   BuyingPlan,
   BuyingPlanLine,
-  MaterialCode,
   Colour,
 } from '../types';
 
@@ -56,10 +56,14 @@ export async function loadBuyingPlan(planMonth = monthStart()) {
 
   // Product status + woven/knitted are derived from the EasyEcom product master (rolled
   // up to product code, normalised), read-only. The Buying Plan never lets these be typed.
-  const { data: master } = await supabase
-    .from('sd_ee_product_code_status')
+  // The public view checks the session email. Local auth bypass has no user JWT,
+  // so read its backing rollup through the existing server-only admin client.
+  const masterSource = process.env.NODE_ENV !== 'production' && process.env.LOCAL_AUTH_BYPASS === 'true'
+    ? 'sd_ee_product_code_status_mv' : 'sd_ee_product_code_status';
+  const master = await pageAll<{ product_code: string; product_status: string | null; fabric_type: string | null }>(() => supabase
+    .from(masterSource)
     .select('product_code, product_status, fabric_type')
-    .limit(PAGE_SIZE);
+    .order('product_code'));
 
   const productMaster: Record<string, { status: string | null; fabric_type: string | null }> = {};
   (
@@ -110,36 +114,26 @@ export async function loadMaterialPlan(planMonth = monthStart()) {
     .eq('plan_type', 'material')
     .maybeSingle();
 
-  const lines: BuyingPlanLine[] = [];
-  if (plan) {
-    const { data } = await supabase
-      .from('sd_buying_plan_line')
-      .select('*')
-      .eq('plan_id', (plan as BuyingPlan).id)
-      .order('product_code')
-      .limit(PAGE_SIZE);
-    lines.push(...((data ?? []) as BuyingPlanLine[]));
-  }
-
-  const [{ data: mats }, { data: colours }, materialCosts] = await Promise.all([
-    supabase
-      .from('sd_material_codes')
-      .select('material_code, material_type, fabric_name, colour, base_fabric_code')
-      .limit(PAGE_SIZE),
-    supabase
+  const [lines, items, colours, materialCosts] = await Promise.all([
+    plan ? pageAll<BuyingPlanLine>(() => supabase.from('sd_buying_plan_line')
+      .select('*').eq('plan_id', (plan as BuyingPlan).id).order('id')) : Promise.resolve([]),
+    // Read the synced EasyEcom Item Master, including all its material categories.
+    // No active filter: observed fabric/trim records carry active='0' in this source.
+    pageAll<MaterialItem>(() => supabase.from('sd_ee_product_master')
+      .select('sku, product_name, item_category, category_name, colour, rm_fabric_sku').order('sku')),
+    pageAll<Colour>(() => supabase
       .from('sd_colour_master')
       .select('colour, is_active')
       .eq('is_active', true)
-      .order('colour')
-      .limit(PAGE_SIZE),
+      .order('colour')),
     loadApprovedMaterialCosts(),
   ]);
 
   return {
     plan: (plan as BuyingPlan | null) ?? null,
     lines,
-    materialCodes: (mats ?? []) as MaterialCode[],
-    colours: ((colours ?? []) as Colour[]).map((c) => c.colour),
+    materialCodes: materialItemCodes(items),
+    colours: colours.map((c) => c.colour),
     materialCosts,
     planMonth,
   };
