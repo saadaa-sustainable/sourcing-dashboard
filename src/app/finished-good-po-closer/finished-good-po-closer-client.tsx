@@ -539,10 +539,6 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
-  const [dateSortColumn, setDateSortColumn] = useState<string | null>('po_date');
-  const [dateSortDirection, setDateSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [dateMenuColumn, setDateMenuColumn] = useState<string | null>(null);
-  const [dateMenuPosition, setDateMenuPosition] = useState({ top: 0, left: 0 });
 
   /*
    * IMPORTANT:
@@ -849,11 +845,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           });
 
           const sortedClosedRows = [...closedRows].sort((a, b) => {
-            const key = dateSortColumn || 'po_date';
-            const aValue = String(a[key] ?? '');
-            const bValue = String(b[key] ?? '');
-            const comparison = aValue.localeCompare(bValue, undefined, { numeric: true });
-            return dateSortDirection === 'asc' ? comparison : -comparison;
+            const aValue = String(a.po_date ?? '');
+            const bValue = String(b.po_date ?? '');
+            return bValue.localeCompare(aValue, undefined, { numeric: true });
           });
 
           if (!cancelled) {
@@ -961,10 +955,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           query = query.in('po_ref_num', statusRefs);
         }
 
-        const primarySortColumn = dateSortColumn || 'po_date';
-
         const { data, error: queryError } = await query
-          .order(primarySortColumn, { ascending: dateSortDirection === 'asc' })
+          .order('po_date', { ascending: false })
           .order('po_id', { ascending: false })
           .range(from, to);
 
@@ -1006,7 +998,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     return () => {
       cancelled = true;
     };
-  }, [page, search, activeFilter, selectedVendors, selectedPoType, dateSortColumn, dateSortDirection, reloadKey, workflowByPoRef]);
+  }, [page, search, activeFilter, selectedVendors, selectedPoType, reloadKey, workflowByPoRef]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1181,10 +1173,6 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     [pos],
   );
 
-  function isDateColumn(column: string) {
-    return /date|timestamp/i.test(column);
-  }
-
   function toggleVendor(vendor: string) {
     setSelectedVendors((current) =>
       current.includes(vendor)
@@ -1196,20 +1184,6 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
   function clearVendorFilter() {
     setSelectedVendors([]);
-    setPage(1);
-  }
-
-  function applyDateSort(column: string, direction: 'asc' | 'desc') {
-    setDateSortColumn(column);
-    setDateSortDirection(direction);
-    setDateMenuColumn(null);
-    setPage(1);
-  }
-
-  function clearDateSort() {
-    setDateSortColumn(null);
-    setDateSortDirection('desc');
-    setDateMenuColumn(null);
     setPage(1);
   }
 
@@ -3417,65 +3391,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                           : undefined
                     }
                   >
-                    {column === '__fg_action__' ? (
-                      'Action'
-                    ) : isDateColumn(column) ? (
-                      <div className="fg-date-header">
-                        <button
-                          type="button"
-                          className="fg-date-header-button"
-                          onClick={(event) => {
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            setDateMenuPosition({
-                              top: rect.bottom + 7,
-                              left: rect.left,
-                            });
-                            setDateMenuColumn((current) =>
-                              current === column ? null : column,
-                            );
-                          }}
-                        >
-                          {column === 'po_ref_num' ? 'PO REF NO.' : column}
-                          <ChevronDown size={12} />
-                        </button>
-
-                        {dateMenuColumn === column && (
-                          <div
-                            className="fg-date-menu"
-                            style={{
-                              top: dateMenuPosition.top,
-                              left: dateMenuPosition.left,
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className={dateSortColumn === column && dateSortDirection === 'asc' ? 'active' : ''}
-                              onClick={() => applyDateSort(column, 'asc')}
-                            >
-                              Oldest to newest
-                            </button>
-                            <button
-                              type="button"
-                              className={dateSortColumn === column && dateSortDirection === 'desc' ? 'active' : ''}
-                              onClick={() => applyDateSort(column, 'desc')}
-                            >
-                              Newest to oldest
-                            </button>
-                            <button
-                              type="button"
-                              className="fg-date-clear"
-                              onClick={clearDateSort}
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : column === 'po_ref_num' ? (
-                      'PO REF NO.'
-                    ) : (
-                      column
-                    )}
+                    {column === '__fg_action__'
+                      ? 'Action'
+                      : column === 'po_ref_num'
+                        ? 'PO REF NO.'
+                        : column}
                   </th>
                 ))}
               </tr>
