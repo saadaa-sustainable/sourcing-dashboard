@@ -107,6 +107,8 @@ type FgPoRow = {
   sku: string | null;
   Dyed_Fabric_SKU?: string | null;
   "Item Quantity"?: number | string | null;
+  rm_return?: number | string | null;
+  selling_price?: number | string | null;
   product_description: string | null;
   cp_id: string | null;
   po_detail_id: string | null;
@@ -220,6 +222,23 @@ function formatNumber(value: number | null | undefined) {
     maximumFractionDigits: 0,
     minimumFractionDigits: 0,
   }).format(displayValue);
+}
+
+function formatRmAmount(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return '—';
+  }
+
+  // RM AMOUNT is the exact selling_price value from v_fg_po_view.
+  // Keep four decimal places and do not multiply it by quantity.
+  return Number(value).toFixed(4);
+}
+
+function formatFabricAverage(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return '—';
+  }
+  return Number(value).toFixed(2);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -1510,6 +1529,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           sku,
           Dyed_Fabric_SKU,
           "Item Quantity",
+          selling_price,
           product_description,
           po_qty,
           cutting_qty,
@@ -1534,10 +1554,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           dg_serial_count,
           dg_issue_count,
           rg_return_entry_count,
+          rm_return,
           item_price,
           completed_at_timestamp
         `)
-        .eq('po_number', po.po_number)
+        .eq('po_ref_num', po.po_ref_num)
         .order('sku', { ascending: true }).order('po_id').order('po_detail_id'));
 
       if (skuError) throw skuError;
@@ -1939,7 +1960,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
        *                    XS 1.15, S 1.22, M 1.27, L 1.28,
        *                    XL 1.36, 2XL 1.39, 3XL 1.49, 4XL 1.57.
        *   STD RM        = RECEIVED PCS * STD AVG.
-       *   ACH AVG RM    = RECEIVED PCS * ACH AVG.
+       *   ACH AVG RM    = RECEIVED PCS * ACH AVG (workbook cell J = B × H).
        *
        * RM ISSUED, RM RETURN, PART CHANGE, UWF and SCRAP are separate
        * operational inputs in the workbook. They do not exist in the
@@ -2003,6 +2024,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           cuttingQty: number;
           fabricConsumed: number;
           rmIssued: number | null;
+          rmReturn: number | null;
+          rmAmount: number | null;
         }>();
 
         rows.forEach((row) => {
@@ -2021,6 +2044,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             cuttingQty: 0,
             fabricConsumed: 0,
             rmIssued: null,
+            rmReturn: null,
+            rmAmount: null,
           };
 
           current.receivedPcs += Number(row.grn_qty ?? 0);
@@ -2032,6 +2057,37 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           if (current.rmIssued == null && itemQuantity != null && Number.isFinite(itemQuantity)) {
             current.rmIssued = itemQuantity;
           }
+
+          // rm_return is already aggregated in v_fg_po_view at PO-reference + RM-SKU
+          // grain and repeats for each child FG SKU using that RM. Keep it once per
+          // RM SKU; never sum repeated child-SKU values.
+          const rawRmReturn = row.rm_return;
+          const rmReturn = rawRmReturn == null || rawRmReturn === ''
+            ? null
+            : Number(rawRmReturn);
+          if (
+            current.rmReturn == null &&
+            rmReturn != null &&
+            Number.isFinite(rmReturn)
+          ) {
+            current.rmReturn = rmReturn;
+          }
+
+          // selling_price is the RM Amount source. It repeats across child FG
+          // SKUs mapped to the same Dyed_Fabric_SKU, so take it once per RM SKU
+          // instead of summing duplicate values or multiplying by quantity.
+          const rawSellingPrice = row.selling_price;
+          const sellingPrice = rawSellingPrice == null || rawSellingPrice === ''
+            ? null
+            : Number(rawSellingPrice);
+          if (
+            current.rmAmount == null &&
+            sellingPrice != null &&
+            Number.isFinite(sellingPrice)
+          ) {
+            current.rmAmount = sellingPrice;
+          }
+
           fabricMap.set(fabric, current);
         });
 
@@ -2044,12 +2100,26 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             cuttingQty: 0,
             fabricConsumed: 0,
             rmIssued: null,
+            rmReturn: null,
+            rmAmount: null,
           };
 
           current.cuttingQty += Number(cutting.cutting_qty ?? 0);
           current.fabricConsumed += Number(cutting.fabric_consumed ?? 0);
           fabricMap.set(fabric, current);
         });
+
+        // Rates used by the closure workbook for UWF / scrap valuation.
+        // RM AMOUNT remains the exact selling_price from Supabase (not quantity × rate).
+        const getWorkbookFabricRate = (sku: string): number => {
+          const key = sku.trim().toUpperCase();
+          if (key.includes('20CT/63')) return 80.85;
+          if (key.includes('20CF/63')) return 120.75;
+          if (key.includes('20CF/48')) return 89.25;
+          if (key.includes('30RT/63')) return 110.25;
+          if (key.includes('TE/62')) return 551.25;
+          return 0;
+        };
 
         const nextFabricRows: FabricDetailRow[] = Array.from(fabricMap.entries())
           .sort(([a], [b]) => a.localeCompare(b))
@@ -2059,6 +2129,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 ? values.fabricConsumed / values.cuttingQty
                 : null;
 
+            // Match the workbook formulas:
+            // STD RM = Received PCS × STD AVG
+            // ACH AVG RM = RECEIVED PCS × ACH AVG (Excel workbook: J29 = B29 × H29)
+            // TOTAL RM USED = ACH AVG RM + RM USED FOR PART CHANGE
+            // DIFF IN RM = TOTAL RM USED - STD RM
+            // NET FAB USES = TOTAL RM USED + RM RETURN + UWF FABRIC
+            // FABRIC LOSS = MAX(RM ISSUED - NET FAB USES, 0)
             const stdRm =
               values.receivedPcs != null && stdAvg != null
                 ? values.receivedPcs * stdAvg
@@ -2069,28 +2146,57 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 ? values.receivedPcs * achAvg
                 : null;
 
+            // These fields are zero in the supplied workbook for the sample PO.
+            // No separate live source for them is currently loaded by this frontend.
+            const rmUsedForPartChange = 0;
+            const uwfFabric = 0;
+            const scrapRecd = 0;
+            const fabricRate = getWorkbookFabricRate(rmSku);
+            const totalRmUsed = achAvgRm == null
+              ? null
+              : achAvgRm + rmUsedForPartChange;
+            const diffInRm = totalRmUsed == null || stdRm == null
+              ? null
+              : totalRmUsed - stdRm;
+            const diffInPct = diffInRm == null || stdRm == null || stdRm === 0
+              ? null
+              : diffInRm / stdRm;
+            const uwfAmount = uwfFabric * fabricRate;
+            const scrapAmount = scrapRecd * fabricRate;
+            const netFabUses = totalRmUsed == null || values.rmReturn == null
+              ? null
+              : totalRmUsed + values.rmReturn + uwfFabric;
+            const fabricLoss = values.rmIssued == null || netFabUses == null
+              ? null
+              : Math.max(values.rmIssued - netFabUses, 0);
+            const fabricLossPct = fabricLoss == null || values.rmIssued == null || values.rmIssued === 0
+              ? null
+              : fabricLoss / values.rmIssued;
+
             return {
               rmSku,
               receivedPcs: values.receivedPcs,
               rmIssued: values.rmIssued,
-              rmReturn: null,
-              netRmIssued: null,
-              rmAmount: null,
+              rmReturn: values.rmReturn,
+              netRmIssued: values.rmIssued == null || values.rmReturn == null
+                ? null
+                : values.rmIssued - values.rmReturn,
+              rmAmount: values.rmAmount,
               stdAvg,
               achAvg,
               stdRm,
               achAvgRm,
-              rmUsedForPartChange: null,
-              totalRmUsed: null,
-              diffInRm: null,
-              diffInPct: null,
-              uwfFabric: null,
-              uwfAmount: null,
-              scrapRecd: null,
-              scrapAmount: null,
-              netFabUses: null,
-              fabricLoss: null,
-              fabricLossPct: null,
+              rmUsedForPartChange,
+              totalRmUsed,
+              diffInRm,
+              diffInPct,
+              uwfFabric,
+              uwfAmount,
+              scrapRecd,
+              scrapAmount,
+              netFabUses,
+              fabricLoss,
+              fabricLossPct,
             };
           });
 
@@ -4175,11 +4281,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 <td>{formatNumber(fabric.rmIssued)}</td>
                                 <td>{formatNumber(fabric.rmReturn)}</td>
                                 <td>{formatNumber(fabric.netRmIssued)}</td>
-                                <td>{formatNumber(fabric.rmAmount)}</td>
-                                <td>{formatNumber(fabric.stdAvg)}</td>
-                                <td>{formatNumber(fabric.achAvg)}</td>
+                                <td>{formatRmAmount(fabric.rmAmount)}</td>
+                                <td>{formatFabricAverage(fabric.stdAvg)}</td>
+                                <td>{formatFabricAverage(fabric.achAvg)}</td>
                                 <td>{formatNumber(fabric.stdRm)}</td>
-                                <td>{formatNumber(fabric.achAvgRm)}</td>
+                                <td>{formatFabricAverage(fabric.achAvgRm)}</td>
                                 <td>{formatNumber(fabric.rmUsedForPartChange)}</td>
                                 <td>{formatNumber(fabric.totalRmUsed)}</td>
                                 <td>{formatNumber(fabric.diffInRm)}</td>
@@ -4917,7 +5023,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 <td>{formatNumber(fabric.rmIssued)}</td>
                                 <td>{formatNumber(fabric.rmReturn)}</td>
                                 <td>{formatNumber(fabric.netRmIssued)}</td>
-                                <td>{formatNumber(fabric.rmAmount)}</td>
+                                <td>{formatRmAmount(fabric.rmAmount)}</td>
                                 <td>{formatNumber(fabric.stdAvg)}</td>
                                 <td>{formatNumber(fabric.achAvg)}</td>
                                 <td>{formatNumber(fabric.stdRm)}</td>
