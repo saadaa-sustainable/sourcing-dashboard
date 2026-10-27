@@ -1661,6 +1661,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         if (rgInError) throw rgInError;
 
+        // DG PCS is read from the existing v_fg_po_view result (baseRows),
+        // which already exposes DG serial counts by PO/SKU. Do not query
+        // dg_register directly from the browser because that table is permission
+        // restricted. A PO/SKU total is assigned to a GRN only when that SKU maps
+        // to exactly one GRN for this PO; if a SKU spans multiple GRNs, the view
+        // does not provide enough detail to split the count reliably.
+
         const poRowsById = new Map<number, FgPoRow>();
         rows.forEach((row) => {
           if (row.po_id != null) poRowsById.set(Number(row.po_id), row);
@@ -1720,6 +1727,26 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         });
 
         const grouped = new Map<string, GrnAccumulator>();
+        const grnKeysBySku = new Map<string, Set<string>>();
+        ((grnFactData ?? []) as Array<Record<string, unknown>>).forEach((item) => {
+          const skuKey = String(item.sku ?? '').trim().toUpperCase();
+          const poId = item.po_id == null ? null : Number(item.po_id);
+          const grnId = item.grn_id == null ? '' : String(item.grn_id).trim();
+          if (!skuKey || !grnId) return;
+          const grnDate = item.grn_created_date == null ? '' : String(item.grn_created_date);
+          const key = `${poId ?? ''}|${grnId}|${grnDate}`;
+          const keys = grnKeysBySku.get(skuKey) ?? new Set<string>();
+          keys.add(key);
+          grnKeysBySku.set(skuKey, keys);
+        });
+        const dgCountBySku = new Map<string, number>();
+        baseRows.forEach((row) => {
+          const skuKey = String(row.sku ?? '').trim().toUpperCase();
+          const count = Number(row.dg_serial_count ?? row.dg_entry_count ?? 0);
+          if (!skuKey || !Number.isFinite(count)) return;
+          dgCountBySku.set(skuKey, Math.max(dgCountBySku.get(skuKey) ?? 0, count));
+        });
+
         ((grnFactData ?? []) as Array<Record<string, unknown>>).forEach((item) => {
           const poId = item.po_id == null ? null : Number(item.po_id);
           const grnId = item.grn_id == null ? '' : String(item.grn_id).trim();
@@ -1779,7 +1806,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             if (Array.isArray(snapshot.grn_rows)) savedGrnCandidates.push(...snapshot.grn_rows);
           });
         }
-        const savedDatesByGrn = new Map<string, { rgOutBusyDate: string | null; rgInBusyDate: string | null; fabricDate: string | null; trimsDate: string | null; rgOutBusyAmount: number | null; rgInBusyAmount: number | null; fabricAmount: number | null; trimsAmount: number | null }>();
+        const savedDatesByGrn = new Map<string, { rgOutBusyDate: string | null; rgInBusyDate: string | null; dgEntryDate: string | null; dgDnAmount: number | null; fabricDate: string | null; trimsDate: string | null; rgOutBusyAmount: number | null; rgInBusyAmount: number | null; fabricAmount: number | null; trimsAmount: number | null }>();
         savedGrnCandidates.forEach((candidate) => {
           const saved = parseSavedSnapshot(candidate);
           const grnKey = `${String(saved.grn ?? '').trim()}|${String(saved.grnDate ?? '').slice(0, 10)}`;
@@ -1787,6 +1814,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           const existing = savedDatesByGrn.get(grnKey);
           const rgOutBusyDate = saved.rgOutBusyDate == null ? null : String(saved.rgOutBusyDate).slice(0, 10);
           const rgInBusyDate = saved.rgInBusyDate == null ? null : String(saved.rgInBusyDate).slice(0, 10);
+          const dgEntryDate = saved.dgEntryDate == null ? null : String(saved.dgEntryDate).slice(0, 10);
           const fabricDate = saved.fabricDate == null ? null : String(saved.fabricDate).slice(0, 10);
           const trimsDate = saved.trimsDate == null ? null : String(saved.trimsDate).slice(0, 10);
           const asSavedAmount = (value: unknown, fallback: number | null | undefined): number | null => {
@@ -1797,6 +1825,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           savedDatesByGrn.set(grnKey, {
             rgOutBusyDate: rgOutBusyDate || existing?.rgOutBusyDate || null,
             rgInBusyDate: rgInBusyDate || existing?.rgInBusyDate || null,
+            dgEntryDate: dgEntryDate || existing?.dgEntryDate || null,
+            dgDnAmount: asSavedAmount(saved.dgDnAmount, existing?.dgDnAmount),
             fabricDate: fabricDate || existing?.fabricDate || null,
             trimsDate: trimsDate || existing?.trimsDate || null,
             rgOutBusyAmount: asSavedAmount(saved.rgOutBusyAmount, existing?.rgOutBusyAmount),
@@ -1843,6 +1873,17 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             const rgOut = item.grn == null ? undefined : rgOutByGrn.get(String(item.grn));
             const rgIn = item.grn == null ? undefined : rgInByGrn.get(String(item.grn));
             const savedDates = savedDatesByGrn.get(`${String(item.grn ?? '').trim()}|${String(grnDate ?? '').slice(0, 10)}`);
+            const currentGrnKey = `${item.poId ?? ''}|${String(item.grn ?? '').trim()}|${String(grnDate ?? '')}`;
+            const dgPcsForGrn = Array.from(new Set(
+              (mappingByGrn.get(currentGrnKey) ?? [])
+                .map((mappingItem) => String(mappingItem.sku ?? '').trim().toUpperCase())
+                .filter(Boolean),
+            )).reduce((sum, skuKey) => {
+              const skuGrnKeys = grnKeysBySku.get(skuKey);
+              return sum + (skuGrnKeys?.size === 1 && skuGrnKeys.has(currentGrnKey)
+                ? (dgCountBySku.get(skuKey) ?? 0)
+                : 0);
+            }, 0);
 
             return {
               grn: item.grn,
@@ -1864,9 +1905,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
               rgInPcs: rgIn?.qty ?? 0,
               rgInBusyDate: savedDates?.rgInBusyDate ?? null,
               rgInBusyAmount: savedDates?.rgInBusyAmount ?? null,
-              dgPcs: null,
-              dgEntryDate: null,
-              dgDnAmount: null,
+              dgPcs: dgPcsForGrn,
+              dgEntryDate: savedDates?.dgEntryDate ?? null,
+              dgDnAmount: savedDates?.dgDnAmount ?? null,
               fabricDate: savedDates?.fabricDate ?? null,
               fabricAmount: savedDates?.fabricAmount ?? null,
               trimsDate: savedDates?.trimsDate ?? null,
@@ -2861,7 +2902,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const penaltyPoQty = skuRows.reduce((sum, row) => sum + Math.max(0, Number(row.po_qty ?? 0)), 0);
   const penaltyJobWork = skuCalculationType === 'JOB';
   const penaltyCurrency = (value: number | null) =>
-    value == null ? 'Needs input' : `₹${formatNumber(value)}`;
+    `₹${formatNumber(value ?? 0)}`;
   const penaltyToday = new Date();
   penaltyToday.setHours(0, 0, 0, 0);
   const dayDifference = (later: string | null | undefined, earlier: string | null | undefined) => {
@@ -3984,8 +4025,31 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               {skuCalculationType === 'JOB' ? (
                                 <>
                                   <td>{formatNumber(grn.dgPcs)}</td>
-                                  <td>{formatDate(grn.dgEntryDate)}</td>
-                                  <td>{formatNumber(grn.dgDnAmount)}</td>
+                                  <td>
+                                    <input
+                                      type="date"
+                                      aria-label={`DG entry date for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.dgEntryDate ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgEntryDate: event.target.value || null } : row))}
+                                      disabled={reviewReadOnly}
+                                      className="fg-grn-busy-date-input"
+                                      style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      aria-label={`DG DN amount for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.dgDnAmount ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgDnAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                      disabled={reviewReadOnly}
+                                      className="fg-grn-busy-date-input"
+                                      placeholder="Amount"
+                                      style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
                                 </>
                               ) : (
                                 <>
@@ -4181,7 +4245,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         {poPenaltyRows.map((penalty) => (
                           <tr key={`PO_TOTAL:${penalty.key}`}>
                             <td><strong>{penalty.category}</strong></td>
-                            <td><strong>{penalty.amount == null ? 'Needs input' : penaltyCurrency(penalty.amount)}</strong></td>
+                            <td><strong>{penaltyCurrency(penalty.amount)}</strong></td>
                             {selectedDepartment === 'Merchandise' && (
                               <td>
                                 <textarea
@@ -4703,8 +4767,31 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               {skuCalculationType === 'JOB' ? (
                                 <>
                                   <td>{formatNumber(grn.dgPcs)}</td>
-                                  <td>{formatDate(grn.dgEntryDate)}</td>
-                                  <td>{formatNumber(grn.dgDnAmount)}</td>
+                                  <td>
+                                    <input
+                                      type="date"
+                                      aria-label={`DG entry date for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.dgEntryDate ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgEntryDate: event.target.value || null } : row))}
+                                      disabled={reviewReadOnly}
+                                      className="fg-grn-busy-date-input"
+                                      style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      aria-label={`DG DN amount for GRN ${grn.grn ?? index + 1}`}
+                                      value={grn.dgDnAmount ?? ''}
+                                      onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgDnAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
+                                      disabled={reviewReadOnly}
+                                      className="fg-grn-busy-date-input"
+                                      placeholder="Amount"
+                                      style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
+                                    />
+                                  </td>
                                 </>
                               ) : (
                                 <>
@@ -4901,7 +4988,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         {poPenaltyRows.map((penalty) => (
                           <tr key={`PO_TOTAL:${penalty.key}`}>
                             <td><strong>{penalty.category}</strong></td>
-                            <td><strong>{penalty.amount == null ? 'Needs input' : penaltyCurrency(penalty.amount)}</strong></td>
+                            <td><strong>{penaltyCurrency(penalty.amount)}</strong></td>
                             <td style={{ width: 320, minWidth: 320 }}>
                               <textarea
                                 rows={2}
