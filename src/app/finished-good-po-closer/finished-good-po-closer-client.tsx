@@ -4487,7 +4487,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </div>
                 <div className="fg-fabric-table-wrap">
                   <div className="fg-fabric-table-scroll">
-                    <table className="fg-reference-review-table">
+                    <table className="fg-reference-review-table fg-po-penalty-table">
                       <thead>
                         <tr>
                           <th>Penalty Category</th>
@@ -4585,8 +4585,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                         style={{
                                           width: 26, height: 26, minWidth: 26, padding: 0,
                                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                          border: '1px solid #fecaca', borderRadius: '50%',
-                                          background: '#fff', color: '#b91c1c', cursor: 'pointer',
+                                          border: 'none', borderRadius: 0,
+                                          background: 'transparent', color: '#b91c1c', cursor: 'pointer',
                                           fontSize: 16, fontWeight: 700, lineHeight: 1,
                                         }}
                                       >
@@ -5375,7 +5375,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </div>
                 <div className="fg-fabric-table-wrap">
                   <div className="fg-fabric-table-scroll">
-                    <table className="fg-reference-review-table">
+                    <table className="fg-reference-review-table fg-po-penalty-table">
                       <thead>
                         <tr>
                           <th>Penalty Category</th>
@@ -6624,6 +6624,37 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-reference-review-table thead th:first-child {
           min-width: 190px;
           width: 190px;
+        }
+
+        /* Keep Penalty Category and Penalty Applied visible while horizontally scrolling the penalty table. */
+        .fg-po-penalty-table th:first-child,
+        .fg-po-penalty-table td:first-child {
+          position: sticky;
+          left: 0;
+          min-width: 330px;
+          width: 330px;
+          z-index: 20;
+        }
+
+        .fg-po-penalty-table th:nth-child(2),
+        .fg-po-penalty-table td:nth-child(2) {
+          position: sticky;
+          left: 330px;
+          min-width: 130px;
+          width: 130px;
+          z-index: 20;
+          box-shadow: 5px 0 8px -8px rgba(15, 23, 42, 0.45);
+        }
+
+        .fg-po-penalty-table thead th:first-child,
+        .fg-po-penalty-table thead th:nth-child(2) {
+          z-index: 42;
+          background: #111827;
+        }
+
+        .fg-po-penalty-table tbody td:first-child,
+        .fg-po-penalty-table tbody td:nth-child(2) {
+          background: #ffffff;
         }
 
         /* Keep the Calculation column visible while scrolling horizontally. */
