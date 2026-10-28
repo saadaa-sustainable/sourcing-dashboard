@@ -896,6 +896,20 @@ export type VendorDeboardingReason =
 /** One row of sd_vendor_commercial_request — the team's Commercial Approval form, field for field. */
 export type VendorCommercialRequest = {
   id: number;
+  submitted_at: string | null;
+  revision: number;
+  details: import('./commercial-workflow').CommercialDetails;
+  submission_key: string | null;
+  updated_at: string;
+  decision_notes: string | null;
+  decided_at: string | null;
+  decided_by: string | null;
+  approved_amount: number | null;
+  processing_status: 'pending' | 'processed';
+  processed_amount: number | null;
+  processed_reference: string | null;
+  processed_at: string | null;
+  processed_by: string | null;
   business_type: import('./commercial').CommercialBusinessType;
   vendor_code: string;
   vendor_name: string | null;

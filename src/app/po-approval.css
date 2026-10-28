@@ -430,3 +430,10 @@ body.poa-drawer-open { overflow: hidden; }
   .poa-body .wf-verify-grid.poa-review-three { grid-template-columns: 1fr; }
   .poa-body .poa-vendor-capacity dl { grid-template-columns: 1fr; }
 }
+
+.poa-head-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 16px; margin-left: auto; }
+.poa-edit-toolbar { display: flex; justify-content: flex-end; }
+.poa-edit-toolbar:empty { display: none; }
+.wf-btn.poa-edit-request { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; border: 1px solid #202223; border-radius: 8px; background: #202223; color: #fff; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.wf-btn.poa-edit-request:hover { background: #303336; border-color: #303336; color: #fff; }
+.wf-btn.poa-edit-request:focus-visible { outline: 2px solid #202223; outline-offset: 3px; }

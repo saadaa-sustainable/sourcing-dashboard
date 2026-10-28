@@ -1,8 +1,9 @@
 // Vendor Commercial Approval — the team's Google Form "COMMERCIAL APPROVAL FORM", field for
 // field. Plain module: the server actions, the page and the approval queue all read these.
 
+import { holdWaiverDays } from './commercial-workflow';
 export type CommercialBusinessType = 'garment' | 'fabric';
-export type CommercialRequestType = 'hold_waiver' | 'cost_increment' | 'cash_discount' | 'dn_removal' | 'credit_note';
+export type CommercialRequestType = 'hold_waiver' | 'cost_increment' | 'cash_discount' | 'dn_removal' | 'credit_note' | 'grn_delay_waiver' | 'surplus_fabric_consumption';
 
 export const BUSINESS_TYPES: { key: CommercialBusinessType; label: string; hint: string }[] = [
   { key: 'garment', label: 'Garment manufacturer', hint: 'Job / E-FOB / FOB' },
@@ -18,6 +19,8 @@ export const REQUEST_TYPES: { key: CommercialRequestType; label: string }[] = [
   { key: 'cost_increment', label: 'Commercial approval / cost increment' },
   { key: 'cash_discount', label: 'Cash discount (CD)' },
   { key: 'dn_removal', label: 'Debit note (DN) removal' },
+  { key: 'grn_delay_waiver', label: 'GRN Delay Waiver' },
+  { key: 'surplus_fabric_consumption', label: 'Surplus Average Fabric Consumption' },
   { key: 'credit_note', label: 'Credit note request' },
 ];
 
@@ -28,27 +31,22 @@ export const REQUEST_TYPE_LABEL: Record<CommercialRequestType, string> = Object.
 /** Reasons for a cost increment, as the form lists them for each business type ("Other" is free text). */
 export const COST_REASONS: Record<CommercialBusinessType, { key: string; label: string }[]> = {
   garment: [
-    { key: 'fabric_width_short', label: 'Fabric width short' },
-    { key: 'dark_edges', label: 'Dark edges — difference in cuttable width' },
-    { key: 'fabric_defect', label: 'Defect in fabric' },
-    { key: 'trim_add_ons', label: 'Add-ons in product trims' },
-    { key: 'silhouette_change', label: 'Change in product silhouette / design' },
-    { key: 'trim_quality_change', label: 'Change in trim quality' },
-    { key: 'finishing_add_ons', label: 'Add-ons in product finishing (washing / other finish)' },
-    { key: 'unequal_ratio', label: 'Increase in average due to unequal ratio' },
+    { key: 'dye_rate', label: 'Increase in dye rate' },
+    { key: 'fabric_finishing', label: 'Add-ons in fabric finishing / washing' },
     { key: 'other', label: 'Other' },
   ],
   fabric: [
     { key: 'dye_rate', label: 'Increase in dye rate' },
     { key: 'fabric_finishing', label: 'Add-ons in fabric finishing / washing' },
-    { key: 'greige_yarn_rate', label: 'Increase in greige / yarn rate' },
     { key: 'other', label: 'Other' },
   ],
 };
 
 export function costReasonLabel(b: CommercialBusinessType, key: string | null, other?: string | null): string {
   if (!key) return '—';
+  if (key.includes(',')) return key.split(',').map((part) => costReasonLabel(b, part, other)).join('; ');
   if (key === 'other') return other ? `Other — ${other}` : 'Other';
+  if (key === 'greige_yarn_rate') return 'Increase in greige / yarn rate';
   return COST_REASONS[b].find((r) => r.key === key)?.label ?? key;
 }
 
@@ -59,10 +57,15 @@ export const REMARKS_LABEL: Record<CommercialRequestType, string> = {
   cash_discount: 'Remarks',
   dn_removal: 'Reason for DN removal',
   credit_note: 'Reason for credit note',
+  grn_delay_waiver: 'Remarks',
+  surplus_fabric_consumption: 'Remarks',
 };
 
 /** Which request types take files, and what the form calls them. */
 export const ATTACHMENT_LABEL: Partial<Record<CommercialRequestType, string>> = {
+  surplus_fabric_consumption: 'Proof or related documents (e.g. leftover fabric data, CAD approval)',
+  hold_waiver: 'Hold instructions / supporting communication',
+  cost_increment: 'Rate quotation / supporting documents (optional)',
   cash_discount: 'Invoice copy',
   dn_removal: 'Proof or related documents',
   credit_note: 'Proof or related documents',
@@ -101,12 +104,16 @@ export function commercialSummary(r: {
   debit_note_number: string | null;
   credit_amount: number | null;
   attachments?: CommercialAttachment[] | null;
+  details?: Record<string, string>;
 }): string {
   const parts: (string | null)[] = [BUSINESS_TYPES.find((b) => b.key === r.business_type)?.label ?? r.business_type, `PO ${r.po_numbers}`];
   if (r.request_type === 'hold_waiver') parts.push(r.hold_qty != null ? `${new Intl.NumberFormat('en-IN').format(r.hold_qty)} held` : null, r.hold_days != null ? `${r.hold_days} days asked` : null, r.ready_date ? `ready ${r.ready_date}` : null);
+  if (r.request_type === 'hold_waiver' && holdWaiverDays(r.details ?? {}) != null) parts.push(`${holdWaiverDays(r.details ?? {})} waiver days`);
   if (r.request_type === 'cost_increment') parts.push(costReasonLabel(r.business_type, r.cost_reason, r.cost_reason_other), r.increment_amount != null ? `+${inr(r.increment_amount)} asked` : null);
   if (r.request_type === 'cash_discount') parts.push(r.invoice_number ? `invoice ${r.invoice_number}` : null, inr(r.invoice_amount), r.rg_pending ? `RG pending ${r.rg_pending}` : null);
   if (r.request_type === 'dn_removal') parts.push(r.debit_note_number ? `DN ${r.debit_note_number}` : null);
+  if (r.request_type === 'grn_delay_waiver') parts.push(r.details?.challan_no ? `Challan ${r.details.challan_no}` : null, r.details?.grn_no ? `GRN ${r.details.grn_no}` : null, r.details?.delayed_qty ? `${r.details.delayed_qty} ${r.details.quantity_unit ?? ''} delayed` : null);
+  if (r.request_type === 'surplus_fabric_consumption') parts.push(r.details?.initial_consumption ? `Initial ${r.details.initial_consumption}` : null, r.details?.revised_consumption ? `revised ${r.details.revised_consumption}` : null, r.details?.increased_consumption ? `increase ${r.details.increased_consumption}` : null);
   if (r.request_type === 'credit_note') parts.push(r.credit_amount != null ? `credit ${inr(r.credit_amount)}` : null);
   const n = r.attachments?.length ?? 0;
   if (n) parts.push(`${n} file${n === 1 ? '' : 's'}`);
