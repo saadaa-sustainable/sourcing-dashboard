@@ -419,6 +419,15 @@ function formatSummaryTableValue(key: (typeof SUMMARY_TABLE_COLUMNS)[number], va
   return String(value);
 }
 
+type AccountsSupportingDocumentRow = {
+  id: string;
+  title: string;
+  reason: string;
+  file: File | null;
+  path?: string | null;
+  fileName?: string | null;
+};
+
 type FinishedGoodPoCloserClientProps = {
   userEmail: string;
 };
@@ -529,6 +538,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [skuSelectionAnchor, setSkuSelectionAnchor] = useState<{ row: number; col: number } | null>(null);
   const [skuSelecting, setSkuSelecting] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<File | null>(null);
+  const [accountsSupportingDocuments, setAccountsSupportingDocuments] = useState<AccountsSupportingDocumentRow[]>([
+    { id: crypto.randomUUID(), title: '', reason: '', file: null },
+  ]);
+  const [merchandiseSupportingDocuments, setMerchandiseSupportingDocuments] = useState<AccountsSupportingDocumentRow[]>([
+    { id: crypto.randomUUID(), title: '', reason: '', file: null },
+  ]);
   const [founderComment, setFounderComment] = useState('');
   const [savingReview, setSavingReview] = useState(false);
   const [approvingFounder, setApprovingFounder] = useState(false);
@@ -2344,6 +2359,39 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setSkuSelectionAnchor(null);
     setSkuSelecting(false);
     setSelectedDocument(null);
+    const savedAccountsData = asObject(submission?.accounts_data);
+    const savedSupportingDocs = savedAccountsData.accounts_supporting_documents
+      ?? asObject(submission?.review_remarks).accounts_supporting_documents
+      ?? asObject(savedWorkflow?.accounts_review).accounts_supporting_documents;
+    const restoredDocs = Array.isArray(savedSupportingDocs)
+      ? savedSupportingDocs.map((doc: unknown) => {
+          const item = doc && typeof doc === 'object' ? doc as Record<string, unknown> : {};
+          return {
+            id: crypto.randomUUID(),
+            title: String(item.title ?? ''),
+            reason: String(item.reason ?? ''),
+            file: null,
+            path: typeof item.path === 'string' ? item.path : null,
+            fileName: typeof item.fileName === 'string' ? item.fileName : (typeof item.name === 'string' ? item.name : null),
+          };
+        })
+      : [];
+    setAccountsSupportingDocuments(restoredDocs.length ? restoredDocs : [{ id: crypto.randomUUID(), title: '', reason: '', file: null }]);
+    const savedMerchandiseData = asObject(submission?.merchandise_data);
+    const savedMerchandiseDocs = savedMerchandiseData.merchandise_supporting_documents
+      ?? asObject(submission?.review_remarks).merchandise_supporting_documents
+      ?? asObject(savedWorkflow?.merchandise_review).merchandise_supporting_documents;
+    const restoredMerchandiseDocs = Array.isArray(savedMerchandiseDocs)
+      ? savedMerchandiseDocs.map((doc: unknown) => {
+          const item = doc && typeof doc === 'object' ? doc as Record<string, unknown> : {};
+          return {
+            id: crypto.randomUUID(), title: String(item.title ?? ''), reason: String(item.reason ?? ''), file: null,
+            path: typeof item.path === 'string' ? item.path : null,
+            fileName: typeof item.fileName === 'string' ? item.fileName : (typeof item.name === 'string' ? item.name : null),
+          };
+        })
+      : [];
+    setMerchandiseSupportingDocuments(restoredMerchandiseDocs.length ? restoredMerchandiseDocs : [{ id: crypto.randomUUID(), title: '', reason: '', file: null }]);
     setWorkflowMessage('');
     setWorkflowError('');
     void loadSkuRows(po);
@@ -2357,6 +2405,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setReviewText('');
     setReviewRemarks({});
     setSelectedDocument(null);
+    setAccountsSupportingDocuments([{ id: crypto.randomUUID(), title: '', reason: '', file: null }]);
+    setMerchandiseSupportingDocuments([{ id: crypto.randomUUID(), title: '', reason: '', file: null }]);
     setWorkflowMessage('');
     setWorkflowError('');
     void loadSkuRows(selectedPO);
@@ -2384,7 +2434,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       let documentName: string | null = null;
       let documentUploadWarning = '';
 
-      if (selectedDocument) {
+      if (selectedDocument && selectedDepartment !== 'Accounts') {
         const safeName = selectedDocument.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const documentPathPrefix =
           `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/${selectedDepartment.toLowerCase()}`;
@@ -2411,6 +2461,68 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         }
       }
 
+      let accountsSupportingDocsSaved: Array<{ title: string; reason: string; path: string | null; fileName: string | null }> = [];
+      if (selectedDepartment === 'Accounts') {
+        const meaningfulRows = accountsSupportingDocuments.filter((row) =>
+          row.file || row.title.trim() || row.reason.trim() || row.path
+        );
+        for (const row of meaningfulRows) {
+          let path = row.path ?? null;
+          let fileName = row.fileName ?? null;
+          if (row.file) {
+            const safeName = row.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const prefix = `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/accounts`;
+            const attemptedPath = `${prefix}/${crypto.randomUUID()}-${safeName}`;
+            const { error: uploadError } = await supabase.storage
+              .from('fg-closure-documents')
+              .upload(attemptedPath, row.file, {
+                cacheControl: '3600',
+                upsert: false,
+                contentType: row.file.type || undefined,
+              });
+            if (uploadError) {
+              throw new Error(`Failed to upload "${row.title || row.file.name}": ${uploadError.message}`);
+            }
+            path = attemptedPath;
+            fileName = row.file.name;
+          }
+          accountsSupportingDocsSaved.push({
+            title: row.title.trim(),
+            reason: row.reason.trim(),
+            path,
+            fileName,
+          });
+        }
+        const firstWithPath = accountsSupportingDocsSaved.find((doc) => doc.path);
+        if (firstWithPath) {
+          documentPath = firstWithPath.path;
+          documentName = firstWithPath.fileName || firstWithPath.title || 'Accounts Supporting Document';
+        }
+      }
+
+      let merchandiseSupportingDocsSaved: Array<{ title: string; reason: string; path: string | null; fileName: string | null }> = [];
+      if (selectedDepartment === 'Merchandise') {
+        const meaningfulRows = merchandiseSupportingDocuments.filter((row) => row.file || row.title.trim() || row.reason.trim() || row.path);
+        for (const row of meaningfulRows) {
+          let path = row.path ?? null;
+          let fileName = row.fileName ?? null;
+          if (row.file) {
+            const safeName = row.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const prefix = `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/merchandise`;
+            const attemptedPath = `${prefix}/${crypto.randomUUID()}-${safeName}`;
+            const { error: uploadError } = await supabase.storage.from('fg-closure-documents').upload(attemptedPath, row.file, {
+              cacheControl: '3600', upsert: false, contentType: row.file.type || undefined,
+            });
+            if (uploadError) throw new Error(`Failed to upload "${row.title || row.file.name}": ${uploadError.message}`);
+            path = attemptedPath;
+            fileName = row.file.name;
+          }
+          merchandiseSupportingDocsSaved.push({ title: row.title.trim(), reason: row.reason.trim(), path, fileName });
+        }
+        const firstWithPath = merchandiseSupportingDocsSaved.find((doc) => doc.path);
+        if (firstWithPath) { documentPath = firstWithPath.path; documentName = firstWithPath.fileName || firstWithPath.title || 'Merchandise Supporting Document'; }
+      }
+
       const existing = selectedPO.po_id == null
         ? undefined
         : workflowByPoRef[String(selectedPO.po_ref_num ?? '')];
@@ -2424,9 +2536,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           .map(([metric, value]) => [metric, String(value).trim()]),
       );
       const additionalRemarks = reviewText.trim();
-      const departmentReviewJson: Record<string, string> = {
+      const departmentReviewJson: Record<string, unknown> = {
         ...rowRemarks,
         ...(additionalRemarks ? { additional_remarks: additionalRemarks } : {}),
+        ...(selectedDepartment === 'Accounts' ? { accounts_supporting_documents: accountsSupportingDocsSaved } : {}),
+        ...(selectedDepartment === 'Merchandise' ? { merchandise_supporting_documents: merchandiseSupportingDocsSaved } : {}),
       };
       const metricReview = Object.entries(rowRemarks)
         .map(([metric, value]) => `${metric}: ${value}`)
@@ -2449,6 +2563,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         review_remarks: reviewRemarks,
         review_text: reviewText.trim(),
         selected_sku_sum: selectedSkuSum,
+        ...(selectedDepartment === 'Accounts' ? { accounts_supporting_documents: accountsSupportingDocsSaved } : {}),
+        ...(selectedDepartment === 'Merchandise' ? { merchandise_supporting_documents: merchandiseSupportingDocsSaved } : {}),
       };
 
       // Routing rules for the two departments:
@@ -4512,28 +4628,113 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     ) : <small>No uploaded document is linked to this submission. If the earlier upload failed, please upload the file again and submit.</small>;
                   })()}
                 </div>
+              ) : selectedDepartment === 'Accounts' ? (
+                <div className="fg-accounts-documents">
+                  <div className="fg-accounts-documents-heading">
+                    <div>
+                      <strong>Accounts Supporting Documents</strong>
+                      <small>Upload one or more documents, add a title, and explain the reason for each file.</small>
+                    </div>
+                  </div>
+                  <div className="fg-accounts-doc-grid fg-accounts-doc-grid-header">
+                    <span>Upload document</span><span>Document title</span><span>Reason</span><span>Actions</span>
+                  </div>
+                  {accountsSupportingDocuments.map((row, index) => (
+                    <div className="fg-accounts-doc-grid" key={row.id}>
+                      <div className="fg-doc-upload-cell">
+                        {row.path ? (
+                          <button type="button" className="fg-document-button" onClick={() => void openDocument(row.path ?? null)}>
+                            <Eye size={14} /> View file
+                          </button>
+                        ) : null}
+                        {!reviewReadOnly && (
+                          <label className="fg-doc-upload-button">
+                            <Upload size={15} /> {row.file ? 'Change file' : row.fileName ? 'Replace file' : 'Upload'}
+                            <input
+                              type="file"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0] ?? null;
+                                setAccountsSupportingDocuments((rows) => rows.map((item) => item.id === row.id ? { ...item, file, fileName: file?.name ?? item.fileName } : item));
+                                event.currentTarget.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        <small className="fg-doc-file-name">{row.file?.name ?? row.fileName ?? 'No file selected'}</small>
+                      </div>
+                      <input
+                        className="fg-doc-row-input"
+                        value={row.title}
+                        readOnly={reviewReadOnly}
+                        placeholder="e.g. Invoice / Debit note"
+                        aria-label={`Document title ${index + 1}`}
+                        onChange={(event) => setAccountsSupportingDocuments((rows) => rows.map((item) => item.id === row.id ? { ...item, title: event.target.value } : item))}
+                      />
+                      <input
+                        className="fg-doc-row-input"
+                        value={row.reason}
+                        readOnly={reviewReadOnly}
+                        placeholder="Enter reason"
+                        aria-label={`Reason for document ${index + 1}`}
+                        onChange={(event) => setAccountsSupportingDocuments((rows) => rows.map((item) => item.id === row.id ? { ...item, reason: event.target.value } : item))}
+                      />
+                      <div className="fg-doc-row-actions">
+                        {!reviewReadOnly && accountsSupportingDocuments.length > 1 && (
+                          <button
+                            type="button"
+                            className="fg-doc-remove-row"
+                            aria-label={`Remove document row ${index + 1}`}
+                            title="Remove row"
+                            onClick={() => setAccountsSupportingDocuments((rows) => rows.filter((item) => item.id !== row.id))}
+                          >−</button>
+                        )}
+                        {!reviewReadOnly && index === accountsSupportingDocuments.length - 1 && (
+                          <button
+                            type="button"
+                            className="fg-doc-add-row"
+                            aria-label="Add supporting document row"
+                            title="Add document row"
+                            onClick={() => setAccountsSupportingDocuments((rows) => [...rows, { id: crypto.randomUUID(), title: '', reason: '', file: null }])}
+                          >+</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <label className="fg-reference-document">
-                  <Upload size={18} />
-                  <span>
-                    <strong>
-                      {selectedDocument
-                        ? selectedDocument.name
-                        : selectedDepartment === 'Merchandise'
-                          ? 'Merchandise Supporting Document'
-                          : 'Accounts Supporting Document'}
-                    </strong>
-                    <small>
-                      {selectedDocument
-                        ? 'Replacement document selected'
-                        : `Upload a replacement ${selectedDepartment} supporting document.`}
-                    </small>
-                  </span>
-                  <input
-                    type="file"
-                    onChange={(event) => setSelectedDocument(event.target.files?.[0] ?? null)}
-                  />
-                </label>
+                <div className="fg-accounts-documents">
+                  <div className="fg-accounts-documents-heading">
+                    <div>
+                      <strong>Merchandise Supporting Documents</strong>
+                      <small>Upload one or more documents, add a title, and explain the reason for each file.</small>
+                    </div>
+                  </div>
+                  <div className="fg-accounts-doc-grid fg-accounts-doc-grid-header">
+                    <span>Upload document</span><span>Document title</span><span>Reason</span><span>Actions</span>
+                  </div>
+                  {merchandiseSupportingDocuments.map((row, index) => (
+                    <div className="fg-accounts-doc-grid" key={row.id}>
+                      <div className="fg-doc-upload-cell">
+                        {row.path ? <button type="button" className="fg-document-button" onClick={() => void openDocument(row.path ?? null)}><Eye size={14} /> View file</button> : null}
+                        {!reviewReadOnly && <label className="fg-doc-upload-button">
+                          <Upload size={15} /> {row.file ? 'Change file' : row.fileName ? 'Replace file' : 'Upload'}
+                          <input type="file" onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            setMerchandiseSupportingDocuments((rows) => rows.map((item) => item.id === row.id ? { ...item, file, fileName: file?.name ?? item.fileName } : item));
+                            event.currentTarget.value = '';
+                          }} />
+                        </label>}
+                        <small className="fg-doc-file-name">{row.file?.name ?? row.fileName ?? 'No file selected'}</small>
+                      </div>
+                      <input className="fg-doc-row-input" value={row.title} readOnly={reviewReadOnly} placeholder="e.g. Invoice / Debit note" aria-label={`Merchandise document title ${index + 1}`} onChange={(event) => setMerchandiseSupportingDocuments((rows) => rows.map((item) => item.id === row.id ? { ...item, title: event.target.value } : item))} />
+                      <input className="fg-doc-row-input" value={row.reason} readOnly={reviewReadOnly} placeholder="Enter reason" aria-label={`Reason for merchandise document ${index + 1}`} onChange={(event) => setMerchandiseSupportingDocuments((rows) => rows.map((item) => item.id === row.id ? { ...item, reason: event.target.value } : item))} />
+                      <div className="fg-doc-row-actions">
+                        {!reviewReadOnly && merchandiseSupportingDocuments.length > 1 && <button type="button" className="fg-doc-remove-row" aria-label={`Remove merchandise document row ${index + 1}`} title="Remove row" onClick={() => setMerchandiseSupportingDocuments((rows) => rows.filter((item) => item.id !== row.id))}>−</button>}
+                        {!reviewReadOnly && index === merchandiseSupportingDocuments.length - 1 && <button type="button" className="fg-doc-add-row" aria-label="Add merchandise supporting document row" title="Add document row" onClick={() => setMerchandiseSupportingDocuments((rows) => [...rows, { id: crypto.randomUUID(), title: '', reason: '', file: null }])}>+</button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               {workflowMessage && (
@@ -6893,6 +7094,106 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           .fg-kpi-grid { grid-template-columns: 1fr; }
           .fg-kpi-card { min-height: 115px; }
           .fg-table-header { padding: 14px; }
+        }
+
+        .fg-accounts-documents {
+          margin-top: 12px;
+          padding: 14px;
+          border: 1px solid #dfe4ea;
+          border-radius: 10px;
+          background: #f8fafc;
+        }
+        .fg-accounts-documents-heading {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+        .fg-accounts-documents-heading > div {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .fg-accounts-documents-heading strong { color: #2e3742; font-size: 12px; }
+        .fg-accounts-documents-heading small { color: #7d8794; font-size: 11px; }
+        .fg-accounts-doc-grid {
+          display: grid;
+          grid-template-columns: minmax(150px, 1.1fr) minmax(150px, 1fr) minmax(150px, 1fr) 42px;
+          gap: 10px;
+          align-items: center;
+          padding: 10px 0;
+          border-top: 1px solid #e5e9ef;
+        }
+        .fg-accounts-doc-grid-header {
+          padding: 0 0 8px;
+          border-top: 0;
+          color: #697586;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+        }
+        .fg-doc-upload-cell { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+        .fg-doc-upload-button, .fg-doc-add-row, .fg-doc-remove-row {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border: 1px solid #d4dbe4;
+          border-radius: 7px;
+          background: #fff;
+          color: #344054;
+          cursor: pointer;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .fg-doc-upload-button { padding: 8px 10px; }
+        .fg-doc-upload-button input { display: none; }
+        .fg-doc-file-name { max-width: 100%; color: #7d8794; font-size: 10px; overflow-wrap: anywhere; }
+        .fg-doc-row-input {
+          width: 100%;
+          min-width: 0;
+          min-height: 38px;
+          padding: 8px 10px;
+          border: 1px solid #d8dee7;
+          border-radius: 7px;
+          background: #fff;
+          color: #263241;
+          font: inherit;
+          font-size: 12px;
+          outline: none;
+        }
+        .fg-doc-row-input:focus { border-color: #e5b900; box-shadow: 0 0 0 2px rgba(245, 190, 0, .14); }
+        .fg-doc-row-input[readonly] { background: #f1f3f6; color: #6b7280; }
+        .fg-doc-row-actions { display: flex; justify-content: center; align-items: center; gap: 4px; min-width: 0; }
+        .fg-accounts-documents .fg-doc-add-row,
+        .fg-accounts-documents .fg-doc-remove-row {
+          box-sizing: border-box;
+          width: 26px !important;
+          min-width: 26px !important;
+          max-width: 26px !important;
+          height: 26px !important;
+          min-height: 26px !important;
+          max-height: 26px !important;
+          flex: 0 0 26px !important;
+          aspect-ratio: 1 / 1;
+          padding: 0 !important;
+          border-radius: 50% !important;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 17px;
+          line-height: 1;
+          cursor: pointer;
+          transform: none;
+        }
+        .fg-doc-add-row { background: #f5c400; border-color: #e6b800; color: #1d232b; }
+        .fg-doc-remove-row { color: #b42318; }
+        @media (max-width: 760px) {
+          .fg-accounts-doc-grid { grid-template-columns: 1fr; gap: 8px; }
+          .fg-accounts-doc-grid-header { display: none; }
+          .fg-doc-row-actions { justify-content: flex-end; }
         }
       `}</style>
     </div>
