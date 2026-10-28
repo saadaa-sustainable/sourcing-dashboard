@@ -538,6 +538,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [penaltyChanges, setPenaltyChanges] = useState<Record<string, string>>({});
   const [dnVoucherNumbers, setDnVoucherNumbers] = useState<Record<string, string>>({});
   const [dnVoucherFiles, setDnVoucherFiles] = useState<Record<string, File | null>>({});
+  const [savedDnVoucherDocs, setSavedDnVoucherDocs] = useState<Record<string, { voucherNo: string; path: string | null; fileName: string | null }>>({});
   const [skuCellSelection, setSkuCellSelection] = useState<Set<string>>(new Set());
   const [skuSelectionAnchor, setSkuSelectionAnchor] = useState<{ row: number; col: number } | null>(null);
   const [skuSelecting, setSkuSelecting] = useState(false);
@@ -849,6 +850,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
             return {
               ...snapshot,
+              // Preserve the raw approved snapshot for Closed > View hydration.
+              po_snapshot: record.po_snapshot ?? snapshot.po_snapshot ?? null,
               po_ref_num: String(record.po_ref_num ?? snapshot.po_ref_num ?? '').trim(),
               po_id: (record.po_id ?? snapshot.po_id ?? null) as number | null,
               po_number: (record.po_number ?? snapshot.po_number ?? null) as number | null,
@@ -1375,6 +1378,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     const additionalRemarks = remarks.additional_remarks ?? remarks.additionalRemarks ?? snapshot.review_text ?? snapshot.reviewText ?? snapshot.additional_remarks ?? snapshot.additionalRemarks ?? workflowRemarks.additional_remarks ?? workflowRemarks.additionalRemarks ?? submission?.additional_remarks ?? submission?.review_text ?? submission?.remarks;
     return {
       remarks,
+      snapshot,
+      workflowRemarks,
       additionalRemarks: typeof additionalRemarks === 'string' ? additionalRemarks : additionalRemarks == null ? '' : formatReviewValue(additionalRemarks),
       documentPath: typeof documentPath === 'string' && documentPath.trim() ? documentPath.trim() : null,
       documentName: typeof documentName === 'string' && documentName.trim() ? documentName.trim() : (department === 'Accounts' ? 'Accounts Supporting Document' : 'Merchandise Supporting Document'),
@@ -1582,9 +1587,22 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
       if (skuError) throw skuError;
 
-      const baseRows = ((data ?? []) as FgPoRow[]).filter(
-        (row) => String(row.sku ?? '').trim() !== '',
-      );
+      // Keep every source row for the selected PO, including legacy/incomplete
+      // rows where the SKU field is blank. Filtering those rows out caused the
+      // Closed > View / Founder Final Approval modal to show empty SKU, GRN,
+      // Fabric and penalty tables even though the PO-level source row existed.
+      // The table renderer can show a dash for a missing SKU while retaining
+      // the quantity/value/PO IDs needed for the rest of the reconciliation.
+      const baseRows = ((data ?? []) as FgPoRow[]).filter((row) => {
+        const hasPoIdentity = row.po_id != null || String(row.po_number ?? '').trim() !== '';
+        const hasAnyData = String(row.sku ?? '').trim() !== ''
+          || row.po_qty != null
+          || row.grn_qty != null
+          || row.cutting_qty != null
+          || row.selling_price != null
+          || row.item_price != null;
+        return hasPoIdentity && hasAnyData;
+      });
 
       // RTV is sourced from the RTV (EFOB & FOB) register, not from DG.
       // Match on the selected PO reference and SKU, then count distinct serials.
@@ -2359,6 +2377,21 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       : '';
     setReviewText(explicitText || legacyWorkflowText);
     setReviewRemarks(normalizedRemarks);
+    const savedPenaltyChanges = asObject(snapshot.penalty_changes ?? workflowReviewObject.penalty_changes);
+    setPenaltyChanges(Object.fromEntries(Object.entries(savedPenaltyChanges).map(([key, value]) => [key, String(value ?? '')])));
+    const savedDnVouchersRaw = asObject(snapshot.dn_vouchers ?? workflowReviewObject.dn_vouchers);
+    const restoredDnVouchers: Record<string, { voucherNo: string; path: string | null; fileName: string | null }> = {};
+    Object.entries(savedDnVouchersRaw).forEach(([key, value]) => {
+      const item = asObject(value);
+      restoredDnVouchers[key] = {
+        voucherNo: String(item.voucherNo ?? item.voucher_no ?? ''),
+        path: typeof item.path === 'string' ? item.path : null,
+        fileName: typeof item.fileName === 'string' ? item.fileName : (typeof item.name === 'string' ? item.name : null),
+      };
+    });
+    setSavedDnVoucherDocs(restoredDnVouchers);
+    setDnVoucherNumbers(Object.fromEntries(Object.entries(restoredDnVouchers).map(([key, value]) => [key, value.voucherNo])));
+    setDnVoucherFiles({});
     setSkuCellSelection(new Set());
     setSkuSelectionAnchor(null);
     setSkuSelecting(false);
@@ -2408,6 +2441,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setReviewReadOnly(false);
     setReviewText('');
     setReviewRemarks({});
+    setPenaltyChanges({});
+    setDnVoucherNumbers({});
+    setDnVoucherFiles({});
+    setSavedDnVoucherDocs({});
     setPenaltyChanges({});
     setDnVoucherNumbers({});
     setDnVoucherFiles({});
@@ -2531,30 +2568,36 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       }
 
       const dnVoucherDocsSaved: Record<string, { voucherNo: string; path: string | null; fileName: string | null }> = {};
-      for (const penalty of poPenaltyRows) {
-        const voucherFile = dnVoucherFiles[penalty.key] ?? null;
-        const voucherNo = (dnVoucherNumbers[penalty.key] ?? '').trim();
-        let path: string | null = null;
-        let fileName: string | null = null;
-        if (voucherFile) {
-          const safeName = voucherFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const prefix = `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/${selectedDepartment.toLowerCase()}/dn-vouchers`;
-          const attemptedPath = `${prefix}/${crypto.randomUUID()}-${safeName}`;
-          const { error: uploadError } = await supabase.storage.from('fg-closure-documents').upload(attemptedPath, voucherFile, {
-            cacheControl: '3600', upsert: false, contentType: voucherFile.type || undefined,
-          });
-          if (uploadError) throw new Error(`Failed to upload DN voucher for "${penalty.category}": ${uploadError.message}`);
-          path = attemptedPath;
-          fileName = voucherFile.name;
+      // Penalty revisions and DN vouchers belong to Accounts. Merchandise can
+      // view these values but must not upload, alter, or overwrite them.
+      if (selectedDepartment === 'Accounts') {
+        for (const penalty of poPenaltyRows) {
+          const voucherFile = dnVoucherFiles[penalty.key] ?? null;
+          const voucherNo = (dnVoucherNumbers[penalty.key] ?? '').trim();
+          let path: string | null = null;
+          let fileName: string | null = null;
+          if (voucherFile) {
+            const safeName = voucherFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const prefix = `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/${selectedDepartment.toLowerCase()}/dn-vouchers`;
+            const attemptedPath = `${prefix}/${crypto.randomUUID()}-${safeName}`;
+            const { error: uploadError } = await supabase.storage.from('fg-closure-documents').upload(attemptedPath, voucherFile, {
+              cacheControl: '3600', upsert: false, contentType: voucherFile.type || undefined,
+            });
+            if (uploadError) throw new Error(`Failed to upload DN voucher for "${penalty.category}": ${uploadError.message}`);
+            path = attemptedPath;
+            fileName = voucherFile.name;
+          }
+          if (voucherNo || path) dnVoucherDocsSaved[penalty.key] = { voucherNo, path, fileName };
         }
-        if (voucherNo || path) dnVoucherDocsSaved[penalty.key] = { voucherNo, path, fileName };
       }
 
-      const penaltyChangeValues = Object.fromEntries(
-        Object.entries(penaltyChanges)
-          .filter(([, value]) => String(value ?? '').trim() !== '')
-          .map(([key, value]) => [key, Number(value)]),
-      );
+      const penaltyChangeValues = selectedDepartment === 'Accounts'
+        ? Object.fromEntries(
+            Object.entries(penaltyChanges)
+              .filter(([, value]) => String(value ?? '').trim() !== '')
+              .map(([key, value]) => [key, Number(value)]),
+          )
+        : {};
 
       const existing = selectedPO.po_id == null
         ? undefined
@@ -2574,8 +2617,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         ...(additionalRemarks ? { additional_remarks: additionalRemarks } : {}),
         ...(selectedDepartment === 'Accounts' ? { accounts_supporting_documents: accountsSupportingDocsSaved } : {}),
         ...(selectedDepartment === 'Merchandise' ? { merchandise_supporting_documents: merchandiseSupportingDocsSaved } : {}),
-        penalty_changes: penaltyChangeValues,
-        dn_vouchers: dnVoucherDocsSaved,
+        ...(selectedDepartment === 'Accounts' ? {
+          penalty_changes: penaltyChangeValues,
+          dn_vouchers: dnVoucherDocsSaved,
+        } : {}),
       };
       const metricReview = Object.entries(rowRemarks)
         .map(([metric, value]) => `${metric}: ${value}`)
@@ -2755,6 +2800,96 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     }
   }
 
+  async function downloadClosedPoPdf(po: FgPoRow) {
+    // Open the print tab synchronously from the button click so browser popup blockers allow it.
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setWorkflowError('Please allow pop-ups for this site to generate the PDF.');
+      return;
+    }
+    printWindow.document.write('<!doctype html><title>Preparing PO PDF…</title><p style="font:14px Arial;padding:24px">Preparing approved PO closure PDF…</p>');
+    const escapeHtml = (value: unknown): string => String(value ?? '—')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const parseObject = (value: unknown): Record<string, unknown> => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+      if (typeof value === 'string') {
+        try { const parsed: unknown = JSON.parse(value); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>; } catch { /* plain text */ }
+      }
+      return {};
+    };
+    const asArray = (value: unknown): Array<Record<string, unknown>> => Array.isArray(value)
+      ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      : [];
+    try {
+      const { data, error: snapshotError } = await supabase.schema('FG Closer')
+        .from('fg_closed_po').select('*').eq('po_ref_num', String(po.po_ref_num ?? '').trim()).order('id', { ascending: false }).limit(1).maybeSingle();
+      if (snapshotError) throw snapshotError;
+      const record = (data ?? {}) as Record<string, unknown>;
+      const snapshot = parseObject(record.po_snapshot ?? po.po_snapshot);
+      const sku = asArray(record.merchandise_sku_snapshot ?? snapshot.sku_rows ?? po.sku_rows);
+      const grn = asArray(record.grn_snapshot ?? snapshot.grn_rows ?? po.grn_rows);
+      const fabric = asArray(snapshot.fabric_rows ?? po.fabric_rows ?? parseObject(record.merchandise_operational_snapshot).fabric_rows ?? parseObject(record.commercial_snapshot).fabric_rows);
+      const docs: Array<{ title: string; name: string; reason: string; path: string }> = [];
+      const addDoc = (title: unknown, name: unknown, reason: unknown, path: unknown) => {
+        if (typeof path === 'string' && path.trim()) docs.push({ title: String(title ?? 'Supporting document'), name: String(name ?? path.split('/').pop() ?? 'Document'), reason: String(reason ?? '—'), path });
+      };
+      addDoc('Accounts supporting document', record.accounts_document_name ?? snapshot.accounts_document_name, record.accounts_document_reason ?? snapshot.accounts_document_reason, record.accounts_document_path ?? snapshot.accounts_document_path);
+      addDoc('Merchandise supporting document', record.merchandise_document_name ?? snapshot.merchandise_document_name, record.merchandise_document_reason ?? snapshot.merchandise_document_reason, record.merchandise_document_path ?? snapshot.merchandise_document_path);
+      for (const [dept, source] of [['Accounts', parseObject(record.accounts_data ?? snapshot.accounts_data)], ['Merchandise', parseObject(record.merchandise_data ?? snapshot.merchandise_data)]] as const) {
+        const list = Array.isArray(source.supporting_documents) ? source.supporting_documents : Array.isArray(source.documents) ? source.documents : [];
+        list.forEach((raw) => { const d = parseObject(raw); addDoc(`${dept} supporting document`, d.fileName ?? d.file_name ?? d.name ?? d.title, d.reason, d.path ?? d.document_path ?? d.storage_path); });
+      }
+      let tnaRow: Record<string, unknown> | null = null;
+      try {
+        const { data: tnaData, error: tnaError } = await pageAll(() => supabase.schema('FG Closer').from('tna_update').select('*').order('source_row_number'));
+        if (tnaError) throw tnaError;
+        tnaRow = ((tnaData ?? []) as Array<Record<string, unknown>>).find((row) =>
+          String(row['PO NO.'] ?? '').trim().toLowerCase() === String(po.po_ref_num ?? '').trim().toLowerCase(),
+        ) ?? null;
+      } catch (tnaError) {
+        console.warn('TNA rows could not be included in the closed PO PDF:', tnaError);
+      }
+      const tnaStages = [
+        ['PP Sample', 'PP Sample TNA Date', 'PP Sample Actual Date', 'PP Sample Delay Days'],
+        ['GPT Sample', 'GPT TNA Date', 'GPT Actual Date', 'GPT Delay Days'],
+        ['Cutting', 'Cutting TNA Date', 'Cutting Actual Date (First)', 'Cutting Delay Days'],
+        ['In-Line QC', 'In Line TNA Date', 'In Line Actual Date', 'In Line QC Delay Days'],
+      ].map(([stage, planned, actual, delay]) => ({
+        'TNA Stage': stage,
+        'Planned TNA Date': tnaRow?.[planned] ?? '—',
+        'Actual TNA Date': tnaRow?.[actual] ?? '—',
+        'TNA Variation': tnaRow?.[delay] == null || tnaRow?.[delay] === '' ? '—' : `${String(tnaRow[delay])} days`,
+      }));
+      const signedDocs = await Promise.all(docs.map(async (doc) => {
+        const { data: signed, error } = await supabase.storage.from('fg-closure-documents').createSignedUrl(doc.path, 60 * 60);
+        return { ...doc, url: !error ? signed?.signedUrl ?? '' : '' };
+      }));
+      const details: Array<[string, unknown]> = [
+        ['PO Reference', record.po_ref_num ?? po.po_ref_num], ['PO Number', record.po_number ?? po.po_number],
+        ['PO Date', snapshot.po_date ?? po.po_date], ['Expected Delivery', snapshot.expected_delivery_date ?? po.expected_delivery_date],
+        ['Vendor', snapshot.vendor_name ?? po.vendor_name], ['Vendor Code', snapshot.vendor_code ?? po.vendor_code],
+        ['PO Quantity', snapshot.po_qty ?? po.po_qty], ['Total PO Value', snapshot.total_po_value ?? po.total_po_value ?? po.po_value],
+        ['GRN Received Qty', snapshot.grn_qty ?? po.grn_qty], ['Pending Quantity', snapshot.pending_qty ?? po.pending_qty],
+        ['Cutting Quantity', snapshot.cutting_qty ?? po.cutting_qty], ['Last GRN', snapshot.last_grn_date ?? po.last_grn_date],
+        ['Founder Approved By', record.approved_by_name ?? record.approved_by_email], ['Approved At', record.approved_at],
+        ['Founder Remarks', record.approval_remarks ?? snapshot.founder_comment ?? snapshot.founder_review],
+      ];
+      const table = (title: string, rows: Array<Record<string, unknown>>) => {
+        if (!rows.length) return `<h2>${escapeHtml(title)}</h2><p class="empty">No saved rows available in the approval snapshot.</p>`;
+        const keys = Object.keys(rows[0]);
+        return `<h2>${escapeHtml(title)}</h2><table><thead><tr>${keys.map(k => `<th>${escapeHtml(k)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${keys.map(k => `<td>${escapeHtml(row[k])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+      };
+      const docsHtml = signedDocs.length ? `<h2>Supporting Documents</h2><table><thead><tr><th>Department / Title</th><th>File Name</th><th>Reason</th><th>Document Link</th></tr></thead><tbody>${signedDocs.map(d => `<tr><td>${escapeHtml(d.title)}</td><td>${escapeHtml(d.name)}</td><td>${escapeHtml(d.reason)}</td><td>${d.url ? `<a href="${escapeHtml(d.url)}">Open / download document</a>` : 'Link unavailable — document path is saved'}</td></tr>`).join('')}</tbody></table>` : '<h2>Supporting Documents</h2><p class="empty">No document links were saved in the closure snapshot.</p>';
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>PO Closure - ${escapeHtml(po.po_ref_num)}</title><style>body{font:12px Arial,sans-serif;color:#172033;margin:28px}h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:24px 0 8px;border-bottom:2px solid #182235;padding-bottom:6px}p{line-height:1.45}.meta{color:#667085;margin-bottom:22px}.details{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.detail{border:1px solid #cbd5e1;padding:8px;border-radius:4px;break-inside:avoid}.label{font-size:10px;color:#667085;margin-bottom:4px}.value{font-weight:bold;white-space:pre-wrap;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:9px}th,td{border:1px solid #aeb8c7;padding:5px;text-align:left;overflow-wrap:anywhere}th{background:#111827;color:#fff}a{color:#075bb5;text-decoration:underline;overflow-wrap:anywhere}.empty{color:#667085}@media print{body{margin:12mm}a{color:#075bb5}h2{break-after:avoid}tr{break-inside:avoid}}</style></head><body><h1>Finished Good PO Closure</h1><div class="meta">Approved PO snapshot · ${escapeHtml(new Date().toLocaleString())}</div><div class="details">${details.map(([label,value]) => `<div class="detail"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`).join('')}</div>${table('TNA & Delivery',tnaStages)}${table('SKU Wise Details',sku)}${table('GRN Summary',grn)}${table('Fabric Details',fabric)}${docsHtml}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),400));</script></body></html>`;
+      printWindow.document.open(); printWindow.document.write(html); printWindow.document.close();
+    } catch (pdfError) {
+      printWindow.close();
+      console.error('Failed to prepare closed PO PDF:', pdfError);
+      setWorkflowError(pdfError instanceof Error ? pdfError.message : 'Could not prepare the PO PDF.');
+    }
+  }
+
   async function saveFounderEdits() {
     if (!selectedPO) return;
     setSavingReview(true);
@@ -2784,6 +2919,28 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       };
       const accountsDocument = await uploadReplacement(selectedDocument, 'Accounts');
       const merchandiseDocument = await uploadReplacement(selectedFounderMerchandiseDocument, 'Merchandise');
+      const saveFounderDocumentRows = async (rows: AccountsSupportingDocumentRow[], department: Department) => {
+        const meaningfulRows = rows.filter((row) => row.file || row.title.trim() || row.reason.trim() || row.path);
+        const saved: Array<{ title: string; reason: string; path: string | null; fileName: string | null }> = [];
+        for (const row of meaningfulRows) {
+          let path = row.path ?? null;
+          let fileName = row.fileName ?? null;
+          if (row.file) {
+            const safeName = row.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const attemptedPath = `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/${department.toLowerCase()}/${crypto.randomUUID()}-${safeName}`;
+            const { error: uploadError } = await supabase.storage.from('fg-closure-documents').upload(attemptedPath, row.file, {
+              cacheControl: '3600', upsert: false, contentType: row.file.type || undefined,
+            });
+            if (uploadError) throw new Error(`Failed to upload ${department} document "${row.title || row.file.name}": ${uploadError.message}`);
+            path = attemptedPath;
+            fileName = row.file.name;
+          }
+          saved.push({ title: row.title.trim(), reason: row.reason.trim(), path, fileName });
+        }
+        return saved;
+      };
+      const accountsSupportingDocsSaved = await saveFounderDocumentRows(accountsSupportingDocuments, 'Accounts');
+      const merchandiseSupportingDocsSaved = await saveFounderDocumentRows(merchandiseSupportingDocuments, 'Merchandise');
       const submittedAt = new Date().toISOString();
       const accountsRemarks = Object.fromEntries(Object.entries(reviewRemarks)
         .filter(([key, value]) => key.startsWith('penalty:Accounts:PO_TOTAL:') && String(value ?? '').trim())
@@ -2802,10 +2959,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       const previousMerchandiseData = parseObject(merchandiseSubmission.merchandise_data);
       const { id: _oldAccountsSubmissionId, ...accountsSubmissionBase } = accountsSubmission;
       const { id: _oldMerchandiseSubmissionId, ...merchandiseSubmissionBase } = merchandiseSubmission;
-      const accountsPath = accountsDocument?.path ?? existing?.accounts_document_path ?? accountsSubmission.document_path ?? accountsSubmission.document_url ?? null;
-      const accountsName = accountsDocument?.name ?? existing?.accounts_document_name ?? accountsSubmission.document_name ?? accountsSubmission.supporting_document_name ?? null;
-      const merchandisePath = merchandiseDocument?.path ?? existing?.merchandise_document_path ?? merchandiseSubmission.document_path ?? merchandiseSubmission.document_url ?? null;
-      const merchandiseName = merchandiseDocument?.name ?? existing?.merchandise_document_name ?? merchandiseSubmission.document_name ?? merchandiseSubmission.supporting_document_name ?? null;
+      const accountsFirstDoc = accountsSupportingDocsSaved.find((doc) => doc.path);
+      const merchandiseFirstDoc = merchandiseSupportingDocsSaved.find((doc) => doc.path);
+      const accountsPath = accountsFirstDoc?.path ?? accountsDocument?.path ?? existing?.accounts_document_path ?? accountsSubmission.document_path ?? accountsSubmission.document_url ?? null;
+      const accountsName = accountsFirstDoc?.fileName ?? accountsFirstDoc?.title ?? accountsDocument?.name ?? existing?.accounts_document_name ?? accountsSubmission.document_name ?? accountsSubmission.supporting_document_name ?? null;
+      const merchandisePath = merchandiseFirstDoc?.path ?? merchandiseDocument?.path ?? existing?.merchandise_document_path ?? merchandiseSubmission.document_path ?? merchandiseSubmission.document_url ?? null;
+      const merchandiseName = merchandiseFirstDoc?.fileName ?? merchandiseFirstDoc?.title ?? merchandiseDocument?.name ?? existing?.merchandise_document_name ?? merchandiseSubmission.document_name ?? merchandiseSubmission.supporting_document_name ?? null;
       const commonSnapshot = {
         captured_at: submittedAt,
         calculation_type: skuCalculationType,
@@ -2817,6 +2976,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         fabric_rows: fabricRows,
         penalty_calculations: poPenaltyRows,
         total_po_value: penaltyTotalPOValue,
+        accounts_supporting_documents: accountsSupportingDocsSaved,
+        merchandise_supporting_documents: merchandiseSupportingDocsSaved,
       };
       const founderReviewJson = JSON.stringify({
         penalty_remarks: Object.fromEntries(Object.entries(founderReviewRemarks).filter(([, value]) => String(value ?? '').trim())),
@@ -2839,7 +3000,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           review_remarks: accountsReviewJson, po_snapshot: selectedPO,
           grn_snapshot: grnRows,
           commercial_snapshot: { ...parseObject(accountsSubmission.commercial_snapshot), sku_rows: skuRows, fabric_rows: fabricRows },
-          accounts_data: { ...previousAccountsData, ...commonSnapshot, review_remarks: accountsReviewJson, review_text: reviewText.trim(), document_path: accountsPath, document_name: accountsName },
+          accounts_data: { ...previousAccountsData, ...commonSnapshot, accounts_supporting_documents: accountsSupportingDocsSaved, review_remarks: { ...parseObject(accountsSubmission.review_remarks), ...accountsReviewJson, accounts_supporting_documents: accountsSupportingDocsSaved }, review_text: reviewText.trim(), document_path: accountsPath, document_name: accountsName },
           document_path: accountsPath, document_name: accountsName,
         },
       });
@@ -2854,7 +3015,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           submitted_at: submittedAt, revision_no: Number(merchandiseSubmission.revision_no ?? 0) + 1,
           review_remarks: merchandiseReviewJson, po_snapshot: selectedPO, sku_snapshot: skuRows,
           operational_snapshot: { ...parseObject(merchandiseSubmission.operational_snapshot), grn_rows: grnRows, fabric_rows: fabricRows },
-          merchandise_data: { ...previousMerchandiseData, ...commonSnapshot, review_remarks: merchandiseReviewJson, review_text: founderMerchandiseText.trim(), document_path: merchandisePath, document_name: merchandiseName },
+          merchandise_data: { ...previousMerchandiseData, ...commonSnapshot, merchandise_supporting_documents: merchandiseSupportingDocsSaved, review_remarks: { ...parseObject(merchandiseSubmission.review_remarks), ...merchandiseReviewJson, merchandise_supporting_documents: merchandiseSupportingDocsSaved }, review_text: founderMerchandiseText.trim(), document_path: merchandisePath, document_name: merchandiseName },
           document_path: merchandisePath, document_name: merchandiseName,
         },
       });
@@ -2946,7 +3107,27 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           merchandise_revision_no: Number(merchandiseSubmission.revision_no ?? 0) || null,
           accounts_submission_id: Number(accountsSubmission.id ?? 0) || null,
           accounts_revision_no: Number(accountsSubmission.revision_no ?? 0) || null,
-          po_snapshot: selectedPO,
+          // Keep a complete, immutable copy of the exact data visible at approval time.
+          // Closed > View must render this approved snapshot, never re-query live source tables.
+          po_snapshot: {
+            ...selectedPO,
+            sku_rows: skuRows,
+            grn_rows: grnRows,
+            fabric_rows: fabricRows,
+            penalty_grn_items: penaltyGrnItems,
+            penalty_rg_out_items: penaltyRgOutItems,
+            penalty_calculations: poPenaltyRows,
+            total_po_value: penaltyTotalPOValue,
+            calculation_type: skuCalculationType,
+            founder_review_snapshot: founderReviewSnapshot,
+            founder_review_remarks: founderReviewRemarks,
+            founder_comment: founderComment.trim(),
+            accounts_review_text: reviewText,
+            merchandise_review_text: founderMerchandiseText,
+            accounts_supporting_documents: getSubmittedReviewDetails('Accounts', poRef).snapshot.accounts_supporting_documents ?? [],
+            merchandise_supporting_documents: getSubmittedReviewDetails('Merchandise', poRef).snapshot.merchandise_supporting_documents ?? [],
+            founder_approved_at: new Date().toISOString(),
+          },
           merchandise_sku_snapshot: merchandiseSubmission.sku_snapshot ?? null,
           merchandise_operational_snapshot: merchandiseSubmission.operational_snapshot ?? null,
           merchandise_data: merchandiseSubmission.merchandise_data ?? null,
@@ -2959,7 +3140,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           accounts_review_remarks: accountsSubmission.review_remarks ?? null,
           accounts_document_path: accountsSubmission.document_path ?? null,
           accounts_document_name: accountsSubmission.document_name ?? null,
-          approved_by_name: null,
+          approved_by_name: email.split('@')[0],
           approved_by_email: email,
           approved_at: new Date().toISOString(),
           approval_remarks: founderReviewSnapshot,
@@ -3792,9 +3973,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   <Eye size={14} /> View
                                 </button>
                               ) : rowStatus === 'Closed' ? (
+                                <>
                                 <button
                                   type="button"
-                                  className="fg-view-button"
+                                  className="fg-view-button fg-closed-view-button"
                                   onClick={() => {
                                     // Closed > View uses the same full Founder Final Approval layout,
                                     // but is strictly read-only and has no approval/edit actions.
@@ -3837,16 +4019,69 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       });
                                     });
                                     setReviewRemarks(closedAccountsReviewValues);
-                                    setFounderReviewRemarks(getFounderReviewRemarks(String(po.po_ref_num ?? '').trim(), po));
+                                    const approvedSnapshot = parseClosedReviewObject(po.po_snapshot);
+                                    const approvedArray = <T,>(...values: unknown[]): T[] | null => {
+                                      for (const value of values) {
+                                        if (Array.isArray(value)) return value as T[];
+                                      }
+                                      return null;
+                                    };
+                                    const savedSkuRows = approvedArray<FgPoRow>(
+                                      po.sku_rows, approvedSnapshot.sku_rows, po.merchandise_sku_snapshot,
+                                    );
+                                    const savedGrnRows = approvedArray<GrnSummaryRow>(
+                                      po.grn_rows, approvedSnapshot.grn_rows, po.grn_snapshot,
+                                    );
+                                    const savedFabricRows = approvedArray<FabricDetailRow>(
+                                      po.fabric_rows, approvedSnapshot.fabric_rows,
+                                      parseClosedReviewObject(po.merchandise_operational_snapshot).fabric_rows,
+                                      parseClosedReviewObject(po.commercial_snapshot).fabric_rows,
+                                    );
+                                    const savedPenaltyGrn = approvedArray<PenaltyGrnItem>(
+                                      po.penalty_grn_items, approvedSnapshot.penalty_grn_items,
+                                    );
+                                    const savedPenaltyRgOut = approvedArray<PenaltyRgOutItem>(
+                                      po.penalty_rg_out_items, approvedSnapshot.penalty_rg_out_items,
+                                    );
+                                    setFounderComment(formatReviewValue(
+                                      approvedSnapshot.founder_comment ?? po.approval_remarks ?? workflow?.founder_review,
+                                    ));
+                                    setFounderReviewRemarks(Object.fromEntries(Object.entries(
+                                      Object.keys(parseClosedReviewObject(approvedSnapshot.founder_review_remarks)).length
+                                        ? parseClosedReviewObject(approvedSnapshot.founder_review_remarks)
+                                        : getFounderReviewRemarks(String(po.po_ref_num ?? '').trim(), po)
+                                    ).map(([key, value]) => [key, formatReviewValue(value)])));
                                     setFounderMerchandiseRemarks({});
                                     setSkuCellSelection(new Set());
                                     setSkuSelectionAnchor(null);
                                     setSkuSelecting(false);
-                                    void loadSkuRows(po);
+                                    // Hydrate the view from the approved snapshot. Only legacy records
+                                    // without saved arrays fall back to the existing source loader.
+                                    if (savedSkuRows) setSkuRows(savedSkuRows);
+                                    if (savedGrnRows) setGrnRows(savedGrnRows);
+                                    if (savedFabricRows) setFabricRows(savedFabricRows);
+                                    if (savedPenaltyGrn) setPenaltyGrnItems(savedPenaltyGrn);
+                                    if (savedPenaltyRgOut) setPenaltyRgOutItems(savedPenaltyRgOut);
+                                    if (savedSkuRows && savedGrnRows && savedFabricRows) {
+                                      setSkuLoading(false);
+                                      setGrnLoading(false);
+                                      setFabricLoading(false);
+                                    } else {
+                                      void loadSkuRows(po);
+                                    }
                                   }}
                                 >
                                   <Eye size={14} /> View
                                 </button>
+                                <button
+                                  type="button"
+                                  className="fg-closed-pdf-button"
+                                  onClick={() => void downloadClosedPoPdf(po)}
+                                  title="Print or save the approved PO closure as PDF"
+                                >
+                                  <Download size={14} /> PDF
+                                </button>
+                                </>
                               ) : (
                                 <span className="fg-action-placeholder">—</span>
                               )}
@@ -4510,9 +4745,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 step="0.01"
                                 value={penaltyChanges[penalty.key] ?? ''}
                                 onChange={(event) => setPenaltyChanges((current) => ({ ...current, [penalty.key]: event.target.value }))}
-                                disabled={reviewReadOnly}
-                                className="fg-review-input"
-                                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38 }}
+                                disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
+                                className={(reviewReadOnly || selectedDepartment === 'Merchandise') ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
+                                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38, background: (reviewReadOnly || selectedDepartment === 'Merchandise') ? '#f8fafc' : '#fff' }}
                                 placeholder="0.00"
                                 aria-label={`Penalty change for ${penalty.category}`}
                               />
@@ -4556,21 +4791,31 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   type="text"
                                   value={dnVoucherNumbers[penalty.key] ?? ''}
                                   onChange={(event) => setDnVoucherNumbers((current) => ({ ...current, [penalty.key]: event.target.value }))}
-                                  disabled={reviewReadOnly}
-                                  className="fg-review-input"
-                                  style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 34 }}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
+                                  className={(reviewReadOnly || selectedDepartment === 'Merchandise') ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
+                                  style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 34, background: (reviewReadOnly || selectedDepartment === 'Merchandise') ? '#f8fafc' : '#fff' }}
                                   placeholder="Enter voucher number"
                                   aria-label={`DN voucher number for ${penalty.category}`}
                                 />
-                                <input
-                                  key={`${penalty.key}-${dnVoucherFiles[penalty.key]?.name ?? 'no-file'}`}
-                                  type="file"
-                                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
-                                  disabled={reviewReadOnly}
-                                  onChange={(event) => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: event.target.files?.[0] ?? null }))}
-                                  aria-label={`Upload DN voucher for ${penalty.category}`}
-                                  style={{ width: '100%', minWidth: 0, fontSize: 11 }}
-                                />
+                                {selectedDepartment !== 'Merchandise' && (
+                                  <input
+                                    key={`${penalty.key}-${dnVoucherFiles[penalty.key]?.name ?? 'no-file'}`}
+                                    type="file"
+                                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
+                                    disabled={reviewReadOnly}
+                                    onChange={(event) => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: event.target.files?.[0] ?? null }))}
+                                    aria-label={`Upload DN voucher for ${penalty.category}`}
+                                    style={{ width: '100%', minWidth: 0, fontSize: 11 }}
+                                  />
+                                )}
+                                {!dnVoucherFiles[penalty.key] && savedDnVoucherDocs[penalty.key]?.path && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#64748b', overflowWrap: 'anywhere' }}>
+                                    <span>{savedDnVoucherDocs[penalty.key]?.fileName || 'DN voucher document attached'}</span>
+                                    <button type="button" className="fg-document-button" onClick={() => void openDocument(savedDnVoucherDocs[penalty.key]?.path ?? null)}>
+                                      <Eye size={14} /> View voucher
+                                    </button>
+                                  </div>
+                                )}
                                 {dnVoucherFiles[penalty.key] && (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                                     <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#64748b', overflowWrap: 'anywhere' }}>
@@ -4662,70 +4907,97 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       />
                     </label>
                   </div>
-                  <div className="fg-reference-document">
-                    <FileCheck2 size={18} />
-                    <span>
-                      <strong>{getSubmittedReviewDetails(selectedDepartment === 'Merchandise' ? 'Accounts' : 'Merchandise', String(selectedPO.po_ref_num ?? '').trim()).documentName}</strong>
-                      <small>{selectedDepartment === 'Merchandise' ? 'Accounts' : 'Merchandise'} supporting document (read-only)</small>
-                    </span>
-                    {getSubmittedReviewDetails(selectedDepartment === 'Merchandise' ? 'Accounts' : 'Merchandise', String(selectedPO.po_ref_num ?? '').trim()).documentPath ? (
-                      <button type="button" className="fg-document-button" onClick={() => void openDocument(getSubmittedReviewDetails(selectedDepartment === 'Merchandise' ? 'Accounts' : 'Merchandise', String(selectedPO.po_ref_num ?? '').trim()).documentPath)}>
-                        <Eye size={14} /> View document
-                      </button>
-                    ) : <small>No uploaded document is linked to this submission.</small>}
-                  </div>
+                  {(() => {
+                    const otherDepartment: Department = selectedDepartment === 'Merchandise' ? 'Accounts' : 'Merchandise';
+                    const ref = String(selectedPO.po_ref_num ?? '').trim();
+                    const otherSubmission = latestSubmissionByPoRef[otherDepartment][ref];
+                    const otherDataKey = otherDepartment === 'Accounts' ? 'accounts_data' : 'merchandise_data';
+                    const parseOtherObject = (value: unknown): Record<string, unknown> => {
+                      if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+                      if (typeof value === 'string') { try { const parsed: unknown = JSON.parse(value); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>; } catch { /* legacy data */ } }
+                      return {};
+                    };
+                    const otherSnapshot = parseOtherObject(otherSubmission?.[otherDataKey]);
+                    const otherDocsKey = otherDepartment === 'Accounts' ? 'accounts_supporting_documents' : 'merchandise_supporting_documents';
+                    const otherWorkflowReview = workflowByPoRef[ref]?.[otherDepartment === 'Accounts' ? 'accounts_review' : 'merchandise_review'];
+                    const otherReviewObject = parseOtherObject(otherSubmission?.review_remarks ?? otherWorkflowReview);
+                    const rawOtherDocs = otherSnapshot[otherDocsKey] ?? otherReviewObject[otherDocsKey] ?? parseOtherObject(otherWorkflowReview)[otherDocsKey];
+                    const otherDocs = Array.isArray(rawOtherDocs) ? rawOtherDocs.map((raw, index) => {
+                      const doc = parseOtherObject(raw);
+                      return { id: `${index}-${String(doc.path ?? '')}`, title: String(doc.title ?? ''), reason: String(doc.reason ?? ''), path: typeof doc.path === 'string' ? doc.path : null, fileName: String(doc.fileName ?? doc.name ?? doc.title ?? `Document ${index + 1}`) };
+                    }).filter((doc) => doc.path || doc.title || doc.reason || doc.fileName) : [];
+                    if (otherDocs.length) return (
+                      <div className="fg-accounts-documents">
+                        <div className="fg-accounts-documents-heading"><div><strong>{otherDepartment} Supporting Documents (Read Only)</strong><small>All submitted documents with their titles and reasons.</small></div></div>
+                        <div className="fg-accounts-doc-grid fg-accounts-doc-grid-header"><span>Document</span><span>Document title</span><span>Reason</span><span>Actions</span></div>
+                        {otherDocs.map((doc, index) => (
+                          <div className="fg-accounts-doc-grid" key={doc.id}>
+                            <div className="fg-doc-upload-cell"><small className="fg-doc-file-name">{doc.fileName || `Document ${index + 1}`}</small></div>
+                            <input className="fg-doc-row-input" value={doc.title} readOnly aria-label={`${otherDepartment} document title ${index + 1}`} />
+                            <input className="fg-doc-row-input" value={doc.reason} readOnly aria-label={`${otherDepartment} document reason ${index + 1}`} />
+                            <div className="fg-doc-row-actions">{doc.path ? <button type="button" className="fg-document-button" onClick={() => void openDocument(doc.path)}><Eye size={14} /> View file</button> : <small>No file uploaded</small>}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                    const details = getSubmittedReviewDetails(otherDepartment, ref);
+                    return <div className="fg-reference-document"><FileCheck2 size={18} /><span><strong>{details.documentName}</strong><small>{otherDepartment} supporting document (read-only)</small></span>{details.documentPath ? <button type="button" className="fg-document-button" onClick={() => void openDocument(details.documentPath)}><Eye size={14} /> View document</button> : <small>No uploaded document is linked to this submission.</small>}</div>;
+                  })()}
                 </>
               )}
 
               {reviewReadOnly && !founderEditing ? (
-                <div className="fg-reference-document">
-                  <FileCheck2 size={18} />
-                  <span>
-                    <strong>
-                      {(() => {
-                        const ref = String(selectedPO.po_ref_num ?? '').trim();
-                        const workflow = workflowByPoRef[ref];
-                        const submission = latestSubmissionByPoRef[selectedDepartment][ref];
-                        const workflowName = selectedDepartment === 'Merchandise' ? workflow?.merchandise_document_name : workflow?.accounts_document_name;
-                        const dataKey = selectedDepartment === 'Merchandise' ? 'merchandise_data' : 'accounts_data';
-                        let snapshot: Record<string, unknown> = {};
-                        const rawSnapshot = submission?.[dataKey];
-                        if (rawSnapshot && typeof rawSnapshot === 'object' && !Array.isArray(rawSnapshot)) snapshot = rawSnapshot as Record<string, unknown>;
-                        else if (typeof rawSnapshot === 'string') { try { const parsed: unknown = JSON.parse(rawSnapshot); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) snapshot = parsed as Record<string, unknown>; } catch { /* ignore legacy non-JSON value */ } }
-                        return String(workflowName ?? submission?.document_name ?? submission?.supporting_document_name ?? snapshot.document_name ?? snapshot.supporting_document_name ?? 'Supporting Document');
-                      })()}
-                    </strong>
-                    <small>Submitted document (read-only)</small>
-                  </span>
-                  {(() => {
-                    const ref = String(selectedPO.po_ref_num ?? '').trim();
-                    const workflow = workflowByPoRef[ref];
-                    const submission = latestSubmissionByPoRef[selectedDepartment][ref];
-                    const dataKey = selectedDepartment === 'Merchandise' ? 'merchandise_data' : 'accounts_data';
-                    const parseObject = (value: unknown): Record<string, unknown> => {
-                      if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
-                      if (typeof value === 'string') {
-                        try {
-                          const parsed: unknown = JSON.parse(value);
-                          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-                        } catch { /* legacy plain text */ }
-                      }
-                      return {};
-                    };
-                    const snapshot = parseObject(submission?.[dataKey]);
-                    const workflowPath = selectedDepartment === 'Merchandise'
-                      ? workflow?.merchandise_document_path
-                      : workflow?.accounts_document_path;
-                    const snapshotPath = snapshot.document_path ?? snapshot.document_url ?? snapshot.supporting_document_path;
-                    const rawPath = workflowPath ?? submission?.document_path ?? submission?.document_url ?? submission?.supporting_document_path ?? snapshotPath;
-                    const path = typeof rawPath === 'string' && rawPath.trim() ? rawPath.trim() : null;
-                    return path ? (
-                      <button type="button" className="fg-document-button" onClick={() => void openDocument(path)}>
-                        <Eye size={14} /> {selectedDepartment === 'Accounts' ? 'VIEW ACCOUNT DOCUMENT' : 'View document'}
-                      </button>
-                    ) : <small>No uploaded document is linked to this submission. If the earlier upload failed, please upload the file again and submit.</small>;
-                  })()}
-                </div>
+                (() => {
+                  const ref = String(selectedPO.po_ref_num ?? '').trim();
+                  const workflow = workflowByPoRef[ref];
+                  const submission = latestSubmissionByPoRef[selectedDepartment][ref];
+                  const dataKey = selectedDepartment === 'Merchandise' ? 'merchandise_data' : 'accounts_data';
+                  const parseObject = (value: unknown): Record<string, unknown> => {
+                    if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+                    if (typeof value === 'string') {
+                      try { const parsed: unknown = JSON.parse(value); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>; } catch { /* legacy plain text */ }
+                    }
+                    return {};
+                  };
+                  const snapshot = parseObject(submission?.[dataKey]);
+                  const docsKey = selectedDepartment === 'Accounts' ? 'accounts_supporting_documents' : 'merchandise_supporting_documents';
+                  const reviewObject = parseObject(submission?.review_remarks ?? (selectedDepartment === 'Accounts' ? workflow?.accounts_review : workflow?.merchandise_review));
+                  const rawDocs = snapshot[docsKey] ?? reviewObject[docsKey] ?? parseObject(selectedDepartment === 'Accounts' ? workflow?.accounts_review : workflow?.merchandise_review)[docsKey];
+                  const docs = Array.isArray(rawDocs) ? rawDocs.map((raw, index) => {
+                    const doc = parseObject(raw);
+                    return { id: `${index}-${String(doc.path ?? '')}`, title: String(doc.title ?? ''), reason: String(doc.reason ?? ''), path: typeof doc.path === 'string' ? doc.path : null, fileName: String(doc.fileName ?? doc.name ?? doc.title ?? 'Supporting document') };
+                  }).filter((doc) => doc.path || doc.title || doc.reason || doc.fileName) : [];
+                  if (docs.length) {
+                    return (
+                      <div className="fg-accounts-documents">
+                        <div className="fg-accounts-documents-heading"><div><strong>{selectedDepartment} Supporting Documents</strong><small>Submitted documents and their saved details (read-only).</small></div></div>
+                        <div className="fg-accounts-doc-grid fg-accounts-doc-grid-header"><span>Document</span><span>Document title</span><span>Reason</span><span>Actions</span></div>
+                        {docs.map((doc, index) => (
+                          <div className="fg-accounts-doc-grid" key={doc.id}>
+                            <div className="fg-doc-upload-cell">
+                              <small className="fg-doc-file-name">{doc.fileName || `Document ${index + 1}`}</small>
+                            </div>
+                            <input className="fg-doc-row-input" value={doc.title} readOnly aria-label={`${selectedDepartment} document title ${index + 1}`} />
+                            <input className="fg-doc-row-input" value={doc.reason} readOnly aria-label={`${selectedDepartment} document reason ${index + 1}`} />
+                            <div className="fg-doc-row-actions">{doc.path ? <button type="button" className="fg-document-button" onClick={() => void openDocument(doc.path)}><Eye size={14} /> View file</button> : <small>No file uploaded</small>}</div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+                  const workflowName = selectedDepartment === 'Merchandise' ? workflow?.merchandise_document_name : workflow?.accounts_document_name;
+                  const workflowPath = selectedDepartment === 'Merchandise' ? workflow?.merchandise_document_path : workflow?.accounts_document_path;
+                  const rawPath = workflowPath ?? submission?.document_path ?? submission?.document_url ?? submission?.supporting_document_path ?? snapshot.document_path ?? snapshot.document_url ?? snapshot.supporting_document_path;
+                  const path = typeof rawPath === 'string' && rawPath.trim() ? rawPath.trim() : null;
+                  const name = String(workflowName ?? submission?.document_name ?? submission?.supporting_document_name ?? snapshot.document_name ?? snapshot.supporting_document_name ?? 'Supporting Document');
+                  return (
+                    <div className="fg-reference-document">
+                      <FileCheck2 size={18} />
+                      <span><strong>{name}</strong><small>Submitted document (read-only)</small></span>
+                      {path ? <button type="button" className="fg-document-button" onClick={() => void openDocument(path)}><Eye size={14} /> View document</button> : <small>No uploaded document is linked to this submission.</small>}
+                    </div>
+                  );
+                })()
               ) : selectedDepartment === 'Accounts' ? (
                 <div className="fg-accounts-documents">
                   <div className="fg-accounts-documents-heading">
@@ -5379,76 +5651,75 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       <thead>
                         <tr>
                           <th>Penalty Category</th>
-                          <th>PO TOTAL</th>
+                          <th>Penalty Applied</th>
+                          <th style={{ width: 150, minWidth: 150 }}>Penalty Revised</th>
                           <th style={{ width: 320, minWidth: 320 }}>Accounts Review</th>
-                          {reviewMode === 'founder' && (
-                            <>
-                              <th style={{ width: 320, minWidth: 320 }}>Merchandise Review</th>
-                              <th style={{ width: 320, minWidth: 320 }}>Founder Review</th>
-                            </>
-                          )}
+                          <th style={{ width: 270, minWidth: 270 }}>DN Voucher No.</th>
+                          <th style={{ width: 320, minWidth: 320 }}>Merchandise Review</th>
+                          <th style={{ width: 320, minWidth: 320 }}>Founder Review</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {poPenaltyRows.map((penalty) => (
-                          <tr key={`PO_TOTAL:${penalty.key}`}>
-                            <td><strong>{penalty.category}</strong></td>
-                            <td><strong>{penaltyCurrency(penalty.amount)}</strong></td>
-                            <td style={{ width: 320, minWidth: 320 }}>
-                              <textarea
-                                rows={2}
-                                readOnly={reviewMode === 'founder' || (reviewReadOnly && !founderEditing)}
-                                onChange={(event) => setReviewRemarks((current) => ({ ...current, [`penalty:Accounts:PO_TOTAL:${penalty.key}`]: event.target.value }))}
-                                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
-                                className={reviewMode === 'founder' || (reviewReadOnly && !founderEditing) ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
-                                value={reviewRemarks[`penalty:Accounts:PO_TOTAL:${penalty.key}`] ?? reviewRemarks[`penalty:accounts:po_total:${penalty.key}`] ?? reviewRemarks[`penalty:Accounts:PO_TOTAL:${penalty.key}`.toLowerCase().replace(/[\s_-]+/g, '')] ?? ''}
-                                placeholder="Accounts review..."
-                                aria-label={`Accounts review for ${penalty.category}`}
-                              />
-                            </td>
-                            {reviewMode === 'founder' && (
-                            <td style={{ width: 320, minWidth: 320 }}>
-                              <textarea
-                                rows={2}
-                                readOnly
-                                onChange={(event) => setFounderMerchandiseRemarks((current) => ({ ...current, [`penalty:Merchandise:PO_TOTAL:${penalty.key}`]: event.target.value }))}
-                                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
-                                className="fg-review-input fg-review-input-readonly"
-                                value={founderEditing ? (founderMerchandiseRemarks[`penalty:Merchandise:PO_TOTAL:${penalty.key}`] ?? '') : getFounderMerchandiseRemark(String(selectedPO.po_ref_num ?? '').trim(), penalty.key)}
-                                placeholder="Merchandise review..."
-                                aria-label={`Merchandise review for ${penalty.category}`}
-                              />
-                            </td>
-                            )}
-                            {reviewMode === 'founder' && (
+                        {poPenaltyRows.map((penalty) => {
+                          const ref = String(selectedPO.po_ref_num ?? '').trim();
+                          const accountsDetails = getSubmittedReviewDetails('Accounts', ref);
+                          const merchandiseDetails = getSubmittedReviewDetails('Merchandise', ref);
+                          const accountPenaltyChanges = (accountsDetails.snapshot?.penalty_changes ?? accountsDetails.workflowRemarks?.penalty_changes ?? {}) as Record<string, unknown>;
+                          const accountVouchers = (accountsDetails.snapshot?.dn_vouchers ?? accountsDetails.workflowRemarks?.dn_vouchers ?? {}) as Record<string, unknown>;
+                          const voucher = accountVouchers[penalty.key] && typeof accountVouchers[penalty.key] === 'object'
+                            ? accountVouchers[penalty.key] as Record<string, unknown> : {};
+                          const revisedValue = accountPenaltyChanges[penalty.key];
+                          const accountsRemark = accountsDetails.remarks[`penalty:Accounts:PO_TOTAL:${penalty.key}`]
+                            ?? accountsDetails.remarks[`penalty:accounts:po_total:${penalty.key}`]
+                            ?? accountsDetails.remarks[`penalty:accounts:po_total:${penalty.key}`.toLowerCase().replace(/[\s_-]+/g, '')]
+                            ?? '';
+                          const merchandiseRemark = merchandiseDetails.remarks[`penalty:Merchandise:PO_TOTAL:${penalty.key}`]
+                            ?? merchandiseDetails.remarks[`penalty:merchandise:po_total:${penalty.key}`]
+                            ?? getFounderMerchandiseRemark(ref, penalty.key)
+                            ?? '';
+                          const voucherPath = typeof voucher.path === 'string' ? voucher.path : null;
+                          const voucherName = typeof voucher.fileName === 'string' ? voucher.fileName : (typeof voucher.name === 'string' ? voucher.name : 'DN voucher document');
+                          return (
+                            <tr key={`PO_TOTAL:${penalty.key}`}>
+                              <td><strong>{penalty.category}</strong></td>
+                              <td><strong>{penaltyCurrency(penalty.amount)}</strong></td>
+                              <td style={{ width: 150, minWidth: 150 }}>
+                                <input className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38 }} value={revisedValue == null ? '—' : String(revisedValue)} readOnly aria-label={`Penalty revised for ${penalty.category}`} />
+                              </td>
+                              <td style={{ width: 320, minWidth: 320 }}>
+                                <textarea rows={2} readOnly className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={formatReviewValue(accountsRemark)} placeholder="No Accounts review submitted." aria-label={`Accounts review for ${penalty.category}`} />
+                              </td>
+                              <td style={{ width: 270, minWidth: 270 }}>
+                                <div style={{ display: 'grid', gap: 6 }}>
+                                  <input className="fg-review-input fg-review-input-readonly" value={String(voucher.voucherNo ?? voucher.voucher_no ?? '') || '—'} readOnly aria-label={`DN voucher number for ${penalty.category}`} />
+                                  {voucherPath ? <button type="button" className="fg-document-button" onClick={() => void openDocument(voucherPath)}><Eye size={14} /> View {voucherName}</button> : <small>No DN voucher uploaded.</small>}
+                                </div>
+                              </td>
+                              <td style={{ width: 320, minWidth: 320 }}>
+                                <textarea rows={2} readOnly className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={formatReviewValue(merchandiseRemark)} placeholder="No Merchandise review submitted." aria-label={`Merchandise review for ${penalty.category}`} />
+                              </td>
                               <td style={{ width: 320, minWidth: 320 }}>
                                 <textarea
                                   rows={2}
-                                  readOnly={reviewMode !== 'founder' || !founderEditing || workflowByPoRef[String(selectedPO.po_ref_num ?? '').trim()]?.status === 'Closed' || String(selectedPO.po_status ?? '').toLowerCase() === 'closed'}
-                                  onChange={(event) => setFounderReviewRemarks((current) => ({ ...current, [`penalty:Founder:PO_TOTAL:${penalty.key}`]: event.target.value }))}
+                                  readOnly={!founderEditing || workflowByPoRef[ref]?.status === 'Closed' || String(selectedPO.po_status ?? '').toLowerCase() === 'closed'}
+                                  className={!founderEditing || workflowByPoRef[ref]?.status === 'Closed' || String(selectedPO.po_status ?? '').toLowerCase() === 'closed' ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
                                   style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
-                                  className={reviewMode !== 'founder' || !founderEditing || workflowByPoRef[String(selectedPO.po_ref_num ?? '').trim()]?.status === 'Closed' || String(selectedPO.po_status ?? '').toLowerCase() === 'closed' ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
-                                  value={founderReviewRemarks[`penalty:Founder:PO_TOTAL:${penalty.key}`] ?? getFounderReviewRemarks(String(selectedPO.po_ref_num ?? '').trim())[`penalty:Founder:PO_TOTAL:${penalty.key}`] ?? ''}
+                                  value={founderReviewRemarks[`penalty:Founder:PO_TOTAL:${penalty.key}`] ?? getFounderReviewRemarks(ref)[`penalty:Founder:PO_TOTAL:${penalty.key}`] ?? ''}
+                                  onChange={(event) => setFounderReviewRemarks((current) => ({ ...current, [`penalty:Founder:PO_TOTAL:${penalty.key}`]: event.target.value }))}
                                   placeholder="Founder review..."
                                   aria-label={`Founder review for ${penalty.category}`}
                                 />
                               </td>
-                            )}
-                          </tr>
-                        ))}
-                        {poPenaltyRows.length === 0 && (
-                          <tr><td colSpan={reviewMode === 'founder' ? 5 : 3} className="fg-fabric-empty">No PO data is available to calculate penalties.</td></tr>
-                        )}
+                            </tr>
+                          );
+                        })}
+                        {poPenaltyRows.length === 0 && <tr><td colSpan={7} className="fg-fabric-empty">No PO data is available to calculate penalties.</td></tr>}
                       </tbody>
                       <tfoot>
                         <tr>
-                          <th colSpan={1}>Total calculated penalty for the whole PO</th>
-                          <th>
-                            {penaltyCurrency(
-                              poPenaltyRows.reduce((sum, row) => sum + (row.amount == null ? 0 : row.amount), 0),
-                            )}
-                          </th>
-                          <td colSpan={reviewMode === 'founder' ? 3 : 1}>Review the whole-PO penalty and confirm eligibility before submission.</td>
+                          <th>Total calculated penalty for the whole PO</th>
+                          <th>{penaltyCurrency(poPenaltyRows.reduce((sum, row) => sum + (row.amount == null ? 0 : row.amount), 0))}</th>
+                          <td colSpan={5}>Review the whole-PO penalty and confirm eligibility before approval.</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -5487,28 +5758,103 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </div>
               )}
 
-              {reviewReadOnly && !founderEditing ? (
-                <div className="fg-reference-document">
-                  <FileCheck2 size={18} />
-                  <span>
-                    <strong>
-                      {(() => {
-                        const ref = String(selectedPO.po_ref_num ?? '').trim();
-                        return getSubmittedReviewDetails(founderReviewDepartment, ref).documentName;
-                      })()}
-                    </strong>
-                    <small>Submitted document (read-only)</small>
-                  </span>
-                  {(() => {
-                    const ref = String(selectedPO.po_ref_num ?? '').trim();
-                    const path = getSubmittedReviewDetails(founderReviewDepartment, ref).documentPath;
-                    return path ? (
-                      <button type="button" className="fg-document-button" onClick={() => void openDocument(path)}>
-                        <Eye size={14} /> {founderReviewDepartment === 'Accounts' ? 'VIEW ACCOUNT DOCUMENT' : 'View document'}
-                      </button>
-                    ) : <small>No uploaded document is linked to this submission. If the earlier upload failed, please upload the file again and submit.</small>;
-                  })()}
-                </div>
+              {(reviewReadOnly && !founderEditing) || (reviewMode === 'founder' && founderEditing) ? (
+                reviewMode === 'founder' ? (
+                  <div className="fg-reference-review-section">
+                    {(['Accounts', 'Merchandise'] as Department[]).map((department) => {
+                      const ref = String(selectedPO.po_ref_num ?? '').trim();
+                      const details = getSubmittedReviewDetails(department, ref);
+                      const docsKey = department === 'Accounts' ? 'accounts_supporting_documents' : 'merchandise_supporting_documents';
+                      const docsValue = details.snapshot?.[docsKey];
+                      const docs = Array.isArray(docsValue) ? docsValue as Array<Record<string, unknown>> : [];
+                      const legacyPath = details.documentPath;
+                      const legacyName = details.documentName;
+                      const displayDocs = docs.length > 0 ? docs : (legacyPath ? [{ title: legacyName, fileName: legacyName, reason: 'Legacy submitted document', path: legacyPath }] : []);
+                      return (
+                        <div key={department} style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+                          <h4 style={{ margin: '4px 0' }}>{department} Supporting Documents</h4>
+                          {(() => {
+                            const editingRows = department === 'Accounts' ? accountsSupportingDocuments : merchandiseSupportingDocuments;
+                            const setEditingRows = department === 'Accounts' ? setAccountsSupportingDocuments : setMerchandiseSupportingDocuments;
+                            if (founderEditing) {
+                              return (
+                                <div className="fg-fabric-table-wrap" style={{ border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden' }}>
+                                  <div className="fg-fabric-table-scroll">
+                                    <table className="fg-reference-review-table" style={{ minWidth: 900, width: '100%', borderCollapse: 'collapse' }}>
+                                      <thead><tr>
+                                        <th style={{ minWidth: 190, border: '1px solid #cbd5e1' }}>Document Title</th>
+                                        <th style={{ minWidth: 270, border: '1px solid #cbd5e1' }}>Upload Document</th>
+                                        <th style={{ minWidth: 240, border: '1px solid #cbd5e1' }}>Reason</th>
+                                        <th style={{ width: 110, minWidth: 110, border: '1px solid #cbd5e1' }}>Actions</th>
+                                      </tr></thead>
+                                      <tbody>
+                                        {editingRows.map((row, index) => (
+                                          <tr key={`${department}-edit-${row.id}`}>
+                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><input className="fg-review-input" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={row.title} placeholder="Document title" onChange={(event) => setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, title: event.target.value } : item))} /></td>
+                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}>
+                                              <div style={{ display: 'grid', gap: 5 }}>
+                                                <input type="file" onChange={(event) => { const file = event.target.files?.[0] ?? null; setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, file, fileName: file?.name ?? item.fileName } : item)); }} />
+                                                <small>{row.file?.name ?? row.fileName ?? 'No file selected'}</small>
+                                                {row.path && <button type="button" className="fg-document-button" onClick={() => void openDocument(row.path ?? null)}><Eye size={14} /> View current</button>}
+                                              </div>
+                                            </td>
+                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><input className="fg-review-input" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={row.reason} placeholder="Reason" onChange={(event) => setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, reason: event.target.value } : item))} /></td>
+                                            <td style={{ border: '1px solid #cbd5e1', padding: 8, whiteSpace: 'nowrap', textAlign: 'center' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                                                {editingRows.length > 1 && <button type="button" className="fg-doc-remove-row" aria-label={`Remove ${department} document row ${index + 1}`} onClick={() => setEditingRows((rows) => rows.filter((item) => item.id !== row.id))}>−</button>}
+                                                {index === editingRows.length - 1 && <button type="button" className="fg-doc-add-row" aria-label={`Add ${department} document row`} onClick={() => setEditingRows((rows) => [...rows, { id: crypto.randomUUID(), title: '', reason: '', file: null }])}>+</button>}
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return displayDocs.length > 0 ? (
+                              <div className="fg-fabric-table-wrap" style={{ border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden' }}>
+                                <div className="fg-fabric-table-scroll">
+                                  <table className="fg-reference-review-table" style={{ minWidth: 720, width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead><tr><th style={{ minWidth: 190, border: '1px solid #cbd5e1' }}>Document Title</th><th style={{ minWidth: 230, border: '1px solid #cbd5e1' }}>File Name</th><th style={{ minWidth: 240, border: '1px solid #cbd5e1' }}>Reason</th><th style={{ minWidth: 120, border: '1px solid #cbd5e1' }}>Action</th></tr></thead>
+                                    <tbody>{displayDocs.map((doc, index) => {
+                                      const path = typeof doc.path === 'string' ? doc.path : null;
+                                      const name = String(doc.fileName ?? doc.name ?? `Document ${index + 1}`);
+                                      return <tr key={`${department}-${index}-${name}`}><td style={{ border: '1px solid #cbd5e1', padding: 10 }}><strong>{String(doc.title ?? name)}</strong></td><td style={{ border: '1px solid #cbd5e1', padding: 10 }}>{name}</td><td style={{ border: '1px solid #cbd5e1', padding: 10 }}>{String(doc.reason ?? '—')}</td><td style={{ border: '1px solid #cbd5e1', padding: 10 }}>{path ? <button type="button" className="fg-document-button" onClick={() => void openDocument(path)}><Eye size={14} /> View document</button> : <span>Not available</span>}</td></tr>;
+                                    })}</tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            ) : <div className="fg-reference-document"><FileCheck2 size={18} /><span><strong>{legacyName}</strong><small>No document linked to this submission.</small></span></div>;
+                          })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="fg-reference-document">
+                    <FileCheck2 size={18} />
+                    <span>
+                      <strong>
+                        {(() => {
+                          const ref = String(selectedPO.po_ref_num ?? '').trim();
+                          return getSubmittedReviewDetails(founderReviewDepartment, ref).documentName;
+                        })()}
+                      </strong>
+                      <small>Submitted document (read-only)</small>
+                    </span>
+                    {(() => {
+                      const ref = String(selectedPO.po_ref_num ?? '').trim();
+                      const path = getSubmittedReviewDetails(founderReviewDepartment, ref).documentPath;
+                      return path ? (
+                        <button type="button" className="fg-document-button" onClick={() => void openDocument(path)}>
+                          <Eye size={14} /> {founderReviewDepartment === 'Accounts' ? 'VIEW ACCOUNT DOCUMENT' : 'View document'}
+                        </button>
+                      ) : <small>No uploaded document is linked to this submission. If the earlier upload failed, please upload the file again and submit.</small>;
+                    })()}
+                  </div>
+                )
               ) : (
                 <label className="fg-reference-document">
                   <Upload size={18} />
@@ -5523,7 +5869,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </label>
               )}
 
-              {reviewMode === 'founder' && (reviewReadOnly || founderEditing) && (
+              {reviewMode === 'founder' && reviewReadOnly && !founderEditing && (
                 founderEditing ? (
                   <label className="fg-reference-document">
                     <Upload size={18} />
@@ -5599,6 +5945,19 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         setFounderMerchandiseRemarks(merchandiseValues);
                         setFounderReviewRemarks(getFounderReviewRemarks(ref));
                         setFounderMerchandiseText(merchandiseDetails.additionalRemarks);
+                        const accountsDetails = getSubmittedReviewDetails('Accounts', ref);
+                        const restoreFounderRows = (value: unknown, fallbackPath: string | null, fallbackName: string) => {
+                          const docs = Array.isArray(value) ? value as Array<Record<string, unknown>> : [];
+                          const rows = docs.map((doc) => ({
+                            id: crypto.randomUUID(), title: String(doc.title ?? ''), reason: String(doc.reason ?? ''), file: null,
+                            path: typeof doc.path === 'string' ? doc.path : null,
+                            fileName: typeof doc.fileName === 'string' ? doc.fileName : (typeof doc.name === 'string' ? doc.name : null),
+                          }));
+                          if (!rows.length && fallbackPath) rows.push({ id: crypto.randomUUID(), title: fallbackName, reason: '', file: null, path: fallbackPath, fileName: fallbackName });
+                          return rows.length ? rows : [{ id: crypto.randomUUID(), title: '', reason: '', file: null }];
+                        };
+                        setAccountsSupportingDocuments(restoreFounderRows(accountsDetails.snapshot?.accounts_supporting_documents ?? accountsDetails.workflowRemarks?.accounts_supporting_documents, accountsDetails.documentPath, accountsDetails.documentName));
+                        setMerchandiseSupportingDocuments(restoreFounderRows(merchandiseDetails.snapshot?.merchandise_supporting_documents ?? merchandiseDetails.workflowRemarks?.merchandise_supporting_documents, merchandiseDetails.documentPath, merchandiseDetails.documentName));
                         setSelectedDocument(null);
                         setSelectedFounderMerchandiseDocument(null);
                         setFounderEditing(true);
@@ -6114,6 +6473,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           font-weight: 600;
           cursor: pointer;
         }
+
+        .fg-closed-view-button { background: #fff5bf !important; border-color: #f0d66a !important; color: #775b00 !important; }
+        .fg-closed-view-button:hover { background: #ffed99 !important; }
+        .fg-closed-pdf-button { height: 32px; padding: 0 10px; margin-left: 5px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f8fafc; color: #334155; font-size: 11px; font-weight: 650; cursor: pointer; }
+        .fg-closed-pdf-button:hover { background: #e2e8f0; }
 
         .fg-empty { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; color: #9aa1aa; }
         .fg-empty strong { color: #555d66; font-size: 13px; }
