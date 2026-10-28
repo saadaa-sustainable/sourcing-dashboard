@@ -534,6 +534,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
   const [reviewText, setReviewText] = useState('');
   const [reviewRemarks, setReviewRemarks] = useState<Record<string, string>>({});
+  // Per-penalty adjustments and debit-note voucher details entered by Accounts.
+  const [penaltyChanges, setPenaltyChanges] = useState<Record<string, string>>({});
+  const [dnVoucherNumbers, setDnVoucherNumbers] = useState<Record<string, string>>({});
+  const [dnVoucherFiles, setDnVoucherFiles] = useState<Record<string, File | null>>({});
   const [skuCellSelection, setSkuCellSelection] = useState<Set<string>>(new Set());
   const [skuSelectionAnchor, setSkuSelectionAnchor] = useState<{ row: number; col: number } | null>(null);
   const [skuSelecting, setSkuSelecting] = useState(false);
@@ -2404,6 +2408,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setReviewReadOnly(false);
     setReviewText('');
     setReviewRemarks({});
+    setPenaltyChanges({});
+    setDnVoucherNumbers({});
+    setDnVoucherFiles({});
     setSelectedDocument(null);
     setAccountsSupportingDocuments([{ id: crypto.randomUUID(), title: '', reason: '', file: null }]);
     setMerchandiseSupportingDocuments([{ id: crypto.randomUUID(), title: '', reason: '', file: null }]);
@@ -2523,6 +2530,32 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         if (firstWithPath) { documentPath = firstWithPath.path; documentName = firstWithPath.fileName || firstWithPath.title || 'Merchandise Supporting Document'; }
       }
 
+      const dnVoucherDocsSaved: Record<string, { voucherNo: string; path: string | null; fileName: string | null }> = {};
+      for (const penalty of poPenaltyRows) {
+        const voucherFile = dnVoucherFiles[penalty.key] ?? null;
+        const voucherNo = (dnVoucherNumbers[penalty.key] ?? '').trim();
+        let path: string | null = null;
+        let fileName: string | null = null;
+        if (voucherFile) {
+          const safeName = voucherFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const prefix = `${selectedPO.po_id ?? selectedPO.po_ref_num ?? 'unknown'}/${selectedDepartment.toLowerCase()}/dn-vouchers`;
+          const attemptedPath = `${prefix}/${crypto.randomUUID()}-${safeName}`;
+          const { error: uploadError } = await supabase.storage.from('fg-closure-documents').upload(attemptedPath, voucherFile, {
+            cacheControl: '3600', upsert: false, contentType: voucherFile.type || undefined,
+          });
+          if (uploadError) throw new Error(`Failed to upload DN voucher for "${penalty.category}": ${uploadError.message}`);
+          path = attemptedPath;
+          fileName = voucherFile.name;
+        }
+        if (voucherNo || path) dnVoucherDocsSaved[penalty.key] = { voucherNo, path, fileName };
+      }
+
+      const penaltyChangeValues = Object.fromEntries(
+        Object.entries(penaltyChanges)
+          .filter(([, value]) => String(value ?? '').trim() !== '')
+          .map(([key, value]) => [key, Number(value)]),
+      );
+
       const existing = selectedPO.po_id == null
         ? undefined
         : workflowByPoRef[String(selectedPO.po_ref_num ?? '')];
@@ -2541,6 +2574,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         ...(additionalRemarks ? { additional_remarks: additionalRemarks } : {}),
         ...(selectedDepartment === 'Accounts' ? { accounts_supporting_documents: accountsSupportingDocsSaved } : {}),
         ...(selectedDepartment === 'Merchandise' ? { merchandise_supporting_documents: merchandiseSupportingDocsSaved } : {}),
+        penalty_changes: penaltyChangeValues,
+        dn_vouchers: dnVoucherDocsSaved,
       };
       const metricReview = Object.entries(rowRemarks)
         .map(([metric, value]) => `${metric}: ${value}`)
@@ -2561,6 +2596,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         penalty_calculations: poPenaltyRows,
         total_po_value: penaltyTotalPOValue,
         review_remarks: reviewRemarks,
+        penalty_changes: penaltyChangeValues,
+        dn_vouchers: dnVoucherDocsSaved,
         review_text: reviewText.trim(),
         selected_sku_sum: selectedSkuSum,
         ...(selectedDepartment === 'Accounts' ? { accounts_supporting_documents: accountsSupportingDocsSaved } : {}),
@@ -4444,7 +4481,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     <p>
                       Total PO value: <strong>{penaltyCurrency(penaltyTotalPOValue)}</strong> ·
                       {' '}PO quantity: <strong>{formatNumber(penaltyPoQty)}</strong> pcs.
-                      Penalties are assessed against the whole PO value; the chargeable amount is shown in the PO TOTAL column.
+                      Penalties are assessed against the whole PO value; the chargeable amount is shown in the Penalty Applied column.
                     </p>
                   </div>
                 </div>
@@ -4454,13 +4491,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       <thead>
                         <tr>
                           <th>Penalty Category</th>
-                          <th>PO TOTAL</th>
-                          {selectedDepartment === 'Accounts' ? (
-                            <th style={{ width: 320, minWidth: 320 }}>Accounts Review</th>
-                          ) : (
-                            <th style={{ width: 320, minWidth: 320 }}>Merchandise Review</th>
-                          )}
-                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Merchandise Review (Read Only)' : 'Accounts Review'}</th>
+                          <th>Penalty Applied</th>
+                          <th style={{ width: 150, minWidth: 150 }}>Penalty Revised</th>
+                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Accounts Review' : 'Merchandise Review'}</th>
+                          <th style={{ width: 270, minWidth: 270 }}>DN Voucher No.</th>
+                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Merchandise Review (Read Only)' : 'Accounts Review (Read Only)'}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4468,6 +4503,20 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                           <tr key={`PO_TOTAL:${penalty.key}`}>
                             <td><strong>{penalty.category}</strong></td>
                             <td><strong>{penaltyCurrency(penalty.amount)}</strong></td>
+                            <td style={{ width: 150, minWidth: 150 }}>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={penaltyChanges[penalty.key] ?? ''}
+                                onChange={(event) => setPenaltyChanges((current) => ({ ...current, [penalty.key]: event.target.value }))}
+                                disabled={reviewReadOnly}
+                                className="fg-review-input"
+                                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38 }}
+                                placeholder="0.00"
+                                aria-label={`Penalty change for ${penalty.category}`}
+                              />
+                            </td>
                             {selectedDepartment === 'Merchandise' && (
                               <td>
                                 <textarea
@@ -4501,6 +4550,53 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 />
                               </td>
                             )}
+                            <td style={{ width: 270, minWidth: 270 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                                <input
+                                  type="text"
+                                  value={dnVoucherNumbers[penalty.key] ?? ''}
+                                  onChange={(event) => setDnVoucherNumbers((current) => ({ ...current, [penalty.key]: event.target.value }))}
+                                  disabled={reviewReadOnly}
+                                  className="fg-review-input"
+                                  style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 34 }}
+                                  placeholder="Enter voucher number"
+                                  aria-label={`DN voucher number for ${penalty.category}`}
+                                />
+                                <input
+                                  key={`${penalty.key}-${dnVoucherFiles[penalty.key]?.name ?? 'no-file'}`}
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
+                                  disabled={reviewReadOnly}
+                                  onChange={(event) => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: event.target.files?.[0] ?? null }))}
+                                  aria-label={`Upload DN voucher for ${penalty.category}`}
+                                  style={{ width: '100%', minWidth: 0, fontSize: 11 }}
+                                />
+                                {dnVoucherFiles[penalty.key] && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                    <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#64748b', overflowWrap: 'anywhere' }}>
+                                      {dnVoucherFiles[penalty.key]?.name}
+                                    </span>
+                                    {!reviewReadOnly && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: null }))}
+                                        aria-label={`Remove DN voucher document for ${penalty.category}`}
+                                        title="Remove selected document"
+                                        style={{
+                                          width: 26, height: 26, minWidth: 26, padding: 0,
+                                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                          border: '1px solid #fecaca', borderRadius: '50%',
+                                          background: '#fff', color: '#b91c1c', cursor: 'pointer',
+                                          fontSize: 16, fontWeight: 700, lineHeight: 1,
+                                        }}
+                                      >
+                                        −
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
                             {(
                               <td style={{ width: 320, minWidth: 320 }}>
                                 <textarea
@@ -4517,7 +4613,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                           </tr>
                         ))}
                         {poPenaltyRows.length === 0 && (
-                          <tr><td colSpan={selectedDepartment ? 4 : 2} className="fg-fabric-empty">No PO data is available to calculate penalties.</td></tr>
+                          <tr><td colSpan={selectedDepartment ? 6 : 4} className="fg-fabric-empty">No PO data is available to calculate penalties.</td></tr>
                         )}
                       </tbody>
                       <tfoot>
@@ -4528,6 +4624,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               poPenaltyRows.reduce((sum, row) => sum + (row.amount == null ? 0 : row.amount), 0),
                             )}
                           </th>
+                          <td />
+                          <td />
                           {selectedDepartment && <><td>Review the whole-PO penalty and confirm eligibility before submission.</td><td /></>}
                         </tr>
                       </tfoot>
@@ -5271,7 +5369,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     <p>
                       Total PO value: <strong>{penaltyCurrency(penaltyTotalPOValue)}</strong> ·
                       {' '}PO quantity: <strong>{formatNumber(penaltyPoQty)}</strong> pcs.
-                      Penalties are assessed against the whole PO value; the chargeable amount is shown in the PO TOTAL column.
+                      Penalties are assessed against the whole PO value; the chargeable amount is shown in the Penalty Applied column.
                     </p>
                   </div>
                 </div>
