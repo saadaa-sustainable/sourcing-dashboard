@@ -1,44 +1,23 @@
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
-import { currentUser, loadVendorCommercial, NotConfiguredError } from '@/lib/forms/queries';
+import { commercialActor } from '@/lib/commercial-access.server';
+import { loadVendorCommercial } from '@/lib/forms/queries-modules/vendor-commercial';
 import { VendorCommercialClient } from './vendor-commercial-client';
+import './commercial.css';
 
 export const dynamic = 'force-dynamic';
-
 export default async function VendorCommercialPage() {
-  let user;
+  let actor;
+  try { actor = await commercialActor(); }
+  catch { return <main className="commercial-portal ui-shopify"><Notice tone="warn">Commercial Requests requires the vendor-portal database migration and configured authentication. Contact the administrator.</Notice></main>; }
+  if (!actor) redirect('/login');
+  if (actor.vendorCode) redirect('/commercial-requests');
+  let content;
   try {
-    user = await currentUser();
-  } catch (error) {
-    if (error instanceof NotConfiguredError) {
-      return (
-        <FormLayout title="Vendor Commercial Approval" active="/vendor-commercial" role="viewer">
-          <Notice tone="error">{error.message}</Notice>
-        </FormLayout>
-      );
-    }
-    throw error;
+    const data = await loadVendorCommercial();
+    content = <VendorCommercialClient {...data} role={actor.role} />;
+  } catch {
+    content = <Notice tone="error">Could not load Commercial Requests. Check the database migration and connection, then reload.</Notice>;
   }
-  if (!user) redirect('/login');
-
-  const { ready, requests, vendors } = await loadVendorCommercial();
-
-  return (
-    <FormLayout
-      title="Vendor Commercial Approval"
-      subtitle="Raise a commercial request for a vendor — hold waiver, cost increment, cash discount, DN removal or credit note. Every request needs admin approval."
-      active="/vendor-commercial"
-      role={user.role}
-      userEmail={user.email}
-      allowedPages={user.allowed_pages ?? null}
-    >
-      {!ready ? (
-        <Notice tone="warn">
-          This page needs the database update <code>20261009180000_vendor_commercial_approval.sql</code> — run it in the Supabase SQL editor, then reload.
-        </Notice>
-      ) : (
-        <VendorCommercialClient requests={requests} vendors={vendors} role={user.role} />
-      )}
-    </FormLayout>
-  );
+  return <FormLayout title="Commercial Approval Requests" subtitle="Review vendor requests, record commercial decisions and track Finance processing." active="/vendor-commercial" role={actor.role} userEmail={actor.email} allowedPages={actor.allowedPages ?? null}>{content}</FormLayout>;
 }

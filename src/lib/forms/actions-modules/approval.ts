@@ -131,6 +131,7 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (!user) return fail('Not signed in.');
 
   const entityType = String(formData.get('entity_type') ?? '') as ApprovalEntity;
+  if (entityType === 'vendor_commercial') return fail('Open Vendor Commercial Approval to review the latest revision and record its approved amount.');
   if (entityType === 'standard_cost') return fail('Review and approve the full Standard Cost submission or amendment sections on its product page.');
   const entityId = Number(formData.get('entity_id'));
   const label = String(formData.get('entity_label') ?? '');

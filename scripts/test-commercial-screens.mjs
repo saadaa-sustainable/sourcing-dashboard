@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import vm from 'node:vm';
+import ts from 'typescript';
+const nativeRequire = createRequire(import.meta.url);
+let actor, requests;
+const module = { exports: {} };
+const require = (name) => {
+  if (name === 'react/jsx-runtime') return nativeRequire(name);
+  if (name === 'next/navigation') return { notFound() { throw new Error('notFound'); }, redirect(path) { throw new Error(`redirect:${path}`); } };
+  if (name === '@/lib/commercial-access.server') return { commercialIdentity: async () => actor, commercialPos: async () => [] };
+  if (name === '@/lib/forms/queries-modules/vendor-commercial') return { loadVendorCommercial: async () => ({ actor, requests, vendors: [], events: [], accounts: [] }) };
+  if (name === '@/lib/forms/commercial-workflow') return { commercialRequestNumber: (id) => `CAR-${id}`, mayEditCommercial: (email, admin, owner, status) => status !== 'approved' && (admin || email === owner) };
+  if (name === '@/lib/forms/commercial') return { requestTypeLabel: () => 'Request type' };
+  if (name === '@/lib/forms/approval') return { canEdit: (role) => role !== 'viewer' };
+  return new Proxy({}, { get: () => () => null });
+};
+const code = ts.transpileModule(readFileSync('src/app/vendor-commercial/request-screen.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+vm.runInNewContext(code, { require, module, exports: module.exports, Number, encodeURIComponent });
+const screen = module.exports.CommercialRequestScreen;
+const vendor = { email: 'vendor@example.com', role: 'viewer', vendorCode: 'ABC' };
+const row = { id: 1, vendor_code: 'ABC', requested_by: vendor.email, status: 'pending_l2', request_type: 'hold_waiver' };
+let checks = 0;
+async function deny(mode, message, portal = true, id = '1') {
+  await assert.rejects(() => screen({ id, mode, portal }), { message }); checks++;
+}
+actor = null; requests = [row]; await deny('edit', 'redirect:/commercial-requests/login');
+actor = { ...vendor, passwordChangeRequired: true }; await deny('review', 'redirect:/commercial-requests/change-password');
+actor = vendor;
+await deny('review', 'notFound', true, 'bad-id');
+await deny('review', 'notFound', true, '2');
+requests = [{ ...row, vendor_code: 'OTHER' }]; await deny('review', 'notFound');
+requests = [{ ...row, requested_by: 'colleague@example.com' }]; await deny('edit', 'notFound');
+assert.ok(await screen({ id: '1', mode: 'review', portal: true })); checks++;
+requests = [{ ...row, status: 'approved' }]; await deny('edit', 'notFound');
+requests = [row]; assert.ok(await screen({ id: '1', mode: 'edit', portal: true })); checks++;
+await deny('review', 'redirect:/commercial-requests/1/review', false);
+actor = { email: 'admin@saadaa.in', role: 'admin', vendorCode: null };
+assert.ok(await screen({ id: '1', mode: 'review', portal: false })); checks++;
+assert.ok(await screen({ id: '1', mode: 'edit', portal: false })); checks++;
+actor = { ...actor, role: 'viewer' }; await deny('edit', 'notFound', false);
+console.log(`Commercial request screens: ${checks} access and navigation checks passed.`);

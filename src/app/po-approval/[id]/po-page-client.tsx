@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import { FilePen } from 'lucide-react';
+import { canEdit } from '@/lib/forms/approval';
 import { StatusBadge } from '@/components/forms/form-layout';
 import { PoCardBody, StageStrip, dateOnly, dayLabel, inr, nextStep, nfmt, poFlag, typeLabel } from '../po-card';
 import type { ApprovalQueueItem, PoApproval, PoApprovalLine, PoCycleTime, PoDeleteRequest, SdRole } from '@/lib/forms/types';
@@ -52,7 +55,14 @@ export function PoPageClient({
             <StatusBadge status={po.status} approverEdited={po.approver_edited} />
             <span className={`poa-flag is-${flag.tone}`} title={flag.title}>{flag.text}</span>
           </div>
-          <StageStrip po={po} large />
+          <div className="poa-head-controls">
+            <StageStrip po={po} large />
+            {po.status === 'draft' && canEdit(role, po.status) && (
+              <Link className="wf-btn wf-btn-primary poa-edit-request" href={`/po-approval?edit=${po.id}`}>
+                <FilePen size={14} /> Edit PO Request
+              </Link>
+            )}
+          </div>
         </div>
         <dl className="poa-facts">
           {facts.map((f) => (

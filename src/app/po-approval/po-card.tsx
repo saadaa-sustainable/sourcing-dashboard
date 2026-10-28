@@ -174,6 +174,7 @@ export function PoCardBody({
   cycle,
   lines,
   role,
+  onEdit,
   editHref,
   deleteRequest,
   review,
@@ -292,6 +293,19 @@ export function PoCardBody({
 
   return (
     <div className={`poa-body${focus ? ` is-focus-${focus}` : ''}`}>
+      <div className="poa-edit-toolbar">
+        {!editHref && po.status === 'draft' && editableHere && !editingSku && (
+          onEdit ? (
+            <button type="button" className="wf-btn wf-btn-primary poa-edit-request" onClick={() => onEdit(po)}>
+              <FilePen size={14} /> Edit PO Request
+            </button>
+          ) : (
+            <Link className="wf-btn wf-btn-primary poa-edit-request" href={editHref ?? `/po-approval?edit=${po.id}`}>
+              <FilePen size={14} /> Edit PO Request
+            </Link>
+          )
+        )}
+      </div>
       {rowChecks && (
         <SubmitChecksModal checks={rowChecks} pending={pending} onConfirm={confirmRowSubmit} onCancel={() => setRowChecks(null)} />
       )}

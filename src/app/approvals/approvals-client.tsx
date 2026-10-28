@@ -320,7 +320,7 @@ export function ApprovalsClient({
                         }}
                       />
                     )}
-                  {item.entityType !== 'buying_plan' && canApprove(role, item.status) && (
+                  {item.entityType !== 'buying_plan' && item.entityType !== 'vendor_commercial' && canApprove(role, item.status) && (
                     <ApprovalBar
                       entityType={item.entityType}
                       entityId={item.entityId}

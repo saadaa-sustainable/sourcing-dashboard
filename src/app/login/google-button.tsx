@@ -12,26 +12,30 @@ function GoogleIcon() {
   </svg>;
 }
 
-export function GoogleButton() {
+export function GoogleButton({ vendor = false }: { vendor?: boolean }) {
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   async function signIn() {
     setLoading(true);
+    setErrorMessage('');
+    try {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}${vendor ? '/commercial-requests/auth/callback' : '/auth/callback'}`,
         // hd hints Google to show only saadaa.in Workspace accounts. It is a
         // convenience only — the domain is enforced server-side in the callback
         // route and by the auth.users trigger.
-        queryParams: { hd: 'saadaa.in', prompt: 'select_account' },
+        queryParams: vendor ? { prompt: 'select_account' } : { hd: 'saadaa.in', prompt: 'select_account' },
       },
     });
-    if (error) setLoading(false); // otherwise the browser redirects to Google
+    if (error) { setLoading(false); setErrorMessage('Google sign-in is unavailable. Try again or use your email and password.'); }
+    } catch { setLoading(false); setErrorMessage('Could not start Google sign-in. Please retry.'); }
   }
 
-  return <button type="button" className="google-button" onClick={signIn} disabled={loading}>
+  return <><button type="button" className="google-button" onClick={signIn} disabled={loading}>
     <GoogleIcon /> {loading ? 'Redirecting…' : 'Continue with Google'}
-  </button>;
+  </button>{errorMessage && <p role="alert">{errorMessage}</p>}</>;
 }

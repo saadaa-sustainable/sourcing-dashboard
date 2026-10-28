@@ -51,6 +51,7 @@ const f = (key: string, label: string, kind: ApprovalEditKind, value: unknown): 
 });
 
 async function buildForm(db: Db, entity: ApprovalEntity, idText: string): Promise<Built | { error: string }> {
+  if (entity === 'vendor_commercial') return { error: 'Review and amend Commercial Requests on the Vendor Commercial Approval page.' };
   const id = Number(idText);
   const header = async (table: string) => {
     const { data } = await db.from(table).select('*').eq('id', id).maybeSingle();
@@ -172,32 +173,6 @@ async function buildForm(db: Db, entity: ApprovalEntity, idText: string): Promis
       targets: new Map([['header', { ref: 'header', table: 'sd_vendor_deboarding_request', keyCol: 'id', key: id }]]),
       status: v.status as SdStatus,
       header: { table: 'sd_vendor_deboarding_request', id },
-    };
-  }
-
-  if (entity === 'vendor_commercial') {
-    const c = await header('sd_vendor_commercial_request');
-    if (!c) return { error: 'Request not found.' };
-    const t = text(c.request_type);
-    // What the approver may change: the figures the request turns on, and the remarks.
-    const fields =
-      t === 'hold_waiver'
-        ? [f('hold_qty', 'Hold qty', 'int', c.hold_qty), f('hold_days', 'Days hold asked', 'int', c.hold_days), f('ready_date', 'Ready date', 'date', c.ready_date)]
-        : t === 'cost_increment'
-          ? [f('increment_amount', 'Increment amount (₹)', 'money', c.increment_amount)]
-          : t === 'cash_discount'
-            ? [f('invoice_amount', 'Invoice amount (₹)', 'money', c.invoice_amount), f('invoice_date', 'Invoice date', 'date', c.invoice_date)]
-            : t === 'credit_note'
-              ? [f('credit_amount', 'Credit note amount (₹)', 'money', c.credit_amount)]
-              : [f('debit_note_number', 'Debit note number', 'text', c.debit_note_number)];
-    return {
-      form: {
-        title: `Commercial approval — ${text(c.vendor_name || c.vendor_code)}`,
-        rows: [{ ref: 'header', label: text(c.vendor_name || c.vendor_code), sub: `PO ${text(c.po_numbers)}`, fields: [...fields, f('remarks', 'Remarks', 'text', c.remarks)] }],
-      },
-      targets: new Map([['header', { ref: 'header', table: 'sd_vendor_commercial_request', keyCol: 'id', key: id }]]),
-      status: c.status as SdStatus,
-      header: { table: 'sd_vendor_commercial_request', id },
     };
   }
 
