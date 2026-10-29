@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Search,
   Upload,
+  Paperclip,
   UserCheck,
   X,
   XCircle,
@@ -4720,17 +4721,17 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     </p>
                   </div>
                 </div>
-                <div className="fg-fabric-table-wrap">
-                  <div className="fg-fabric-table-scroll">
+                <div className="fg-fabric-table-wrap fg-po-penalty-wrap">
+                  <div className="fg-fabric-table-scroll fg-po-penalty-scroll">
                     <table className="fg-reference-review-table fg-po-penalty-table">
                       <thead>
                         <tr>
                           <th>Penalty Category</th>
                           <th>Penalty Applied</th>
-                          <th style={{ width: 150, minWidth: 150 }}>Penalty Revised</th>
-                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Accounts Review' : 'Merchandise Review'}</th>
-                          <th style={{ width: 270, minWidth: 270 }}>DN Voucher No.</th>
-                          <th style={{ width: 320, minWidth: 320 }}>{selectedDepartment === 'Accounts' ? 'Merchandise Review (Read Only)' : 'Accounts Review (Read Only)'}</th>
+                          <th style={{ width: 130, minWidth: 130 }}>Penalty Revised</th>
+                          <th style={{ width: 250, minWidth: 250 }}>{selectedDepartment === 'Accounts' ? 'Accounts Review' : 'Merchandise Review'}</th>
+                          <th style={{ width: 175, minWidth: 175, maxWidth: 175 }}>DN Voucher No.</th>
+                          <th style={{ width: 250, minWidth: 250 }}>{selectedDepartment === 'Accounts' ? 'Merchandise Review (Read Only)' : 'Accounts Review (Read Only)'}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4785,40 +4786,53 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 />
                               </td>
                             )}
-                            <td style={{ width: 270, minWidth: 270 }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-                                <input
-                                  type="text"
-                                  value={dnVoucherNumbers[penalty.key] ?? ''}
-                                  onChange={(event) => setDnVoucherNumbers((current) => ({ ...current, [penalty.key]: event.target.value }))}
-                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
-                                  className={(reviewReadOnly || selectedDepartment === 'Merchandise') ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
-                                  style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 34, background: (reviewReadOnly || selectedDepartment === 'Merchandise') ? '#f8fafc' : '#fff' }}
-                                  placeholder="Enter voucher number"
-                                  aria-label={`DN voucher number for ${penalty.category}`}
-                                />
-                                {selectedDepartment !== 'Merchandise' && (
+                            <td style={{ width: 175, minWidth: 175, maxWidth: 175, overflow: 'hidden' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, width: '100%', overflow: 'hidden' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                                   <input
-                                    key={`${penalty.key}-${dnVoucherFiles[penalty.key]?.name ?? 'no-file'}`}
-                                    type="file"
-                                    accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
-                                    disabled={reviewReadOnly}
-                                    onChange={(event) => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: event.target.files?.[0] ?? null }))}
-                                    aria-label={`Upload DN voucher for ${penalty.category}`}
-                                    style={{ width: '100%', minWidth: 0, fontSize: 11 }}
+                                    type="text"
+                                    value={dnVoucherNumbers[penalty.key] ?? ''}
+                                    onChange={(event) => setDnVoucherNumbers((current) => ({ ...current, [penalty.key]: event.target.value }))}
+                                    disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
+                                    className={(reviewReadOnly || selectedDepartment === 'Merchandise') ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
+                                    style={{ width: 125, minWidth: 0, flex: '0 1 125px', boxSizing: 'border-box', height: 34, background: (reviewReadOnly || selectedDepartment === 'Merchandise') ? '#f8fafc' : '#fff' }}
+                                    placeholder="Voucher number"
+                                    aria-label={`DN voucher number for ${penalty.category}`}
                                   />
-                                )}
+                                  {selectedDepartment !== 'Merchandise' && (
+                                    <>
+                                      <input
+                                        id={`dn-voucher-file-${penalty.key}`}
+                                        key={`${penalty.key}-${dnVoucherFiles[penalty.key]?.name ?? 'no-file'}`}
+                                        type="file"
+                                        accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
+                                        disabled={reviewReadOnly}
+                                        onChange={(event) => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: event.target.files?.[0] ?? null }))}
+                                        aria-label={`Upload DN voucher for ${penalty.category}`}
+                                        style={{ display: 'none' }}
+                                      />
+                                      <label
+                                        htmlFor={`dn-voucher-file-${penalty.key}`}
+                                        title="Upload DN voucher document"
+                                        aria-label={`Upload DN voucher for ${penalty.category}`}
+                                        style={{ width: 34, height: 34, minWidth: 34, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1', borderRadius: 8, background: reviewReadOnly ? '#f8fafc' : '#fff', color: reviewReadOnly ? '#94a3b8' : '#475569', cursor: reviewReadOnly ? 'not-allowed' : 'pointer', boxSizing: 'border-box', pointerEvents: reviewReadOnly ? 'none' : 'auto' }}
+                                      >
+                                        <Paperclip size={16} />
+                                      </label>
+                                    </>
+                                  )}
+                                </div>
                                 {!dnVoucherFiles[penalty.key] && savedDnVoucherDocs[penalty.key]?.path && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#64748b', overflowWrap: 'anywhere' }}>
-                                    <span>{savedDnVoucherDocs[penalty.key]?.fileName || 'DN voucher document attached'}</span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 11, color: '#64748b', minWidth: 0, width: '100%', overflow: 'hidden' }}>
+                                    <span title={savedDnVoucherDocs[penalty.key]?.fileName || 'DN voucher document attached'} style={{ display: 'block', width: '100%', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{savedDnVoucherDocs[penalty.key]?.fileName || 'DN voucher document attached'}</span>
                                     <button type="button" className="fg-document-button" onClick={() => void openDocument(savedDnVoucherDocs[penalty.key]?.path ?? null)}>
                                       <Eye size={14} /> View voucher
                                     </button>
                                   </div>
                                 )}
                                 {dnVoucherFiles[penalty.key] && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                                    <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#64748b', overflowWrap: 'anywhere' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, width: '100%', overflow: 'hidden' }}>
+                                    <span title={dnVoucherFiles[penalty.key]?.name ?? ''} style={{ flex: 1, minWidth: 0, fontSize: 10, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {dnVoucherFiles[penalty.key]?.name}
                                     </span>
                                     {!reviewReadOnly && (
@@ -5645,18 +5659,18 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     </p>
                   </div>
                 </div>
-                <div className="fg-fabric-table-wrap">
-                  <div className="fg-fabric-table-scroll">
+                <div className="fg-fabric-table-wrap fg-po-penalty-wrap">
+                  <div className="fg-fabric-table-scroll fg-po-penalty-scroll">
                     <table className="fg-reference-review-table fg-po-penalty-table">
                       <thead>
                         <tr>
                           <th>Penalty Category</th>
                           <th>Penalty Applied</th>
-                          <th style={{ width: 150, minWidth: 150 }}>Penalty Revised</th>
-                          <th style={{ width: 320, minWidth: 320 }}>Accounts Review</th>
-                          <th style={{ width: 270, minWidth: 270 }}>DN Voucher No.</th>
-                          <th style={{ width: 320, minWidth: 320 }}>Merchandise Review</th>
-                          <th style={{ width: 320, minWidth: 320 }}>Founder Review</th>
+                          <th style={{ width: 130, minWidth: 130 }}>Penalty Revised</th>
+                          <th style={{ width: 250, minWidth: 250 }}>Accounts Review</th>
+                          <th style={{ width: 175, minWidth: 175, maxWidth: 175 }}>DN Voucher No.</th>
+                          <th style={{ width: 250, minWidth: 250 }}>Merchandise Review</th>
+                          <th style={{ width: 250, minWidth: 250 }}>Founder Review</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -5689,10 +5703,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               <td style={{ width: 320, minWidth: 320 }}>
                                 <textarea rows={2} readOnly className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={formatReviewValue(accountsRemark)} placeholder="No Accounts review submitted." aria-label={`Accounts review for ${penalty.category}`} />
                               </td>
-                              <td style={{ width: 270, minWidth: 270 }}>
-                                <div style={{ display: 'grid', gap: 6 }}>
-                                  <input className="fg-review-input fg-review-input-readonly" value={String(voucher.voucherNo ?? voucher.voucher_no ?? '') || '—'} readOnly aria-label={`DN voucher number for ${penalty.category}`} />
-                                  {voucherPath ? <button type="button" className="fg-document-button" onClick={() => void openDocument(voucherPath)}><Eye size={14} /> View {voucherName}</button> : <small>No DN voucher uploaded.</small>}
+                              <td style={{ width: 175, minWidth: 175, maxWidth: 175, overflow: 'hidden' }}>
+                                <div style={{ display: 'grid', gap: 6, width: '100%', minWidth: 0, maxWidth: '100%' }}>
+                                  <input className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }} value={String(voucher.voucherNo ?? voucher.voucher_no ?? '') || '—'} readOnly aria-label={`DN voucher number for ${penalty.category}`} />
+                                  {voucherPath ? <button type="button" className="fg-document-button" title={voucherName} style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', boxSizing: 'border-box' }} onClick={() => void openDocument(voucherPath)}><Eye size={14} style={{ flexShrink: 0 }} /><span style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>View {voucherName}</span></button> : <small>No DN voucher uploaded.</small>}
                                 </div>
                               </td>
                               <td style={{ width: 320, minWidth: 320 }}>
@@ -6375,7 +6389,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           height: 43px;
           padding: 0 16px;
           background: #fafafa;
-          border-bottom: 1px solid #e6e8eb;
+          border-bottom: 1px solid #dfe4ea;
+          border-right: 1px solid #e5e9ef;
           color: #737b85;
           font-size: 10px;
           font-weight: 700;
@@ -6387,14 +6402,18 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-table td {
           height: 62px;
           padding: 0 16px;
-          border-bottom: 1px solid #edf0f2;
+          border-bottom: 1px solid #e3e8ee;
+          border-right: 1px solid #edf0f4;
           color: #4c535b;
           font-size: 12px;
           white-space: nowrap;
           background: #ffffff;
         }
 
-        .fg-table tbody tr:hover td { background: #fcfcfd; }
+        .fg-table tbody tr:last-child td { border-bottom-color: #dfe4ea; }
+        .fg-table th:last-child,
+        .fg-table td:last-child { border-right: 0; }
+        .fg-table tbody tr:hover td { background: #f8fafc; }
 
         .fg-sticky-col {
           position: sticky !important;
@@ -6990,35 +7009,105 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           width: 190px;
         }
 
-        /* Keep Penalty Category and Penalty Applied visible while horizontally scrolling the penalty table. */
+        /* The outer wrapper must not capture sticky positioning. The inner
+           scroll element is the single horizontal/vertical scroll container. */
+        .fg-po-penalty-wrap {
+          overflow: visible !important;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+        }
+
+        .fg-po-penalty-scroll {
+          position: relative;
+          width: 100%;
+          max-height: 430px;
+          overflow: auto !important;
+          isolation: isolate;
+          scrollbar-width: thin;
+          overscroll-behavior: contain;
+          border-radius: 8px;
+        }
+
+        /* Compact penalty review table with light, minimal grid lines. */
+        .fg-po-penalty-table {
+          border: 0;
+          border-radius: 8px;
+          border-collapse: separate;
+          border-spacing: 0;
+          table-layout: fixed;
+          min-width: 1160px;
+        }
+
+        .fg-po-penalty-table th,
+        .fg-po-penalty-table td {
+          border-right: 1px solid #edf0f3;
+          border-bottom: 1px solid #edf0f3;
+          box-sizing: border-box;
+        }
+
+        .fg-po-penalty-table tbody td {
+          padding: 8px 10px;
+          vertical-align: middle;
+        }
+
+        .fg-po-penalty-table tbody tr:last-child td {
+          border-bottom: 0;
+        }
+
+        /* Keep the first two penalty columns pinned during horizontal scrolling.
+           The header cells also stay pinned to the top during vertical scrolling. */
         .fg-po-penalty-table th:first-child,
         .fg-po-penalty-table td:first-child {
-          position: sticky;
-          left: 0;
-          min-width: 330px;
-          width: 330px;
-          z-index: 20;
+          position: sticky !important;
+          left: 0 !important;
+          min-width: 280px !important;
+          width: 280px !important;
+          max-width: 280px !important;
+          z-index: 32;
+          background-clip: padding-box;
         }
 
         .fg-po-penalty-table th:nth-child(2),
         .fg-po-penalty-table td:nth-child(2) {
+          position: sticky !important;
+          left: 280px !important;
+          min-width: 125px !important;
+          width: 125px !important;
+          max-width: 125px !important;
+          z-index: 31;
+          background-clip: padding-box;
+          box-shadow: 5px 0 8px -8px rgba(15, 23, 42, 0.35);
+        }
+
+        .fg-po-penalty-table thead th {
           position: sticky;
-          left: 330px;
-          min-width: 130px;
-          width: 130px;
-          z-index: 20;
-          box-shadow: 5px 0 8px -8px rgba(15, 23, 42, 0.45);
+          top: 0;
+          z-index: 40;
+        }
+
+        .fg-po-penalty-table th:nth-child(5),
+        .fg-po-penalty-table td:nth-child(5) {
+          min-width: 175px;
+          width: 175px;
+          max-width: 175px;
         }
 
         .fg-po-penalty-table thead th:first-child,
         .fg-po-penalty-table thead th:nth-child(2) {
-          z-index: 42;
-          background: #111827;
+          top: 0 !important;
+          z-index: 60 !important;
+          background: #111827 !important;
         }
 
         .fg-po-penalty-table tbody td:first-child,
         .fg-po-penalty-table tbody td:nth-child(2) {
-          background: #ffffff;
+          background: #ffffff !important;
+        }
+
+        .fg-po-penalty-table thead th {
+          padding: 0 10px;
+          height: 42px;
+          border-right-color: #252d3b;
         }
 
         /* Keep the Calculation column visible while scrolling horizontally. */
