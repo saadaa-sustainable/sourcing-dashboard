@@ -7110,6 +7110,23 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           border-right-color: #252d3b;
         }
 
+        /* Keep the total label inside the first frozen column instead of
+           letting the default nowrap header style overlap the total amount. */
+        .fg-po-penalty-table tfoot th:first-child {
+          white-space: normal !important;
+          overflow-wrap: break-word;
+          word-break: normal;
+          line-height: 1.25;
+          text-align: left;
+          vertical-align: middle;
+          padding: 10px;
+        }
+
+        .fg-po-penalty-table tfoot th:nth-child(2) {
+          white-space: nowrap;
+          vertical-align: middle;
+        }
+
         /* Keep the Calculation column visible while scrolling horizontally. */
         .fg-sku-review-table th:first-child,
         .fg-sku-review-table td:first-child {
