@@ -415,37 +415,24 @@ function getDisplayColumns(row: Record<string, unknown>) {
 }
 
 function getTableColumnsForRows(rows: Record<string, unknown>[], filter: ClosureStatus) {
-  // Closed rows can come from two different sources: immutable fg_closed_po
-  // snapshots and legacy summary fallbacks. Their object keys/order are not
-  // identical, so never derive table columns from an individual row.
+  // Keep PO Reference and Action adjacent so both frozen columns remain visible
+  // together while the remaining data columns scroll horizontally.
   if (filter === 'Closed') {
     return [
-      'po_ref_num', 'po_number', 'po_date', 'expected_delivery_date',
+      'po_ref_num', '__fg_action__', 'po_number', 'po_date', 'expected_delivery_date',
       'vendor_name', 'vendor_code', 'po_qty', 'cutting_qty', 'grn_qty',
       'pending_qty', 'po_to_cutting_variance', 'po_to_cutting_pct',
       'cutting_to_grn_variance', 'cutting_to_grn_pct', 'last_grn_date',
-      'grn_count', 'avg_grn_tat_days', '__fg_action__',
+      'grn_count', 'avg_grn_tat_days',
     ];
   }
 
-  // For other tabs, use a stable union of keys across every row on the page.
-  const columns = Array.from(new Set(rows.flatMap((row) => getDisplayColumns(row))));
-  const poRefIndex = columns.indexOf('po_ref_num');
-  const withoutPoRef = poRefIndex === -1
-    ? columns
-    : columns.filter((column) => column !== 'po_ref_num');
-  const completedIndex = withoutPoRef.indexOf('completed_at_timestamp');
+  // Submission flags remain in row data for workflow logic but are hidden in the UI.
+  const hiddenWorkflowColumns = new Set(['Merchandise Submission', 'Accounts Submission']);
+  const columns = Array.from(new Set(rows.flatMap((row) => getDisplayColumns(row))))
+    .filter((column) => !hiddenWorkflowColumns.has(column) && column !== 'po_ref_num');
 
-  if (completedIndex === -1) {
-    return [...(poRefIndex === -1 ? [] : ['po_ref_num']), ...withoutPoRef, '__fg_action__'];
-  }
-
-  return [
-    ...(poRefIndex === -1 ? [] : ['po_ref_num']),
-    ...withoutPoRef.slice(0, completedIndex + 1),
-    '__fg_action__',
-    ...withoutPoRef.slice(completedIndex + 1),
-  ];
+  return ['po_ref_num', '__fg_action__', ...columns];
 }
 
 function formatSummaryTableValue(key: (typeof SUMMARY_TABLE_COLUMNS)[number], value: unknown) {
@@ -4029,7 +4016,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         <div className="fg-kpi-card">
           <div className="fg-kpi-top">
-            <span className="fg-kpi-label">L-1</span>
+            <span className="fg-kpi-label">LEVEL-1</span>
             <div className="fg-kpi-icon fg-icon-l1"><Clock3 size={17} /></div>
           </div>
           <div className="fg-kpi-value">{loading ? '—' : l1}</div>
@@ -4056,7 +4043,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         <div className="fg-kpi-card">
           <div className="fg-kpi-top">
-            <span className="fg-kpi-label">L-2</span>
+            <span className="fg-kpi-label">LEVEL-2</span>
             <div className="fg-kpi-icon fg-icon-founder"><UserCheck size={17} /></div>
           </div>
           <div className="fg-kpi-value">{loading ? '—' : founder}</div>
@@ -4257,7 +4244,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       column === 'po_ref_num'
                         ? 'fg-sticky-col fg-sticky-head'
                         : column === '__fg_action__'
-                          ? 'fg-row-action-head'
+                          ? 'fg-row-action-head fg-action-frozen-head'
                           : undefined
                     }
                   >
@@ -4303,9 +4290,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       {columns.map((column) => {
                         if (column === '__fg_action__') {
                           return (
-                            <td key={column} className="fg-row-action-cell">
+                            <td key={column} className="fg-row-action-cell fg-action-frozen-cell">
                               {activeFilter === 'L-1' ? (
-                                <button type="button" className="fg-view-button" onClick={() => openInitiateModal(po)} title="Continue this saved L-1">
+                                <button type="button" className="fg-initiate-button fg-resume-l1-button" onClick={() => openInitiateModal(po)} title="Continue this saved L-1">
                                   Resume L-1 <ArrowRight size={15} />
                                 </button>
                               ) : activeFilter === 'Ready for closer' ? (
@@ -6936,25 +6923,27 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         .fg-sticky-col {
           position: sticky !important;
-          left: 0;
-          min-width: 250px;
-          width: 250px;
+          left: 0 !important;
+          box-sizing: border-box;
+          min-width: 268px;
+          width: 268px;
+          max-width: 268px;
           z-index: 25 !important;
         }
 
         .fg-sticky-head {
           top: 0 !important;
           left: 0 !important;
-          min-width: 250px;
-          width: 250px;
-          z-index: 40 !important;
+          box-sizing: border-box;
+          min-width: 268px;
+          width: 268px;
+          max-width: 268px;
+          z-index: 50 !important;
           background: #fafafa !important;
-          box-shadow: 5px 0 8px -7px rgba(15, 23, 42, 0.35);
         }
 
         .fg-sticky-cell {
           background: #ffffff !important;
-          box-shadow: 5px 0 8px -7px rgba(15, 23, 42, 0.35);
           font-weight: 650;
           color: #20252b !important;
         }
@@ -6997,6 +6986,31 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           text-align: center !important;
           white-space: nowrap;
         }
+
+        /* Keep Action visible during horizontal scrolling, immediately after
+           the frozen PO Reference column. */
+        .fg-action-frozen-head {
+          position: sticky !important;
+          top: 0 !important;
+          left: 268px !important;
+          z-index: 45 !important;
+          box-sizing: border-box;
+          min-width: 112px;
+          width: 112px;
+          background: #fafafa !important;
+        }
+
+        .fg-action-frozen-cell {
+          position: sticky !important;
+          left: 268px !important;
+          z-index: 35 !important;
+          box-sizing: border-box;
+          min-width: 112px;
+          width: 112px;
+          background: #ffffff !important;
+        }
+
+        .fg-table tbody tr:hover .fg-action-frozen-cell { background: #f8fafc !important; }
 
         .fg-view-button {
           height: 32px;
@@ -7072,6 +7086,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         }
 
         .fg-initiate-button:hover:not(:disabled) { background: #f4c000; }
+        .fg-resume-l1-button { background: #f6c800 !important; border-color: #e0b900 !important; color: #151515 !important; }
+        .fg-resume-l1-button:hover:not(:disabled) { background: #f4c000 !important; }
         .fg-initiate-button:disabled { opacity: 0.45; cursor: not-allowed; }
 
         .fg-modal-backdrop {
