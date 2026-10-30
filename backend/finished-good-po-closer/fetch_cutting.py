@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 from datetime import date, datetime
@@ -14,15 +13,13 @@ from supabase import create_client
 # ============================================================
 
 # Project structure:
-#
 # sourcing-dashboard-fg-closer/
 # ├── .env.local
 # └── backend/
 #     └── finished-good-po-closer/
 #         └── fetch_cutting.py
-#
-# Resolve the project root independently of the terminal location.
 
+# Resolve the project root independently of the terminal location.
 ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT / ".env.local"
 
@@ -45,7 +42,6 @@ SUPABASE_SERVICE_ROLE_KEY = (
 ).strip()
 
 GCP_PROJECT = "saadaa-wh"
-
 BQ_TABLE = "saadaa-wh.MAPLEMONK.po_qty_cutting_register"
 
 # Finished Good PO Closer schema and destination table.
@@ -53,6 +49,14 @@ SUPABASE_SCHEMA = "FG Closer"
 SUPABASE_TABLE = "po_qty_cutting_register"
 
 BATCH_SIZE = 500
+
+# This script performs a FULL REFRESH:
+# 1. Fetch the complete source dataset from BigQuery.
+# 2. Only after confirming source data exists, clear the destination table.
+# 3. Insert the complete fetched dataset into Supabase.
+#
+# This prevents yesterday's rows from remaining alongside today's
+# complete source snapshot and doubling cutting quantities.
 
 
 # ============================================================
@@ -93,9 +97,7 @@ def create_supabase_client():
 # ============================================================
 
 def serialize_value(value):
-    """
-    Convert BigQuery values into values suitable for JSON upload.
-    """
+    """Convert BigQuery values into JSON-compatible values."""
 
     if value is None:
         return None
@@ -104,8 +106,7 @@ def serialize_value(value):
         return value.isoformat()
 
     if isinstance(value, Decimal):
-        # Preserve decimal precision when sending numeric values
-        # to Postgres; Postgres can cast numeric strings.
+        # Preserve numeric precision. Postgres can cast numeric strings.
         return str(value)
 
     if isinstance(value, bytes):
@@ -151,48 +152,24 @@ def fetch_from_bigquery(bq_client):
 
     for row in rows:
         record = {
-            "date_of_cutting": serialize_value(
-                row.date_of_cutting
-            ),
-            "vendor_code": serialize_value(
-                row.vendor_code
-            ),
-            "po_number": serialize_value(
-                row.po_number
-            ),
-            "fabric_sku_code": serialize_value(
-                row.fabric_sku_code
-            ),
-            "item_code": serialize_value(
-                row.item_code
-            ),
-            "cutting_qty": serialize_value(
-                row.cutting_qty
-            ),
+            "date_of_cutting": serialize_value(row.date_of_cutting),
+            "vendor_code": serialize_value(row.vendor_code),
+            "po_number": serialize_value(row.po_number),
+            "fabric_sku_code": serialize_value(row.fabric_sku_code),
+            "item_code": serialize_value(row.item_code),
+            "cutting_qty": serialize_value(row.cutting_qty),
             "avg_fabric_consumption_approved": serialize_value(
                 row.avg_fabric_consumption_approved
             ),
-            "width_of_fabric": serialize_value(
-                row.width_of_fabric
-            ),
+            "width_of_fabric": serialize_value(row.width_of_fabric),
             "cutting_approval_sheet": serialize_value(
                 row.cutting_approval_sheet
             ),
-            "remarks_of_cutting": serialize_value(
-                row.remarks_of_cutting
-            ),
-            "fabric_consumed": serialize_value(
-                row.fabric_consumed
-            ),
-            "type_of_po": serialize_value(
-                row.type_of_po
-            ),
-            "date_of_ingestion": serialize_value(
-                row.date_of_ingestion
-            ),
-            "ingestion_by": serialize_value(
-                row.ingestion_by
-            ),
+            "remarks_of_cutting": serialize_value(row.remarks_of_cutting),
+            "fabric_consumed": serialize_value(row.fabric_consumed),
+            "type_of_po": serialize_value(row.type_of_po),
+            "date_of_ingestion": serialize_value(row.date_of_ingestion),
+            "ingestion_by": serialize_value(row.ingestion_by),
         }
 
         records.append(record)
@@ -200,6 +177,57 @@ def fetch_from_bigquery(bq_client):
     print(f"Fetched {len(records):,} rows from BigQuery.")
 
     return records
+
+
+# ============================================================
+# SUPABASE TABLE HELPERS
+# ============================================================
+
+def get_supabase_row_count(supabase):
+    """Return the exact number of rows currently in the destination."""
+
+    response = (
+        supabase
+        .schema(SUPABASE_SCHEMA)
+        .table(SUPABASE_TABLE)
+        .select("item_code", count="exact", head=True)
+        .execute()
+    )
+
+    return response.count or 0
+
+
+def clear_supabase_table(supabase):
+    """
+    Delete every row from the destination table.
+
+    PostgREST requires a filter for DELETE. These two complementary
+    filters cover both non-NULL and NULL item_code rows, so no records
+    are left behind. The second request runs only if the first succeeds.
+    """
+
+    print("\nClearing existing Supabase cutting data...")
+    print(f"Target: {SUPABASE_SCHEMA}.{SUPABASE_TABLE}")
+
+    table = supabase.schema(SUPABASE_SCHEMA).table(SUPABASE_TABLE)
+
+    # Delete rows with a non-NULL item_code.
+    table.delete().not_.is_("item_code", "null").execute()
+
+    # Delete any rows whose item_code is NULL.
+    table.delete().is_("item_code", "null").execute()
+
+    remaining = get_supabase_row_count(supabase)
+
+    if remaining != 0:
+        raise RuntimeError(
+            "Full refresh stopped: destination table is not empty "
+            f"after DELETE. Remaining rows: {remaining:,}. "
+            "No new data has been inserted."
+        )
+
+    print("Existing destination rows cleared successfully.")
+    print("Verified destination row count: 0")
 
 
 # ============================================================
@@ -211,7 +239,7 @@ def insert_into_supabase(supabase, records):
 
     if total == 0:
         print("No records to upload.")
-        return
+        return 0
 
     print("\nStarting Supabase upload...")
     print(f"Rows:   {total:,}")
@@ -238,13 +266,36 @@ def insert_into_supabase(supabase, records):
         )
 
         uploaded += len(batch)
-
         print(f"Progress: {uploaded:,} / {total:,}")
 
     print(
         f"\nSuccessfully inserted {uploaded:,} rows into "
         f"{SUPABASE_SCHEMA}.{SUPABASE_TABLE}."
     )
+
+    return uploaded
+
+
+# ============================================================
+# VERIFY FULL REFRESH
+# ============================================================
+
+def verify_supabase_upload(supabase, expected_rows):
+    print("\nVerifying Supabase destination...")
+
+    actual_rows = get_supabase_row_count(supabase)
+
+    print(f"BigQuery source rows: {expected_rows:,}")
+    print(f"Supabase table rows:  {actual_rows:,}")
+
+    if actual_rows != expected_rows:
+        raise RuntimeError(
+            "Upload verification failed: source and destination "
+            f"row counts differ (source={expected_rows:,}, "
+            f"destination={actual_rows:,})."
+        )
+
+    print("Row-count verification passed.")
 
 
 # ============================================================
@@ -254,7 +305,7 @@ def insert_into_supabase(supabase, records):
 def main():
     print("=" * 65)
     print("FINISHED GOOD PO CLOSER")
-    print("CUTTING BIGQUERY → SUPABASE INITIAL SYNC")
+    print("CUTTING BIGQUERY -> SUPABASE FULL REFRESH")
     print("=" * 65)
 
     print(f"Project root:     {ROOT}")
@@ -266,16 +317,27 @@ def main():
     bq_client = create_bigquery_client()
     supabase = create_supabase_client()
 
+    # Fetch first. Never clear Supabase if BigQuery returns no data.
     records = fetch_from_bigquery(bq_client)
 
     if not records:
-        print("\nNo BigQuery records found. Nothing uploaded.")
+        print(
+            "\nBigQuery returned 0 records. "
+            "Supabase was NOT cleared or modified."
+        )
         return
 
-    insert_into_supabase(supabase, records)
+    # Clear old snapshot only after a successful, non-empty source fetch.
+    clear_supabase_table(supabase)
+
+    # Insert the complete source snapshot.
+    uploaded = insert_into_supabase(supabase, records)
+
+    # Confirm the destination contains exactly the source row count.
+    verify_supabase_upload(supabase, uploaded)
 
     print("\n" + "=" * 65)
-    print("INITIAL SYNC COMPLETED")
+    print("CUTTING FULL REFRESH COMPLETED SUCCESSFULLY")
     print("=" * 65)
 
 
