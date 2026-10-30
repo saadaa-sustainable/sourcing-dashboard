@@ -44,6 +44,12 @@ export async function createClient() {
     return createAdminClient();
   }
 
+  return createSessionClient();
+}
+
+// Authentication always needs browser cookies, including during local data bypass.
+// Never use the service-role data client to sign in, exchange OAuth codes or sign out.
+export async function createSessionClient() {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;

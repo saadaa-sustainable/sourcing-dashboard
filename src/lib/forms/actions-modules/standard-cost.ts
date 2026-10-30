@@ -1,44 +1,19 @@
 'use server';
 
-import { randomBytes } from 'crypto';
+import { loadNpdOptions, loadNpdProduct, NpdNotConfiguredError, type NpdOption } from '@/lib/npd-tracker.server';
 import { revalidatePath } from 'next/cache';
-import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
-import { createAdminClient, hasSupabaseAdminEnv } from '@/lib/supabase/admin';
-import { createPublicClient } from '@/lib/supabase/public';
-import { computeClosureCompliance } from '@/lib/business-logic';
-import { recomputeExpectedCost } from '@/lib/standard-cost';
-import { currentUser, loadApprovedStandardCosts, loadApprovedMaterialCosts } from '../queries';
-import { canApprove, canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { canEdit, canSubmit, statusOnSubmit } from '../approval';
+import { currentUser } from '../queries';
+import { pageAll } from '../queries-modules/_shared';
+import type { SdStatus } from '../types';
 import {
-  canAcceptProposal,
-  canConfirmCm,
-  canConfirmFabric,
-  canPropose,
-  canRejectCost,
-  canRenegotiate,
-  canSetTarget,
-  canSignOff,
-  canSubmitRate,
-} from '../cost';
-import type { ApprovalEntity, PoCategory, PoType, SdRole, SdStatus } from '../types';
-import { INWARD_PLAN_STATUSES } from '../types';
-import {
-  type ActionResult,
-  type LinkResult,
-  fail,
   done,
+  fail,
+  numOrNull,
   supa,
   writeLog,
-  recordCommitment,
-  numOrNull,
-  dateOrNull,
-  textOrNull,
+  type ActionResult,
 } from './_shared';
-import { pageAll } from '../queries-modules/_shared';
-import { loadNpdOptions, loadNpdProduct, NpdNotConfiguredError, type NpdOption } from '@/lib/npd-tracker.server';
-
-/** 'kg' when the team says so, otherwise the metre the Fabric Cost master rates in. */
-const fabricUom = (v: unknown): 'mtr' | 'kg' => (String(v ?? '').trim().toLowerCase() === 'kg' ? 'kg' : 'mtr');
 
 export async function saveStandardCost(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
@@ -57,9 +32,8 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
     .eq('product_code', product_code)
     .maybeSingle();
 
-  if (existing?.frozen) {
-    return fail('This cost is frozen (a PO was issued) and can no longer be edited.');
-  }
+  if (existing || ['job_cost','fob_cost','efob_cost','cm_cost','fabric_code','cad_link','rfp_link','total_po_avg_cost'].some(key => formData.has(key))) return fail('Use the Standard Cost submission / amendment workflow on the product page.');
+
   // A NEW cost row must be an EasyEcom product or a temporary (TMP-xxxx) one: a typed name
   // ("ABCD") is never a product code. New products not in EasyEcom go through mintTempProduct.
   if (!existing) {
@@ -71,36 +45,11 @@ export async function saveStandardCost(formData: FormData): Promise<ActionResult
       return fail(`${product_code} is not in EasyEcom. Create it as a new product instead: it gets a temporary TMP ID you can link later.`);
     }
   }
-  // Documentation (fabric link, consumption-derived total, CAD/RFP) stays editable even
-  // after sign-off — only a PO-issued freeze locks it. The rate (job/FOB/EFOB) is owned by
-  // the negotiation flow, so this save only touches rate columns when they're explicitly sent.
-
-  const patch: Record<string, unknown> = {
-    product_code,
-    total_po_avg_cost: numOrNull(formData.get('total_po_avg_cost')),
-    fabric_code: textOrNull(formData.get('fabric_code')),
-    // Saving is the act of documenting — clears the "data gap" flag.
-    documented: true,
-    updated_at: new Date().toISOString(),
-  };
-  // How the fabric is consumed (per metre / per kg). Only the cost sheet sends it, so a
-  // rate-only save never resets a chosen unit.
-  if (formData.has('fabric_uom')) patch.fabric_uom = fabricUom(formData.get('fabric_uom'));
-  // The CAD / RFP links are saved from the Documents tab (saveCostLinks); only touch them
-  // when a caller sends them, so a cost-sheet save never blanks a saved link.
-  if (formData.has('cad_link')) patch.cad_link = textOrNull(formData.get('cad_link'));
-  if (formData.has('rfp_link')) patch.rfp_link = textOrNull(formData.get('rfp_link'));
-  // Rate columns are owned by the negotiation flow — only touch them when a caller
-  // explicitly sends them, so a documentation save never nulls a signed-off rate.
-  if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));
-  if (formData.has('fob_cost')) patch.fob_cost = numOrNull(formData.get('fob_cost'));
-  if (formData.has('efob_cost')) patch.efob_cost = numOrNull(formData.get('efob_cost'));
-  // cm_cost is owned by the CMTP breakdown (saveCmtpComponents). Only touch it
-  // when a caller explicitly sends it, so a header save never wipes the CMTP total.
-  if (formData.has('cm_cost')) patch.cm_cost = numOrNull(formData.get('cm_cost'));
+  // Adding a product creates only a blank worklist row. Cost content is staged separately.
+  const patch = { product_code, documented: false, updated_at: new Date().toISOString() };
   const { data, error } = await supabase
     .from('sd_standard_cost')
-    .upsert(patch, { onConflict: 'product_code' })
+    .insert(patch)
     .select('id')
     .single();
   if (error) return fail(`Could not save: ${error.message}`);
@@ -146,121 +95,8 @@ export async function setStandardCostHidden(formData: FormData): Promise<ActionR
  * "actual standard cost" the approver reviews). Marks the product documented.
  */
 export async function saveStandardCostLines(formData: FormData): Promise<ActionResult> {
-  const user = await currentUser();
-  if (!user) return fail('Not signed in.');
-  if (!canEdit(user.role, 'draft')) {
-    return fail('You do not have permission to edit standard costs.');
-  }
-  const product_code = String(formData.get('product_code') ?? '').trim();
-  if (!product_code) return fail('Product code is required.');
-
-  let lines: {
-    colour?: string;
-    size?: string;
-    consumption?: unknown;
-    fabric_cost?: unknown;
-    cm_cost?: unknown;
-    total_cost?: unknown;
-  }[] = [];
-  try {
-    lines = JSON.parse(String(formData.get('lines') ?? '[]'));
-  } catch {
-    lines = [];
-  }
-
-  // Further fabrics on a multi-fabric garment: each with its own consumption per size.
-  let extraFabrics: { fabric_code?: unknown; position?: unknown; uom?: unknown; sizes?: { size?: unknown; consumption?: unknown; fabric_cost?: unknown }[] }[] = [];
-  try {
-    extraFabrics = JSON.parse(String(formData.get('extra_fabrics') ?? '[]'));
-    if (!Array.isArray(extraFabrics)) extraFabrics = [];
-  } catch {
-    extraFabrics = [];
-  }
-
-  const supabase = await supa();
-  const { data: parent } = await supabase
-    .from('sd_standard_cost')
-    .select('id, frozen, fabric_code')
-    .eq('product_code', product_code)
-    .maybeSingle();
-  if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
-
-  // A fabric goes on a product once: not the first fabric again, not the same one twice.
-  // The header (first fabric) is saved just before this call, so the row read above is current.
-  const firstFabric = String(parent?.fabric_code ?? '').trim().toUpperCase();
-  const extraCodes = extraFabrics.map((f) => String(f.fabric_code ?? '').trim()).filter(Boolean);
-  const clash = extraCodes.find((c) => c.toUpperCase() === firstFabric);
-  if (clash) return fail(`${clash} is already the product's first fabric.`);
-  const upper = extraCodes.map((c) => c.toUpperCase());
-  const dup = extraCodes.find((c, i) => upper.indexOf(c.toUpperCase()) !== i);
-  if (dup) return fail(`${dup} is listed twice — each fabric goes on once.`);
-
-  const extraRows: {
-    product_code: string; fabric_code: string; position: number; size: string;
-    consumption: number | null; fabric_cost: number | null; uom: 'mtr' | 'kg';
-  }[] = [];
-  extraFabrics.forEach((f, i) => {
-    const code = String(f.fabric_code ?? '').trim();
-    if (!code) return;
-    const uom = fabricUom(f.uom);
-    for (const s of Array.isArray(f.sizes) ? f.sizes : []) {
-      const size = String(s.size ?? '').trim().toUpperCase();
-      const consumption = numOrNull(s.consumption);
-      if (!size || consumption == null) continue;
-      extraRows.push({
-        product_code,
-        fabric_code: code,
-        position: Number(f.position) || i + 1,
-        size,
-        consumption,
-        fabric_cost: numOrNull(s.fabric_cost),
-        uom,
-      });
-    }
-  });
-
-  const clean = lines
-    .map((l) => ({
-      product_code,
-      colour: textOrNull(l.colour),
-      size: textOrNull(l.size),
-      consumption: numOrNull(l.consumption),
-      fabric_cost: numOrNull(l.fabric_cost),
-      cm_cost: numOrNull(l.cm_cost),
-      total_cost: numOrNull(l.total_cost),
-    }))
-    .filter(
-      (l) =>
-        l.colour ||
-        l.size ||
-        l.consumption != null ||
-        l.fabric_cost != null ||
-        l.cm_cost != null ||
-        l.total_cost != null,
-    );
-
-  // Replace strategy: clear the product's lines, then insert the current set.
-  await supabase.from('sd_standard_cost_line').delete().eq('product_code', product_code);
-  if (clean.length) {
-    const { error } = await supabase.from('sd_standard_cost_line').insert(clean);
-    if (error) return fail(`Could not save lines: ${error.message}`);
-  }
-  // Same for the further fabrics — the sheet always sends the full current set.
-  await supabase.from('sd_standard_cost_extra_fabric').delete().eq('product_code', product_code);
-  if (extraRows.length) {
-    const { error } = await supabase.from('sd_standard_cost_extra_fabric').insert(extraRows);
-    if (error) return fail(`Could not save the other fabric(s): ${error.message}`);
-  }
-  // Ensure a parent row exists and is marked documented.
-  await supabase
-    .from('sd_standard_cost')
-    .upsert(
-      { product_code, documented: true, updated_at: new Date().toISOString() },
-      { onConflict: 'product_code' },
-    );
-
-  revalidatePath('/standard-cost');
-  return done(`Saved ${clean.length} cost line(s) for ${product_code}.`);
+  void formData;
+  return fail('Use the Standard Cost submission / amendment workflow on the product page.');
 }
 
 /**
@@ -269,154 +105,8 @@ export async function saveStandardCostLines(formData: FormData): Promise<ActionR
  * (sd_standard_cost.cm_cost) — the CMTP breakdown is the authoritative CM source.
  */
 export async function saveCmtpComponents(formData: FormData): Promise<ActionResult> {
-  const user = await currentUser();
-  if (!user) return fail('Not signed in.');
-  if (!canEdit(user.role, 'draft')) {
-    return fail('You do not have permission to edit standard costs.');
-  }
-  const product_code = String(formData.get('product_code') ?? '').trim();
-  if (!product_code) return fail('Product code is required.');
-
-  let rows: { category?: string; label?: string; amount?: unknown }[] = [];
-  try {
-    rows = JSON.parse(String(formData.get('components') ?? '[]'));
-  } catch {
-    rows = [];
-  }
-
-  const supabase = await supa();
-  const { data: parent } = await supabase
-    .from('sd_standard_cost')
-    .select('id, frozen, cm_cost')
-    .eq('product_code', product_code)
-    .maybeSingle();
-  if (parent?.frozen) return fail('This cost is frozen and can no longer be edited.');
-
-  // A cost line is a head with an amount; a listed sub-item left blank is not saved.
-  const clean = rows
-    .map((r, i) => ({
-      product_code,
-      category: String(r.category ?? '').trim(),
-      label: textOrNull(r.label),
-      amount: numOrNull(r.amount),
-      position: i,
-    }))
-    .filter((r) => r.category && r.amount != null);
-
-  const total = clean.reduce((s, r) => s + (r.amount ?? 0), 0);
-
-  // Item 2 — line-item revision with mandatory reason. Diff the incoming lines
-  // against what's on file (keyed by head + sub-item). If this is a REVISION of an
-  // existing breakdown (rows already existed) and any line's amount moved / a line
-  // was added or removed, the reviser must say why — that reason is logged per
-  // changed line to sd_cmtp_revision (old → new, who, when), the audit trail shown
-  // in Rate History. First-time entry needs no reason.
-  const { data: existing } = await supabase
-    .from('sd_cmtp_component')
-    .select('category, label, amount')
-    .eq('product_code', product_code);
-  // Keys carry an occurrence index so two identical head+sub-item lines (e.g. a
-  // duplicated "Labour :: Karigar") diff as two lines, not one — otherwise adding a
-  // duplicate doubles the CM total with no reason and no revision row.
-  const keyCounts = new Map<string, number>();
-  const lineKey = (cat: string, label: string | null) => {
-    const base = cat + ' :: ' + (label ?? '');
-    const n = keyCounts.get(base) ?? 0;
-    keyCounts.set(base, n + 1);
-    return n ? `${base} #${n + 1}` : base;
-  };
-  // Only lines with an amount are cost lines. The CMTP table lists every sub-item and saves
-  // the filled ones, so an old line saved with no amount dropping out is not a revision.
-  const existingFilled = (existing ?? []).filter((r) => numOrNull(r.amount) != null);
-  const oldByKey = new Map<string, number | null>(
-    existingFilled.map((r) => [lineKey(String(r.category), textOrNull(r.label)), numOrNull(r.amount)]),
-  );
-  keyCounts.clear();
-  const amtEq = (a: number | null, b: number | null) =>
-    (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < 0.005);
-  type LineChange = { category: string; label: string | null; old: number | null; next: number | null };
-  const changes: LineChange[] = [];
-  const seen = new Set<string>();
-  for (const r of clean) {
-    const k = lineKey(r.category, r.label);
-    seen.add(k);
-    const old = oldByKey.has(k) ? oldByKey.get(k) ?? null : null;
-    if (!oldByKey.has(k) || !amtEq(old, r.amount)) {
-      changes.push({ category: r.category, label: r.label, old, next: r.amount });
-    }
-  }
-  for (const r of existingFilled) {
-    const k = lineKey(String(r.category), textOrNull(r.label));
-    if (!seen.has(k)) {
-      changes.push({ category: String(r.category), label: textOrNull(r.label), old: numOrNull(r.amount), next: null });
-    }
-  }
-  const isRevision = existingFilled.length > 0 && changes.length > 0;
-  const reason = String(formData.get('revision_reason') ?? '').trim();
-  if (isRevision && !reason) {
-    return fail(
-      'This changes an existing CMTP breakdown — enter a reason for the revision (e.g. "karigar rate increased"). It is logged in the rate history.',
-    );
-  }
-
-  // Replace strategy: clear the product's CMTP rows, then insert the current set.
-  await supabase.from('sd_cmtp_component').delete().eq('product_code', product_code);
-  if (clean.length) {
-    const { error } = await supabase.from('sd_cmtp_component').insert(clean);
-    if (error) return fail(`Could not save CMTP breakdown: ${error.message}`);
-  }
-
-  // Append the line-level revision audit (best-effort — never blocks the save).
-  if (isRevision) {
-    const cmBefore = parent?.cm_cost == null ? null : Number(parent.cm_cost);
-    const cmAfter = clean.length ? total : null;
-    await supabase.from('sd_cmtp_revision').insert(
-      changes.map((c) => ({
-        product_code,
-        category: c.category,
-        label: c.label,
-        old_amount: c.old,
-        new_amount: c.next,
-        cm_before: cmBefore,
-        cm_after: cmAfter,
-        reason,
-        revised_by: user.email,
-      })),
-    );
-  }
-
-  // Trim History — every change to a trim line (Product / Brand Trims, any "trim" head), the
-  // first entry too, kept apart from the general CMTP revision log (best-effort).
-  const trimChanges = changes.filter((c) => /trim/i.test(c.category));
-  if (trimChanges.length) {
-    await supabase.from('sd_trim_history' as never).insert(
-      trimChanges.map((c) => ({
-        product_code,
-        trim_head: c.category,
-        item: c.label,
-        old_amount: c.old,
-        new_amount: c.next,
-        change_kind: c.old == null ? 'added' : c.next == null ? 'removed' : 'changed',
-        reason: reason || (existingFilled.length ? null : 'First entry'),
-        changed_by: user.email,
-      })) as never,
-    );
-  }
-
-  // CMTP total is the CM cost. Saving is documenting — clears the data-gap flag.
-  const { error: upErr } = await supabase.from('sd_standard_cost').upsert(
-    {
-      product_code,
-      cm_cost: clean.length ? total : null,
-      documented: true,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'product_code' },
-  );
-  if (upErr) return fail(`Could not save CM cost: ${upErr.message}`);
-
-  revalidatePath('/standard-cost');
-  return done(`Saved CMTP breakdown for ${product_code} — CM ${total}.`);
+  void formData;
+  return fail('Use the Standard Cost submission / amendment workflow on the product page.');
 }
 
 /**
@@ -449,53 +139,8 @@ export async function addCmtpSubitem(formData: FormData): Promise<ActionResult> 
 }
 
 export async function submitStandardCost(formData: FormData): Promise<ActionResult> {
-  const user = await currentUser();
-  if (!user) return fail('Not signed in.');
-
-  const id = Number(formData.get('id'));
-  if (!id) return fail('Save the cost before submitting it.');
-
-  const supabase = await supa();
-  const { data: row } = await supabase
-    .from('sd_standard_cost')
-    .select('id, product_code, status, frozen, job_cost, fob_cost, efob_cost')
-    .eq('id', id)
-    .maybeSingle();
-  if (!row) return fail('Cost not found.');
-  if (row.frozen) return fail('This cost is frozen and cannot be resubmitted.');
-  if (!canSubmit(user.role, row.status as SdStatus)) {
-    return fail('This cost cannot be submitted from its current state.');
-  }
-  if (row.job_cost == null && row.fob_cost == null && row.efob_cost == null) {
-    return fail('Enter at least one rate before submitting.');
-  }
-
-  const next = statusOnSubmit('standard_cost');
-  const { data: updated, error } = await supabase
-    .from('sd_standard_cost')
-    .update({
-      status: next,
-      submitted_by: user.email,
-      submitted_at: new Date().toISOString(),
-      rejection_notes: null,
-    })
-    .eq('id', id)
-    .in('status', ['draft', 'rework', 'rejected'])
-    .select('id');
-  if (error) return fail(error.message);
-  if (!updated?.length) return fail('Already submitted by someone else.');
-
-  await writeLog(
-    'standard_cost',
-    String(id),
-    `Standard cost — ${row.product_code}`,
-    row.status as SdStatus,
-    next,
-    user.email,
-  );
-  revalidatePath('/standard-cost');
-  revalidatePath('/approvals');
-  return done('Submitted for approval.');
+  void formData;
+  return fail('Use the Standard Cost submission / amendment workflow on the product page.');
 }
 
 /* ------------------------------------------------------------------ */
@@ -537,6 +182,7 @@ export async function saveMaterialCost(formData: FormData): Promise<ActionResult
   const patch: Record<string, unknown> = { product_code, updated_at: new Date().toISOString() };
   if (formData.has('job_cost')) patch.job_cost = numOrNull(formData.get('job_cost'));
   if (formData.has('fob_cost')) patch.fob_cost = numOrNull(formData.get('fob_cost'));
+  if (formData.has('efob_cost')) patch.efob_cost = numOrNull(formData.get('efob_cost'));
   const { data, error } = await supabase
     .from('sd_material_standard_cost')
     .upsert(patch, { onConflict: 'product_code' })

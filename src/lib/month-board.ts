@@ -1,9 +1,4 @@
-// The month board (Buying Plan, Vendor Capacity, Inward Plan landing views): one card per month
-// in status columns, as Kanban / Cards / List. Plain module: the pages build these on the
-// server, the board renders them on the client.
-
-/** A column = a status. `tone` picks the colour: draft blue, pending amber, live green,
- *  back red, closed grey. */
+/** Shared data model for the month boards (Buying Plan, Vendor Capacity, Inward Plan). */
 export type MonthBoardColumn = {
   key: string;
   label: string;
@@ -11,13 +6,24 @@ export type MonthBoardColumn = {
   hint: string;
 };
 
+export type MonthBoardTrackProgress = {
+  label: string;
+  left: string;
+  right: string;
+  /** null means the source does not exist / progress cannot be calculated yet. */
+  pct: number | null;
+  over?: boolean;
+};
+
 export type MonthBoardCard = {
+  /** Optional extra search terms without changing displayed card labels. */
+  searchText?: string;
   id: string;
   /** YYYY-MM-01, for sorting. */
   month: string;
   /** "Oct 2026" */
   label: string;
-  /** e.g. "FG" / "Material" */
+  /** e.g. "FG" / "Material"; omitted on a consolidated multi-track card. */
   track?: string;
   /** A MonthBoardColumn key. */
   status: string;
@@ -27,6 +33,10 @@ export type MonthBoardCard = {
   sub?: string;
   /** A progress bar: text left, text right, fill 0-100 (never shown above 100). */
   progress?: { left: string; right: string; pct: number; over?: boolean };
+  /** Multiple track-specific progress bars on a consolidated card. */
+  trackProgress?: MonthBoardTrackProgress[];
+  /** Raw metrics used only to safely aggregate track cards; not rendered directly. */
+  metrics?: { hasPlan: boolean; planValue: number | null; quantity: number; products: number; issued: number | null; lines: number };
   /** Small coloured counts (e.g. 41 pending · 5 approved). */
   split?: { label: string; tone: MonthBoardColumn['tone'] }[];
   facts: string[];
@@ -77,8 +87,12 @@ export type MonthBoardDetail = {
 };
 
 export type MonthBoardData = {
+  listActions?: 'all';
   columns: MonthBoardColumn[];
+  /** Cards actually shown in the board. */
   cards: MonthBoardCard[];
+  /** Optional track-specific cards used only by a consolidated card's overview switch. */
+  overviewCards?: MonthBoardCard[];
   totals: { value: string; label: string }[];
   /** "plans" / "months" */
   unit: string;
@@ -87,8 +101,7 @@ export type MonthBoardData = {
   /** What clicking a card does: open its overview (default) or follow its primary action. */
   cardClick?: 'overview' | 'open';
   listColumns: { label: string; num?: boolean }[];
-  /** Display names for card tracks, in switch order (e.g. FG → 'Finished Goods (FG)'). When a
-   *  board has more than one track, the overview shows a switch between them for the same month. */
+  /** Display names for card tracks, in switch order (e.g. FG → 'Finished Goods (FG)'). */
   trackLabels?: Record<string, string>;
 };
 

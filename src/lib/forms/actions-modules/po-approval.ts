@@ -1,5 +1,8 @@
 'use server';
 
+import { scopedPoRework, poReworkFieldAllowed, awaitingTnaReworkSave } from '@/lib/po-rework';
+import { invalidPoTnaFields } from '@/lib/po-tna-validation';
+import { missingPoOrderFields } from '@/lib/po-order-validation';
 import { isPlanFrozen } from '../approval';
 import { loadPlanMembership } from '../queries-modules/buying-plan-analysis';
 
@@ -148,8 +151,12 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   }
 
   // Spec 7.3: the team enters day counts once; the stage dates are computed from them
-  // against the EasyCom issue date — or, until the PO exists in EasyCom, against today,
+  // against the EasyEcom issue date — or, until the PO exists in EasyEcom, against today,
   // which is what "if it issued now" means. Issuance rebases them (see rebasePoTna).
+  if (formData.get('saved_section') === 'tna') {
+    const invalid = invalidPoTnaFields(Object.fromEntries(formData.entries()));
+    if (invalid.length) return fail(`Enter non-negative whole days for: ${invalid.join(', ')}.`);
+  }
   const days = readTnaDays(formData);
   let base = istToday().toISOString().slice(0, 10);
   if (id) {
@@ -160,18 +167,34 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
       .maybeSingle();
     base = tnaBaseFor({ po_issued_at: cur?.po_issued_at as string | null }).date ?? base;
   }
-  const fields = { ...readPoFields(formData), ...tnaColumns(base, days) };
+  const proposed = { ...readPoFields(formData), ...tnaColumns(base, days) };
+  const sections = scopedPoRework(before);
+  // Preserve locked fields verbatim, including the stored TNA base/dates.
+  const fields = sections && before
+    ? Object.fromEntries(Object.entries(proposed).map(([key, value]) =>
+        [key, poReworkFieldAllowed(key, sections) ? value : before![key]])) as typeof proposed
+    : proposed;
+
+  if (formData.get('saved_section') === 'cost' && (!sections || sections.includes('cost')) &&
+      (fields.rate == null || !Number.isFinite(Number(fields.rate)) || Number(fields.rate) < 0)) {
+    return fail('Rate is required. Enter a valid non-negative rate before saving Cost.');
+  }
+  if (formData.get('saved_section') === 'tna' && fields.po_type === 'FOB' && !fields.cad_folder_url?.trim()) {
+    return fail('CAD file folder link is required for FOB POs.');
+  }
+  const missingOrder = !sections ? missingPoOrderFields(fields) : [];
+  if (missingOrder.length) return fail(`Required fields: ${missingOrder.join(', ')}.`);
 
   // Month-end freeze (spec item 5): a PO cannot be linked to a plan month that has already
   // closed — it belongs to the current month's plan. (Legacy free-text references are left alone.)
-  if (fields.buying_plan_no && /^\d{4}-\d{2}$/.test(fields.buying_plan_no) && isPlanFrozen(`${fields.buying_plan_no}-01`)) {
+  if (!sections && fields.buying_plan_no && /^\d{4}-\d{2}$/.test(fields.buying_plan_no) && isPlanFrozen(`${fields.buying_plan_no}-01`)) {
     return fail(`The ${fields.buying_plan_no} buying plan is closed (month ended). Link this PO to the current month's plan.`);
   }
 
   // Rules-Master toggle (default on): a PO's product must exist in Standard Cost
   // (a real EasyEcom code or a temporary TMP-xxxx). Keeps PO products in lockstep
   // with the cost sheet.
-  if (fields.product_code) {
+  if (!sections && fields.product_code) {
     const { data: rule } = await supabase
       .from('sd_analytics_rule')
       .select('value')
@@ -194,7 +217,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   // PO reference numbers must be unique across all POs (a DB partial unique index
   // is the hard guarantee; this check gives a clear message before we hit it).
   // Blank/null refs (drafts without a reference yet) are exempt.
-  if (fields.po_ref_num) {
+  if (!sections && fields.po_ref_num) {
     // Case-insensitive: "…/sdalp/ven-01" and "…/SDALP/VEN-01" are the same PO. The
     // reference is stored upper-cased (readPoFields) so the DB index agrees too.
     let dupQ = supabase
@@ -206,7 +229,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     const { data: dups } = await dupQ;
     if (dups && dups.length) {
       return fail(
-        `EasyCom reference "${fields.po_ref_num}" is already recorded on request #${dups[0].id}. One EasyCom PO belongs to one request.`,
+        `EasyEcom reference "${fields.po_ref_num}" is already recorded on request #${dups[0].id}. One EasyEcom PO belongs to one request.`,
       );
     }
   }
@@ -217,18 +240,19 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     // too, so a PO approved meanwhile is never overwritten).
     const { data: updated, error } = await supabase
       .from('sd_po_approval')
-      .update(fields)
+      .update({ ...fields, ...(before && Object.prototype.hasOwnProperty.call(before, 'tna_rework_saved_at') && sections?.includes('tna') && formData.get('saved_section') === 'tna'
+        ? { tna_rework_saved_at: new Date().toISOString() } : {}) })
       .eq('id', id)
-      .neq('status', 'approved')
+      .eq('status', status)
       .select('id');
     if (error) {
-      if (error.code === '23505') return fail(`EasyCom reference "${fields.po_ref_num}" is already recorded on another request.`);
+      if (error.code === '23505') return fail(`EasyEcom reference "${fields.po_ref_num}" is already recorded on another request.`);
       return fail(`Could not save: ${error.message}`);
     }
     // The guarded update matched nothing — the PO was approved meanwhile.
     // Never report "Saved." for a write that changed no row.
     if (!updated?.length) {
-      return fail('This PO has been approved and can no longer be edited. Reload to see its current state.');
+      return fail('This PO changed state. Reload before saving again.');
     }
     // An amendment after submission is logged with what changed, so the approver (pending)
     // or the history (sent back / rejected) shows it. Drafts are not logged.
@@ -260,7 +284,7 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
     .select('id')
     .single();
   if (error) {
-    if (error.code === '23505') return fail(`EasyCom reference "${fields.po_ref_num}" is already recorded on another request.`);
+    if (error.code === '23505') return fail(`EasyEcom reference "${fields.po_ref_num}" is already recorded on another request.`);
     return fail(`Could not create PO: ${error.message}`);
   }
   revalidatePath('/po-approval');
@@ -348,21 +372,32 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   const supabase = await supa();
   const { data: po } = await supabase
     .from('sd_po_approval')
-    .select('id, status, request_id, po_ref_num, category, product_code, po_qty, rate, critical_path_first_delivery, buying_plan_no, ad_hoc_reason')
+    .select('*')
     .eq('id', id)
     .maybeSingle();
   if (!po) return fail('PO not found.');
   if (!canSubmit(user.role, po.status as SdStatus)) {
     return fail('This PO cannot be submitted from its current state.');
   }
+  if (po.po_type === 'FOB' && !String(po.cad_folder_url ?? '').trim()) {
+    return fail('CAD file folder link is required for FOB POs before submitting.');
+  }
+  const invalidTna = invalidPoTnaFields(po);
+  if (invalidTna.length) return fail(`Complete the TNA with non-negative whole days for: ${invalidTna.join(', ')}.`);
+  const missingOrder = missingPoOrderFields(po);
+  if (missingOrder.length) return fail(`Required fields: ${missingOrder.join(', ')}.`);
+  if (awaitingTnaReworkSave(po)) return fail('Save the TNA rework before submitting this PO again.');
 
   // Spec item 6 — the Buying Plan is NOT a gate. Record, at submission, whether the
   // product is in the linked month's approved plan (and the plan qty at that moment) so
   // the approver sees "in plan" or "ad-hoc" + the reason; approval proceeds either way.
   const membership = await loadPlanMembership(po.product_code as string | null, po.buying_plan_no as string | null);
+  if (!membership.inPlan && !String(po.ad_hoc_reason ?? '').trim()) {
+    return fail('A reason for the ad-hoc purchase is required before submitting this PO.');
+  }
   const qty = Number(po.po_qty || 0);
   if (qty <= 0) return fail('Add the size lines — PO quantity is the sum of those.');
-  if (po.rate == null) return fail('Fill the rate (alongside the cost sheet) before submitting.');
+  if (po.rate == null || !Number.isFinite(Number(po.rate)) || Number(po.rate) < 0) return fail('Rate is required. Enter a valid non-negative rate before submitting.');
 
   // Item 1 — reverse sequencing gate: the Standard Cost must be proposed, reviewed
   // and APPROVED before a PO can be submitted against it (not typed ad hoc here and
@@ -691,7 +726,7 @@ export async function applyPoDeletion(
 }
 
 /**
- * After approval, issue + sign the PO. Captures the EasyCom mapping key (which
+ * After approval, issue + sign the PO. Captures the EasyEcom mapping key (which
  * ties to sd_po_master_raw) plus the DiGiO-signed docs, sign date, and first
  * actual delivery date (fields 19–25). The DiGiO fields are manual URLs for now
  * — the API integration populates them later. Callable repeatedly to add the
@@ -709,11 +744,12 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   const easycom = String(formData.get('easycom_po_no') ?? '').trim();
 
   const supabase = await supa();
-  const { data: po } = await supabase
+  const { data: po, error: poLookupError } = await supabase
     .from('sd_po_approval')
     .select('id, status, product_code, po_type, po_ref_num, vendor_code, po_issued_at, critical_path_first_delivery, cm_cost, cm_override_at, buying_plan_no, tna_days_pp_sample, tna_days_gpt, tna_days_cutting, tna_days_inline_qc, tna_days_first_delivery, tna_days_po_closing')
     .eq('id', id)
     .maybeSingle();
+  if (poLookupError) return fail(`Could not load PO: ${poLookupError.message}`);
   if (!po) return fail('PO not found.');
   if (po.status !== 'approved') return fail('Only an approved PO can be issued.');
   // Month-end freeze (spec item 5): no issuance against a plan month that has closed.
@@ -722,8 +758,8 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   }
 
   const alreadyIssued = Boolean(po.po_issued_at);
-  // The EasyCom number is required to first issue; once issued it can be edited.
-  if (!alreadyIssued && !easycom) return fail('Enter the EasyCom PO number to issue.');
+  // The EasyEcom number is required to first issue; once issued it can be edited.
+  if (!alreadyIssued && !easycom) return fail('Enter the EasyEcom PO number to issue.');
 
   // §7 issuance gate vs the approval log: a PO can't be ISSUED at an above-standard
   // CMTP unless that exception was separately approved (logged). Confirming here with
@@ -871,7 +907,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
     trim_card_signed: formData.get('trim_card_signed') === 'true',
   };
   if (easycom) patch.easycom_po_no = easycom;
-  // Spec 7.3 — the moment the PO exists in EasyCom, the critical path is recomputed from
+  // Spec 7.3 — the moment the PO exists in EasyEcom, the critical path is recomputed from
   // that date. Nothing is re-typed: the day counts entered at submission are the plan, and
   // a PO issued ten days late simply carries every stage ten days with it.
   if (!alreadyIssued) {
@@ -931,7 +967,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
       'approved',
       'approved',
       user.email,
-      `EasyCom PO ${easycom}`,
+      `EasyEcom PO ${easycom}`,
     );
     // Item 1: log the vendor's initial committed delivery date at issuance.
     await recordCommitment(
@@ -982,7 +1018,7 @@ export async function issuePoApproval(formData: FormData): Promise<ActionResult>
   revalidatePath('/po-approval');
   revalidatePath('/standard-cost');
   revalidatePath('/approvals');
-  const base = alreadyIssued ? 'Signing details saved.' : `Issued as EasyCom PO ${easycom}.`;
+  const base = alreadyIssued ? 'Signing details saved.' : `Issued as EasyEcom PO ${easycom}.`;
   return done(extNote ? `${base} ⚠ ${extNote}` : base);
 }
 

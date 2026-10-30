@@ -1,4 +1,5 @@
 import 'server-only';
+import { buyingPlanMonthColumn, unstartedBuyingPlanTrack } from '@/lib/buying-plan-board';
 import { client, pageAll } from './_shared';
 import { loadApprovedMaterialCosts, loadApprovedStandardCosts } from './standard-cost';
 import { loadReplenishmentByProduct } from './replenishment-oos';
@@ -83,6 +84,7 @@ type PlanLine = {
   standard_value: number | null;
   line_status: string | null;
   approver_edited: boolean | null;
+  auto_approved: boolean;
   material_type: string | null;
   colour: string | null;
   uom: string | null;
@@ -94,13 +96,13 @@ const MATERIAL_TYPE_WORD: Record<string, string> = { raw: 'Raw material', dyed: 
 export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardData> {
   const supabase = await client();
   const [plans, lines, actuals, costs, catalog, log, matCosts, demand] = await Promise.all([
-    pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null; approver_edited: boolean | null }>(() =>
-      supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes, approver_edited').order('id'),
+    pageAll<{ id: number; plan_month: string; plan_type: string | null; status: string; submitted_at: string | null; approved_at: string | null; rework_notes: string | null; rejection_notes: string | null; approver_edited: boolean | null; auto_approved: boolean }>(() =>
+      supabase.from('sd_buying_plan').select('id, plan_month, plan_type, status, submitted_at, approved_at, rework_notes, rejection_notes, approver_edited, auto_approved').order('id'),
     ),
     pageAll<PlanLine>(() =>
       supabase
         .from('sd_buying_plan_line')
-        .select('plan_id, product_code, product_status, job_work_qty, fob_qty, efob_qty, standard_value, line_status, approver_edited, material_type, colour, uom, rework_notes')
+        .select('plan_id, product_code, product_status, job_work_qty, fob_qty, efob_qty, standard_value, line_status, approver_edited, auto_approved, material_type, colour, uom, rework_notes')
         .order('id'),
     ),
     pageAll<{ product_code: string; plan_month: string; issued_qty: number | null; issued_value: number | null; po_count: number | null }>(() =>
@@ -183,8 +185,9 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     if (!decided.length) return null;
     const count = (st: string[]) => decided.filter((l) => st.includes(l.line_status ?? '')).length;
     const parts: [string, number, Tone][] = [
-      ['Edited & Approved', decided.filter((l) => l.line_status === 'approved' && l.approver_edited).length, 'live'],
-      ['First time Approved', decided.filter((l) => l.line_status === 'approved' && !l.approver_edited).length, 'live'],
+      ['Edited & Approved', decided.filter((l) => l.line_status === 'approved' && !l.auto_approved && l.approver_edited).length, 'live'],
+      ['First time Approved', decided.filter((l) => l.line_status === 'approved' && !l.auto_approved && !l.approver_edited).length, 'live'],
+      ['Auto-Approved via Workflow', decided.filter((l) => l.line_status === 'approved' && l.auto_approved).length, 'live'],
       ['Approval Pending', count(['submitted', 'pending_l2']), 'pending'],
       ['Rework / Reassign', count(['rework']), 'back'],
       ['Rejected / Discarded', count(['rejected']), 'closed'],
@@ -226,7 +229,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       facts.push(`Submit by ${deadlineDay} ${short(p.plan_month).split(' ')[0]}`);
     }
     if (status === 'pending' && p.submitted_at) facts.push(`Waiting ${daysSince(p.submitted_at)} days for approval`);
-    if (p.approved_at) facts.push(`Approved ${day(p.approved_at)}`);
+    if (p.approved_at) facts.push(`${p.auto_approved ? 'Auto-Approved via Workflow' : 'Approved'} ${day(p.approved_at)}`);
     if (frozen && status === 'pending') facts.push('Month is over · still not approved');
     if (frozen && status === 'closed') facts.push('Month over · plan frozen');
     let warn: MonthBoardCard['warn'];
@@ -256,7 +259,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       { label: 'Plan value', value: value == null ? '—' : inrShort(value) },
       { label: track === 'fg' ? 'Products' : 'Materials', value: String(products) },
       // Material quantities are in mixed units (metres, kg, pcs), so lines, not a summed qty.
-      track === 'fg' ? { label: 'Pcs planned', value: num(qty) } : { label: 'Lines planned', value: num(withQty.length) },
+      track === 'fg' ? { label: 'Pcs planned', value: num(qty) } : { label: 'Qty planned', value: num(qty) },
       {
         label: 'Deadline',
         value:
@@ -400,7 +403,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
             num(n(l.fob_qty)),
             l.uom ?? '—',
             lineValue(l) > 0 ? inrShort(lineValue(l)) : '—',
-            l.line_status ? statusText(l.line_status as SdStatus, { approverEdited: l.approver_edited }) : 'Draft',
+            l.line_status ? statusText(l.line_status as SdStatus, { autoApproved: l.auto_approved, approverEdited: l.approver_edited }) : 'Draft',
           ],
         })),
         empty: 'No materials on this plan yet.',
@@ -431,6 +434,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       warn,
       actions,
       list: [String(products), track === 'fg' ? num(qty) : '—', issued == null ? '—' : num(issued), value == null ? '—' : inrShort(value)],
+      metrics: { hasPlan: true, planValue: value, quantity: track === 'fg' ? qty : 0, products, issued, lines: withQty.length },
       detail: {
         kicker: `Buying Plan · ${track === 'fg' ? 'FG' : 'Material'}`,
         lede: `${track === 'fg' ? 'Finished-goods' : 'Fabric / material'} plan for ${long(p.plan_month)}${
@@ -471,6 +475,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
         { label: 'Analysis', href: `/buying-plan?month=${m}&type=analysis` },
       ],
       list: ['0', '—', '—', '—'],
+      metrics: { hasPlan: false, planValue: null, quantity: 0, products: 0, issued: null, lines: 0 },
       detail: {
         kicker: 'Buying Plan · FG',
         lede: `No plan has been started for ${long(m)} yet. Here is what there is to start from.`,
@@ -504,7 +509,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           {
             kind: 'table',
             title: `${short(prevMonth)} plan, as a starting point`,
-            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { approverEdited: prev.approver_edited })}).` : undefined,
+            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { autoApproved: prev.auto_approved, approverEdited: prev.approver_edited })}).` : undefined,
             columns: [{ label: 'Product' }, { label: 'Category' }, { label: 'Job', num: true }, { label: 'E-FOB', num: true }, { label: 'FOB', num: true }, { label: 'Total', num: true }, { label: 'Value', num: true }],
             rows: prevLines
               .slice()
@@ -549,6 +554,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       facts: [`Submit by ${deadlineDay} ${short(m).split(' ')[0]}`],
       actions: [{ label: 'Start plan', href: `/buying-plan?month=${m}&type=material&mode=input`, primary: true }],
       list: ['0', '—', '—', '—'],
+      metrics: { hasPlan: false, planValue: null, quantity: 0, products: 0, issued: null, lines: 0 },
       detail: {
         kicker: 'Buying Plan · Material',
         lede: `No fabric / material plan has been started for ${long(m)} yet. Here is last month’s to start from.`,
@@ -561,7 +567,7 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
           {
             kind: 'table',
             title: `${short(prevMonth)} plan, as a starting point`,
-            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { approverEdited: prev.approver_edited })}).` : undefined,
+            hint: prev ? `What was planned last month (${statusText(prev.status as SdStatus, { autoApproved: prev.auto_approved, approverEdited: prev.approver_edited })}).` : undefined,
             columns: [{ label: 'Material' }, { label: 'Type' }, { label: 'Colour' }, { label: 'Job work', num: true }, { label: 'Purchase', num: true }, { label: 'Unit' }, { label: 'Value', num: true }],
             rows: prevLines.map((l) => ({
               cells: [
@@ -581,6 +587,89 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
     });
   }
 
+  // Keep the original track cards for the FG ⇄ Material overview switch, but show one
+  // consolidated card per month in Kanban / Cards / List views.
+  const overviewCards = cards;
+  const byMonth = new Map<string, MonthBoardCard[]>();
+  for (const c of overviewCards) byMonth.set(c.month, [...(byMonth.get(c.month) ?? []), c]);
+  const statusTone = (status: string): Tone => status === 'pending' ? 'pending' : status === 'live' ? 'live' : status === 'closed' ? 'closed' : status === 'back' ? 'back' : 'draft';
+  const boardCards: MonthBoardCard[] = [...byMonth.entries()].map(([month, monthCards]) => {
+    const fg = monthCards.find((c) => c.track === 'FG');
+    const material = monthCards.find((c) => c.track === 'Material');
+    const fgMetrics = fg?.metrics;
+    const matMetrics = material?.metrics;
+    const plannedMetrics = [fgMetrics, matMetrics].filter((m) => m?.hasPlan);
+    const valueParts = plannedMetrics.map((m) => m!.planValue);
+    const combinedValue = plannedMetrics.length && valueParts.every((v): v is number => v != null)
+      ? valueParts.reduce((sum, v) => sum + v, 0)
+      : null;
+    const unstarted = unstartedBuyingPlanTrack(month);
+    const fgStatus = fgMetrics?.hasPlan ? fg!.status : unstarted.status;
+    const matStatus = matMetrics?.hasPlan ? material!.status : unstarted.status;
+    const status = buyingPlanMonthColumn(monthCards);
+    const fgQty = fgMetrics?.quantity ?? 0;
+    const fgIssued = fgMetrics?.issued ?? null;
+    const matLines = matMetrics?.lines ?? 0;
+    const trackProgress: NonNullable<MonthBoardCard['trackProgress']> = [
+      {
+        label: 'Finished Goods (FG)',
+        left: fgMetrics?.hasPlan ? (fgQty > 0 && fgIssued != null ? `${num(fgIssued)} / ${num(fgQty)} pcs issued` : `${num(fgQty)} pcs planned · ${fgQty > 0 ? 'PO progress unavailable' : 'no quantity planned'}`) : 'No FG plan started',
+        right: fgMetrics?.hasPlan && fgQty > 0 && fgIssued != null ? (fgIssued > fgQty ? `over plan by ${num(fgIssued - fgQty)}` : `${pct(fgIssued, fgQty)}%`) : '—',
+        pct: fgMetrics?.hasPlan && fgQty > 0 && fgIssued != null ? pct(fgIssued, fgQty) : null,
+        over: fgQty > 0 && fgIssued != null && fgIssued > fgQty,
+      },
+      {
+        label: 'Fabric / Material',
+        left: matMetrics?.hasPlan ? `${num(matLines)} material lines planned` : 'No Material plan started',
+        right: 'PO actuals unavailable',
+        pct: null,
+      },
+    ];
+    // The consolidated monthly card has a simple, consistent action row:
+    // Open the working Buying Plan page, view the combined month overview, or open Analysis.
+    const actions: MonthBoardCard['actions'] = [
+      { label: 'Open', href: `/buying-plan?month=${month}`, primary: true },
+      { label: 'Analysis', href: `/buying-plan?month=${month}&type=analysis` },
+    ];
+    const statusLabel = (track: string, value: string) => {
+      const labels: Record<string, string> = { draft: 'Draft', pending: 'Approval Pending', live: 'Approved', closed: 'Closed', back: 'Sent back' };
+      return `${track} · ${labels[value] ?? value}`;
+    };
+    const approvalLabel = (track: string, key: string, value: string) => {
+      const plan = planFor(key, month);
+      return plan?.status === 'approved' && plan.auto_approved
+        ? `${track} · Auto-Approved via Workflow`
+        : statusLabel(track, value);
+    };
+    const fgApprovalLabel = fgMetrics?.hasPlan ? approvalLabel('FG', 'fg', fgStatus) : `FG · ${unstarted.label}`;
+    const materialApprovalLabel = matMetrics?.hasPlan ? approvalLabel('Material', 'material', matStatus) : `Material · ${unstarted.label}`;
+    const facts = [
+      `FG: ${fg ? fg.sub ?? fgApprovalLabel : 'Not started'}`,
+      `Material: ${material ? material.sub ?? materialApprovalLabel : 'Not started'}`,
+      ...(fg?.facts ?? []).filter((f) => f.startsWith('Submit by ')).slice(0, 1),
+    ];
+    const warnings = [fg?.warn, material?.warn].filter(Boolean).map((w) => w!.text);
+    const firstDetail = fg?.detail ?? material?.detail;
+    return {
+      id: `bp-month-${month}`,
+      month,
+      label: fg?.label ?? material?.label ?? short(month),
+      status,
+      big: { value: combinedValue == null ? '—' : inrShort(combinedValue), label: 'Combined plan value' },
+      sub: `FG: ${fgApprovalLabel.split(' · ')[1]}  ·  Material: ${materialApprovalLabel.split(' · ')[1]}`,
+      trackProgress,
+      split: [
+        { label: fgApprovalLabel, tone: statusTone(fgStatus) },
+        { label: materialApprovalLabel, tone: statusTone(matStatus) },
+      ],
+      facts,
+      warn: warnings.length ? { text: warnings.join(' · '), tone: (fg?.warn?.tone === 'back' || material?.warn?.tone === 'back' ? 'back' : 'pending') as 'pending' | 'back' } : undefined,
+      actions,
+      list: [String((fgMetrics?.products ?? 0) + (matMetrics?.products ?? 0)), fgMetrics?.hasPlan ? num(fgQty) : '—', fgIssued == null ? '—' : num(fgIssued), matLines ? `${num(matLines)} lines` : '—', combinedValue == null ? '—' : inrShort(combinedValue)],
+      detail: firstDetail,
+    };
+  }).sort((a, b) => a.month.localeCompare(b.month));
+
   return {
     columns: [
       { key: 'draft', label: 'Draft', tone: 'draft', hint: 'Being filled · not submitted yet' },
@@ -588,12 +677,13 @@ export async function loadBuyingPlanBoard(deadlineDay = 7): Promise<MonthBoardDa
       { key: 'live', label: 'Approved', tone: 'live', hint: 'Live for the month · POs issue against it' },
       { key: 'closed', label: 'Closed', tone: 'closed', hint: 'Month over · plan frozen' },
     ],
-    cards,
+    cards: boardCards,
+    overviewCards,
     // Header totals removed on request (2026-10-09); each month card carries its own figures.
     totals: [],
     unit: 'plans',
     trackLabels: { FG: 'Finished Goods (FG)', Material: 'Fabric / Material' },
-    listColumns: [{ label: 'Products', num: true }, { label: 'Pcs planned', num: true }, { label: 'Issued', num: true }, { label: 'Value', num: true }],
+    listColumns: [{ label: 'Products / Materials', num: true }, { label: 'FG pcs planned', num: true }, { label: 'FG issued', num: true }, { label: 'Material lines', num: true }, { label: 'Combined value', num: true }],
   };
 }
 
@@ -1333,7 +1423,7 @@ export async function loadVendorCapacityBoard(
       progress: m > cur ? undefined : { left: `${updated} / ${total} vendors submitted`, right: `${pct(updated, total)}%`, pct: pct(updated, total) },
       facts,
       warn: m < cur && updated === 0 ? { text: 'Capacity was not submitted for any vendor this week.', tone: 'back' as const } : undefined,
-      actions: [m === cur ? { label: 'Update vendors', href: '/vendor-capacity?view=vendors', primary: true } : { label: 'Open', href: `/vendor-capacity?view=vendors&week=${m}`, primary: true }],
+      actions: [m === cur ? { label: 'Update Vendor Capacity', href: '/vendor-capacity?view=vendors', primary: true } : { label: 'Open', href: `/vendor-capacity?view=vendors&week=${m}`, primary: true }],
       list: [`${updated} / ${total}`, updated ? num(capacity) : '—'],
       detail:
         m > cur
@@ -1365,6 +1455,179 @@ export async function loadVendorCapacityBoard(
     noun: 'week',
     cardClick: 'open',
     listColumns: [{ label: 'Vendors submitted', num: true }, { label: 'Pcs / month', num: true }],
+  };
+}
+
+/**
+ * Monthly Vendor Capacity board for the landing page.
+ * Unlike the weekly board, each card is keyed to the IST calendar month in which an update
+ * actually happened. All change-trail events are kept in that month's detail, so a later update
+ * never moves an earlier month's entry or overwrites its historical declared capacity.
+ * A month is marked All Vendors Updated only when every active vendor has at least two
+ * distinct capacity updates in that calendar month. Capacity totals still use each vendor's
+ * latest update within the month, so repeated updates do not double-count declared capacity.
+ */
+export async function loadVendorCapacityMonthBoard(
+  activeVendors: { code: string; name: string; signed: number }[],
+): Promise<MonthBoardData> {
+  const events = await loadCapacityEvents();
+  type Ev = CapacityEvent;
+  const active = new Map(activeVendors.map((v) => [v.code.toLowerCase(), v]));
+  const total = activeVendors.length;
+  const cur = monthStart();
+  const trailMonth = '2026-10-01';
+
+  // Keep each month from the start of the audit trail through the current month, including months
+  // with no updates; also include earlier months for which events are available.
+  const monthSet = new Set<string>([cur]);
+  for (let m = trailMonth; m <= cur; m = addMonths(m, 1)) monthSet.add(m);
+  const monthOf = (at: string) => {
+    const d = new Date(new Date(at).getTime() + 5.5 * 60 * 60 * 1000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  };
+  for (const e of events) {
+    const m = monthOf(e.at);
+    if (m <= cur) monthSet.add(m);
+  }
+  const months = [...monthSet].filter((m) => m <= cur).sort();
+  const nameOfVendor = (code: string) => active.get(code)?.name ?? code.toUpperCase();
+
+  const cards: MonthBoardCard[] = months.map((m) => {
+    const mine = events
+      .filter((e) => monthOf(e.at) === m)
+      .sort((a, b) => a.at.localeCompare(b.at));
+
+    // Count distinct update events for each active vendor. The board status requires at least
+    // two updates per active vendor in the month; capacity totals still use each vendor's latest
+    // update only, while the detail table preserves every recorded event.
+    const latest = new Map<string, Ev>();
+    const updateCounts = new Map<string, number>();
+    for (const e of mine) {
+      const code = e.vendor.toLowerCase();
+      if (!active.has(code)) continue;
+      latest.set(code, e);
+      updateCounts.set(code, (updateCounts.get(code) ?? 0) + 1);
+    }
+    const updatedActive = [...latest.keys()];
+    const updated = updatedActive.length;
+    const compliant = activeVendors.filter((v) => (updateCounts.get(v.code.toLowerCase()) ?? 0) >= 2).length;
+    const needsMore = total - compliant;
+    const capacity = updatedActive.reduce((sum, code) => sum + n(latest.get(code)?.capacity), 0);
+    const signed = updatedActive.reduce((sum, code) => sum + n(active.get(code)?.signed), 0);
+    const lastAt = mine.length ? mine[mine.length - 1].at : null;
+    const status = compliant >= total && total > 0 ? 'live' : 'pending';
+    const facts = [
+      `${mine.length} update${mine.length === 1 ? '' : 's'} recorded in ${long(m)}`,
+      ...(lastAt ? [`Last update ${dayYear(lastAt)}`] : []),
+      ...(needsMore > 0 ? [`${needsMore} active vendor${needsMore === 1 ? '' : 's'} need at least 2 updates in the respective month`] : []),
+      ...(m === cur ? ['Current month'] : []),
+      ...(m < trailMonth ? ['Historical trail may be incomplete before Oct 2026'] : []),
+    ];
+
+    const updateRows = mine.map((e) => {
+      const code = e.vendor.toLowerCase();
+      const s = n(active.get(code)?.signed);
+      return {
+        tone: (active.has(code) ? 'live' : 'closed') as Tone,
+        cells: [
+          nameOfVendor(code),
+          dayYear(e.at),
+          num(e.capacity),
+          s ? num(s) : '—',
+          s ? `${pct(e.capacity, s)}%` : '—',
+          e.machines == null ? '—' : num(e.machines),
+          e.karigar == null ? '—' : num(e.karigar),
+        ],
+      };
+    });
+    const notCompliantRows = m === cur || m >= trailMonth
+      ? activeVendors
+          .filter((v) => (updateCounts.get(v.code.toLowerCase()) ?? 0) < 2)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((v) => {
+            const count = updateCounts.get(v.code.toLowerCase()) ?? 0;
+            return {
+              tone: 'pending' as Tone,
+              cells: [v.name, `${count} / 2 updates in the respective month`, '—', v.signed ? num(v.signed) : '—', '—', '—', '—'],
+            };
+          })
+      : [];
+
+    const sections: MonthDetailSection[] = [
+      {
+        kind: 'table',
+        title: 'Capacity updates in the respective month',
+        hint: 'Every recorded update is shown with the capacity declared at that time. Multiple updates by one vendor remain separate history entries.',
+        columns: [
+          { label: 'Vendor' }, { label: 'Updated on' }, { label: 'Pcs / month', num: true },
+          { label: 'Signed', num: true }, { label: 'vs signed', num: true },
+          { label: 'Machines', num: true }, { label: 'Karigars', num: true },
+        ],
+        rows: [...updateRows, ...notCompliantRows],
+        filters: [{ label: 'Capacity update recorded', tone: 'live' }, { label: 'Needs 2 updates', tone: 'pending' }],
+        empty: 'No vendor capacity updates were recorded in this month.',
+      },
+      {
+        kind: 'bars',
+        title: 'Largest declared capacity',
+        hint: 'Latest update within this month for each vendor, so each vendor is counted once.',
+        bars: updatedActive
+          .map((code) => ({ code, event: latest.get(code)! }))
+          .sort((a, b) => b.event.capacity - a.event.capacity)
+          .slice(0, 10)
+          .map(({ code, event }) => ({
+            label: nameOfVendor(code),
+            value: `${num(event.capacity)} pcs`,
+            pct: pct(event.capacity, Math.max(1, ...updatedActive.map((k) => n(latest.get(k)?.capacity)))),
+            tone: 'live' as Tone,
+          })),
+        empty: 'No vendor updated capacity in this month.',
+      },
+    ];
+
+    return {
+      id: `vc-month-${m}`,
+      month: m,
+      label: short(m),
+      status,
+      big: { value: updated ? num(capacity) : '—', label: 'Pcs / month declared' },
+      progress: { left: `${compliant} / ${total} vendors completed 2 updates`, right: `${pct(compliant, total)}%`, pct: pct(compliant, total) },
+      facts,
+      warn: m < cur && mine.length === 0 ? { text: 'No vendor capacity updates were recorded for this month.', tone: 'pending' as const } : undefined,
+      actions: m === cur
+        ? [
+            { label: 'Update Vendor Capacity', href: '/vendor-capacity?view=vendors', primary: true },
+            { label: 'Monthly Analytics', href: `/vendor-capacity?view=month&month=${m}` },
+          ]
+        : [{ label: 'Monthly Analytics', href: `/vendor-capacity?view=month&month=${m}` }],
+      list: [`${compliant} / ${total}`, updated ? num(capacity) : '—'],
+      detail: {
+        kicker: 'Vendor Capacity',
+        lede: `Vendor capacity history for ${long(m)}. Each update stays in the calendar month in which it was made.`,
+        ring: { pct: pct(compliant, total), label: 'compliant', caption: 'Active vendors with at least 2 updates in the respective month', sub: `${compliant} of ${total} vendors` },
+        tiles: [
+          { label: 'Latest declared pcs / month', value: updated ? num(capacity) : '—' },
+          { label: 'Signed capacity (updated vendors)', value: signed ? num(signed) : '—' },
+          { label: 'Vendors with 2+ updates', value: String(compliant) },
+          { label: 'Update events', value: String(mine.length) },
+          { label: 'Last update', value: lastAt ? dayYear(lastAt) : '—' },
+        ],
+        sections,
+      },
+    };
+  });
+
+  return {
+    columns: [
+      { key: 'pending', label: 'Partially Updated', tone: 'pending', hint: 'At least one active vendor has fewer than 2 capacity updates in the respective month' },
+      { key: 'live', label: 'All Vendors Updated', tone: 'live', hint: 'Every active vendor has at least 2 capacity updates in the respective month' },
+    ],
+    cards,
+    totals: [],
+    unit: 'months',
+    noun: 'month',
+    cardClick: 'open',
+    listColumns: [{ label: 'Vendors updated', num: true }, { label: 'Pcs / month', num: true }],
   };
 }
 

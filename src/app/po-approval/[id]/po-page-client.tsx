@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
+import { FilePen } from 'lucide-react';
+import { canEdit } from '@/lib/forms/approval';
 import { StatusBadge } from '@/components/forms/form-layout';
-import { InfoDot } from '@/components/info-dot';
 import { PoCardBody, StageStrip, dateOnly, dayLabel, inr, nextStep, nfmt, poFlag, typeLabel } from '../po-card';
 import type { ApprovalQueueItem, PoApproval, PoApprovalLine, PoCycleTime, PoDeleteRequest, SdRole } from '@/lib/forms/types';
 
@@ -39,7 +41,8 @@ export function PoPageClient({
     { k: 'Value', v: value != null ? inr(value) : '—' },
     { k: 'Raised', v: `${dayLabel(dateOnly(po.timestamp_created ?? po.created_at))}${po.created_by ? ` · ${po.created_by}` : ''}` },
     { k: 'Buying plan', v: po.in_buying_plan === true ? `in the ${po.buying_plan_no ?? ''} plan` : po.in_buying_plan === false ? `ad-hoc${po.ad_hoc_reason ? ` — ${po.ad_hoc_reason}` : ''}` : po.buying_plan_no ?? '—' },
-    { k: 'EasyCom PO', v: po.easycom_po_no ?? 'not yet' },
+    { k: 'EasyEcom PO', v: po.easycom_po_no ?? 'not yet' },
+    { k: 'EasyEcom reference', v: po.po_ref_num?.trim() || 'Not provided' },
     { k: 'First delivery', v: po.critical_path_first_delivery ? dayLabel(po.critical_path_first_delivery) : '—' },
   ];
 
@@ -52,7 +55,14 @@ export function PoPageClient({
             <StatusBadge status={po.status} approverEdited={po.approver_edited} />
             <span className={`poa-flag is-${flag.tone}`} title={flag.title}>{flag.text}</span>
           </div>
-          <StageStrip po={po} large />
+          <div className="poa-head-controls">
+            <StageStrip po={po} large />
+            {po.status === 'draft' && canEdit(role, po.status) && (
+              <Link className="wf-btn wf-btn-primary poa-edit-request" href={`/po-approval?edit=${po.id}`}>
+                <FilePen size={14} /> Edit PO Request
+              </Link>
+            )}
+          </div>
         </div>
         <dl className="poa-facts">
           {facts.map((f) => (
@@ -62,38 +72,37 @@ export function PoPageClient({
             </div>
           ))}
         </dl>
-      </section>
 
-      <section className={`panel poa-nextstep is-${step.who}`}>
-        <div className="poa-nextstep-kicker">
-          {step.who === 'you' ? 'Your move' : step.who === 'other' ? 'Waiting on someone else' : 'Where it stands'}
-          <InfoDot text={"WHAT: the next thing that has to happen to this PO, and whose move it is.\n\nHOW: from the PO's status, what it still lacks (cost, SKU lines, confirmed TNA dates, an EasyCom PO number), and your role.\n\nUSE: do what it says — the controls for it are right below."} />
+        <section className={`poa-nextstep is-${step.who}`}>
+          {step.who !== 'you' && (
+            <div className="poa-nextstep-kicker">
+              {step.who === 'other' ? 'Waiting on someone else' : 'Where it stands'}
+            </div>
+          )}
+          <h3>{step.title}</h3>
+          {step.detail && <p>{step.detail}</p>}
+          {step.who === 'you' && step.focus === 'cost' && (
+            <a className="wf-btn wf-btn-primary wf-btn-sm poa-nextstep-go" href={`/po-approval?edit=${po.id}`}>Open the form</a>
+          )}
+        </section>
+
+        <div className="poa-page-body">
+          <PoCardBody
+            po={po}
+            cycle={cycle}
+            lines={lines}
+            role={role}
+            deleteRequest={deleteRequest}
+            review={review}
+            stdCm={stdCm}
+            editHref={`/po-approval?edit=${po.id}`}
+            defaultLinesOpen
+            reviewAlways
+          />
         </div>
-        <h3>{step.title}</h3>
-        {step.detail && <p>{step.detail}</p>}
-        {step.who === 'you' && step.focus && step.focus !== 'cost' && (
-          <a className="wf-btn wf-btn-primary wf-btn-sm poa-nextstep-go" href="#poa-focus">Go to it ↓</a>
-        )}
-        {step.who === 'you' && step.focus === 'cost' && (
-          <a className="wf-btn wf-btn-primary wf-btn-sm poa-nextstep-go" href={`/po-approval?edit=${po.id}`}>Open the form</a>
-        )}
       </section>
 
-      <section className="panel poa-page-body">
-        <PoCardBody
-          po={po}
-          cycle={cycle}
-          lines={lines}
-          role={role}
-          deleteRequest={deleteRequest}
-          review={review}
-          stdCm={stdCm}
-          editHref={`/po-approval?edit=${po.id}`}
-          defaultLinesOpen
-          defaultDetailOpen
-          reviewAlways
-        />
-      </section>
+
     </>
   );
 }

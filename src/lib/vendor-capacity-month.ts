@@ -1,4 +1,6 @@
 import 'server-only';
+import { readComplianceInput } from './vendor-capacity-compliance-server';
+import { buildComplianceMonth, complianceKey, complianceTotals } from './vendor-capacity-compliance';
 // Vendor Capacity — monthly analysis of the weekly input (user, 2026-10-09: "Weekly input,
 // monthly analysis. Mandatory monthly report to management.").
 //
@@ -12,7 +14,7 @@ import { client, pageAll } from '@/lib/forms/queries-modules/_shared';
 import { loadCapacityEvents, type CapacityEvent } from '@/lib/forms/queries-modules/month-boards';
 import { ANALYTICS_RULE_DEFAULTS } from '@/lib/forms/queries-modules/analytics';
 import { addMonths, capacityWeekStart, monthLabel, monthStart } from '@/lib/forms/approval';
-import { capacityRulesFrom, eeVendorActive, vendorCapacityModel } from '@/lib/business-logic';
+import { capacityRulesFrom, vendorCapacityModel } from '@/lib/business-logic';
 import type { VcmVendor, VcmWeek, VendorCapacityMonth } from './vendor-capacity-month-types';
 
 type Db = Awaited<ReturnType<typeof client>>;
@@ -39,25 +41,18 @@ export function monthWeeks(month: string): string[] {
   return out;
 }
 
-type Master = { vendor_code: string | null; vendor_name: string | null; primary_type: string | null; ee_status: string | null; capacity_per_month: number | null };
+type Master = { is_active: boolean | null; vendor_code: string | null; vendor_name: string | null; primary_type: string | null; ee_status: string | null; capacity_per_month: number | null };
 type TypeRow = { vendor_code: string | null; vendor_name: string | null; vendor_type: string | null; status: string | null };
 
-/** Active vendors — the same rule as the Vendor Capacity page (EasyEcom status, else the type master). */
+/** Active vendors — the same source is_active rule as the Vendor Capacity page. */
 async function activeVendors(db: Db) {
   const [masters, types] = await Promise.all([
-    pageAll<Master>(() => db.from('vendor_master_data').select('vendor_code, vendor_name, primary_type, ee_status, capacity_per_month').order('vendor_code')),
-    pageAll<TypeRow>(() => db.from('vendor_type_master').select('vendor_code, vendor_name, vendor_type, status').order('vendor_name')),
+    pageAll<Master>(() => db.from('vendor_master_data').select('vendor_code, vendor_name, primary_type, ee_status, capacity_per_month, is_active').order('vendor_code')),
+    pageAll<TypeRow>(() => db.from('vendor_type_master').select('vendor_code, vendor_name, vendor_type, status').eq('is_active', true).order('vendor_name')),
   ]);
-  const statusByCode = new Map(types.map((t) => [key(t.vendor_code), t.status]));
-  const statusByName = new Map(types.map((t) => [key(t.vendor_name), t.status]));
   const typeByCode = new Map(types.map((t) => [key(t.vendor_code), t.vendor_type ?? '']));
   return masters
-    .filter((m) => {
-      if (!key(m.vendor_code)) return false;
-      const ee = eeVendorActive(m.ee_status);
-      if (ee !== null) return ee;
-      return key(statusByCode.get(key(m.vendor_code)) ?? statusByName.get(key(m.vendor_name))) === 'active';
-    })
+    .filter((m) => key(m.vendor_code) && m.is_active === true)
     .map((m) => ({
       code: key(m.vendor_code),
       display: m.vendor_code as string,
@@ -83,7 +78,7 @@ export async function loadVendorCapacityMonth(month: string = monthStart(), db?:
   const closed = month < monthStart();
   const cur = capacityWeekStart();
 
-  const [vendors, events, rules, copies] = await Promise.all([
+  const [vendors, events, rules, copies, complianceInput] = await Promise.all([
     activeVendors(supabase),
     loadCapacityEvents(supabase),
     capacityRules(supabase),
@@ -92,7 +87,11 @@ export async function loadVendorCapacityMonth(month: string = monthStart(), db?:
           supabase.from('sd_vendor_in_process_weekly').select('week, vendor_code, in_process_qty').in('week', weeks).order('week').order('vendor_code'),
         )
       : Promise.resolve([]),
+    readComplianceInput(supabase),
   ]);
+  const compliance = buildComplianceMonth(complianceInput, month);
+  const complianceByVendor = new Map(compliance.rows.map((r) => [complianceKey(r.code), r]));
+  const complianceSummary = complianceTotals(compliance.rows);
 
   // Quantity on order at each week's end, from the weekly copy (null = no copy for that week).
   const copyByWeek = new Map<string, Map<string, number>>();
@@ -174,8 +173,8 @@ export async function loadVendorCapacityMonth(month: string = monthStart(), db?:
         name: v.name,
         type: v.type || null,
         signed: v.signed,
-        weeksUpdated: cs.filter((c) => c.updated).length,
-        weeksExpected: cs.length,
+        weeksUpdated: complianceByVendor.get(complianceKey(v.code))?.updated ?? 0,
+        weeksExpected: complianceByVendor.get(complianceKey(v.code))?.completed ?? 0,
         capStart: first?.capacity ?? null,
         capEnd: last?.capacity ?? null,
         poCapEnd: last?.poCap ?? null,
@@ -188,13 +187,15 @@ export async function loadVendorCapacityMonth(month: string = monthStart(), db?:
     })
     .sort((a, b) => (b.peakUtil ?? -1) - (a.peakUtil ?? -1) || a.name.localeCompare(b.name));
 
-  const expected = vendorRows.reduce((t, v) => t + v.weeksExpected, 0);
-  const done = vendorRows.reduce((t, v) => t + v.weeksUpdated, 0);
+  const expected = complianceSummary.completed;
+  const done = complianceSummary.updated;
   const lastWeek = weekRows[weekRows.length - 1];
   const firstWeek = weekRows[0];
   const noCopy = weekRows.filter((w) => w.onOrder == null).map((w) => w.label);
   const notes = [
     'A week belongs to the month its Monday falls in.',
+    `Update compliance excludes the running week and unknown eligibility. Complete observed history starts ${compliance.coverageStart ?? 'when audit history becomes available'}; earlier periods are unavailable, not missed. ${complianceSummary.unknown} vendor-weeks are unavailable.`,
+    'Compliance counts historically eligible vendors, including subsequently inactive vendors. Capacity figures and the capacity table use the currently active vendor list. Merchant accountability uses the current assignment.',
     'Capacity per month and PO capacity use the same calculation as the capacity sheet, from the machines and karigar each vendor had declared by the end of the week.',
     ...(weeks.some((w) => w < TRAIL_WEEK)
       ? ['Weeks before October 2026 are incomplete: only each vendor’s latest update was kept then, so earlier updates that were later replaced are missing.']
@@ -206,6 +207,7 @@ export async function loadVendorCapacityMonth(month: string = monthStart(), db?:
   return {
     month,
     label: monthLabel(month),
+    compliance,
     closed,
     weeks: weekRows,
     vendors: vendorRows,

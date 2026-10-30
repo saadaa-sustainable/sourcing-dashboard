@@ -90,6 +90,7 @@ const PLANNING_LINKS: NavLink[] = [
   { href: '/buying-plan', label: 'Buying Plan', Icon: ShoppingCart },
   { href: '/standard-cost', label: 'Standard Cost', Icon: IndianRupee },
   { href: '/vendor-capacity', label: 'Vendor Capacity', Icon: Factory },
+  { href: '/inward-plan-v2', label: 'Inward Plan V2', Icon: CalendarClock },
   { href: '/receivable-plan', label: 'Inward Plan', Icon: PackageCheck },
 ];
 

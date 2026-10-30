@@ -765,6 +765,7 @@ export type NpdPromotionCandidate = {
 /* ------------------------------------------------------------------ */
 
 export type BuyingPlan = {
+  auto_approved?: boolean;
   id: number;
   plan_month: string; // first day of month, ISO
   plan_type: 'fg' | 'material';
@@ -783,6 +784,7 @@ export type BuyingPlan = {
 };
 
 export type BuyingPlanLine = {
+  auto_approved?: boolean;
   id: number;
   plan_id: number;
   product_code: string;
@@ -827,6 +829,7 @@ export type VendorCapacityLog = {
   machines_allocated: number | null;
   active_karigar: number | null;
   capacity_per_month: number | null;
+  update_reason?: string | null;
   machines_at_onboarding: number | null;
   capacity_signed: number | null;
   submitted_by: string;
@@ -893,6 +896,20 @@ export type VendorDeboardingReason =
 /** One row of sd_vendor_commercial_request — the team's Commercial Approval form, field for field. */
 export type VendorCommercialRequest = {
   id: number;
+  submitted_at: string | null;
+  revision: number;
+  details: import('./commercial-workflow').CommercialDetails;
+  submission_key: string | null;
+  updated_at: string;
+  decision_notes: string | null;
+  decided_at: string | null;
+  decided_by: string | null;
+  approved_amount: number | null;
+  processing_status: 'pending' | 'processed';
+  processed_amount: number | null;
+  processed_reference: string | null;
+  processed_at: string | null;
+  processed_by: string | null;
   business_type: import('./commercial').CommercialBusinessType;
   vendor_code: string;
   vendor_name: string | null;
@@ -1578,6 +1595,8 @@ export type PoApproval = {
   edited_before_approval?: boolean | null;
   /** The approver changed submitted values when approving (Edit & approve). */
   approver_edited?: boolean | null;
+  rework_sections?: ('cost' | 'tna' | 'sku')[] | null;
+  tna_rework_saved_at?: string | null;
   rework_notes?: string | null;
   reworked_by?: string | null;
   reworked_at?: string | null;

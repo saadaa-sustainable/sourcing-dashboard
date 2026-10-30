@@ -5,6 +5,7 @@ import {
   loadDeboardedVendors,
   loadDeletedPoRequests,
   loadPoApprovals,
+  loadPoGrnMatches,
   loadPoDeleteRequests,
   loadPoReviewItems,
   loadPoSubmissions,
@@ -51,7 +52,7 @@ export default async function PoApprovalPage({ searchParams }: { searchParams: P
     loadStandardCmByCode(),
     loadDeboardedVendors(),
   ]);
-  const deleteRequests = await loadPoDeleteRequests();
+  const [deleteRequests, grnReceivedByPo] = await Promise.all([loadPoDeleteRequests(), loadPoGrnMatches(pos)]);
   // The review (stock, cost, TNA, vendor) for every PO still in the queue — the same item
   // the Approvals page renders, so the two pages never disagree.
   const reviewItems = await loadPoReviewItems(pos.filter((p) => p.status === 'submitted' || p.status === 'pending_l2'));
@@ -64,7 +65,7 @@ export default async function PoApprovalPage({ searchParams }: { searchParams: P
   return (
     <FormLayout
       title="PO Approval"
-      subtitle="Raise a purchase order for approval, route by value, then issue against a real EasyCom PO."
+      subtitle="Raise a purchase order for approval, route by value, then issue against a real EasyEcom PO."
       active="/po-approval"
       role={user.role}
       userEmail={user.email}
@@ -73,6 +74,7 @@ export default async function PoApprovalPage({ searchParams }: { searchParams: P
     >
       <PoApprovalClient
         pos={pos}
+        grnReceivedByPo={grnReceivedByPo}
         cycle={Object.fromEntries(cycleById)}
         linesByPo={Object.fromEntries(linesByPo)}
         capacity={Object.fromEntries(capacityByVendor)}

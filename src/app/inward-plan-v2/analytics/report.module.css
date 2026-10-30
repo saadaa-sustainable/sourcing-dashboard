@@ -1,0 +1,32 @@
+.metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.metric { display:grid; gap:8px; background:white; border:1px solid var(--border,#dde2e5); border-radius:12px; padding:18px; }
+.metric span { color:#58646c; font-size:13px; }
+.metric strong { font-size:26px; }
+.day { display:grid; grid-template-columns:105px minmax(60px,1fr) 120px; align-items:center; gap:12px; padding:6px 0; font-size:12px; }
+.bars { display:grid; gap:3px; }
+.bars > div { min-height:7px; border-radius:3px; }
+.planned { background:#a9b7c9; }
+.actual { background:#238368; }
+.legend { display:flex; gap:18px; font-size:12px; margin:12px 0; }
+.legend span:before { content:''; display:inline-block; width:10px; height:10px; margin-right:6px; background:#a9b7c9; }
+.legend span:last-child:before { background:#238368; }
+@media(max-width:720px) { .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .day { grid-template-columns:85px minmax(30px,1fr) 70px; gap:6px; } }
+
+.analyticsSection { min-width: 0; }
+.overview { margin-bottom: 20px; }
+.overview .cadenceTabs { display: inline-flex; align-items: center; gap: 4px; padding: 4px; margin-bottom: 16px; border: 0; border-radius: 12px; background: #ebebeb; }
+.overview .cadenceTabs > a { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; min-width: 100px; padding: 8px 16px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; color: var(--ink-2, #43474a); font-size: 12px; font-weight: 400; line-height: 1.3; text-decoration: none; }
+.overview .cadenceTabs > a:hover { background: #e4e5e7; }
+.analyticsSection .overview .cadenceTabs > a[aria-current=page],
+.analyticsSection .overview .cadenceTabs > a[aria-current=page]:hover { background: #fff; color: #171717; font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / 10%); }
+.overview .cadenceTabs > a:focus-visible { outline: 2px solid #171717; outline-offset: 2px; }
+.periodFilter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+.periodFilter > label { display: grid; align-content: start; gap: 6px; font-size: 13px; }
+.analyticsSection .periodFilter input, .analyticsSection .periodFilter > button { height: 35px; min-height: 35px; box-sizing: border-box; }
+.block { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--line, #dde2e5); }
+
+.periodFilter > button { align-self: flex-end; }
+
+.definitions { margin-top: 24px; }
+.definitions > summary { cursor: pointer; }
+.footerActions { margin-top: 18px; }

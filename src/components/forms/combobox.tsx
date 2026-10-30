@@ -29,6 +29,7 @@ export function Combobox({
   placeholder = 'Select or type…',
   allowFreeText = true,
   disabled = false,
+  required = false,
   emptyText = 'Nothing matches.',
   onPick,
   limit = 80,
@@ -40,6 +41,7 @@ export function Combobox({
   placeholder?: string;
   allowFreeText?: boolean;
   disabled?: boolean;
+  required?: boolean;
   emptyText?: string;
   /** Called with the whole option when one is picked from the list. */
   onPick?: (o: ComboOption) => void;
@@ -117,6 +119,8 @@ export function Combobox({
     <div className="wf-combo" ref={rootRef}>
       <div className={`wf-combo-input${open ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}`}>
         <input
+          required={required}
+          aria-required={required || undefined}
           ref={inputRef}
           role="combobox"
           aria-expanded={open}

@@ -1,5 +1,6 @@
 'use server';
 
+import { canEditPoSection } from '@/lib/po-rework';
 import { SAADAA_PO_WAREHOUSE } from '@/lib/po-scope';
 import { randomBytes } from 'crypto';
 import { loadPoLineContext, loadPoPlanSuggestion, loadVendorPoHistory } from '../queries';
@@ -106,12 +107,15 @@ export async function savePoLines(formData: FormData): Promise<ActionResult> {
     }))
     .filter((l) => l.product_variant || l.qty);
   const supabase = await supa();
-  const { data: po } = await supabase
+  const { data: po, error: poError } = await supabase
     .from('sd_po_approval')
-    .select('status, po_qty, category, request_id')
+    // select('*') supports both legacy schema and section-scoped rework migration.
+    .select('*')
     .eq('id', poId)
     .maybeSingle();
+  if (poError) return fail(`Could not load PO: ${poError.message}`);
   if (!po) return fail('PO not found.');
+  if (!canEditPoSection(po, 'sku')) return fail('SKU quantities were not selected for rework and are read-only.');
   // House rule (AGENTS.md): until approved, everything is amendable — lines can be added,
   // changed and removed in draft, pending, rework and rejected. Only approved is locked.
   if (po.status === 'approved') return fail('An approved PO cannot have its lines changed.');

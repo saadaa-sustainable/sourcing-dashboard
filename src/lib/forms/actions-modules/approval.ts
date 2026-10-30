@@ -1,5 +1,6 @@
 'use server';
 
+import { parsePoReworkSections, poReworkLabel } from '@/lib/po-rework';
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { createClient, hasSupabaseEnv } from '@/lib/supabase/server';
@@ -130,10 +131,20 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   if (!user) return fail('Not signed in.');
 
   const entityType = String(formData.get('entity_type') ?? '') as ApprovalEntity;
+  if (entityType === 'vendor_commercial') return fail('Open Vendor Commercial Approval to review the latest revision and record its approved amount.');
+  if (entityType === 'standard_cost') return fail('Review and approve the full Standard Cost submission or amendment sections on its product page.');
   const entityId = Number(formData.get('entity_id'));
   const label = String(formData.get('entity_label') ?? '');
   const decision = String(formData.get('decision') ?? '');
-  const notes = String(formData.get('notes') ?? '').trim();
+  let notes = String(formData.get('notes') ?? '').trim();
+  let reworkSections: ReturnType<typeof parsePoReworkSections> = null;
+  if (entityType === 'po_approval' && decision === 'rework') {
+    try { reworkSections = parsePoReworkSections(JSON.parse(String(formData.get('rework_sections') ?? 'null'))); }
+    catch { return fail('Invalid rework section selection.'); }
+    if (!reworkSections) return fail('Select at least one section requiring rework.');
+    if (!notes) return fail('A rework remark is required.');
+    notes = `Sections: ${poReworkLabel(reworkSections)}. ${notes}`;
+  }
   const table = TABLE[entityType];
 
   if (decision !== 'approve' && decision !== 'reject' && decision !== 'rework') {
@@ -259,6 +270,15 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
           }
         : { status: to, rejection_notes: notes || null };
 
+  if (entityType === 'po_approval' && decision === 'rework') {
+    patch.rework_sections = reworkSections;
+    if (reworkSections?.includes('tna') || reworkSections?.includes('sku')) {
+      patch.tna_confirmed = false;
+      patch.tna_confirmed_at = null;
+      patch.tna_confirmed_by = null;
+    }
+  }
+
   // Atomic: the status guard means a second approver gets zero rows back.
   const { data: updated, error } = await supabase
     .from(table)
@@ -306,6 +326,7 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
   const user = await currentUser();
   if (!user) return fail('Not signed in.');
   const entityType = String(formData.get('entity_type') ?? '') as ApprovalEntity;
+  if (entityType === 'standard_cost') return fail('Review and approve the full Standard Cost submission or amendment sections on its product page.');
   const entityId = Number(formData.get('entity_id'));
   const label = String(formData.get('entity_label') ?? '');
   const table = TABLE[entityType];
@@ -348,6 +369,7 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
     .update({
       status: 'rework',
       rework_notes: summary,
+      ...(entityType === 'po_approval' ? { rework_sections: ['sku'] } : {}),
       reworked_by: user.email,
       reworked_at: now,
       edited_before_approval: true,

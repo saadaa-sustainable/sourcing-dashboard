@@ -1,5 +1,8 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { CapacityComplianceView, ComplianceCells, ComplianceKpis } from './vendor-capacity-compliance-view';
+import type { ComplianceMonth, ComplianceRow } from '@/lib/vendor-capacity-compliance';
 import { confirmDelete } from '@/lib/confirm';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { reloadWithToast, toastError } from '@/lib/toast';
@@ -35,6 +38,7 @@ import type {
 } from '@/lib/forms/types';
 import './vendor-capacity.css';
 import { OVER_UTILISED, isOverUtilised, utilisationLabel } from '@/lib/utilisation';
+import { setMargin } from 'recharts/types/state/layoutSlice';
 
 type Vendor = {
   vendor_code: string;
@@ -45,6 +49,7 @@ type Vendor = {
   capacitySigned: number;
   inProcessQty: number;
   current: VendorCapacityLog | null;
+  compliance?: ComplianceRow;
   deboarded?: DeboardedVendor | null;
 };
 
@@ -82,6 +87,7 @@ function ageLabel(iso: string | null, now: number | null) {
 const TABS = [
   ['entry', 'Entry'],
   ['allocation', 'Product Allocation'],
+  ['compliance', 'Update Compliance'],
   ['rules', 'Rules'],
   ['reporting', 'Reporting'],
 ] as const;
@@ -158,6 +164,8 @@ function EntryForWeek(props: Parameters<typeof EntryTab>[0]) {
 
 export function VendorCapacityClient({
   vendors,
+  complianceReports = [],
+  initialTab,
   role,
   allocations = [],
   catalog = [],
@@ -167,6 +175,8 @@ export function VendorCapacityClient({
   asOf = null,
 }: {
   vendors: Vendor[];
+  complianceReports?: ComplianceMonth[];
+  initialTab?: string;
   role: SdRole;
   /** A past week opened from the board: vendors carry that week's figures; read-only. */
   asOf?: { week: string; label: string; inProcessKept: boolean } | null;
@@ -178,12 +188,48 @@ export function VendorCapacityClient({
   /** Every capacity number reads these; from Rules Master (capacityRulesFrom). */
   rules?: CapacityRules;
 }) {
-  const [tab, setTab] = useState<TabId>('entry');
+  const [tab, setTab] = useState<TabId>(initialTab === 'compliance' && !asOf ? 'compliance' : 'entry');
   // Click-through: Reporting → Entry/Allocation focused on one vendor.
   const [focusVendor, setFocusVendor] = useState('');
 
   return (
     <div className="vc-page">
+      <style>{`
+        /* Keep the filter toolbar visually open: no enclosing border, shadow, or white panel. */
+        .vc-page .vc-table-card > .tb,
+        .vc-page .vc-table-card > .tb.tb-flat,
+        .vc-page .vc-table-card > .tb .tb-find,
+        .vc-page .vc-table-card > .tb .tb-see {
+          border: 0 !important;
+          outline: 0 !important;
+          box-shadow: none !important;
+          background: transparent !important;
+        }
+        /* Keep numeric and percentage columns consistently centered across Vendor Capacity tables. */
+        .vc-page table th.num,
+        .vc-page table td.num {
+          text-align: center !important;
+        }
+        .vc-page table td.num input,
+        .vc-page table td.num select {
+          text-align: center !important;
+        }
+        /* Give each table a vertical scroll container so sticky headers have a scroll area. */
+        .vc-page .table-scroll {
+          position: relative;
+          max-height: 65vh;
+          overflow: auto !important;
+          overscroll-behavior: contain;
+        }
+        /* Keep table column headers pinned to the top of their scroll container. */
+        .vc-page .table-scroll table thead th {
+          position: sticky !important;
+          top: 0 !important;
+          z-index: 20;
+          background: #f8fafc;
+          background-clip: padding-box;
+        }
+      `}</style>
       <div className="role-tabs vc-tabs" role="tablist" aria-label="Vendor Capacity sections">
         {TABS.filter(([id]) => !asOf || id === 'entry' || id === 'reporting').map(([id, label]) => (
           <button
@@ -209,6 +255,7 @@ export function VendorCapacityClient({
           rules={rules}
         />
       )}
+      {tab === 'compliance' && <CapacityComplianceView reports={complianceReports} />}
       {tab === 'allocation' && (
         <ProductAllocationTab
           vendors={vendors}
@@ -288,6 +335,7 @@ function EntryTab({
     setFilter('all');
   };
   const [edits, setEdits] = useState<Record<string, Edit>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [now, setNow] = useState<number | null>(null);
@@ -400,6 +448,8 @@ function EntryTab({
 
   async function saveAll() {
     if (!dirtyRows.length) return;
+    const missing = dirtyRows.filter((d) => (d.m.over || (d.effective.active_karigar !== '' && num(d.effective.active_karigar) < 15)) && !reasons[d.code]?.trim());
+    if (missing.length) { setErrors(Object.fromEntries(missing.map((d) => [d.code, 'Enter a reason before saving.']))); return; }
     setSaving(true);
     const failed: Record<string, string> = {};
     let saved = 0;
@@ -410,6 +460,7 @@ function EntryTab({
       payload.set('machines_allocated', d.effective.machines_allocated);
       payload.set('active_karigar', d.effective.active_karigar);
       payload.set('capacity_per_month', String(d.m.capacityPerMonth || ''));
+      payload.set('update_reason', reasons[d.code] ?? '');
       const result = await saveVendorCapacityRow(payload);
       if (result.ok) saved += 1;
       else failed[d.code] = toastError(result.error);
@@ -422,7 +473,7 @@ function EntryTab({
 
   function exportRows() {
     downloadCsv(asOf ? `vendor-capacity-week-${asOf.week}.csv` : 'vendor-capacity.csv', [
-      ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Machines', 'Karigars', 'Capacity/month', 'First machines', 'PO capacity', 'On order', 'Available', 'Machine util %', 'Capacity used', 'Last updated'],
+      ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Active Machines Allocated', 'Active Karigars Allocated', 'Capacity/month', 'Pre-Contracted machine allocated', 'PO capacity', 'Qty In-Process', 'Capacity Available', 'Machine Utilisation %', 'Capacity Utilisation %', 'Last updated'],
       ...sort.apply(filtered).map(({ vendor, effective, m, lastUpdated }) => [
         vendor.vendor_code, vendor.vendor_name, vendor.merchant, vendor.vendor_type,
         effective.machines_allocated, effective.active_karigar,
@@ -446,7 +497,7 @@ function EntryTab({
           <small>{entered.length} vendors · {fmt.format(totalMonthly)} pcs / month</small>
         </div>
         <div className="vc2-metric">
-          <span className="vc2-k" title="Pieces on approved POs not yet received">On order</span>
+          <span className="vc2-k" title="Pieces on approved POs not yet received">Qty In-Process</span>
           <strong>{fmt.format(totalOnOrder)}</strong>
           <small>{totalPo ? `${Math.round((totalOnOrder / totalPo) * 100)}% of PO capacity` : 'pcs in production'}</small>
         </div>
@@ -477,8 +528,8 @@ function EntryTab({
             <p>
               <b>Figures as entered by the end of this week.</b>{' '}
               {asOf.inProcessKept
-                ? 'On order is what was on order at the end of the week.'
-                : 'On order uses today’s open POs; the weekly in-process copy started after this week.'}
+                ? 'Qty In-Process is the quantity recorded at the end of the week.'
+                : 'Qty In-Process uses today’s open POs; the weekly in-process copy started after this week.'}
             </p>
           ) : (
             <p>
@@ -486,16 +537,6 @@ function EntryTab({
               figure keeps using it until a new one is saved. Update on any day of the week (Monday to Sunday).
             </p>
           )}
-          <details>
-            <summary>How figures are worked out</summary>
-            <ul>
-              <li>Capacity / month = {rules.driverMinMachines ? 'min(machines, karigars)' : 'karigars'} × {rules.dailyOutput} pieces × {rules.workingDays} working days.</li>
-              <li>PO capacity = capacity / month × lead days ÷ 30 (Job Work {rules.leadDays.job_work} d · E-FOB {rules.leadDays.efob} d · FOB {rules.leadDays.fob} d).</li>
-              <li>Available = PO capacity − on order. Capacity used = on order ÷ PO capacity; past capacity it reads “100% Over Utilised”.</li>
-              <li>Machine util = karigars ÷ machines. A vendor with no karigars on record is left out of every total.</li>
-              <li>Type and first machines come from the vendor master. A vendor not updated in over {STALE_DAYS} days is stale.</li>
-            </ul>
-          </details>
         </div>
       </div>
 
@@ -550,10 +591,10 @@ function EntryTab({
                 <th className="num" {...sort.th('karigar', (d) => (d.m.entered ? num(d.effective.active_karigar) : null))}>Karigars {sort.ind('karigar')}</th>
                 <th className="num" {...sort.th('cap', (d) => (d.m.entered ? d.m.capacityPerMonth : null))}>Capacity / month {sort.ind('cap')}</th>
                 <th className="num" {...sort.th('po', (d) => (d.m.entered ? d.m.poCapacity : null))}>PO capacity {sort.ind('po')}</th>
-                <th className="num" {...sort.th('onorder', (d) => d.vendor.inProcessQty)}>On order {sort.ind('onorder')}</th>
-                <th className="num" {...sort.th('avail', (d) => d.m.available)}>Available {sort.ind('avail')}</th>
-                <th {...sort.th('util', (d) => d.m.capacityUtil)}>Capacity used {sort.ind('util')}</th>
-                <th className="num" {...sort.th('mutil', (d) => d.m.machineUtil)}>Machine util {sort.ind('mutil')}</th>
+                <th className="num" {...sort.th('onorder', (d) => d.vendor.inProcessQty)}>Qty In-Process {sort.ind('onorder')}</th>
+                <th className="num" {...sort.th('avail', (d) => d.m.available)}>Capacity Available {sort.ind('avail')}</th>
+                <th {...sort.th('util', (d) => d.m.capacityUtil)}>Capacity Utilisation % {sort.ind('util')}</th>
+                <th className="num" {...sort.th('mutil', (d) => d.m.machineUtil)}>Machine Utilisation % {sort.ind('mutil')}</th>
                 <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>{live ? 'Status' : 'Last updated'} {sort.ind('updated')}</th>
               </tr>
             </thead>
@@ -603,6 +644,18 @@ function EntryTab({
                         <span><code>{vendor.vendor_code}</code>{vendor.merchant ? ` · ${vendor.merchant}` : ''} · {type} · {m.leadDays} d lead</span>
                       </div>
                       <DeboardedPill flag={vendor.deboarded} />
+                      {vendor.current?.update_reason?.trim() && (
+                        <div className="vc-saved-reason"><span>Reason of Over Utilization/Karigar Deficit:</span><p>{vendor.current.update_reason}</p></div>
+                      )}
+                      {editable && !saving && d.dirty && d.shown.active_karigar !== (d.thisWeek ? d.last.active_karigar : '') && (m.over || (d.effective.active_karigar !== '' && num(d.effective.active_karigar) < 15)) && (
+                        <label className="vc-update-reason">
+                           <span className="vc-update-reason-label">Mention the reason for Capacity Over Utilised/Active Karigars Allocated less than 15. <span className="vc-required">*</span></span>
+                          <textarea required disabled={saving} value={reasons[d.code] ?? ''}
+                            aria-label={`Capacity update reason for ${vendor.vendor_name || vendor.vendor_code}`}
+                            rows={3} placeholder="Explain the capacity allocation"
+                            onChange={(e) => setReasons((cur) => ({ ...cur, [d.code]: e.target.value }))} />
+                        </label>
+                      )}
                     </td>
                     {!m.entered && !editable ? (
                       <td colSpan={8} className="vc2-none">
@@ -654,7 +707,7 @@ function EntryTab({
         <div className="vc2-savebar" role="region" aria-label="Unsaved changes">
           <span>{dirtyRows.length} vendor{dirtyRows.length === 1 ? '' : 's'} changed</span>
           <span className="vc2-savebar-actions">
-            <button type="button" className="vc2-btn vc2-btn-ghost" disabled={saving} onClick={() => { setEdits({}); setErrors({}); }}>Discard</button>
+            <button type="button" className="vc2-btn vc2-btn-ghost" disabled={saving} onClick={() => { setEdits({}); setErrors({}); setReasons({}); }}>Discard</button>
             <button type="button" className="vc2-btn vc2-btn-save" disabled={saving} onClick={saveAll}>{saving ? 'Saving…' : 'Save'}</button>
           </span>
         </div>
@@ -793,7 +846,7 @@ function LiveEntryTab({
 
   function exportRows() {
     downloadCsv('vendor-capacity-entry.csv', [
-      ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Machines allocated', 'Karigar allocated', 'Capacity/month', 'First machines', 'PO capacity', 'In process', 'Available', 'Machine util %', 'Capacity util %', 'Last updated'],
+      ['Vendor code', 'Vendor', 'Merchandiser', 'Type', 'Active Machines Allocated', 'Active Karigars Allocated', 'Capacity/month', 'Pre-Contracted machine allocated', 'PO capacity', 'Qty In-Process', 'Capacity Available', 'Machine Utilisation %', 'Capacity Utilisation %', 'Last updated'],
       ...sort.apply(filtered).map(({ vendor, lastUpdated }) => {
         const m = modelThisWeek(vendor);
         // Same as the screen: a vendor not entered this week has blank figures.
@@ -809,6 +862,7 @@ function LiveEntryTab({
 
   return (
     <div className="vc-section">
+      <ComplianceKpis rows={filtered.flatMap(({ vendor }) => vendor.compliance ? [vendor.compliance] : [])} currentWeek={capacityWeekStart()} />
       <div className="vc-metrics">
         <CapacityMetric
           label="PO capacity"
@@ -816,7 +870,7 @@ function LiveEntryTab({
           detail={`${entered.length} vendors entered this week · ${fmt.format(visibleMonthly)} pcs/month capacity${visibleNotEntered ? ` · ${visibleNotEntered} not entered yet` : ''}`}
         />
         <CapacityMetric
-          label="On order (in process)"
+          label="Qty In-Process"
           value={fmt.format(visibleInProcess)}
           detail={visiblePoCapacity ? `${Math.round((visibleInProcess / visiblePoCapacity) * 1000) / 10}% of PO capacity` : 'pcs in production'}
           tone="blue"
@@ -830,8 +884,8 @@ function LiveEntryTab({
           vendor&apos;s figures as entered by the end of this week (its last update on or before that
           Sunday); a vendor with nothing entered by then reads Not entered.{' '}
           {asOf.inProcessKept
-            ? 'On order (in process), Available and Capacity util use what was on order at the end of this week.'
-            : 'On order (in process), Available and Capacity util use today’s open POs: the weekly in-process copy started after this week.'}{' '}
+            ? 'Qty In-Process, Capacity Available and Capacity Utilisation % use the quantity recorded at the end of this week.'
+            : 'Qty In-Process, Capacity Available and Capacity Utilisation % use today’s open POs: the weekly in-process copy started after this week.'}{' '}
           Read-only: to change figures, open the current week.
         </Notice>
       )}
@@ -843,99 +897,6 @@ function LiveEntryTab({
           as that. Get this week&apos;s submission from each merchandiser before these numbers are
           presented. This week runs Monday {new Date(`${weekStart}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })} to Sunday; a vendor can be updated on any day of it.
         </Notice>
-      )}
-
-      <div className="tb">
-        <div className="tb-find">
-          <label className="tb-search-wrap">
-            <span className="tb-sr">Search vendor</span>
-            <input
-              value={search}
-              placeholder="Search vendor name or code"
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <select className="meta-select" value={merchant} onChange={(e) => setMerchant(e.target.value)}>
-            <option value="">All merchandisers</option>
-            {merchants.map((m) => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
-          <select className="meta-select" value={vType} onChange={(e) => setVType(e.target.value)}>
-            <option value="">All vendor types</option>
-            {vTypes.map((t) => (
-              <option key={t} value={t}>
-                {typeConfig(t)?.label ?? t}
-              </option>
-            ))}
-          </select>
-          <select
-            className="meta-select"
-            aria-label="Filter by product"
-            value={product}
-            onChange={(e) => setProduct(e.target.value)}
-          >
-            <option value="">Product: All</option>
-            {allocatedProducts.map((code) => (
-              <option key={code} value={code}>
-                {code}
-                {catalog.find((c) => c.product_code === code)?.product_name
-                  ? ` · ${catalog.find((c) => c.product_code === code)?.product_name}`
-                  : ''}
-              </option>
-            ))}
-          </select>
-          <label className="wf-check-field">
-            <input
-              type="checkbox"
-              checked={staleOnly}
-              onChange={(event) => setStaleOnly(event.target.checked)}
-            />
-            Stale only ({staleCount})
-          </label>
-          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
-        </div>
-        <div className="tb-see">
-          <span className="tb-count">{filtered.length} of {decorated.length} shown</span>
-          <span className="wf-chip">
-            {decorated.length} vendors
-            {staleCount > 0 && (
-              <em className="wf-chip-warn">
-                <Clock size={13} /> {staleCount} stale
-              </em>
-            )}
-            {overCount > 0 && (
-              <em className="wf-chip-warn">
-                <AlertTriangle size={13} /> {overCount} over PO capacity
-              </em>
-            )}
-          </span>
-          <span className="tb-divider" />
-          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}>
-            <Download size={13} /> Download CSV
-          </button>
-        </div>
-      </div>
-
-      {!asOf && (
-      <Notice tone="info">
-        Only <strong>two fields are ever typed</strong>:{' '}
-        <span className="wf-live-tag">LIVE</span> Machines allocated and Karigar allocated.
-        Everything in an <span className="wf-computed-tag">orange</span> cell is computed by one
-        formula (Rules Master): capacity/day = {rules.driverMinMachines ? 'min(machines, karigars)' : 'karigars'} × {rules.dailyOutput} pieces;
-        <strong> Capacity/month</strong> = capacity/day × {rules.workingDays} working days;
-        <strong> PO capacity</strong> = what the vendor can make inside its PO type&apos;s lead time
-        (Job Work {rules.leadDays.job_work}d · E-FOB {rules.leadDays.efob}d · FOB {rules.leadDays.fob}d), i.e.
-        capacity/month × lead days ÷ 30. <strong>Available</strong> = PO capacity − on order;
-        <strong> Capacity util</strong> = on order ÷ PO capacity, reading "100% Over Utilised"
-        once past capacity. A vendor with nothing entered reads <strong>Not entered</strong> and is
-        left out of every total. First machines and Type are{' '}
-        <span className="wf-fixed-tag">
-          <Lock size={10} /> FIXED
-        </span>{' '}
-        from the vendor master. A vendor not updated in over {STALE_DAYS} days is flagged{' '}
-        <strong>stale</strong>.
-      </Notice>
       )}
 
       {asOf ? (
@@ -953,10 +914,10 @@ function LiveEntryTab({
                   <th className="num" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>Karigars {sort.ind('karigar')}</th>
                   <th className="num" {...sort.th('cap', (d) => modelOf(d.vendor, rules).capacityPerMonth || null)}>Capacity / month {sort.ind('cap')}</th>
                   <th className="num" {...sort.th('po', (d) => modelOf(d.vendor, rules).poCapacity || null)}>PO capacity {sort.ind('po')}</th>
-                  <th className="num" {...sort.th('onorder', (d) => d.vendor.inProcessQty)}>On order {sort.ind('onorder')}</th>
-                  <th className="num">Available</th>
-                  <th {...sort.th('util', (d) => modelOf(d.vendor, rules).capacityUtil)}>Capacity used {sort.ind('util')}</th>
-                  <th className="num">Machine util</th>
+                  <th className="num" {...sort.th('onorder', (d) => d.vendor.inProcessQty)}>Qty In-Process {sort.ind('onorder')}</th>
+                  <th className="num">Capacity Available</th>
+                  <th {...sort.th('util', (d) => modelOf(d.vendor, rules).capacityUtil)}>Capacity Utilisation % {sort.ind('util')}</th>
+                  <th className="num">Machine Utilisation %</th>
                   <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')}</th>
                 </tr>
               </thead>
@@ -1016,10 +977,50 @@ function LiveEntryTab({
       ) : (
       <div className="table-panel wf-grid-panel vc-table-card">
         <div className="vc-card-head">
-          <div><h2>Capacity worklist</h2><p>Enter machines and karigar for a vendor and save that row. Any day of the week; the board counts each vendor&apos;s latest update in the week (Monday to Sunday). Each Monday the boxes start blank, and so do the figures worked out from them, until the vendor is entered. Other pages keep using the last saved numbers meanwhile (hover a blank box to see them).</p></div>
+          <div><h2>Capacity worklist</h2><p>Track vendor capacity by entering Active Machines Allocated and Active Karigars Allocated for each vendor.</p></div>
           <span className="vc-pill vc-pill-blue">Weekly update · any day</span>
         </div>
-        <div className="table-scroll">
+      <div className="tb tb-flat" style={{margin:'14px'}}>
+        <div className="tb-find">
+          <label className="tb-search-wrap">
+            <span className="tb-sr">Search vendor</span>
+            <input
+              value={search}
+              placeholder="Search vendor name or code"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <select className="meta-select" value={vType} onChange={(e) => setVType(e.target.value)}>
+            <option value="">All vendor types</option>
+            {vTypes.map((t) => (
+              <option key={t} value={t}>
+                {typeConfig(t)?.label ?? t}
+              </option>
+            ))}
+          </select>
+          <ClearFiltersButton active={filtersActive} onClear={clearFilters} />
+        </div>
+        <div className="tb-see">
+          <span className="wf-chip">
+            {decorated.length} vendors
+            {staleCount > 0 && (
+              <em className="wf-chip-warn">
+                <Clock size={13} /> {staleCount} stale
+              </em>
+            )}
+            {overCount > 0 && (
+              <em className="wf-chip-warn">
+                <AlertTriangle size={13} /> {overCount} over PO capacity
+              </em>
+            )}
+          </span>
+          <span className="tb-divider" />
+          <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm vc-export" onClick={exportRows}>
+            <Download size={13} /> Download CSV
+          </button>
+        </div>
+      </div>
+        <div className="table-scroll" style={{margin:'14px', border: '1px solid var(--line)'}}>
           <table className="wide-table wf-grid">
             <thead>
               <tr>
@@ -1028,21 +1029,22 @@ function LiveEntryTab({
                   Type <span className="wf-fixed-tag"><Lock size={9} /></span> {sort.ind('type')}
                  <HeaderInfo label="Type" /></th>
                 <th className="num input-col" {...sort.th('machines', (d) => d.vendor.current?.machines_allocated ?? null)}>
-                  Machines allocated <span className="wf-live-tag">LIVE</span> {sort.ind('machines')}
-                 <HeaderInfo label="Machines allocated LIVE" /></th>
+                  Active Machines Allocated {sort.ind('machines')}
+                 <HeaderInfo label="Active Machines Allocated" /></th>
                 <th className="num input-col" {...sort.th('karigar', (d) => d.vendor.current?.active_karigar ?? null)}>
-                  Karigar allocated <span className="wf-live-tag">LIVE</span> {sort.ind('karigar')}
-                 <HeaderInfo label="Karigar allocated LIVE" /></th>
+                  Active Karigars Allocated {sort.ind('karigar')}
+                 <HeaderInfo label="Active Karigars Allocated" /></th>
                 <th className="num">Capacity / month <HeaderInfo label="Capacity / month" /></th>
                 <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
                 <th className="num">
-                  First machines <span className="wf-fixed-tag"><Lock size={9} /></span>
-                 <HeaderInfo label="First machines" /></th>
-                <th className="num">On order (in process) <HeaderInfo label="On order (in process)" /></th>
-                <th className="num">Available <HeaderInfo label="Available" /></th>
-                <th className="num">Machine util <HeaderInfo label="Machine util" /></th>
-                <th className="num">Capacity util <HeaderInfo label="Capacity util" /></th>
+                  Pre-Contracted machine allocated <span className="wf-fixed-tag"><Lock size={9} /></span>
+                 <HeaderInfo label="Pre-Contracted machine allocated" /></th>
+                <th className="num">Qty In-Process <HeaderInfo label="Qty In-Process" /></th>
+                <th className="num">Capacity Available <HeaderInfo label="Capacity Available" /></th>
+                <th className="num">Machine Utilisation % <HeaderInfo label="Machine Utilisation %" /></th>
+                <th className="num">Capacity Utilisation % <HeaderInfo label="Capacity Utilisation %" /></th>
                 <th {...sort.th('updated', (d) => d.lastUpdated ?? '')}>Last updated {sort.ind('updated')} <HeaderInfo label="Last updated" /></th>
+                <th>Vendor status</th><th>This week</th><th className="num">Monthly compliance</th><th className="num">Consecutive missed weeks</th>
                 {editable && <th aria-label="Save" />}
               </tr>
             </thead>
@@ -1061,7 +1063,7 @@ function LiveEntryTab({
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={editable ? 13 : 12} className="wf-empty-cell">
+                  <td colSpan={editable ? 17 : 16} className="wf-empty-cell">
                     {staleOnly
                       ? 'No stale vendors — everyone is up to date.'
                       : 'No vendors match your filters.'}
@@ -1074,14 +1076,80 @@ function LiveEntryTab({
       </div>
       )}
 
-      <div className="wf-footer-bar">
-        <p className="wf-footer-note">
-          Capacity/month = Karigars × pieces per karigar per day × working days a month
-          (Job ×1.0 · E-FOB ×1.5 · FOB ×2.5 · E-FOB/FOB ×2.0). Available = PO capacity −
-          in-process (negative = 100% and over Utilised). Machine util = Karigar ÷ Machines; Capacity
-          util = In-process ÷ PO capacity.
-        </p>
-      </div>
+      <section className="vc2-card vc-knowledgebase" aria-label="Knowledgebase">
+        <style jsx>{`
+          .vc-knowledgebase {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            border-radius: 0;
+            box-shadow: none !important;
+            padding: 14px 16px;
+          }
+          .vc-knowledgebase .vc-card-head {
+            margin: 0 0 10px;
+            padding: 0 0 9px;
+            border-bottom: 1px solid var(--border, #d8dee6);
+          }
+          .vc-knowledgebase .vc-card-head h2 {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.35;
+            font-weight: 650;
+          }
+          .vc-knowledgebase .vc-card-head p {
+            margin: 3px 0 0;
+            font-size: 11px;
+            line-height: 1.4;
+            color: var(--muted-foreground, #64748b);
+          }
+          .vc-knowledgebase ul {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0 24px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+          }
+          .vc-knowledgebase li {
+            min-width: 0;
+            padding: 7px 0;
+            border-bottom: 1px solid color-mix(in srgb, var(--border, #d8dee6) 65%, transparent);
+            font-size: 11px;
+            line-height: 1.5;
+            color: var(--foreground, #334155);
+            overflow-wrap: anywhere;
+          }
+          .vc-knowledgebase li strong {
+            color: var(--foreground, #0f172a);
+            font-weight: 650;
+          }
+          @media (max-width: 720px) {
+            .vc-knowledgebase { padding: 12px; }
+            .vc-knowledgebase ul { grid-template-columns: minmax(0, 1fr); }
+          }
+        `}</style>
+        <div className="vc-card-head">
+          <div>
+            <h2>Knowledgebase</h2>
+            <p>How vendor capacity figures are entered and calculated.</p>
+          </div>
+        </div>
+        <ul>
+          <li><strong>Manual entry:</strong> Only Active Machines Allocated and Active Karigars Allocated are entered manually.</li>
+          <li><strong>Capacity per day:</strong> Active Karigars Allocated × {rules.dailyOutput} pieces.</li>
+          <li><strong>Capacity/month:</strong> Capacity per day × {rules.workingDays} working days.</li>
+          <li><strong>PO capacity:</strong> Capacity/month × lead days ÷ 30, based on PO type: Job Work {rules.leadDays.job_work} days · E-FOB {rules.leadDays.efob} days · FOB {rules.leadDays.fob} days.</li>
+          <li><strong>Capacity Available:</strong> PO capacity − Qty In-Process.</li>
+          <li><strong>Capacity Utilisation %:</strong> Qty In-Process ÷ PO capacity. Displays “100% Over Utilised” when capacity is exceeded.</li>
+          <li><strong>Not entered:</strong> Vendors with no capacity data entered are excluded from all totals.</li>
+          <li><strong>Fixed fields:</strong> Pre-Contracted machine allocated and Type are fixed from the vendor master.</li>
+          <li><strong>Stale updates:</strong> Vendors whose capacity has not been updated for more than {STALE_DAYS} days are flagged as stale.</li>
+          <li><strong>Automatic calculations:</strong> All calculated values follow the formulas defined in Rules Master.</li>
+        </ul>
+      </section>
+
+
     </div>
   );
 }
@@ -1104,6 +1172,7 @@ function CapacityRow({
   /** An admin can correct a locked row; the team waits for Monday. */
   isAdmin?: boolean;
 }) {
+  const router = useRouter();
   // The vendor's last saved figures. Every calculation (here and on every other page) keeps
   // using them until a new update is saved.
   const last = {
@@ -1116,6 +1185,8 @@ function CapacityRow({
     lastUpdated != null && Date.parse(lastUpdated) >= Date.parse(`${capacityWeekStart()}T00:00:00+05:30`);
   const initial = enteredThisWeek ? last : { machines_allocated: '', active_karigar: '' };
   const [fields, setFields] = useState(initial);
+  const [reason, setReason] = useState('');
+  const [savedReason, setSavedReason] = useState(vendor.current?.update_reason ?? '');
   const [saved, setSaved] = useState<string | null>(lastUpdated);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -1152,15 +1223,21 @@ function CapacityRow({
 
   function save() {
     setError(null);
+    if ((model.over || (effective.active_karigar !== '' && karigar < 15)) && !reason.trim()) { setError('Enter a reason before saving.'); return; }
     const payload = new FormData();
     payload.set('vendor_code', vendor.vendor_code);
     payload.set('vendor_name', vendor.vendor_name);
     payload.set('machines_allocated', effective.machines_allocated);
     payload.set('active_karigar', effective.active_karigar);
     payload.set('capacity_per_month', String(model.capacityPerMonth || ''));
+    payload.set('update_reason', reason);
     start(async () => {
       const result = await saveVendorCapacityRow(payload);
-      if (result.ok) setSaved(new Date().toISOString());
+      if (result.ok) {
+        setSaved(new Date().toISOString());
+        setSavedReason(model.over || karigar < 15 ? reason.trim() : '');
+        router.refresh();
+      }
       else setError(toastError(result.error));
     });
   }
@@ -1171,6 +1248,7 @@ function CapacityRow({
         <strong>{vendor.vendor_name || vendor.vendor_code}</strong>
         <small className="mono wf-subtle">{vendor.vendor_code}{vendor.merchant ? ` · ${vendor.merchant}` : ''}</small>
         <DeboardedPill flag={vendor.deboarded} />
+        {savedReason.trim() && <div className="vc-saved-reason"><span>Reason of Over Utilization/Karigar Deficit:</span><p>{savedReason}</p></div>}
       </td>
       <td>
         <span className="vc-pill">{config?.label ?? (vendor.vendor_type || '—')}</span>
@@ -1184,7 +1262,7 @@ function CapacityRow({
             value={fields[field]}
             title={!enteredThisWeek && last[field] ? `Not entered this week. Last saved: ${last[field]}${lastUpdated ? ` on ${new Date(lastUpdated).toLocaleDateString('en-IN')}` : ''} (still used in calculations)` : undefined}
             disabled={!canType}
-            aria-label={`${field === 'machines_allocated' ? 'Machines allocated' : 'Karigar allocated'} for ${vendor.vendor_name || vendor.vendor_code}`}
+            aria-label={`${field === 'machines_allocated' ? 'Active Machines Allocated' : 'Active Karigars Allocated'} for ${vendor.vendor_name || vendor.vendor_code}`}
             onChange={(event) => set(field, event.target.value)}
           />
         </td>
@@ -1235,8 +1313,14 @@ function CapacityRow({
           </span>
         )}
         {isStale && !dirty && !locked && <span className="vc-pill vc-pill-amber">Stale</span>}
+        {canType && !pending && dirty && fields.active_karigar !== initial.active_karigar && (model.over || (effective.active_karigar !== '' && karigar < 15)) && (
+          <label className="vc-update-reason"><span className="vc-update-reason-label">Mention the reason for Capacity Over Utilised/Active Karigars Allocated less than 15. <span className="vc-required">*</span></span>
+            <textarea required rows={3} placeholder="Explain the capacity allocation" value={reason} disabled={pending} onChange={(e) => setReason(e.target.value)} aria-label={`Capacity update reason for ${vendor.vendor_name || vendor.vendor_code}`} />
+          </label>
+        )}
         {error && <small className="wf-error-text">{error}</small>}
       </td>
+      <ComplianceCells row={vendor.compliance} />
       {editable && (
         <td>
           {locked && !isAdmin ? (
@@ -1604,8 +1688,8 @@ function RulesTab({
             <strong>capacity a month × lead days ÷ 30</strong>
           </div>
           <div>
-            <span>Available · utilisation</span>
-            <strong>PO capacity − on order · on order ÷ PO capacity</strong>
+            <span>Capacity Available · utilisation</span>
+            <strong>PO capacity − Qty In-Process · Qty In-Process ÷ PO capacity</strong>
           </div>
         </div>
         <p className="wf-subtle vc-formula-hold">
@@ -1678,7 +1762,7 @@ function ReportingTab({
 
   function exportRows() {
     downloadCsv('vendor-capacity-report.csv', [
-      ['Vendor code', 'Vendor', 'Type', 'PO capacity', 'In process', 'Utilization %'],
+      ['Vendor code', 'Vendor', 'Type', 'PO capacity', 'Qty In-Process', 'Utilization %'],
       ...rows.map((row) => [row.code, row.name, row.type, row.cap, row.inProc, utilisationLabel(row.util)]),
     ]);
   }
@@ -1703,7 +1787,7 @@ function ReportingTab({
         <CapacityMetric label="Over PO capacity" value={String(rows.filter((row) => row.util != null && row.util > 100).length)} detail="vendors with more on order than their PO capacity" tone="red" />
       </div>
       <Notice tone="info">
-        Utilisation = on order ÷ <strong>PO capacity</strong>, where PO capacity is what the
+        Capacity Utilisation % = Qty In-Process ÷ <strong>PO capacity</strong>, where PO capacity is what the
         vendor can make inside its PO type&apos;s lead time (capacity/month × lead days ÷ 30; lead
         days in Rules Master: Job Work {rules.leadDays.job_work} · E-FOB {rules.leadDays.efob} · FOB {rules.leadDays.fob}).
         The same model as the Entry tab, Vendor Performance and PO Approval. Past 100% the real
@@ -1720,7 +1804,7 @@ function ReportingTab({
               <tr>
                 <th>PO type <HeaderInfo label="PO type" /></th>
                 <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
-                <th className="num">In process <HeaderInfo label="In process" /></th>
+                <th className="num">Qty In-Process <HeaderInfo label="Qty In-Process" /></th>
                 <th className="num">Utilization <HeaderInfo label="Utilization" /></th>
               </tr>
             </thead>
@@ -1752,7 +1836,7 @@ function ReportingTab({
                 <th>Vendor <HeaderInfo label="Vendor" /></th>
                 <th>Type <HeaderInfo label="Type" /></th>
                 <th className="num">PO capacity <HeaderInfo label="PO capacity" /></th>
-                <th className="num">In process <HeaderInfo label="In process" /></th>
+                <th className="num">Qty In-Process <HeaderInfo label="Qty In-Process" /></th>
                 <th className="num">Utilization <HeaderInfo label="Utilization" /></th>
                 <th aria-label="Open" />
               </tr>

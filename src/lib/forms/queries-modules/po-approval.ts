@@ -1,5 +1,6 @@
 import 'server-only';
-import { client, PAGE_SIZE } from './_shared';
+import { poGrnReceiptIndex, hasPoGrnReceipt, type PoGrnReceipt } from '@/lib/po-board';
+import { client, PAGE_SIZE, pageAll } from './_shared';
 import { monthStart, addMonths } from '../approval';
 import { loadInProcessByVendor } from './vendor';
 import type {
@@ -249,4 +250,25 @@ export async function loadPoReviewSnapshot(id: number): Promise<{ item: Approval
     .maybeSingle();
   if (!data?.review_snapshot || !data.review_snapshot_at) return null;
   return { item: data.review_snapshot as unknown as ApprovalQueueItem, at: data.review_snapshot_at };
+}
+
+/** Same receipt source as GRN Detail; both exact PO identifiers can establish receiving. */
+export async function loadPoGrnMatches(pos: PoApproval[]): Promise<Record<string, boolean>> {
+  const approved = pos.filter((po) => po.status === 'approved');
+  const poNumbers = [...new Set(approved.map((po) => po.easycom_po_no?.trim()).filter((value): value is string => Boolean(value)))];
+  const references = [...new Set(approved.map((po) => po.po_ref_num?.trim()).filter((value): value is string => Boolean(value)))];
+  if (!poNumbers.length && !references.length) return {};
+  const db = await client();
+  const receipts: PoGrnReceipt[] = [];
+  for (const [column, values] of [['po_number', poNumbers], ['po_ref_num', references]] as const) {
+    for (let from = 0; from < values.length; from += 100) {
+      const batch = values.slice(from, from + 100);
+      const rows = await pageAll<PoGrnReceipt>(() => db.from('sd_ee_grn')
+        .select('po_number, po_ref_num, received_quantity')
+        .in(column, batch).gt('received_quantity', 0).order('grn_detail_id'));
+      receipts.push(...rows);
+    }
+  }
+  const index = poGrnReceiptIndex(receipts);
+  return Object.fromEntries(approved.map((po) => [String(po.id), hasPoGrnReceipt(po, index)]));
 }

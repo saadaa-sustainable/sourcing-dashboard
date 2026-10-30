@@ -1,10 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { HeaderInfo } from '@/components/header-info';
 import { reloadWithToast, toastError } from '@/lib/toast';
-import { ClipboardList, Download, ExternalLink, Eye, Save, Send, Trash2, Upload } from 'lucide-react';
+import { ClipboardList, Download, Eye, Plus, Save, Send, Trash2, Upload } from 'lucide-react';
 import { saveBuyingPlan, submitBuyingPlan } from '@/lib/forms/actions';
 import {
   canApprove,
@@ -15,7 +14,9 @@ import {
   monthLabel,
 } from '@/lib/forms/approval';
 import { csvObjects, downloadCsv } from '@/lib/csv';
-import { Notice, StatusBadge } from '@/components/forms/form-layout';
+import { Notice } from '@/components/forms/form-layout';
+import { Combobox } from '@/components/forms/combobox';
+import { materialDraftRows } from '@/lib/material-plan-draft';
 import { InfoDot } from '@/components/info-dot';
 import { statusText } from '@/lib/forms/approval';
 import { PlanHeader, planFacts, planStatusWord, type PlanMonthStatus } from './plan-header';
@@ -64,8 +65,11 @@ type Row = {
   standard_value: string;
   /** Per-line approval state (server-owned, read-only here). */
   line_status: SdStatus | null;
+  auto_approved?: boolean;
   approver_edited: boolean;
 };
+
+const EMPTY_MATERIAL_ENTRY = { colour: '', job_qty: '', purchase_qty: '', uom: 'metres', remark: '' };
 
 // Legacy material lines predate material_type — treat them as raw.
 function asType(v: string | null): MaterialType {
@@ -85,6 +89,7 @@ function toRow(l: BuyingPlanLine): Row {
     standard_value: l.standard_value?.toString() ?? '',
     line_status: l.line_status ?? null,
     approver_edited: Boolean(l.approver_edited),
+    auto_approved: Boolean(l.auto_approved),
   };
 }
 
@@ -116,7 +121,6 @@ export function MaterialPlanClient({
   plan,
   lines,
   materialCodes,
-  colours,
   materialCosts,
   role,
   startInInput = false,
@@ -163,7 +167,7 @@ export function MaterialPlanClient({
         planId={plan.id}
         lineKey={row.key}
         lineStatus={row.line_status}
-        approverEdited={row.approver_edited}
+        autoApproved={row.auto_approved} approverEdited={row.approver_edited}
         label={row.material_code}
         entityLabel={`Material plan ${planMonth.slice(0, 7)}`}
         edits={editsFor(row.key)}
@@ -180,8 +184,13 @@ export function MaterialPlanClient({
     if (startInInput) modeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [startInInput]);
   const [type, setType] = useState<MaterialType>('raw');
-  const [addBase, setAddBase] = useState(''); // base-fabric filter in the add-material cascade
   const [addCode, setAddCode] = useState('');
+  const [newEntry, setNewEntry] = useState({ ...EMPTY_MATERIAL_ENTRY });
+  const setEntry = (field: keyof typeof EMPTY_MATERIAL_ENTRY, value: string) =>
+    setNewEntry((current) => ({ ...current, [field]: value }));
+  const entryCost = materialCosts[addCode];
+  const entryValue = num(newEntry.job_qty) * (entryCost?.job ?? 0) + num(newEntry.purchase_qty) * (entryCost?.fob ?? 0);
+  const entryMissingCost = (num(newEntry.job_qty) > 0 && !entryCost?.job) || (num(newEntry.purchase_qty) > 0 && !entryCost?.fob);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const codeMap = useMemo(
@@ -216,30 +225,24 @@ export function MaterialPlanClient({
       value: jobValue + purchaseValue,
       missingCost: totalQty > 0 && !useStored && rateMissing,
       // Effective colour for display: the per-line pick, else the code's master colour.
-      colour: r.colour || codeMap.get(r.material_code)?.colour || null,
+      colour: (planLocked || frozen ? r.colour || codeMap.get(r.material_code)?.colour : codeMap.get(r.material_code)?.colour ?? r.colour) || null,
     };
   });
+  const hasEntry = Boolean(addCode && !rows.some((row) => row.material_code === addCode));
   const totals = view.reduce(
     (a, v) => ({ job: a.job + v.jobValue, purchase: a.purchase + v.purchaseValue }),
-    { job: 0, purchase: 0 },
+    { job: hasEntry ? num(newEntry.job_qty) * (entryCost?.job ?? 0) : 0, purchase: hasEntry ? num(newEntry.purchase_qty) * (entryCost?.fob ?? 0) : 0 },
   );
   const grandTotal = totals.job + totals.purchase;
-  const plannedLines = rows.filter((r) => num(r.job_qty) + num(r.purchase_qty) > 0).length;
-  const missingCostLines = view.filter((v) => v.missingCost).length;
+  const plannedLines = rows.filter((r) => num(r.job_qty) + num(r.purchase_qty) > 0).length + (hasEntry && num(newEntry.job_qty) + num(newEntry.purchase_qty) > 0 ? 1 : 0);
+  const missingCostLines = view.filter((v) => v.missingCost).length + (hasEntry && entryMissingCost ? 1 : 0);
 
   // Codes for the active type not already added — for the "Add code" picker.
   const usedCodes = new Set(rows.map((r) => r.material_code));
   const available = materialCodes.filter(
     (c) => c.material_type === type && !usedCodes.has(c.material_code),
   );
-  // Add-material cascade: pick a base fabric first, then the code narrows to it.
-  const baseFabrics = useMemo(
-    () => [...new Set(available.map((c) => c.base_fabric_code).filter(Boolean))].sort() as string[],
-    [available],
-  );
-  const codeChoices = addBase
-    ? available.filter((c) => c.base_fabric_code === addBase)
-    : available;
+  const codeChoices = available;
   const shownRows = view.filter((v) => v.row.material_type === type);
 
   // Approver: tick several material lines and decide them together.
@@ -272,17 +275,17 @@ export function MaterialPlanClient({
       <>
         <label>
           Job Work
-          <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
+          <input type="number" min={0} value={row.job_qty} disabled={!editable || pending} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
           <small title="Approved Job rate per unit">{cost?.job ? `@ ₹${fmt.format(cost.job)} / ${unit}` : 'no rate'}</small>
         </label>
         <label>
           Purchase
-          <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
+          <input type="number" min={0} value={row.purchase_qty} disabled={!editable || pending} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
           <small title="Approved Purchase rate per unit">{cost?.fob ? `@ ₹${fmt.format(cost.fob)} / ${unit}` : 'no rate'}</small>
         </label>
         <label>
           UOM
-          <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
+          <select value={row.uom} disabled={!editable || pending} onChange={(e) => set(row.key, 'uom', e.target.value)}>
             {UOMS.map((u) => (
               <option key={u} value={u}>{u}</option>
             ))}
@@ -291,20 +294,13 @@ export function MaterialPlanClient({
         {row.material_type === 'dyed' && (
           <label className="wide">
             Colour
-            <select value={row.colour} disabled={!editable} onChange={(e) => set(row.key, 'colour', e.target.value)}>
-              <option value="">
-                {codeMap.get(row.material_code)?.colour ? `${codeMap.get(row.material_code)?.colour} (default)` : '— pick colour —'}
-              </option>
-              {colours.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            <input readOnly value={codeMap.get(row.material_code)?.colour ?? row.colour} placeholder="Not set on material code" />
           </label>
         )}
         <label className="wide">
           Remark
           <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} style={{ fontWeight: 400 }} />
+            <input value={row.remark} disabled={!editable || pending} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} style={{ fontWeight: 400 }} />
             {editable && (
               <button type="button" className="pl-card-remove" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
                 <Trash2 size={14} />
@@ -319,27 +315,32 @@ export function MaterialPlanClient({
   const set = (key: string, field: keyof Row, value: string) =>
     setRows((cur) => cur.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
 
+  function pendingMaterialRow(): Row | null {
+    if (!addCode) return null;
+    const meta = codeMap.get(addCode);
+    if (!meta || meta.material_type !== type) throw new Error('Select an available material code.');
+    return {
+      key: `new-${addCode}-${Date.now()}`,
+      material_code: addCode,
+      material_type: meta.material_type,
+      ...newEntry,
+      colour: meta.colour ?? '',
+      standard_value: '',
+      line_status: null,
+      approver_edited: false,
+    };
+  }
+
   function addRow(code: string) {
-    if (!code) return;
-    const meta = codeMap.get(code);
-    setRows((cur) => [
-      ...cur,
-      {
-        key: `new-${code}-${Date.now()}`,
-        material_code: code,
-        material_type: (meta?.material_type as MaterialType) ?? type,
-        colour: meta?.colour ?? '',
-        job_qty: '',
-        purchase_qty: '',
-        uom: 'metres',
-        remark: '',
-        standard_value: '',
-        line_status: null,
-        approver_edited: false,
-      },
-    ]);
-    setAddCode('');
-    setAddBase('');
+    if (!editable || pending || !codeChoices.some((choice) => choice.material_code === code)) return;
+    try {
+      setRows(materialDraftRows(rows, pendingMaterialRow()));
+      setAddCode('');
+      setNewEntry({ ...EMPTY_MATERIAL_ENTRY });
+      setError(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not add the material row.');
+    }
   }
 
   // Export = every line of the plan as entered (used by the closed-month header).
@@ -447,12 +448,24 @@ export function MaterialPlanClient({
   function save() {
     setError(null);
     setMessage(null);
-    const snapshot = rows
+    if (!editable || pending) return;
+    if (!addCode && (newEntry.job_qty || newEntry.purchase_qty || newEntry.remark || newEntry.colour)) {
+      setError('Select a material code for the row you entered before saving.');
+      return;
+    }
+    let rowsToSave: Row[];
+    try {
+      rowsToSave = materialDraftRows(rows, pendingMaterialRow());
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not prepare the material rows.');
+      return;
+    }
+    const snapshot = rowsToSave
       .filter((r) => r.material_code.trim())
       .map((r) => ({
         product_code: r.material_code.trim(),
         material_type: r.material_type,
-        colour: r.material_type === 'dyed' ? r.colour : '',
+        colour: r.material_type === 'dyed' ? codeMap.get(r.material_code)?.colour ?? r.colour : '',
         job_work_qty: r.job_qty,
         fob_qty: r.purchase_qty,
         uom: r.uom,
@@ -463,12 +476,18 @@ export function MaterialPlanClient({
     payload.set('plan_type', 'material');
     payload.set('lines', JSON.stringify(snapshot));
     start(async () => {
-      const result = await saveBuyingPlan(payload);
-      if (result.ok) {
-        setMessage(result.message ?? 'Saved.');
-        // First save of a month creates the plan — refresh so Submit becomes available.
-        if (!plan?.id) reloadWithToast(result.message ?? 'Saved.');
-      } else setError(toastError(result.error));
+      try {
+        const result = await saveBuyingPlan(payload);
+        if (result.ok) {
+          setRows(rowsToSave);
+          setAddCode('');
+          setNewEntry({ ...EMPTY_MATERIAL_ENTRY });
+          // Reload the IDs and approval state returned by the saved plan.
+          reloadWithToast(result.message ?? 'Saved.');
+        } else setError(toastError(result.error));
+      } catch (error) {
+        setError(toastError(error instanceof Error ? error.message : 'Could not save the plan. Please try again.'));
+      }
     });
   }
 
@@ -490,6 +509,7 @@ export function MaterialPlanClient({
 
   return (
     <>
+      <div className={`bp-material-workspace${mode === 'input' ? ' is-input' : ''}`}>
       {/* Same header as every Buying Plan tab (plan-header.tsx). */}
       <PlanHeader
         planMonth={planMonth}
@@ -497,7 +517,7 @@ export function MaterialPlanClient({
         months={planMonths}
         status={(() => {
           const w = planStatusWord(plan ? status : null, frozen);
-          return status === 'approved' ? { tone: w.tone, text: statusText(status, { edited: plan?.edited_before_approval, approverEdited: plan?.approver_edited }) } : w;
+          return status === 'approved' ? { tone: w.tone, text: statusText(status, { edited: plan?.edited_before_approval, autoApproved: plan?.auto_approved, approverEdited: plan?.approver_edited }) } : w;
         })()}
         facts={planFacts(
           planMonth,
@@ -508,11 +528,7 @@ export function MaterialPlanClient({
             <button type="button" className="wf-btn wf-btn-ghost" onClick={exportCsv} disabled={!view.length}>
               <Download size={15} /> Export
             </button>
-            {canSubmitPlan(role, status) && !frozen && (
-              <button type="button" className="wf-btn wf-btn-primary" onClick={submit} disabled={pending || !plan?.id} title={!plan?.id ? 'Save the plan first' : undefined}>
-                <Send size={15} /> Submit for approval
-              </button>
-            )}
+
           </>
         }
         modeControl={
@@ -527,63 +543,17 @@ export function MaterialPlanClient({
             </div>
           )
         }
-        inputBar={
-          editable && mode === 'input' ? (
-            <>
-              <span><b>Input</b> · changes stay a draft until you submit for approval.</span>
-              <span className="bph-inputbar-actions">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  hidden
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void onCsvFile(file);
-                    event.target.value = '';
-                  }}
-                />
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
-                  <Download size={14} /> Template
-                </button>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()}>
-                  <Upload size={14} /> Import CSV
-                </button>
-                {/* A code has to exist before it can be planned. Raw goes to Fabric Master,
-                    Dyed / Trim to Material Master — in a new tab so the draft grid isn't lost. */}
-                <a
-                  className="wf-btn wf-btn-ghost wf-btn-sm"
-                  href={type === 'raw' ? '/fabric-master' : `/material-master?type=${type}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={`Create a new ${TYPE_LABEL[type].toLowerCase()} code, then pick it from the list below`}
-                >
-                  <ExternalLink size={14} /> Add new {TYPE_LABEL[type].toLowerCase()}
-                </a>
-                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={save} disabled={pending}>
-                  <Save size={14} /> {pending ? 'Saving…' : 'Save draft'}
-                </button>
-              </span>
-            </>
-          ) : null
-        }
       />
       {afterHeader}
 
       {!isPlanWindowOpen(planMonth) && (
-        <Notice tone="warn">
-          The window for {monthLabel(planMonth)} opens seven days before the month starts. You can
+        <p className="bp-material-window-note">
+          Note: The window for {monthLabel(planMonth)} opens seven days before the month starts. You can
           still draft ahead.
-        </Notice>
+        </p>
       )}
 
-      <Notice tone="info">
-        Fabric / raw-material buying, on its own approval track. <strong>Job Work</strong> pays for a
-        service (e.g. dyeing); <strong>Purchase</strong> buys the material outright — two distinct
-        budgets. Rates come from the approved{' '}
-        <Link href="/standard-cost?track=material">Material Standard Cost</Link>; enter a quantity and the
-        value computes automatically.
-      </Notice>
+
 
       {!editable && !frozen && mode === 'input' && (
         <Notice tone="warn">
@@ -607,41 +577,49 @@ export function MaterialPlanClient({
           planLocked={planLocked}
           status={status}
           closedOn={frozen ? planMonth : null}
-          planMonth={planMonth}
-          decision={canDecideLines ? (v) => decisionCell(v.row as Row) : undefined}
-          bulk={bulkDecide}
+          onEdit={editable ? () => setMode('input') : undefined}
         />
       )}
 
       {mode === 'input' && (
-        <>
-          <div className="bp-metrics bp-input-metrics" aria-label="Material plan input summary">
-            <div className="bp-metric">
-              <div className="label">Lines in plan</div>
-              <div className="value">{fmt.format(plannedLines)}</div>
-              <div className="sub">{fmt.format(rows.length)} material lines on sheet</div>
+          <section className="bp-card bp-material-editor">
+            <div className="bp-cardhead">
+              <div>
+                <h2>
+                  Bulk Upload or Manually Enter Buying Plan
+                  <InfoDot text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."} />
+                </h2>
+                <span className="wf-subtle">Please fill the Buying Plan for raw material, finished/dyed fabric and trims.</span>
+              </div>
             </div>
-            <div className="bp-metric">
-              <div className="label">Job Work value</div>
-              <div className="value">{totals.job ? money.format(totals.job) : '—'}</div>
-              <div className="sub">services (e.g. dyeing)</div>
-            </div>
-            <div className="bp-metric">
-              <div className="label">Purchase value</div>
-              <div className="value">{totals.purchase ? money.format(totals.purchase) : '—'}</div>
-              <div className="sub">material bought outright</div>
-            </div>
-            <div className="bp-metric">
-              <div className="label">Review</div>
-              <div className="value">{fmt.format(missingCostLines)}</div>
-              <div className="sub">{missingCostLines ? `line${missingCostLines === 1 ? '' : 's'} with no approved material cost` : 'All planned lines have an approved cost'}</div>
-            </div>
-          </div>
+            {editable && (
+              <div className="bph-inputbar-actions bp-material-input-actions">
+                <strong className="bp-material-input-label">Import Buying Plan</strong>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void onCsvFile(file);
+                    event.target.value = '';
+                  }}
+                />
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={downloadTemplate}>
+                  <Download size={14} /> Download Plan Template
+                </button>
+                <button type="button" className="wf-btn wf-btn-ghost wf-btn-sm" onClick={() => fileRef.current?.click()} disabled={pending}>
+                  <Upload size={14} /> Import Plan CSV
+                </button>
 
-          <div className="bp-sticky">
-            <div className="bp-card bp-toolbar-card">
+              </div>
+            )}
+            <div className="bp-toolbar-card bp-material-input-toolbar">
               <div className="bp-toolbar bp-mat-toolbar">
-        <div className="segment wf-segment">
+                <span className="bp-material-input-or">Or</span>
+                <strong className="bp-material-input-label">Add Buying Plan Manually</strong>
+        <div className="segment wf-segment bp-material-type-tabs">
           {TYPES.map((t) => {
             const count = rows.filter((r) => r.material_type === t.key).length;
             return (
@@ -649,7 +627,8 @@ export function MaterialPlanClient({
                 key={t.key}
                 type="button"
                 className={type === t.key ? 'active' : ''}
-                onClick={() => setType(t.key)}
+                disabled={pending}
+                onClick={() => { setType(t.key); setAddCode(''); setNewEntry({ ...EMPTY_MATERIAL_ENTRY }); }}
               >
                 {t.label}
                 {count > 0 && <span className="wf-seg-count">{count}</span>}
@@ -657,55 +636,12 @@ export function MaterialPlanClient({
             );
           })}
         </div>
-        {editable && (
-          <div className="bp-mat-add">
-            {baseFabrics.length > 0 && (
-              <select
-                className="wf-add-select"
-                value={addBase}
-                onChange={(e) => setAddBase(e.target.value)}
-                disabled={!available.length}
-                aria-label="Base fabric"
-              >
-                <option value="">All base fabrics</option>
-                {baseFabrics.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            )}
-            <select className="wf-add-select" value={addCode} onChange={(e) => addRow(e.target.value)} disabled={!codeChoices.length}>
-              <option value="">
-                {codeChoices.length ? `Add ${TYPE_LABEL[type].toLowerCase()} code (${codeChoices.length})` : 'All codes added'}
-              </option>
-              {codeChoices.map((c) => (
-                <option key={c.material_code} value={c.material_code}>
-                  {c.material_code}
-                  {c.colour ? ` · ${c.colour}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-                <span className="bp-toolbar-count">{shownRows.length} {TYPE_LABEL[type].toLowerCase()} line{shownRows.length === 1 ? '' : 's'}</span>
-              </div>
-            </div>
-          </div>
 
-          <section className="bp-card">
-            <div className="bp-cardhead">
-              <div>
-                <h2>
-                  Fill the plan
-                  <InfoDot text={"WHAT: where this month's material quantities are typed in.\n\nHOW: per material code, quantity as Job Work or Purchase; value = quantity × the approved Material Standard Cost for that route.\n\nUSE: a material with no approved cost shows no value — get it approved on Standard Cost (Material track) first."} />
-                </h2>
-                <span className="wf-subtle">Enter Job Work and Purchase quantities per {TYPE_LABEL[type].toLowerCase()} code. Zero quantities stay out of the submitted plan.</span>
               </div>
-              <StatusBadge status={status} edited={plan?.edited_before_approval} approverEdited={plan?.approver_edited} />
             </div>
             <div className="bp-cardbody bp-cardbody-flush">
           <PlanLineViews
+            tableOnly
             items={shownRows.map((v) => {
               // Every input-table column on the card: rates and values per route, total, check.
               const base = toMaterialCard(v, { codeMap, status, total: grandTotal });
@@ -739,7 +675,20 @@ export function MaterialPlanClient({
             table={
               <div className="table-panel wf-grid-panel">
                 <div className="table-scroll">
-                  <table className="wide-table wf-grid">
+                  <table className="wide-table wf-grid bp-material-input-grid" style={{ width: '100%', minWidth: 990 + (type === 'dyed' ? 120 : 0) + (canDecideLines ? 160 : 0) + (editable ? 40 : 0) }}>
+                    <colgroup>
+                      <col style={{ width: 220 }} />
+                      {type === 'dyed' && <col style={{ width: 120 }} />}
+                      <col style={{ width: 100 }} />
+                      <col style={{ width: 80 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 80 }} />
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 150 }} />
+                      {canDecideLines && <col style={{ width: 160 }} />}
+                      {editable && <col style={{ width: 40 }} />}
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>
@@ -767,34 +716,19 @@ export function MaterialPlanClient({
                           <td className="mono">{row.material_code}</td>
                           {type === 'dyed' && (
                             <td className="input-col wf-cell-input">
-                              <select
-                                value={row.colour}
-                                disabled={!editable}
-                                onChange={(e) => set(row.key, 'colour', e.target.value)}
-                              >
-                                <option value="">
-                                  {codeMap.get(row.material_code)?.colour
-                                    ? `${codeMap.get(row.material_code)?.colour} (default)`
-                                    : '— pick colour —'}
-                                </option>
-                                {colours.map((c) => (
-                                  <option key={c} value={c}>
-                                    {c}
-                                  </option>
-                                ))}
-                              </select>
+                              <input aria-label={`Colour for ${row.material_code}`} readOnly value={(planLocked || frozen ? row.colour || codeMap.get(row.material_code)?.colour : codeMap.get(row.material_code)?.colour ?? row.colour) ?? ''} placeholder="Not set on material code" />
                             </td>
                           )}
                           <td className="num input-col wf-cell-input">
-                            <input type="number" min={0} value={row.job_qty} disabled={!editable} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
+                            <input type="number" min={0} value={row.job_qty} disabled={!editable || pending} onChange={(e) => set(row.key, 'job_qty', e.target.value)} />
                           </td>
                           <td className="num wf-cell-calc">{cost ? fmt.format(cost.job) : '—'}</td>
                           <td className="num input-col wf-cell-input">
-                            <input type="number" min={0} value={row.purchase_qty} disabled={!editable} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
+                            <input type="number" min={0} value={row.purchase_qty} disabled={!editable || pending} onChange={(e) => set(row.key, 'purchase_qty', e.target.value)} />
                           </td>
                           <td className="num wf-cell-calc">{cost ? fmt.format(cost.fob) : '—'}</td>
                           <td className="input-col wf-cell-input">
-                            <select value={row.uom} disabled={!editable} onChange={(e) => set(row.key, 'uom', e.target.value)}>
+                            <select value={row.uom} disabled={!editable || pending} onChange={(e) => set(row.key, 'uom', e.target.value)}>
                               {UOMS.map((u) => (
                                 <option key={u} value={u}>
                                   {u}
@@ -803,7 +737,7 @@ export function MaterialPlanClient({
                             </select>
                           </td>
                           <td className="input-col wf-cell-input">
-                            <input value={row.remark} disabled={!editable} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
+                            <input value={row.remark} disabled={!editable || pending} placeholder="optional" onChange={(e) => set(row.key, 'remark', e.target.value)} />
                           </td>
                           <td className="num strong wf-cell-calc">
                             {missingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(value)}
@@ -811,14 +745,73 @@ export function MaterialPlanClient({
                           {canDecideLines && <td>{num(row.job_qty) + num(row.purchase_qty) > 0 ? decisionCell(row) : <span className="wf-subtle">—</span>}</td>}
                           {editable && (
                             <td>
-                              <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
+                              <button type="button" className="wf-icon-btn" aria-label={`Remove ${row.material_code}`} disabled={pending} onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}>
                                 <Trash2 size={14} />
                               </button>
                             </td>
                           )}
                         </tr>
                       ))}
-                      {!shownRows.length && (
+                      {editable && (
+                        <tr>
+                          <td className="input-col wf-cell-input">
+          <div className="bp-mat-add">
+            <Combobox
+              key={type}
+              value={addCode}
+              onChange={(code) => { setAddCode(code); setEntry('colour', codeMap.get(code)?.colour ?? ''); }}
+              options={codeChoices.map((code) => ({
+                value: code.material_code,
+                label: code.material_code,
+                detail: [code.fabric_name, code.colour].filter(Boolean).join(' / '),
+              }))}
+              allowFreeText={false}
+              disabled={pending || !codeChoices.length}
+              ariaLabel="Search material code"
+              placeholder={codeChoices.length
+                ? 'Search code, name or colour'
+                : materialCodes.some((code) => code.material_type === type)
+                  ? 'All codes added'
+                  : `No ${TYPE_LABEL[type].toLowerCase()} codes available`}
+              emptyText="No matching material codes."
+              limit={codeChoices.length}
+            />
+
+          </div>
+                          </td>
+                          {type === 'dyed' && (
+                            <td className="input-col wf-cell-input">
+                              <input aria-label="New material colour" readOnly value={codeMap.get(addCode)?.colour ?? ''} placeholder={addCode ? 'Not set on material code' : 'Select a material code'} />
+                            </td>
+                          )}
+                          <td className="num input-col wf-cell-input">
+                            <input aria-label="New material Job Work quantity" type="number" min={0} value={newEntry.job_qty} disabled={pending} onChange={(e) => setEntry('job_qty', e.target.value)} />
+                          </td>
+                          <td className="num wf-cell-calc">{entryCost ? fmt.format(entryCost.job) : '—'}</td>
+                          <td className="num input-col wf-cell-input">
+                            <input aria-label="New material Purchase quantity" type="number" min={0} value={newEntry.purchase_qty} disabled={pending} onChange={(e) => setEntry('purchase_qty', e.target.value)} />
+                          </td>
+                          <td className="num wf-cell-calc">{entryCost ? fmt.format(entryCost.fob) : '—'}</td>
+                          <td className="input-col wf-cell-input">
+                            <select aria-label="New material UOM" value={newEntry.uom} disabled={pending} onChange={(e) => setEntry('uom', e.target.value)}>
+                              {UOMS.map((uom) => <option key={uom} value={uom}>{uom}</option>)}
+                            </select>
+                          </td>
+                          <td className="input-col wf-cell-input">
+                            <input aria-label="New material remark" value={newEntry.remark} disabled={pending} placeholder="optional" onChange={(e) => setEntry('remark', e.target.value)} />
+                          </td>
+                          <td className="num strong wf-cell-calc">
+                            {!addCode ? '—' : entryMissingCost ? <span className="wf-over-tag">no approved cost</span> : money.format(entryValue)}
+                          </td>
+                          {canDecideLines && <td>—</td>}
+                          <td>
+                            <button type="button" className="wf-icon-btn" aria-label="Clear new material row" disabled={pending} onClick={() => { setAddCode(''); setNewEntry({ ...EMPTY_MATERIAL_ENTRY }); }}>
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      {!shownRows.length && !editable && (
                         <tr>
                           <td colSpan={(type === 'dyed' ? 9 : 8) + (editable ? 1 : 0) + (canDecideLines ? 1 : 0)} className="wf-empty-cell">
                             No {TYPE_LABEL[type].toLowerCase()} lines yet
@@ -833,11 +826,41 @@ export function MaterialPlanClient({
             }
           />
             </div>
+            <div className="bp-material-add-row">
+                {editable && (
+            <button
+              type="button"
+              className="bp-material-add-link"
+              onClick={() => addRow(addCode)}
+              disabled={pending || !codeChoices.some((choice) => choice.material_code === addCode)}
+            >
+              <Plus size={14} /> Add material code row
+            </button>
+                )}
+            </div>
+          <div className="bp-metrics bp-input-metrics" aria-label="Material plan input summary">
+            <div className="bp-metric">
+              <div className="label">Lines in plan</div>
+              <div className="value">{fmt.format(plannedLines)}</div>
+              <div className="sub">{fmt.format(rows.length + (hasEntry ? 1 : 0))} material lines on sheet</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Job Work value</div>
+              <div className="value">{totals.job ? money.format(totals.job) : '—'}</div>
+              <div className="sub">services (e.g. dyeing)</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Purchase value</div>
+              <div className="value">{totals.purchase ? money.format(totals.purchase) : '—'}</div>
+              <div className="sub">material bought outright</div>
+            </div>
+            <div className="bp-metric">
+              <div className="label">Review</div>
+              <div className="value">{fmt.format(missingCostLines)}</div>
+              <div className="sub">{missingCostLines ? `line${missingCostLines === 1 ? '' : 's'} with no approved material cost` : 'All planned lines have an approved cost'}</div>
+            </div>
+          </div>
             <div className="bp-input-footer">
-              <div>
-                <strong>{grandTotal ? money.format(grandTotal) : 'value pending'}</strong>
-                <span>Job Work {money.format(totals.job)} · Purchase {money.format(totals.purchase)} · {plannedLines} planned line{plannedLines === 1 ? '' : 's'}</span>
-              </div>
               <div className="bp-actions">
               {editable && (
                 <button type="button" className="wf-btn wf-btn-ghost" onClick={save} disabled={pending}>
@@ -850,10 +873,16 @@ export function MaterialPlanClient({
                 </button>
               )}
               </div>
+              <div className="bp-material-footer-summary">
+                <strong>{grandTotal ? money.format(grandTotal) : 'value pending'}</strong>
+                <span>Job Work {money.format(totals.job)} · Purchase {money.format(totals.purchase)} · {plannedLines} planned line{plannedLines === 1 ? '' : 's'}</span>
+              </div>
             </div>
           </section>
-        </>
       )}
+      </div>
+
+
     </>
   );
 }

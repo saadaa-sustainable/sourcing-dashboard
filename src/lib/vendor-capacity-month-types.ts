@@ -1,3 +1,4 @@
+import type { ComplianceMonth } from './vendor-capacity-compliance';
 // Client-safe shapes for Vendor Capacity's monthly analysis (user, 2026-10-09: "Weekly input,
 // monthly analysis. Mandatory monthly report to management."). Built at read time by
 // loadVendorCapacityMonth (server) from the weekly entries; never stored.
@@ -44,6 +45,7 @@ export type VcmVendor = {
 };
 
 export type VendorCapacityMonth = {
+  compliance?: ComplianceMonth;
   month: string; // YYYY-MM-01
   label: string; // "October 2026"
   closed: boolean;

@@ -18,6 +18,17 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims();
+  const email = typeof data?.claims?.email === 'string' ? data.claims.email.toLowerCase() : '';
+  // External vendor sessions belong only in their portal. The internal dashboard has
+  // legacy read paths designed for company accounts; do not admit vendor sessions there.
+  const path = request.nextUrl.pathname;
+  if (email && !email.endsWith('@saadaa.in') && path !== '/commercial-requests' && !path.startsWith('/commercial-requests/')) {
+    const blocked = request.method === 'GET' || request.method === 'HEAD'
+      ? NextResponse.redirect(new URL('/commercial-requests', request.url))
+      : NextResponse.json({ error: 'Vendor sessions may access only Commercial Requests.' }, { status: 403 });
+    response.cookies.getAll().forEach((cookie) => blocked.cookies.set(cookie));
+    return blocked;
+  }
   return response;
 }
