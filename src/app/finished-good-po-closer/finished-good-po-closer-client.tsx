@@ -10,6 +10,7 @@ import {
   Eye,
   FileCheck2,
   Filter,
+  Info,
   RefreshCw,
   Search,
   Upload,
@@ -23,13 +24,16 @@ import { pageAll } from '@/lib/supabase/page-all';
 import {
   decideFgFounder,
   saveFgWorkflowSubmission,
+  sendFgPoToL2,
+  sendFgPoBackToL1,
 } from '@/lib/forms/actions-modules/fg-closer';
 
 type ClosureStatus =
   | 'Ready for closer'
+  | 'L-1'
   | 'Merchandise Review'
   | 'Accounts Review'
-  | 'Founder Review'
+  | 'L-2'
   | 'Closed';
 
 type Department = 'Merchandise' | 'Accounts';
@@ -203,9 +207,10 @@ const SUMMARY_SELECT_COLUMNS = '*';
 
 const STATUS_FILTERS: ClosureStatus[] = [
   'Ready for closer',
+  'L-1',
   'Merchandise Review',
   'Accounts Review',
-  'Founder Review',
+  'L-2',
   'Closed',
 ];
 
@@ -288,12 +293,35 @@ function isDepartmentSubmitted(po: FgPoRow | null, department: Department) {
   return value === true || String(value).trim().toLowerCase() === 'true';
 }
 
+function getFounderReviewMeta(value: ClosureRequest['founder_review']): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as unknown as Record<string, unknown>;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Legacy plain-text founder review.
+    }
+  }
+  return {};
+}
+
+function isSentBackToL1(value: ClosureRequest['founder_review']): boolean {
+  const meta = getFounderReviewMeta(value);
+  return Boolean(meta.send_back_reason || meta.sent_back_at || meta.sent_back_by);
+}
+
 function StatusBadge({ status }: { status: ClosureStatus }) {
   const config = {
     'Ready for closer': {
       icon: Clock3,
       className: 'fg-status fg-status-ready',
     },
+    'L-1': { icon: Clock3, className: 'fg-status fg-status-ready' },
     'Merchandise Review': {
       icon: FileCheck2,
       className: 'fg-status fg-status-merchandise',
@@ -302,7 +330,7 @@ function StatusBadge({ status }: { status: ClosureStatus }) {
       icon: FileCheck2,
       className: 'fg-status fg-status-accounts',
     },
-    'Founder Review': {
+    'L-2': {
       icon: UserCheck,
       className: 'fg-status fg-status-founder',
     },
@@ -386,8 +414,22 @@ function getDisplayColumns(row: Record<string, unknown>) {
   return Object.keys(row).filter((column) => !['skus', 'cp_ids', 'po_detail_ids', 'product_descriptions'].includes(column));
 }
 
-function getTableColumns(row: Record<string, unknown>) {
-  const columns = getDisplayColumns(row);
+function getTableColumnsForRows(rows: Record<string, unknown>[], filter: ClosureStatus) {
+  // Closed rows can come from two different sources: immutable fg_closed_po
+  // snapshots and legacy summary fallbacks. Their object keys/order are not
+  // identical, so never derive table columns from an individual row.
+  if (filter === 'Closed') {
+    return [
+      'po_ref_num', 'po_number', 'po_date', 'expected_delivery_date',
+      'vendor_name', 'vendor_code', 'po_qty', 'cutting_qty', 'grn_qty',
+      'pending_qty', 'po_to_cutting_variance', 'po_to_cutting_pct',
+      'cutting_to_grn_variance', 'cutting_to_grn_pct', 'last_grn_date',
+      'grn_count', 'avg_grn_tat_days', '__fg_action__',
+    ];
+  }
+
+  // For other tabs, use a stable union of keys across every row on the page.
+  const columns = Array.from(new Set(rows.flatMap((row) => getDisplayColumns(row))));
   const poRefIndex = columns.indexOf('po_ref_num');
   const withoutPoRef = poRefIndex === -1
     ? columns
@@ -395,11 +437,7 @@ function getTableColumns(row: Record<string, unknown>) {
   const completedIndex = withoutPoRef.indexOf('completed_at_timestamp');
 
   if (completedIndex === -1) {
-    return [
-      ...(poRefIndex === -1 ? [] : ['po_ref_num']),
-      ...withoutPoRef,
-      '__fg_action__',
-    ];
+    return [...(poRefIndex === -1 ? [] : ['po_ref_num']), ...withoutPoRef, '__fg_action__'];
   }
 
   return [
@@ -455,7 +493,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [penaltyRgOutItems, setPenaltyRgOutItems] = useState<PenaltyRgOutItem[]>([]);
   const [grnLoading, setGrnLoading] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
-  // Founder Review must render even when no department is selected in state.
+  // L-2 must render even when no department is selected in state.
   const founderReviewDepartment: Department = selectedDepartment ?? 'Accounts';
   const [reviewMode, setReviewMode] = useState<'chooser' | 'review' | 'founder' | null>(null);
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
@@ -463,6 +501,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [founderMerchandiseRemarks, setFounderMerchandiseRemarks] = useState<Record<string, string>>({});
   const [founderReviewRemarks, setFounderReviewRemarks] = useState<Record<string, string>>({});
   const [founderMerchandiseText, setFounderMerchandiseText] = useState('');
+  const [level2ReviewRemarks, setLevel2ReviewRemarks] = useState<Record<string, string>>({});
   const [selectedFounderMerchandiseDocument, setSelectedFounderMerchandiseDocument] = useState<File | null>(null);
   const [latestSubmissionByPoRef, setLatestSubmissionByPoRef] = useState<{
     Merchandise: Record<string, Record<string, unknown>>;
@@ -470,6 +509,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   }>({ Merchandise: {}, Accounts: {} });
   const [workflowByPoRef, setWorkflowByPoRef] = useState<Record<string, ClosureRequest>>({});
   const [workflowCounts, setWorkflowCounts] = useState({
+    l1: 0,
+    l1SentBack: 0,
     merchandise: 0,
     accounts: 0,
     founder: 0,
@@ -540,6 +581,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const [dnVoucherNumbers, setDnVoucherNumbers] = useState<Record<string, string>>({});
   const [dnVoucherFiles, setDnVoucherFiles] = useState<Record<string, File | null>>({});
   const [savedDnVoucherDocs, setSavedDnVoucherDocs] = useState<Record<string, { voucherNo: string; path: string | null; fileName: string | null }>>({});
+  const [founderFieldEditAudit, setFounderFieldEditAudit] = useState<Record<string, { email: string; editedAt: string }>>({});
   const [skuCellSelection, setSkuCellSelection] = useState<Set<string>>(new Set());
   const [skuSelectionAnchor, setSkuSelectionAnchor] = useState<{ row: number; col: number } | null>(null);
   const [skuSelecting, setSkuSelecting] = useState(false);
@@ -750,9 +792,15 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         });
 
         let closedCount = 0;
+        let l1Count = 0;
+        let l1SentBackCount = 0;
 
         Object.values(map).forEach((row) => {
           if (row.status === 'Closed') closedCount += 1;
+          if (row.status === 'L-1' && row.merchandise_submitted === true && row.accounts_submitted === true) {
+            l1Count += 1;
+            if (isSentBackToL1(row.founder_review)) l1SentBackCount += 1;
+          }
         });
 
         setWorkflowByPoRef(map);
@@ -760,6 +808,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         // v_fg_po_summary. Closed POs remain in Closed and are excluded.
         setWorkflowCounts((current) => ({
           ...current,
+          l1: l1Count,
+          l1SentBack: l1SentBackCount,
           closed: closedCount,
         }));
       } catch (workflowLoadError) {
@@ -858,7 +908,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
               po_number: (record.po_number ?? snapshot.po_number ?? null) as number | null,
               po_status: 'Closed',
               // Keep the full submitted snapshots attached to the row so the
-              // Closed > View modal can render the same review cards as Founder Review.
+              // Closed > View modal can render the same review cards as L-2.
               merchandise_sku_snapshot: record.merchandise_sku_snapshot ?? null,
               merchandise_operational_snapshot: record.merchandise_operational_snapshot ?? null,
               merchandise_data: record.merchandise_data ?? null,
@@ -907,7 +957,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         const readyExcludedRefs = (Object.values(workflowByPoRef) as ClosureRequest[])
           .filter((row) =>
             (row.merchandise_submitted === true && row.accounts_submitted === true) ||
-            row.status === 'Founder Review' ||
+            row.status === 'L-2' ||
             row.status === 'Closed'
           )
           .map((row) => String(row.po_ref_num ?? '').trim())
@@ -951,21 +1001,57 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         }
 
         if (activeFilter === 'Ready for closer') {
-          query = query.eq('is_eligible', true);
+          // Keep normal eligible POs, plus POs already initiated by either
+          // department. The summary view can mark is_eligible=false after
+          // the first submission, but the PO must remain Ready until BOTH
+          // departments have submitted.
+          const activeDepartmentRefs = (Object.values(workflowByPoRef) as ClosureRequest[])
+            .filter((row) =>
+              row.status !== 'L-2' &&
+              row.status !== 'Closed' &&
+              !(row.merchandise_submitted === true && row.accounts_submitted === true)
+            )
+            .map((row) => String(row.po_ref_num ?? '').trim())
+            .filter(Boolean);
+          const escapedActiveRefs = activeDepartmentRefs.map((ref) => `"${ref.replace(/"/g, '\\"')}"`);
+          query = activeDepartmentRefs.length > 0
+            ? query.or(`is_eligible.eq.true,po_ref_num.in.(${escapedActiveRefs.join(',')})`)
+            : query.eq('is_eligible', true);
+
           if (readyExcludedRefs.length > 0) {
-            const escapedRefs = readyExcludedRefs.map((ref) => `\"${ref.replace(/\"/g, '\\"')}\"`);
+            const escapedRefs = readyExcludedRefs.map((ref) => `"${ref.replace(/"/g, '\\"')}"`);
             query = query.not('po_ref_num', 'in', `(${escapedRefs.join(',')})`);
           }
-          // Do not filter out a PO after only one department submits.
-          // readyExcludedRefs removes it only when BOTH flags are true.
+          // A single department submission never removes the PO from Ready.
+        } else if (activeFilter === 'L-1') {
+          const draftRefs = (Object.values(workflowByPoRef) as ClosureRequest[])
+            .filter((row) => row.status === 'L-1')
+            .map((row) => String(row.po_ref_num ?? '').trim()).filter(Boolean);
+          if (draftRefs.length === 0) {
+            if (!cancelled) { setPos([]); setTotal(0); setHasNextPage(false); setLoading(false); }
+            return;
+          }
+          query = query
+            .in('po_ref_num', draftRefs)
+            .eq('Merchandise Submission', true)
+            .eq('Accounts Submission', true);
         } else if (activeFilter === 'Merchandise Review') {
           query = query.eq('Merchandise Submission', true);
         } else if (activeFilter === 'Accounts Review') {
           query = query.eq('Accounts Submission', true);
-        } else if (activeFilter === 'Founder Review') {
-          // Automatic Founder Review eligibility: BOTH departments submitted.
-          // Closed POs stay in Closed.
+        } else if (activeFilter === 'L-2') {
+          // L-2 is an explicit transition: both departments must have submitted
+          // AND the user must have selected Send to L-2 from the L-1 review.
+          const l2Refs = (Object.values(workflowByPoRef) as ClosureRequest[])
+            .filter((row) => row.status === 'L-2')
+            .map((row) => String(row.po_ref_num ?? '').trim())
+            .filter(Boolean);
+          if (l2Refs.length === 0) {
+            if (!cancelled) { setPos([]); setTotal(0); setHasNextPage(false); setLoading(false); }
+            return;
+          }
           query = query
+            .in('po_ref_num', l2Refs)
             .eq('Merchandise Submission', true)
             .eq('Accounts Submission', true);
 
@@ -1047,12 +1133,27 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
     async function loadReadyCount() {
       try {
-        const { data: readyRows, error: countError } = await pageAll(() => supabase
+        const activeDepartmentRefs = (Object.values(workflowByPoRef) as ClosureRequest[])
+          .filter((row) =>
+            row.status !== 'L-2' &&
+            row.status !== 'Closed' &&
+            !(row.merchandise_submitted === true && row.accounts_submitted === true)
+          )
+          .map((row) => String(row.po_ref_num ?? '').trim())
+          .filter(Boolean);
+        const escapedActiveRefs = activeDepartmentRefs.map((ref) => `"${ref.replace(/"/g, '\\"')}"`);
+
+        const { data: readyRows, error: countError } = await pageAll(() => {
+          let readyCountQuery = supabase
           .schema('FG Closer')
           .from('v_fg_po_summary')
-          .select('po_ref_num, \"Merchandise Submission\", \"Accounts Submission\"')
-          .eq('is_eligible', true)
-          .order('po_ref_num').order('po_id'));
+          .select('po_ref_num, "Merchandise Submission", "Accounts Submission"');
+        readyCountQuery = activeDepartmentRefs.length > 0
+          ? readyCountQuery.or(`is_eligible.eq.true,po_ref_num.in.(${escapedActiveRefs.join(',')})`)
+          : readyCountQuery.eq('is_eligible', true);
+
+          return readyCountQuery.order('po_ref_num').order('po_id');
+        });
 
         if (cancelled) return;
 
@@ -1069,7 +1170,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           (Object.values(workflowByPoRef) as ClosureRequest[])
             .filter((row) =>
               (row.merchandise_submitted === true && row.accounts_submitted === true) ||
-              row.status === 'Founder Review' ||
+              row.status === 'L-2' ||
               row.status === 'Closed'
             )
             .map((row) => String(row.po_ref_num ?? '').trim())
@@ -1127,7 +1228,9 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             record['Accounts Submission'] === true ||
             String(record['Accounts Submission']).trim().toLowerCase() === 'true';
 
-          return merchandiseSubmitted && accountsSubmitted && !closedRefsForFounderCount.has(poRef);
+          return merchandiseSubmitted && accountsSubmitted &&
+            workflowByPoRef[poRef]?.status === 'L-2' &&
+            !closedRefsForFounderCount.has(poRef);
         }).length;
 
         setWorkflowCounts((current) => ({
@@ -1174,19 +1277,21 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         : workflow?.status ?? (isCompletedPO(po) ? 'Ready for closer' : null);
 
       const matchesStatus =
-        activeFilter === 'Merchandise Review'
+        activeFilter === 'L-1'
+          ? status === 'L-1'
+          : activeFilter === 'Merchandise Review'
           ? isDepartmentSubmitted(po, 'Merchandise')
           : activeFilter === 'Accounts Review'
             ? isDepartmentSubmitted(po, 'Accounts')
             : activeFilter === 'Ready for closer'
-              ? status !== 'Founder Review' &&
+              ? status !== 'L-2' &&
                 status !== 'Closed' &&
                 !(isDepartmentSubmitted(po, 'Merchandise') &&
                   isDepartmentSubmitted(po, 'Accounts'))
-              : activeFilter === 'Founder Review'
-                ? isDepartmentSubmitted(po, 'Merchandise') &&
-                  isDepartmentSubmitted(po, 'Accounts') &&
-                  status !== 'Closed'
+              : activeFilter === 'L-2'
+                ? status === 'L-2' &&
+                  isDepartmentSubmitted(po, 'Merchandise') &&
+                  isDepartmentSubmitted(po, 'Accounts')
                 : status === activeFilter;
 
       return matchesSearch && matchesVendor && matchesPoType && matchesStatus;
@@ -1198,6 +1303,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   const endRow = total ? Math.min(page * PAGE_SIZE, total) : (page - 1) * PAGE_SIZE + pos.length;
 
   const ready = readyCount ?? 0;
+  const l1 = workflowCounts.l1;
   const merchandise = workflowCounts.merchandise;
   const accounts = workflowCounts.accounts;
   const founder = workflowCounts.founder;
@@ -1276,14 +1382,33 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
   }
 
   function getPOWorkflowStatus(po: FgPoRow): ClosureStatus | null {
+    // The Closed tab is sourced from the approved snapshot table. Its status
+    // must win over any stale workflow-map value left from an earlier L-1/L-2 read.
+    if (activeFilter === 'Closed') return 'Closed';
     const workflow = workflowByPoRef[String(po.po_ref_num ?? '').trim()];
     if (workflow?.status) return workflow.status;
     if (String(po.po_status ?? '').toLowerCase() === 'closed') return 'Closed';
-    if (activeFilter === 'Closed') return 'Closed';
     return isCompletedPO(po) ? 'Ready for closer' : null;
   }
 
-  // Read a submitted Merchandise penalty remark for display in Founder Review.
+  function getApprovalLevel(po: FgPoRow): 'L-1' | 'L-2' {
+    const ref = String(po.po_ref_num ?? '').trim();
+    const workflowStatus = workflowByPoRef[ref]?.status;
+    if (workflowStatus === 'L-2') return 'L-2';
+    const snapshotValue = po.po_snapshot;
+    let snapshot: Record<string, unknown> = {};
+    if (snapshotValue && typeof snapshotValue === 'object' && !Array.isArray(snapshotValue)) {
+      snapshot = snapshotValue as Record<string, unknown>;
+    } else if (typeof snapshotValue === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(snapshotValue);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) snapshot = parsed as Record<string, unknown>;
+      } catch { /* legacy snapshot */ }
+    }
+    return snapshot.approval_level === 'L-2' ? 'L-2' : 'L-1';
+  }
+
+  // Read a submitted Merchandise penalty remark for display in L-2.
   // This reads the saved submission/workflow snapshots and never edits them.
   function getFounderMerchandiseRemark(poRef: string, penaltyKey: string): string {
     const submission = latestSubmissionByPoRef.Merchandise[poRef];
@@ -1376,15 +1501,64 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     const documentName = department === 'Merchandise'
       ? closed?.merchandise_document_name ?? workflow?.merchandise_document_name ?? submission?.document_name ?? submission?.supporting_document_name ?? snapshot.document_name ?? snapshot.supporting_document_name
       : closed?.accounts_document_name ?? workflow?.accounts_document_name ?? submission?.document_name ?? submission?.supporting_document_name ?? snapshot.document_name ?? snapshot.supporting_document_name;
-    const additionalRemarks = remarks.additional_remarks ?? remarks.additionalRemarks ?? snapshot.review_text ?? snapshot.reviewText ?? snapshot.additional_remarks ?? snapshot.additionalRemarks ?? workflowRemarks.additional_remarks ?? workflowRemarks.additionalRemarks ?? submission?.additional_remarks ?? submission?.review_text ?? submission?.remarks;
+    // The Accounts review JSON also stores supporting documents, penalty changes
+    // and DN vouchers. Never display that whole JSON payload as free-text remarks.
+    const additionalRemarkCandidates = [
+      remarks.additional_remarks,
+      remarks.additionalRemarks,
+      snapshot.review_text,
+      snapshot.reviewText,
+      snapshot.additional_remarks,
+      snapshot.additionalRemarks,
+      workflowRemarks.additional_remarks,
+      workflowRemarks.additionalRemarks,
+      submission?.additional_remarks,
+      submission?.review_text,
+      submission?.remarks,
+    ];
+    const extractAdditionalRemarks = (value: unknown): string => {
+      if (value == null) return '';
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return '';
+        // Some legacy rows stored the complete review JSON as a string.
+        try {
+          const parsed: unknown = JSON.parse(trimmed);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const record = parsed as Record<string, unknown>;
+            const nested = record.additional_remarks ?? record.additionalRemarks ?? record.review_text ?? record.reviewText;
+            return typeof nested === 'string' ? nested.trim() : '';
+          }
+        } catch { /* Plain-text legacy remarks are valid. */ }
+        return trimmed;
+      }
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        const record = value as Record<string, unknown>;
+        const nested = record.additional_remarks ?? record.additionalRemarks ?? record.review_text ?? record.reviewText;
+        return typeof nested === 'string' ? nested.trim() : '';
+      }
+      return '';
+    };
+    const additionalRemarks = additionalRemarkCandidates.map(extractAdditionalRemarks).find(Boolean) ?? '';
     return {
       remarks,
       snapshot,
       workflowRemarks,
-      additionalRemarks: typeof additionalRemarks === 'string' ? additionalRemarks : additionalRemarks == null ? '' : formatReviewValue(additionalRemarks),
+      additionalRemarks,
       documentPath: typeof documentPath === 'string' && documentPath.trim() ? documentPath.trim() : null,
       documentName: typeof documentName === 'string' && documentName.trim() ? documentName.trim() : (department === 'Accounts' ? 'Accounts Supporting Document' : 'Merchandise Supporting Document'),
     };
+  }
+
+  function renderFieldEditInfo(fieldKey: string) {
+    const audit = founderFieldEditAudit[fieldKey];
+    return (
+      <span title={audit ? `Last edited by: ${audit.email}\n${new Date(audit.editedAt).toLocaleString()}` : 'No edit history available'}
+        aria-label={audit ? `Last edited by ${audit.email}` : 'No edit history available'}
+        style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 5, color: '#64748b', cursor: 'help', verticalAlign: 'middle' }}>
+        <Info size={13} />
+      </span>
+    );
   }
 
   function getFounderReviewRemarks(poRef: string, rowOverride?: FgPoRow): Record<string, string> {
@@ -1441,25 +1615,33 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     const poRef = String(po.po_ref_num ?? '').trim();
     const existing = poRef ? workflowByPoRef[poRef] : undefined;
 
-    // The Ready for closer action always opens the department chooser while
-    // at least one department is still pending. Its options are hidden using
-    // the two submission flags on this PO row.
+    // Once BOTH departments have submitted, do not show the department chooser
+    // again. Open the complete Founder Final Approval detail view directly so
+    // the saved Merchandise + Accounts values, remarks and documents remain
+    // available for review. Keep the same behaviour for existing L-2/Closed
+    // workflow records.
+    const bothDepartmentsSubmitted =
+      (existing?.merchandise_submitted === true || isDepartmentSubmitted(po, 'Merchandise')) &&
+      (existing?.accounts_submitted === true || isDepartmentSubmitted(po, 'Accounts'));
+
     if (
-      existing &&
-      (existing.status === 'Founder Review' || existing.status === 'Closed')
+      bothDepartmentsSubmitted ||
+      existing?.status === 'L-2' ||
+      existing?.status === 'Closed'
     ) {
       setSelectedPO(po);
       setFounderEditing(false);
       setFounderMerchandiseRemarks({});
       setFounderReviewRemarks(getFounderReviewRemarks(poRef));
       setFounderMerchandiseText(getSubmittedReviewDetails('Merchandise', poRef).additionalRemarks);
+      setLevel2ReviewRemarks({});
       setSelectedFounderMerchandiseDocument(null);
       setSelectedDocument(null);
-      // Reuse the exact read-only Accounts Review loader so Founder Review
+      // Reuse the exact read-only Accounts Review loader so L-2
       // receives the same SKU, GRN, penalty, remarks, and document data.
       openDepartmentReview(po, 'Accounts');
       setReviewMode('founder');
-      setFounderComment(formatReviewValue(existing.founder_review));
+      setFounderComment(formatReviewValue(existing?.founder_review));
       setFounderReviewRemarks(getFounderReviewRemarks(poRef));
       setWorkflowMessage('');
       setWorkflowError('');
@@ -1482,6 +1664,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setFounderMerchandiseRemarks({});
     setFounderReviewRemarks({});
     setFounderMerchandiseText('');
+    setLevel2ReviewRemarks({});
     setSelectedFounderMerchandiseDocument(null);
     setReviewText('');
     setReviewRemarks({});
@@ -1510,6 +1693,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
     setFounderEditing(false);
     setFounderMerchandiseRemarks({});
     setFounderMerchandiseText('');
+    setLevel2ReviewRemarks({});
     setSelectedFounderMerchandiseDocument(null);
     setReviewText('');
     setReviewRemarks({});
@@ -2650,18 +2834,30 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         ...(selectedDepartment === 'Merchandise' ? { merchandise_supporting_documents: merchandiseSupportingDocsSaved } : {}),
       };
 
-      // Routing rules for the two departments:
-      // 1. Fresh PO + Merchandise selected -> Merchandise Review.
-      // 2. Fresh PO + Accounts selected -> Accounts Review.
-      // 3. Merchandise Review opened with View and submitted -> Accounts Review.
-      // 4. Accounts Review remains in Accounts Review for now; Founder routing
-      //    is intentionally left untouched for the next phase.
+      // Closure routing:
+      // 1. Each department submission is saved with its own submitted flag.
+      // 2. Until BOTH Merchandise and Accounts have submitted, keep the PO in
+      //    the corresponding department-review stage.
+      // 3. Only after BOTH flags are true, move the PO into L-1.
+      // 4. Save & Send from L-1 advances the PO to L-2 (Founder Review).
+      const merchandiseSubmittedAfterSave =
+        selectedDepartment === 'Merchandise' ||
+        isDepartmentSubmitted(selectedPO, 'Merchandise');
+      const accountsSubmittedAfterSave =
+        selectedDepartment === 'Accounts' ||
+        isDepartmentSubmitted(selectedPO, 'Accounts');
+
+      const bothDepartmentsSubmitted =
+        merchandiseSubmittedAfterSave && accountsSubmittedAfterSave;
+
       const nextStatus: ClosureStatus =
-        selectedDepartment === 'Merchandise'
-          ? existing?.status === 'Merchandise Review'
-            ? 'Accounts Review'
-            : 'Merchandise Review'
-          : 'Accounts Review';
+        activeFilter === 'L-1'
+          ? 'L-2'
+          : bothDepartmentsSubmitted
+            ? 'L-1'
+            : selectedDepartment === 'Merchandise'
+              ? 'Merchandise Review'
+              : 'Accounts Review';
 
       const payload: Record<string, unknown> = {
         po_id: selectedPO.po_id,
@@ -2776,6 +2972,46 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           ? saveError.message
           : 'Failed to save the review.'
       );
+    } finally {
+      setSavingReview(false);
+    }
+  }
+
+  async function handleSaveDraft() {
+    if (!selectedPO?.po_ref_num) return;
+    setSavingReview(true);
+    setWorkflowError('');
+    setWorkflowMessage('');
+    try {
+      const savedAt = new Date().toISOString();
+      const existing = workflowByPoRef[String(selectedPO.po_ref_num).trim()];
+      const payload = {
+        po_id: selectedPO.po_id,
+        po_ref_num: selectedPO.po_ref_num,
+        po_number: selectedPO.po_number,
+        status: 'L-1',
+        initiated_by: existing?.initiated_by ?? userEmail,
+        initiated_at: existing?.initiated_at ?? savedAt,
+        updated_at: savedAt,
+      };
+      // Save only the workflow request. Do not create a department submission
+      // until Save & Send is clicked.
+      const { data: currentRequest, error: lookupError } = await supabase
+        .schema('FG Closer').from('fg_po_closure_requests')
+        .select('id').eq('po_ref_num', selectedPO.po_ref_num).maybeSingle();
+      if (lookupError) throw lookupError;
+      const write = currentRequest?.id
+        ? await supabase.schema('FG Closer').from('fg_po_closure_requests').update(payload).eq('id', currentRequest.id)
+        : await supabase.schema('FG Closer').from('fg_po_closure_requests').insert(payload);
+      if (write.error) throw write.error;
+      setWorkflowMessage('L-1 saved successfully.');
+      setReloadKey((value) => value + 1);
+      setActiveFilter('L-1');
+      setPage(1);
+      setTimeout(() => closeInitiateModal(), 500);
+    } catch (draftError) {
+      console.error('Failed to save FG PO L-1:', draftError);
+      setWorkflowError(draftError instanceof Error ? draftError.message : 'Failed to save L-1.');
     } finally {
       setSavingReview(false);
     }
@@ -2905,7 +3141,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       const merchandiseSubmission = latestSubmissionByPoRef.Merchandise[poRef];
       const requestId = Number(existing?.id || accountsSubmission?.request_id || merchandiseSubmission?.request_id || 0);
       if (!requestId || !accountsSubmission || !merchandiseSubmission) {
-        throw new Error('Both Accounts and Merchandise submissions are required to edit the Founder Review.');
+        throw new Error('Both Accounts and Merchandise submissions are required to edit the L-2.');
       }
 
       const uploadReplacement = async (file: File | null, department: Department) => {
@@ -2958,6 +3194,65 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       };
       const previousAccountsData = parseObject(accountsSubmission.accounts_data);
       const previousMerchandiseData = parseObject(merchandiseSubmission.merchandise_data);
+      const previousPenaltyChanges = (previousAccountsData.penalty_changes && typeof previousAccountsData.penalty_changes === 'object' ? previousAccountsData.penalty_changes : {}) as Record<string, unknown>;
+      const previousDnVouchers = (previousAccountsData.dn_vouchers && typeof previousAccountsData.dn_vouchers === 'object' ? previousAccountsData.dn_vouchers : {}) as Record<string, Record<string, unknown>>;
+      const previousFieldAudit = (previousAccountsData.field_edit_audit && typeof previousAccountsData.field_edit_audit === 'object' ? previousAccountsData.field_edit_audit : {}) as Record<string, { email: string; editedAt: string }>;
+      const nextPenaltyChanges: Record<string, string> = { ...Object.fromEntries(Object.entries(previousPenaltyChanges).map(([key, value]) => [key, String(value ?? '')])) };
+      const nextDnVouchers: Record<string, Record<string, unknown>> = { ...previousDnVouchers };
+      const nextFieldAudit: Record<string, { email: string; editedAt: string }> = { ...previousFieldAudit };
+      const auditTime = new Date().toISOString();
+      const auditIfChanged = (key: string, before: unknown, after: unknown) => {
+        if (String(before ?? '') !== String(after ?? '')) nextFieldAudit[key] = { email, editedAt: auditTime };
+      };
+      for (const penalty of poPenaltyRows) {
+        const key = penalty.key;
+        const revised = penaltyChanges[key] ?? '';
+        auditIfChanged(`penalty_revised:${key}`, previousPenaltyChanges[key], revised);
+        nextPenaltyChanges[key] = revised;
+        const oldVoucher = previousDnVouchers[key] ?? {};
+        const voucherNo = dnVoucherNumbers[key] ?? '';
+        const oldVoucherNo = oldVoucher.voucherNo ?? oldVoucher.voucher_no ?? '';
+        let voucherPath = typeof oldVoucher.path === 'string' ? oldVoucher.path : null;
+        let voucherName = typeof oldVoucher.fileName === 'string' ? oldVoucher.fileName : null;
+        const voucherFile = dnVoucherFiles[key] ?? null;
+        if (voucherFile) {
+          const safeName = voucherFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path = `${selectedPO.po_id ?? poRef}/accounts/dn-vouchers/${crypto.randomUUID()}-${safeName}`;
+          const { error: uploadError } = await supabase.storage.from('fg-closure-documents').upload(path, voucherFile, { cacheControl: '3600', upsert: false, contentType: voucherFile.type || undefined });
+          if (uploadError) throw new Error(`Failed to upload DN voucher for ${key}: ${uploadError.message}`);
+          voucherPath = path;
+          voucherName = voucherFile.name;
+          auditIfChanged(`dn_voucher_document:${key}`, oldVoucher.path, path);
+        }
+        auditIfChanged(`dn_voucher_number:${key}`, oldVoucherNo, voucherNo);
+        nextDnVouchers[key] = { ...oldVoucher, voucherNo, path: voucherPath, fileName: voucherName };
+      }
+      const priorAccountsRemarks = getSubmittedReviewDetails('Accounts', poRef).remarks;
+      const priorMerchandiseRemarks = getSubmittedReviewDetails('Merchandise', poRef).remarks;
+      for (const penalty of poPenaltyRows) {
+        const accountKey = `penalty:Accounts:PO_TOTAL:${penalty.key}`;
+        const merchandiseKey = `penalty:Merchandise:PO_TOTAL:${penalty.key}`;
+        auditIfChanged(`accounts_review:${accountKey}`, priorAccountsRemarks[accountKey] ?? '', reviewRemarks[accountKey] ?? '');
+        auditIfChanged(`merchandise_review:${merchandiseKey}`, priorMerchandiseRemarks[merchandiseKey] ?? '', founderMerchandiseRemarks[merchandiseKey] ?? '');
+      }
+      const oldAccountsDocs = Array.isArray(previousAccountsData.accounts_supporting_documents) ? previousAccountsData.accounts_supporting_documents as Array<Record<string, unknown>> : [];
+      const oldMerchandiseDocs = Array.isArray(previousMerchandiseData.merchandise_supporting_documents) ? previousMerchandiseData.merchandise_supporting_documents as Array<Record<string, unknown>> : [];
+      const auditDocumentRows = (department: Department, beforeRows: Array<Record<string, unknown>>, afterRows: Array<{ title: string; reason: string; path: string | null; fileName: string | null }>) => {
+        const prefix = department.toLowerCase();
+        const max = Math.max(beforeRows.length, afterRows.length);
+        for (let index = 0; index < max; index += 1) {
+          const before = beforeRows[index] ?? {};
+          const after = afterRows[index] ?? {};
+          auditIfChanged(`${prefix}_document_title:${index}`, before.title, after.title);
+          auditIfChanged(`${prefix}_document_reason:${index}`, before.reason, after.reason);
+          auditIfChanged(`${prefix}_document_file:${index}`, before.path, after.path);
+        }
+      };
+      auditDocumentRows('Accounts', oldAccountsDocs, accountsSupportingDocsSaved);
+      auditDocumentRows('Merchandise', oldMerchandiseDocs, merchandiseSupportingDocsSaved);
+      auditIfChanged('accounts_additional_remarks', getSubmittedReviewDetails('Accounts', poRef).additionalRemarks, reviewText);
+      auditIfChanged('merchandise_additional_remarks', getSubmittedReviewDetails('Merchandise', poRef).additionalRemarks, founderMerchandiseText);
+      setFounderFieldEditAudit(nextFieldAudit);
       const { id: _oldAccountsSubmissionId, ...accountsSubmissionBase } = accountsSubmission;
       const { id: _oldMerchandiseSubmissionId, ...merchandiseSubmissionBase } = merchandiseSubmission;
       const accountsFirstDoc = accountsSupportingDocsSaved.find((doc) => doc.path);
@@ -2986,7 +3281,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       });
       const requestPayload: Record<string, unknown> = {
         po_id: selectedPO.po_id, po_ref_num: selectedPO.po_ref_num, po_number: selectedPO.po_number,
-        status: 'Founder Review', updated_at: submittedAt, founder_review: founderReviewJson,
+        // Saving edits must never advance the workflow. Only Send to L-2 does that.
+        status: existing?.status ?? 'L-1', updated_at: submittedAt, founder_review: founderReviewJson,
         accounts_review: accountsReviewJson, merchandise_review: merchandiseReviewJson,
         accounts_document_path: accountsPath, accounts_document_name: accountsName,
         merchandise_document_path: merchandisePath, merchandise_document_name: merchandiseName,
@@ -3001,7 +3297,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           review_remarks: accountsReviewJson, po_snapshot: selectedPO,
           grn_snapshot: grnRows,
           commercial_snapshot: { ...parseObject(accountsSubmission.commercial_snapshot), sku_rows: skuRows, fabric_rows: fabricRows },
-          accounts_data: { ...previousAccountsData, ...commonSnapshot, accounts_supporting_documents: accountsSupportingDocsSaved, review_remarks: { ...parseObject(accountsSubmission.review_remarks), ...accountsReviewJson, accounts_supporting_documents: accountsSupportingDocsSaved }, review_text: reviewText.trim(), document_path: accountsPath, document_name: accountsName },
+          accounts_data: { ...previousAccountsData, ...commonSnapshot, penalty_changes: nextPenaltyChanges, dn_vouchers: nextDnVouchers, field_edit_audit: nextFieldAudit, accounts_supporting_documents: accountsSupportingDocsSaved, review_remarks: { ...parseObject(accountsSubmission.review_remarks), ...accountsReviewJson, accounts_supporting_documents: accountsSupportingDocsSaved }, review_text: reviewText.trim(), document_path: accountsPath, document_name: accountsName },
           document_path: accountsPath, document_name: accountsName,
         },
       });
@@ -3025,11 +3321,82 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
       setFounderEditing(false);
       setSelectedDocument(null);
       setSelectedFounderMerchandiseDocument(null);
-      setWorkflowMessage('Founder edits saved successfully.');
+      setWorkflowMessage('Changes saved successfully. PO remains in L-1 until you select Send to L-2.');
       setReloadKey((value) => value + 1);
     } catch (saveError) {
-      console.error('Failed to save Founder Review edits:', saveError);
-      setWorkflowError(saveError instanceof Error ? saveError.message : 'Failed to save Founder Review edits.');
+      console.error('Failed to save L-2 edits:', saveError);
+      setWorkflowError(saveError instanceof Error ? saveError.message : 'Failed to save L-2 edits.');
+    } finally {
+      setSavingReview(false);
+    }
+  }
+
+  async function sendFounderReviewToL2() {
+    if (!selectedPO?.po_ref_num) return;
+    setSavingReview(true);
+    setWorkflowMessage('');
+    setWorkflowError('');
+    try {
+      const poRef = String(selectedPO.po_ref_num).trim();
+      const existing = workflowByPoRef[poRef];
+      const requestId = Number(existing?.id ?? 0);
+      if (!requestId) throw new Error(`L-1 workflow request was not found for PO ${poRef}.`);
+      if (!existing?.merchandise_submitted || !existing?.accounts_submitted) {
+        throw new Error('Both Merchandise and Accounts submissions are required before sending this PO to L-2.');
+      }
+      const result = await sendFgPoToL2({ requestId });
+      if (!result.ok) throw new Error(result.error);
+
+      setWorkflowMessage(result.message);
+      setReloadKey((value) => value + 1);
+      setActiveFilter('L-2');
+      setPage(1);
+      closeInitiateModal();
+    } catch (sendError) {
+      console.error('Failed to send FG PO to L-2:', sendError);
+      setWorkflowError(sendError instanceof Error ? sendError.message : 'Failed to send PO to L-2.');
+    } finally {
+      setSavingReview(false);
+    }
+  }
+
+  async function sendFounderReviewBackToL1() {
+    if (!selectedPO?.po_ref_num) return;
+    // Use a standard audit remark; the Founder does not need to enter a reason.
+    const reason = 'Sent back to L-1 by Founder for corrections.';
+
+    setSavingReview(true);
+    setWorkflowMessage('');
+    setWorkflowError('');
+    try {
+      const poRef = String(selectedPO.po_ref_num).trim();
+      const existing = workflowByPoRef[poRef];
+      if (existing?.status !== 'L-2') throw new Error('Only a PO currently in L-2 can be sent back to L-1.');
+      const requestId = Number(existing.id || 0);
+      if (!requestId) throw new Error(`L-2 workflow request was not found for PO ${poRef}.`);
+
+      const merchandiseSubmission = latestSubmissionByPoRef.Merchandise[poRef] ?? {};
+      const accountsSubmission = latestSubmissionByPoRef.Accounts[poRef] ?? {};
+      const result = await sendFgPoBackToL1({
+        requestId,
+        poRefNum: selectedPO.po_ref_num,
+        poId: selectedPO.po_id,
+        poNumber: selectedPO.po_number,
+        decisionRemarks: reason,
+        merchandiseSnapshot: merchandiseSubmission,
+        accountsSnapshot: accountsSubmission,
+        poSnapshot: selectedPO,
+      });
+      if (!result.ok) throw new Error(result.error);
+
+      setWorkflowMessage(result.message);
+      setReloadKey((value) => value + 1);
+      setActiveFilter('L-1');
+      setPage(1);
+      setTimeout(() => closeInitiateModal(), 500);
+    } catch (sendBackError) {
+      console.error('Failed to send FG PO back to L-1:', sendBackError);
+      setWorkflowError(sendBackError instanceof Error ? sendBackError.message : 'Failed to send PO back to L-1.');
     } finally {
       setSavingReview(false);
     }
@@ -3075,8 +3442,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         );
       }
 
+      const approvalLevel = existing?.status === 'L-2' ? 'L-2' : 'L-1';
+      const savedLevel2ReviewRemarks = Object.fromEntries(
+        Object.entries(level2ReviewRemarks).filter(([, value]) => String(value ?? '').trim()),
+      );
       const founderReviewSnapshot = JSON.stringify({
         penalty_remarks: Object.fromEntries(Object.entries(founderReviewRemarks).filter(([, value]) => String(value ?? '').trim())),
+        level2_review_remarks: savedLevel2ReviewRemarks,
         final_comment: founderComment.trim(),
       });
       const result = await decideFgFounder({
@@ -3122,6 +3494,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             calculation_type: skuCalculationType,
             founder_review_snapshot: founderReviewSnapshot,
             founder_review_remarks: founderReviewRemarks,
+            level2_review_remarks: savedLevel2ReviewRemarks,
+            approval_level: approvalLevel,
             founder_comment: founderComment.trim(),
             accounts_review_text: reviewText,
             merchandise_review_text: founderMerchandiseText,
@@ -3655,6 +4029,15 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         <div className="fg-kpi-card">
           <div className="fg-kpi-top">
+            <span className="fg-kpi-label">L-1</span>
+            <div className="fg-kpi-icon fg-icon-l1"><Clock3 size={17} /></div>
+          </div>
+          <div className="fg-kpi-value">{loading ? '—' : l1}</div>
+          <div className="fg-kpi-meta">Saved closure requests</div>
+        </div>
+
+        <div className="fg-kpi-card">
+          <div className="fg-kpi-top">
             <span className="fg-kpi-label">MERCHANDISE REVIEW</span>
             <div className="fg-kpi-icon fg-icon-review"><FileCheck2 size={17} /></div>
           </div>
@@ -3673,7 +4056,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         <div className="fg-kpi-card">
           <div className="fg-kpi-top">
-            <span className="fg-kpi-label">FOUNDER REVIEW</span>
+            <span className="fg-kpi-label">L-2</span>
             <div className="fg-kpi-icon fg-icon-founder"><UserCheck size={17} /></div>
           </div>
           <div className="fg-kpi-value">{loading ? '—' : founder}</div>
@@ -3851,7 +4234,12 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             className={activeFilter === filter ? 'fg-filter active' : 'fg-filter'}
             onClick={() => handleFilterChange(filter)}
           >
-            {filter}
+            <span>{filter}</span>
+            {filter === 'L-1' && workflowCounts.l1SentBack > 0 && (
+              <span className="fg-filter-notification" aria-label={`${workflowCounts.l1SentBack} sent back to L-1`}>
+                {workflowCounts.l1SentBack}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -3862,7 +4250,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           <table className="fg-table">
             <thead>
               <tr>
-                {getTableColumns(pos[0] ?? {}).map((column) => (
+                {getTableColumnsForRows(pos as Record<string, unknown>[], activeFilter).map((column) => (
                   <th
                     key={column}
                     className={
@@ -3885,7 +4273,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={Math.max(getTableColumns(pos[0] ?? {}).length, 1)}>
+                  <td colSpan={Math.max(getTableColumnsForRows(pos as Record<string, unknown>[], activeFilter).length, 1)}>
                     <div className="fg-empty">
                       <Clock3 size={24} />
                       <strong>Loading purchase orders...</strong>
@@ -3895,7 +4283,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={Math.max(getTableColumns(pos[0] ?? {}).length, 1)}>
+                  <td colSpan={Math.max(getTableColumnsForRows(pos as Record<string, unknown>[], activeFilter).length, 1)}>
                     <div className="fg-empty">
                       <XCircle size={24} />
                       <strong>Unable to load purchase orders</strong>
@@ -3905,7 +4293,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </tr>
               ) : filteredPos.length > 0 ? (
                 filteredPos.map((po, rowIndex) => {
-                  const columns = getTableColumns(po);
+                  const columns = getTableColumnsForRows(pos as Record<string, unknown>[], activeFilter);
                   const workflow = workflowByPoRef[String(po.po_ref_num ?? '').trim()];
                   const rowStatus = getPOWorkflowStatus(po);
                   const completed = isCompletedPO(po);
@@ -3916,7 +4304,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         if (column === '__fg_action__') {
                           return (
                             <td key={column} className="fg-row-action-cell">
-                              {activeFilter === 'Ready for closer' ? (
+                              {activeFilter === 'L-1' ? (
+                                <button type="button" className="fg-view-button" onClick={() => openInitiateModal(po)} title="Continue this saved L-1">
+                                  Resume L-1 <ArrowRight size={15} />
+                                </button>
+                              ) : activeFilter === 'Ready for closer' ? (
                                 <button
                                   type="button"
                                   className="fg-initiate-button"
@@ -3930,7 +4322,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 >
                                   Initiate <ArrowRight size={15} />
                                 </button>
-                              ) : activeFilter === 'Founder Review' ? (
+                              ) : activeFilter === 'L-2' ? (
                                 <button
                                   type="button"
                                   className="fg-view-button"
@@ -3939,6 +4331,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                     // so the Merchandise Review column is rendered in this modal.
                                     openDepartmentReview(po, 'Accounts');
                                     setReviewMode('founder');
+                                    setLevel2ReviewRemarks({});
                                     setFounderComment(formatReviewValue(workflow?.founder_review ?? po.approval_remarks));
                                   }}
                                   title="View the same full PO closure details as Accounts Review"
@@ -3954,7 +4347,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                 >
                                   <Eye size={14} /> Review
                                 </button>
-                              ) : rowStatus === 'Founder Review' ? (
+                              ) : rowStatus === 'L-2' ? (
                                 <button
                                   type="button"
                                   className="fg-view-button"
@@ -3964,12 +4357,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                     setReviewMode('founder');
                                     setReviewText('');
                                     setReviewRemarks({});
+                                    setLevel2ReviewRemarks({});
                                     setSelectedDocument(null);
                                     setFounderComment(formatReviewValue(workflow?.founder_review ?? po.approval_remarks));
                                     setWorkflowMessage('');
                                     setWorkflowError('');
                                   }}
-                                  title="View Founder Review"
+                                  title="View L-2"
                                 >
                                   <Eye size={14} /> View
                                 </button>
@@ -4021,6 +4415,10 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                     });
                                     setReviewRemarks(closedAccountsReviewValues);
                                     const approvedSnapshot = parseClosedReviewObject(po.po_snapshot);
+                                    const savedLevel2Remarks = parseClosedReviewObject(approvedSnapshot.level2_review_remarks);
+                                    setLevel2ReviewRemarks(Object.fromEntries(
+                                      Object.entries(savedLevel2Remarks).map(([key, value]) => [key, formatReviewValue(value)]),
+                                    ));
                                     const approvedArray = <T,>(...values: unknown[]): T[] | null => {
                                       for (const value of values) {
                                         if (Array.isArray(value)) return value as T[];
@@ -4091,12 +4489,30 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         }
 
                         const value = po[column];
+                        const founderReviewValue = workflow?.founder_review;
+                        let founderReviewMeta: Record<string, unknown> = {};
+                        if (founderReviewValue && typeof founderReviewValue === 'object' && !Array.isArray(founderReviewValue)) {
+                          founderReviewMeta = founderReviewValue as Record<string, unknown>;
+                        } else if (typeof founderReviewValue === 'string' && founderReviewValue.trim()) {
+                          try {
+                            const parsed = JSON.parse(founderReviewValue);
+                            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) founderReviewMeta = parsed as Record<string, unknown>;
+                          } catch { /* legacy plain-text founder review */ }
+                        }
+                        const wasSentBackToL1 = activeFilter === 'L-1' && Boolean(
+                          founderReviewMeta.send_back_reason || founderReviewMeta.sent_back_at || founderReviewMeta.sent_back_by,
+                        );
                         return (
                           <td
                             key={column}
                             className={column === 'po_ref_num' ? 'fg-sticky-col fg-sticky-cell' : undefined}
                           >
-                            {value === null || value === undefined || value === ''
+                            {column === 'po_ref_num' ? (
+                              <span className="fg-po-ref-with-status">
+                                <span>{value === null || value === undefined || value === '' ? '—' : String(value)}</span>
+                                {wasSentBackToL1 && <span className="fg-sent-back-badge">SENT BACK</span>}
+                              </span>
+                            ) : value === null || value === undefined || value === ''
                               ? '—'
                               : typeof value === 'object'
                                 ? JSON.stringify(value)
@@ -4109,7 +4525,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 })
               ) : (
                 <tr>
-                  <td colSpan={Math.max(getTableColumns(pos[0] ?? {}).length, 1)}>
+                  <td colSpan={Math.max(getTableColumnsForRows(pos as Record<string, unknown>[], activeFilter).length, 1)}>
                     <div className="fg-empty">
                       <Search size={24} />
                       <strong>No purchase orders found</strong>
@@ -5139,14 +5555,24 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
               <button type="button" className="fg-modal-secondary" onClick={closeInitiateModal}>
                 {reviewReadOnly ? 'Close' : 'Cancel'}
               </button>
-              {!reviewReadOnly && (
+              {!reviewReadOnly && activeFilter !== 'L-1' && (
                 <button
                   type="button"
                   className="fg-modal-primary"
                   disabled={savingReview}
                   onClick={handleSaveDepartmentReview}
                 >
-                  {savingReview ? 'Saving...' : 'Save & Send'} <ArrowRight size={16} />
+                  {savingReview ? 'Saving...' : 'Save L-1'}
+                </button>
+              )}
+              {!reviewReadOnly && activeFilter === 'L-1' && (
+                <button
+                  type="button"
+                  className="fg-modal-primary"
+                  disabled={savingReview}
+                  onClick={handleSaveDepartmentReview}
+                >
+                  {savingReview ? 'Sending...' : 'Save & Send'} <ArrowRight size={16} />
                 </button>
               )}
             </div>
@@ -5165,8 +5591,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           >
             <div className="fg-modal-header">
               <div>
-                <div className="fg-modal-eyebrow">FOUNDER FINAL REVIEW</div>
-                <h2 id="fg-founder-title">Final Approval</h2>
+                <div className="fg-modal-eyebrow">{getApprovalLevel(selectedPO) === 'L-2' ? 'LEVEL 2 REVIEW' : 'LEVEL 1 REVIEW'}</div>
+                <h2 id="fg-founder-title">{getApprovalLevel(selectedPO) === 'L-2' ? 'Level 2 Approval' : 'Level 1 Approval'}</h2>
                 <p>{selectedPO.po_ref_num ?? 'PO reference unavailable'}</p>
               </div>
               <button
@@ -5670,7 +6096,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                           <th style={{ width: 250, minWidth: 250 }}>Accounts Review</th>
                           <th style={{ width: 175, minWidth: 175, maxWidth: 175 }}>DN Voucher No.</th>
                           <th style={{ width: 250, minWidth: 250 }}>Merchandise Review</th>
-                          <th style={{ width: 250, minWidth: 250 }}>Founder Review</th>
+                          <th style={{ width: 280, minWidth: 280 }}>Level-2 Review</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -5698,31 +6124,86 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                               <td><strong>{penalty.category}</strong></td>
                               <td><strong>{penaltyCurrency(penalty.amount)}</strong></td>
                               <td style={{ width: 150, minWidth: 150 }}>
-                                <input className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38 }} value={revisedValue == null ? '—' : String(revisedValue)} readOnly aria-label={`Penalty revised for ${penalty.category}`} />
-                              </td>
-                              <td style={{ width: 320, minWidth: 320 }}>
-                                <textarea rows={2} readOnly className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={formatReviewValue(accountsRemark)} placeholder="No Accounts review submitted." aria-label={`Accounts review for ${penalty.category}`} />
-                              </td>
-                              <td style={{ width: 175, minWidth: 175, maxWidth: 175, overflow: 'hidden' }}>
-                                <div style={{ display: 'grid', gap: 6, width: '100%', minWidth: 0, maxWidth: '100%' }}>
-                                  <input className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }} value={String(voucher.voucherNo ?? voucher.voucher_no ?? '') || '—'} readOnly aria-label={`DN voucher number for ${penalty.category}`} />
-                                  {voucherPath ? <button type="button" className="fg-document-button" title={voucherName} style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', boxSizing: 'border-box' }} onClick={() => void openDocument(voucherPath)}><Eye size={14} style={{ flexShrink: 0 }} /><span style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>View {voucherName}</span></button> : <small>No DN voucher uploaded.</small>}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  <input type={founderEditing ? 'number' : 'text'} min="0" step="0.01" className={founderEditing ? 'fg-review-input' : 'fg-review-input fg-review-input-readonly'} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', height: 38 }} value={founderEditing ? (penaltyChanges[penalty.key] ?? '') : (revisedValue == null ? '—' : String(revisedValue))} readOnly={!founderEditing} onChange={(event) => setPenaltyChanges((current) => ({ ...current, [penalty.key]: event.target.value }))} aria-label={`Penalty revised for ${penalty.category}`} />
+                                  {renderFieldEditInfo(`penalty_revised:${penalty.key}`)}
                                 </div>
                               </td>
                               <td style={{ width: 320, minWidth: 320 }}>
-                                <textarea rows={2} readOnly className="fg-review-input fg-review-input-readonly" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={formatReviewValue(merchandiseRemark)} placeholder="No Merchandise review submitted." aria-label={`Merchandise review for ${penalty.category}`} />
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+                                  <textarea rows={2} readOnly={!founderEditing} className={founderEditing ? 'fg-review-input' : 'fg-review-input fg-review-input-readonly'} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={founderEditing ? (reviewRemarks[`penalty:Accounts:PO_TOTAL:${penalty.key}`] ?? formatReviewValue(accountsRemark)) : formatReviewValue(accountsRemark)} onChange={(event) => setReviewRemarks((current) => ({ ...current, [`penalty:Accounts:PO_TOTAL:${penalty.key}`]: event.target.value }))} placeholder="No Accounts review submitted." aria-label={`Accounts review for ${penalty.category}`} />
+                                  {renderFieldEditInfo(`accounts_review:penalty:Accounts:PO_TOTAL:${penalty.key}`)}
+                                </div>
+                              </td>
+                              <td style={{ width: 175, minWidth: 175, maxWidth: 175, overflow: 'hidden' }}>
+                                <div style={{ display: 'grid', gap: 6, width: '100%', minWidth: 0, maxWidth: '100%' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                    <input className={founderEditing ? 'fg-review-input' : 'fg-review-input fg-review-input-readonly'} style={{ width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }} value={founderEditing ? (dnVoucherNumbers[penalty.key] ?? '') : (String(voucher.voucherNo ?? voucher.voucher_no ?? '') || '—')} readOnly={!founderEditing} onChange={(event) => setDnVoucherNumbers((current) => ({ ...current, [penalty.key]: event.target.value }))} aria-label={`DN voucher number for ${penalty.category}`} />
+                                    {renderFieldEditInfo(`dn_voucher_number:${penalty.key}`)}
+                                  </div>
+                                  {founderEditing ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flexWrap: 'wrap' }}>
+                                      {voucherPath ? (
+                                        <button
+                                          type="button"
+                                          className="fg-document-button"
+                                          title={`View existing document: ${voucherName}`}
+                                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, maxWidth: 112, padding: '6px 8px' }}
+                                          onClick={() => void openDocument(voucherPath)}
+                                        >
+                                          <Eye size={13} style={{ flexShrink: 0 }} />
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>View current</span>
+                                        </button>
+                                      ) : <small style={{ color: '#94a3b8' }}>No document</small>}
+                                      <label
+                                        htmlFor={`dn-voucher-replacement-${penalty.key}`}
+                                        title={dnVoucherFiles[penalty.key]?.name ? `Replace with: ${dnVoucherFiles[penalty.key]?.name}` : 'Replace DN voucher document'}
+                                        aria-label="Replace DN voucher document"
+                                        style={{ width: 30, height: 30, flex: '0 0 30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1', borderRadius: 7, color: '#475569', background: '#fff', cursor: 'pointer' }}
+                                      >
+                                        <Upload size={14} />
+                                        <input
+                                          id={`dn-voucher-replacement-${penalty.key}`}
+                                          type="file"
+                                          accept=".pdf,.png,.jpg,.jpeg,.webp"
+                                          style={{ display: 'none' }}
+                                          onChange={(event) => setDnVoucherFiles((current) => ({ ...current, [penalty.key]: event.target.files?.[0] ?? null }))}
+                                        />
+                                      </label>
+                                      {dnVoucherFiles[penalty.key] && (
+                                        <small title={dnVoucherFiles[penalty.key]?.name} style={{ flexBasis: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b' }}>
+                                          {dnVoucherFiles[penalty.key]?.name}
+                                        </small>
+                                      )}
+                                      {renderFieldEditInfo(`dn_voucher_document:${penalty.key}`)}
+                                    </div>
+                                  ) : voucherPath ? (
+                                    <button type="button" className="fg-document-button" title={voucherName} style={{ display: 'flex', alignItems: 'center', gap: 5, width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', boxSizing: 'border-box' }} onClick={() => void openDocument(voucherPath)}>
+                                      <Eye size={14} style={{ flexShrink: 0 }} />
+                                      <span style={{ display: 'block', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>View {voucherName}</span>
+                                    </button>
+                                  ) : <small>No DN voucher uploaded.</small>}
+                                </div>
                               </td>
                               <td style={{ width: 320, minWidth: 320 }}>
-                                <textarea
-                                  rows={2}
-                                  readOnly={!founderEditing || workflowByPoRef[ref]?.status === 'Closed' || String(selectedPO.po_status ?? '').toLowerCase() === 'closed'}
-                                  className={!founderEditing || workflowByPoRef[ref]?.status === 'Closed' || String(selectedPO.po_status ?? '').toLowerCase() === 'closed' ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
-                                  style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
-                                  value={founderReviewRemarks[`penalty:Founder:PO_TOTAL:${penalty.key}`] ?? getFounderReviewRemarks(ref)[`penalty:Founder:PO_TOTAL:${penalty.key}`] ?? ''}
-                                  onChange={(event) => setFounderReviewRemarks((current) => ({ ...current, [`penalty:Founder:PO_TOTAL:${penalty.key}`]: event.target.value }))}
-                                  placeholder="Founder review..."
-                                  aria-label={`Founder review for ${penalty.category}`}
-                                />
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+                                  <textarea rows={2} readOnly={!founderEditing} className={founderEditing ? 'fg-review-input' : 'fg-review-input fg-review-input-readonly'} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={founderEditing ? (founderMerchandiseRemarks[`penalty:Merchandise:PO_TOTAL:${penalty.key}`] ?? formatReviewValue(merchandiseRemark)) : formatReviewValue(merchandiseRemark)} onChange={(event) => setFounderMerchandiseRemarks((current) => ({ ...current, [`penalty:Merchandise:PO_TOTAL:${penalty.key}`]: event.target.value }))} placeholder="No Merchandise review submitted." aria-label={`Merchandise review for ${penalty.category}`} />
+                                  {renderFieldEditInfo(`merchandise_review:penalty:Merchandise:PO_TOTAL:${penalty.key}`)}
+                                </div>
+                              </td>
+                              <td style={{ width: 320, minWidth: 320 }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+                                  <textarea
+                                    rows={2}
+                                    readOnly={workflowByPoRef[ref]?.status !== 'L-2'}
+                                    className={workflowByPoRef[ref]?.status !== 'L-2' ? 'fg-review-input fg-review-input-readonly' : 'fg-review-input'}
+                                    style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
+                                    value={level2ReviewRemarks[penalty.key] ?? ''}
+                                    onChange={(event) => setLevel2ReviewRemarks((current) => ({ ...current, [penalty.key]: event.target.value }))}
+                                    placeholder={workflowByPoRef[ref]?.status === 'L-2' ? 'Enter Level-2 review...' : 'Level-2 review pending.'}
+                                    aria-label={`Level-2 review for ${penalty.category}`}
+                                  />
+                                </div>
                               </td>
                             </tr>
                           );
@@ -5743,7 +6224,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
               <div className="fg-reference-note-section">
                 <label className="fg-review-label">
-                  Additional {founderReviewDepartment} Remarks
+                  Additional {founderReviewDepartment} Remarks {renderFieldEditInfo('accounts_additional_remarks')}
                   <textarea
                     value={reviewText}
                     onChange={(event) => setReviewText(event.target.value)}
@@ -5758,7 +6239,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
               {reviewMode === 'founder' && (reviewReadOnly || founderEditing) && (
                 <div className="fg-reference-note-section">
                   <label className="fg-review-label">
-                    Additional Merchandise Remarks
+                    Additional Merchandise Remarks {renderFieldEditInfo('merchandise_additional_remarks')}
                     <textarea
                       value={founderEditing ? founderMerchandiseText : getSubmittedReviewDetails('Merchandise', String(selectedPO.po_ref_num ?? '').trim()).additionalRemarks}
                       rows={3}
@@ -5804,15 +6285,38 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       <tbody>
                                         {editingRows.map((row, index) => (
                                           <tr key={`${department}-edit-${row.id}`}>
-                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><input className="fg-review-input" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={row.title} placeholder="Document title" onChange={(event) => setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, title: event.target.value } : item))} /></td>
+                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input className="fg-review-input" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={row.title} placeholder="Document title" onChange={(event) => setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, title: event.target.value } : item))} />{renderFieldEditInfo(`${department.toLowerCase()}_document_title:${index}`)}</div></td>
                                             <td style={{ border: '1px solid #cbd5e1', padding: 8 }}>
                                               <div style={{ display: 'grid', gap: 5 }}>
-                                                <input type="file" onChange={(event) => { const file = event.target.files?.[0] ?? null; setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, file, fileName: file?.name ?? item.fileName } : item)); }} />
-                                                <small>{row.file?.name ?? row.fileName ?? 'No file selected'}</small>
-                                                {row.path && <button type="button" className="fg-document-button" onClick={() => void openDocument(row.path ?? null)}><Eye size={14} /> View current</button>}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                                                  <label
+                                                    htmlFor={`l1-supporting-doc-${department.toLowerCase()}-${row.id}`}
+                                                    title={row.file?.name ? `Replace document: ${row.file.name}` : 'Choose replacement document'}
+                                                    aria-label="Choose replacement document"
+                                                    style={{ width: 30, height: 30, flex: '0 0 30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1', borderRadius: 8, color: '#475569', background: '#fff', cursor: 'pointer' }}
+                                                  >
+                                                    <Upload size={14} />
+                                                    <input
+                                                      id={`l1-supporting-doc-${department.toLowerCase()}-${row.id}`}
+                                                      type="file"
+                                                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                                                      style={{ display: 'none' }}
+                                                      onChange={(event) => {
+                                                        const file = event.target.files?.[0] ?? null;
+                                                        setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, file, fileName: file?.name ?? item.fileName } : item));
+                                                        event.currentTarget.value = '';
+                                                      }}
+                                                    />
+                                                  </label>
+                                                  <small title={row.file?.name ?? row.fileName ?? 'No file selected'} style={{ minWidth: 0, maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b' }}>
+                                                    {(row.file?.name ?? row.fileName ?? 'No file selected').length > 18 ? `${(row.file?.name ?? row.fileName ?? '').slice(0, 14)}...` : (row.file?.name ?? row.fileName ?? 'No file selected')}
+                                                  </small>
+                                                  {renderFieldEditInfo(`${department.toLowerCase()}_document_file:${index}`)}
+                                                </div>
+                                                {row.path && <button type="button" className="fg-document-button" style={{ width: 'fit-content', padding: '6px 9px' }} onClick={() => void openDocument(row.path ?? null)}><Eye size={13} /> View current</button>}
                                               </div>
                                             </td>
-                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><input className="fg-review-input" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={row.reason} placeholder="Reason" onChange={(event) => setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, reason: event.target.value } : item))} /></td>
+                                            <td style={{ border: '1px solid #cbd5e1', padding: 8 }}><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input className="fg-review-input" style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} value={row.reason} placeholder="Reason" onChange={(event) => setEditingRows((rows) => rows.map((item) => item.id === row.id ? { ...item, reason: event.target.value } : item))} />{renderFieldEditInfo(`${department.toLowerCase()}_document_reason:${index}`)}</div></td>
                                             <td style={{ border: '1px solid #cbd5e1', padding: 8, whiteSpace: 'nowrap', textAlign: 'center' }}>
                                               <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
                                                 {editingRows.length > 1 && <button type="button" className="fg-doc-remove-row" aria-label={`Remove ${department} document row ${index + 1}`} onClick={() => setEditingRows((rows) => rows.filter((item) => item.id !== row.id))}>−</button>}
@@ -5883,40 +6387,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 </label>
               )}
 
-              {reviewMode === 'founder' && reviewReadOnly && !founderEditing && (
-                founderEditing ? (
-                  <label className="fg-reference-document">
-                    <Upload size={18} />
-                    <span>
-                      <strong>{selectedFounderMerchandiseDocument ? selectedFounderMerchandiseDocument.name : 'Merchandise Supporting Document'}</strong>
-                      <small>{selectedFounderMerchandiseDocument ? 'Replacement document selected' : 'Upload a replacement Merchandise supporting document.'}</small>
-                    </span>
-                    <input type="file" onChange={(event) => setSelectedFounderMerchandiseDocument(event.target.files?.[0] ?? null)} />
-                  </label>
-                ) : (
-                <div className="fg-reference-document">
-                  <FileCheck2 size={18} />
-                  <span>
-                    <strong>
-                      {(() => {
-                        const ref = String(selectedPO.po_ref_num ?? '').trim();
-                        return getSubmittedReviewDetails('Merchandise', ref).documentName;
-                      })()}
-                    </strong>
-                    <small>Merchandise submitted document (read-only)</small>
-                  </span>
-                  {(() => {
-                    const ref = String(selectedPO.po_ref_num ?? '').trim();
-                    const path = getSubmittedReviewDetails('Merchandise', ref).documentPath;
-                    return path ? (
-                      <button type="button" className="fg-document-button" onClick={() => void openDocument(path)}>
-                        <Eye size={14} /> VIEW MERCHANDISE DOCUMENT
-                      </button>
-                    ) : <small>No merchandise document is linked to this submission.</small>;
-                  })()}
-                </div>
-                )
-              )}
+
 
               {workflowMessage && (
                 <div className="fg-send-message">
@@ -5960,6 +6431,13 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                         setFounderReviewRemarks(getFounderReviewRemarks(ref));
                         setFounderMerchandiseText(merchandiseDetails.additionalRemarks);
                         const accountsDetails = getSubmittedReviewDetails('Accounts', ref);
+                        setReviewRemarks(Object.fromEntries(Object.entries(accountsDetails.remarks).map(([key, value]) => [key, formatReviewValue(value)])));
+                        const savedPenaltyChanges = (accountsDetails.snapshot?.penalty_changes ?? accountsDetails.workflowRemarks?.penalty_changes ?? {}) as Record<string, unknown>;
+                        setPenaltyChanges(Object.fromEntries(Object.entries(savedPenaltyChanges).map(([key, value]) => [key, String(value ?? '')])));
+                        const savedVouchers = (accountsDetails.snapshot?.dn_vouchers ?? accountsDetails.workflowRemarks?.dn_vouchers ?? {}) as Record<string, Record<string, unknown>>;
+                        setDnVoucherNumbers(Object.fromEntries(Object.entries(savedVouchers).map(([key, value]) => [key, String(value?.voucherNo ?? value?.voucher_no ?? '')])));
+                        setDnVoucherFiles({});
+                        setFounderFieldEditAudit((accountsDetails.snapshot?.field_edit_audit && typeof accountsDetails.snapshot.field_edit_audit === 'object' ? accountsDetails.snapshot.field_edit_audit : {}) as Record<string, { email: string; editedAt: string }>);
                         const restoreFounderRows = (value: unknown, fallbackPath: string | null, fallbackName: string) => {
                           const docs = Array.isArray(value) ? value as Array<Record<string, unknown>> : [];
                           const rows = docs.map((doc) => ({
@@ -5981,6 +6459,17 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                       Edit <Upload size={16} />
                     </button>
                   )}
+                  {workflowByPoRef[String(selectedPO.po_ref_num ?? '')]?.status === 'L-2' && !founderEditing && (
+                    <button
+                      type="button"
+                      className="fg-modal-secondary"
+                      disabled={savingReview || approvingFounder}
+                      onClick={() => void sendFounderReviewBackToL1()}
+                      title="Return this PO to L-1 for edits"
+                    >
+                      {savingReview ? 'Sending...' : 'Send Back to L-1'} <ArrowRight size={16} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="fg-founder-approve-button"
@@ -5990,6 +6479,16 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                     {approvingFounder ? 'Approving...' : 'Approve'} <CheckCircle2 size={16} />
                   </button>
                 </>
+              )}
+              {workflowByPoRef[String(selectedPO.po_ref_num ?? '')]?.status === 'L-1' && !founderEditing && (
+                <button
+                  type="button"
+                  className="fg-modal-primary"
+                  disabled={savingReview || approvingFounder}
+                  onClick={() => void sendFounderReviewToL2()}
+                >
+                  {savingReview ? 'Sending...' : 'Send to L-2'} <ArrowRight size={16} />
+                </button>
               )}
               <button type="button" className="fg-modal-secondary" onClick={closeInitiateModal}>
                 Close
@@ -6009,13 +6508,14 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         .fg-kpi-grid {
           display: grid;
-          grid-template-columns: repeat(5, minmax(0, 1fr));
-          gap: 14px;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 12px;
         }
 
         .fg-kpi-card {
+          min-width: 0;
           min-height: 132px;
-          padding: 18px 19px;
+          padding: 16px 14px;
           background: #ffffff;
           border: 1px solid #e5e7eb;
           border-radius: 12px;
@@ -6053,6 +6553,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-icon-ready { background: #fff7df; color: #b77900; }
         .fg-icon-review { background: #eef5ff; color: #3569a8; }
         .fg-icon-accounts { background: #f3efff; color: #6950a7; }
+        .fg-icon-l1 { background: #eef5ff; color: #3569a8; }
+        .fg-icon-founder { background: #fff3e8; color: #b85c00; }
         .fg-icon-closed { background: #eaf8ef; color: #23804a; }
 
         .fg-kpi-value {
@@ -6323,6 +6825,23 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
           white-space: nowrap;
         }
 
+        .fg-filter-notification {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 17px;
+          height: 17px;
+          padding: 0 5px;
+          margin-left: 5px;
+          border-radius: 999px;
+          background: #dc2626;
+          color: #ffffff;
+          font-size: 10px;
+          line-height: 1;
+          font-weight: 700;
+          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75);
+        }
+
         .fg-filter.active { background: #ffffff; color: #20252b; font-weight: 650; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08); }
 
         .fg-table-card {
@@ -6442,6 +6961,8 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
         .fg-po-id { font-weight: 700; color: #20252b; }
         .fg-po-ref { color: #20252b; font-size: 12px; font-weight: 600; }
+        .fg-po-ref-with-status { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+        .fg-sent-back-badge { display: inline-flex; align-items: center; padding: 3px 7px; border: 1px solid #fecaca; border-radius: 999px; background: #fef2f2; color: #b42318; font-size: 9px; font-weight: 750; line-height: 1.2; letter-spacing: .035em; white-space: nowrap; }
         .fg-vendor { color: #555d66; }
 
         .fg-status {
@@ -7766,26 +8287,34 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
         .fg-doc-row-input:focus { border-color: #e5b900; box-shadow: 0 0 0 2px rgba(245, 190, 0, .14); }
         .fg-doc-row-input[readonly] { background: #f1f3f6; color: #6b7280; }
         .fg-doc-row-actions { display: flex; justify-content: center; align-items: center; gap: 4px; min-width: 0; }
-        .fg-accounts-documents .fg-doc-add-row,
-        .fg-accounts-documents .fg-doc-remove-row {
+        .fg-doc-add-row,
+        .fg-doc-remove-row {
           box-sizing: border-box;
-          width: 26px !important;
-          min-width: 26px !important;
-          max-width: 26px !important;
-          height: 26px !important;
-          min-height: 26px !important;
-          max-height: 26px !important;
-          flex: 0 0 26px !important;
+          appearance: none;
+          -webkit-appearance: none;
+          width: 28px !important;
+          min-width: 28px !important;
+          max-width: 28px !important;
+          height: 28px !important;
+          min-height: 28px !important;
+          max-height: 28px !important;
+          flex: 0 0 28px !important;
           aspect-ratio: 1 / 1;
           padding: 0 !important;
           border-radius: 50% !important;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          font-size: 17px;
-          line-height: 1;
+          font-family: Arial, sans-serif;
+          font-size: 16px !important;
+          font-weight: 600;
+          line-height: 1 !important;
+          padding: 0 !important;
+          margin: 0 !important;
           cursor: pointer;
+          vertical-align: middle;
           transform: none;
+          box-shadow: none !important;
         }
         .fg-doc-add-row { background: #f5c400; border-color: #e6b800; color: #1d232b; }
         .fg-doc-remove-row { color: #b42318; }
