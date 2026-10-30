@@ -1946,7 +1946,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
 
             return {
               grn: item.grn,
-              vdNum: null,
+              vdNum: invoice,
               grnDate,
               qty: item.qty,
               poCloserDate,
