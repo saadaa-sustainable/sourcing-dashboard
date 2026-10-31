@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
+const {PGlite}=await import(pathToFileURL(process.argv[2]).href);const db=new PGlite();
+await db.exec(`create role authenticated;create role anon;create table sd_user(email text primary key);insert into sd_user values ('l1@saadaa.in'),('l2@saadaa.in');create function sd_is_saadaa() returns boolean language sql as $$select true$$;create function sd_current_role() returns text language sql as $$select current_setting('test.role')$$;`);
+await db.exec(await readFile('supabase/migrations/20261030180000_buying_plan_approval_rule.sql','utf8'));
+await db.exec(await readFile('supabase/migrations/20261030180100_buying_plan_approval_rule_grants.sql','utf8'));
+assert.equal((await db.query("select has_table_privilege('anon','sd_buying_plan_approval_rule','SELECT') as allowed")).rows[0].allowed,false);
+assert.equal((await db.query("select has_table_privilege('authenticated','sd_buying_plan_approval_rule','TRUNCATE') as allowed")).rows[0].allowed,false);
+await db.exec(`set role authenticated;set test.role='team';`);
+await assert.rejects(()=>db.exec(`insert into sd_buying_plan_approval_rule values(1,'l1@saadaa.in','l2@saadaa.in',100,'a',now())`),/row-level security/);
+await db.exec(`set test.role='admin';insert into sd_buying_plan_approval_rule values(1,'l1@saadaa.in','l2@saadaa.in',100,'a',now())`);
+for(const patch of ["max_value=-1","l1_email=l2_email","id=2","l1_email='missing@saadaa.in'"])await assert.rejects(()=>db.exec('update sd_buying_plan_approval_rule set '+patch));
+await db.exec(`set test.role='team'`);assert.equal((await db.query('select * from sd_buying_plan_approval_rule')).rows.length,1);await db.exec(`update sd_buying_plan_approval_rule set max_value=1`);assert.equal((await db.query('select max_value from sd_buying_plan_approval_rule')).rows[0].max_value,'100.00');
+await db.close();console.log('Buying Plan rule migration: valid schema, foreign keys, distinct approvers, nonnegative value, singleton and admin-only RLS verified in isolated PostgreSQL.');

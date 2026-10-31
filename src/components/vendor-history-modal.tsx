@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { VendorCapacityAnalytics } from './vendor-capacity-analytics';
 import { Download, History, X } from 'lucide-react';
 import { downloadCsv } from '@/lib/download';
 import { getVendorPoHistory } from '@/lib/forms/actions';
@@ -37,10 +38,14 @@ function Late({ days }: { days: number | null }) {
 export function VendorHistoryModal({
   vendorCode,
   productCode,
+  poQty,
+  poType,
   onClose,
 }: {
   vendorCode: string;
   productCode?: string | null;
+  poQty?: number | null;
+  poType?: string | null;
   onClose: () => void;
 }) {
   const [data, setData] = useState<VendorPoHistory | null>(null);
@@ -56,7 +61,7 @@ export function VendorHistoryModal({
 
   useEffect(() => {
     let alive = true;
-    void getVendorPoHistory(vendorCode, productCode ?? null)
+    void getVendorPoHistory(vendorCode, productCode ?? null, { poQty, poType })
       .then((d) => {
         if (!alive) return;
         setData(d);
@@ -66,14 +71,14 @@ export function VendorHistoryModal({
     return () => {
       alive = false;
     };
-  }, [vendorCode, productCode]);
+  }, [vendorCode, productCode, poQty, poType]);
 
   /** This vendor's history as a file — the same rows, in the same order, as the table. */
   function download() {
     if (!data?.rows.length) return;
     downloadCsv(
       `vendor-po-history-${(data.vendorCode || vendorCode).toLowerCase()}`,
-      ['PO ref', 'EasyCom PO', 'Products', 'Qty', 'Value', 'Raised', 'Completed', 'Days taken', 'Expected by', 'Days vs EDD'],
+      ['PO ref', 'EasyEcom PO', 'Products', 'Qty', 'Value', 'Raised', 'Completed', 'Days taken', 'Expected by', 'Days vs EDD'],
       data.rows.map((r) => [
         r.poRef,
         r.poNumber ?? '',
@@ -97,8 +102,8 @@ export function VendorHistoryModal({
 
   return createPortal(
     <div className="pc-backdrop" role="dialog" aria-modal="true" aria-label={`History for ${vendorCode}`}>
-      <div className="pc-modal">
-        <div className="pc-head">
+      <div className="pc-modal vh-modal">
+        <div className="pc-head vh-header">
           <div>
             <span className="panel-kicker">Vendor history</span>
             <h3>
@@ -106,11 +111,11 @@ export function VendorHistoryModal({
               {data?.vendorName ? ` · ${data.vendorName}` : ''}
             </h3>
             <p className="wf-subtle">
-              Completed POs only, newest first. Days are counted from the PO date to the day EasyCom last
+              Capacity and delivery analytics appear below. The history table lists completed POs, newest first. Days are counted from the PO date to the day EasyEcom last
               updated it — the same basis as the TNA comparison on the submission pop-up.
             </p>
           </div>
-          <div className="wf-issue-row">
+          <div className="wf-issue-row vh-header-actions">
             {/* This vendor's record on its own — the same rows as the table, so what was
                 read on screen is what lands in the file. */}
             <button
@@ -128,7 +133,11 @@ export function VendorHistoryModal({
           </div>
         </div>
 
-        <section className="pc-section">
+        {data && <VendorCapacityAnalytics data={data} />}
+        {loaded && !data && <p role="alert">Could not load vendor analytics. Close and reopen to retry.</p>}
+        {!loaded && <p role="status">Loading vendor capacity and performance...</p>}
+        <section className="pc-section vh-history-summary">
+        <h4>Completed PO summary</h4>
         <div className="wf-kpi-strip">
           <div className="wf-kpi">
             <span className="wf-kpi-label">
@@ -174,7 +183,8 @@ export function VendorHistoryModal({
         </div>
         </section>
 
-        <section className="pc-section">
+        <section className="pc-section vh-history-table">
+          <h4>Completed PO history</h4>
           <div className="table-scroll" style={{ maxHeight: 340 }}>
             <table className="wf-grid">
               <thead>
@@ -196,7 +206,7 @@ export function VendorHistoryModal({
                   >
                     <td className="mono">
                       {r.poRef}
-                      {r.poNumber && <small className="wf-subtle">EasyCom {r.poNumber}</small>}
+                      {r.poNumber && <small className="wf-subtle">EasyEcom {r.poNumber}</small>}
                     </td>
                     <td className="mono">{r.products.join(', ') || '—'}</td>
                     <td className="num">{n0.format(r.qty)}</td>
@@ -211,7 +221,7 @@ export function VendorHistoryModal({
                     </td>
                   </tr>
                 ))}
-                {loaded && !data?.rows.length && (
+                {loaded && data && !data.rows.length && (
                   <tr>
                     <td colSpan={7} className="wf-empty-cell">
                       No completed POs for this vendor yet.
@@ -248,11 +258,15 @@ export function VendorHistoryModal({
 export function VendorHistoryButton({
   vendorCode,
   productCode,
+  poQty,
+  poType,
   label = 'Vendor history',
   className = 'wf-btn wf-btn-ghost wf-btn-sm',
 }: {
   vendorCode: string | null | undefined;
   productCode?: string | null;
+  poQty?: number | null;
+  poType?: string | null;
   label?: string;
   className?: string;
 }) {
@@ -270,7 +284,7 @@ export function VendorHistoryButton({
         <History size={13} /> {label}
       </button>
       {open && (
-        <VendorHistoryModal vendorCode={code} productCode={productCode} onClose={() => setOpen(false)} />
+        <VendorHistoryModal vendorCode={code} productCode={productCode} poQty={poQty} poType={poType} onClose={() => setOpen(false)} />
       )}
     </>
   );

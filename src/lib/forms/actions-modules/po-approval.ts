@@ -3,6 +3,7 @@
 import { scopedPoRework, poReworkFieldAllowed, awaitingTnaReworkSave } from '@/lib/po-rework';
 import { invalidPoTnaFields } from '@/lib/po-tna-validation';
 import { missingPoOrderFields } from '@/lib/po-order-validation';
+import { requiredPoCadError } from '@/lib/po-cad-required.server';
 import { isPlanFrozen } from '../approval';
 import { loadPlanMembership } from '../queries-modules/buying-plan-analysis';
 
@@ -178,6 +179,10 @@ export async function savePoApproval(formData: FormData): Promise<ActionResult> 
   if (formData.get('saved_section') === 'cost' && (!sections || sections.includes('cost')) &&
       (fields.rate == null || !Number.isFinite(Number(fields.rate)) || Number(fields.rate) < 0)) {
     return fail('Rate is required. Enter a valid non-negative rate before saving Cost.');
+  }
+  if (formData.get('saved_section') === 'cost' && (!sections || sections.includes('cost'))) {
+    const cadError = await requiredPoCadError(supabase, id);
+    if (cadError) return fail(cadError);
   }
   if (formData.get('saved_section') === 'tna' && fields.po_type === 'FOB' && !fields.cad_folder_url?.trim()) {
     return fail('CAD file folder link is required for FOB POs.');
@@ -378,6 +383,12 @@ export async function submitPoApproval(formData: FormData): Promise<ActionResult
   if (!po) return fail('PO not found.');
   if (!canSubmit(user.role, po.status as SdStatus)) {
     return fail('This PO cannot be submitted from its current state.');
+  }
+  // Scoped rework retains the locked Cost section; validate CAD when Cost is editable.
+  const reworkSections = scopedPoRework(po);
+  if (!reworkSections || reworkSections.includes('cost')) {
+    const cadError = await requiredPoCadError(supabase, id);
+    if (cadError) return fail(cadError);
   }
   if (po.po_type === 'FOB' && !String(po.cad_folder_url ?? '').trim()) {
     return fail('CAD file folder link is required for FOB POs before submitting.');

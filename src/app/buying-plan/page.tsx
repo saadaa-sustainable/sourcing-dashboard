@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { buyingPlanDecisionAllowed } from '@/lib/buying-plan-approval.server';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import { addMonths, isPlanFrozen, monthLabel, monthStart } from '@/lib/forms/approval';
@@ -508,11 +509,14 @@ async function FgTrack({ planMonth, role, startInInput, planMonths }: { planMont
   const restrictToStandardCost = (rules.restrict_plan_po_to_standard_cost ?? 1) >= 1;
   const pickerItems = restrictToStandardCost ? await loadStandardCostProductOptions() : catalog;
   // First admin decision on the plan — the approval deadline measures this, not approval alone.
+  const actor=await currentUser();
+  const decisionAllowed=plan&&actor?await buyingPlanDecisionAllowed(actor,plan.id,plan.status):false;
   const firstActionAt = plan?.id ? await loadPlanFirstActionAt(plan.id) : null;
   // A month that is over opens with its Variation Report: approved plan vs POs issued.
   const variation = isPlanFrozen(planMonth) ? await buyingPlanVariation(planMonth) : null;
   return (
     <BuyingPlanClient
+      decisionAllowed={decisionAllowed}
       planMonth={planMonth}
       planMonths={planMonths}
       // NPD budget shows only when a cap exists (the "not set" banner was dropped, 2026-10-08);
@@ -544,9 +548,12 @@ async function FgTrack({ planMonth, role, startInInput, planMonths }: { planMont
 
 async function MaterialTrack({ planMonth, role, startInInput, planMonths }: { planMonth: string; role: 'viewer' | 'team' | 'admin'; startInInput: boolean; planMonths: PlanMonthStatus[] }) {
   const { plan, lines, materialCodes, colours, materialCosts } = await loadMaterialPlan(planMonth);
+  const actor=await currentUser();
+  const decisionAllowed=plan&&actor?await buyingPlanDecisionAllowed(actor,plan.id,plan.status):false;
   const variation = isPlanFrozen(planMonth) ? materialPlanVariation(planMonth, lines) : null;
   return (
     <MaterialPlanClient
+      decisionAllowed={decisionAllowed}
       planMonth={planMonth}
       planMonths={planMonths}
       startInInput={startInInput}

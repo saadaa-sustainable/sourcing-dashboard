@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { client, pageAll, PAGE_SIZE } from './_shared';
+import { historyPerformance, historyCapacity, type ReceiptLine, type HistoryOrderLine } from '@/lib/vendor-history-analytics';
 import { buildVendorRollups, buildTrackerRows, capacityRulesFrom } from '@/lib/business-logic';
 import { loadAnalyticsRules } from './analytics';
 import { loadDashboardData } from '@/lib/data';
@@ -41,7 +42,10 @@ export type VendorPoHistoryRow = {
   lateDays: number | null;
 };
 
+export type VendorHistoryContext = { poQty?: number | null; poType?: string | null };
+
 export type VendorPoHistory = {
+  analytics: Awaited<ReturnType<typeof loadVendorHistoryAnalytics>>;
   vendorCode: string;
   vendorName: string | null;
   /** Completed POs, newest first. */
@@ -69,6 +73,7 @@ export type VendorPoHistory = {
 export async function loadVendorPoHistory(
   vendorCodeRaw: string | null | undefined,
   productCodeRaw?: string | null,
+  context: VendorHistoryContext = {},
 ): Promise<VendorPoHistory | null> {
   const vendorCode = (vendorCodeRaw ?? '').trim();
   if (!vendorCode) return null;
@@ -153,6 +158,7 @@ export async function loadVendorPoHistory(
     : null;
 
   return {
+    analytics: await loadVendorHistoryAnalytics(vendorCode, productCode, context),
     vendorCode: vendorCode.toUpperCase(),
     vendorName,
     rows,
@@ -367,5 +373,30 @@ export async function loadVendorCapacity(dashboard?: DashboardData) {
     rollups,
     vendorMasters: dash.vendorMasters,
     vendorTypes: dash.vendorTypes,
+  };
+}
+
+/** On-demand, vendor-filtered analytics. All growing reads use stable paging. */
+async function loadVendorHistoryAnalytics(vendorCode: string, productCode: string, context: VendorHistoryContext) {
+  const db = await client();
+  const [receipts, lines, logs, types, active, rules] = await Promise.all([
+    pageAll<ReceiptLine>(() => db.from('sd_po_grn_mapping').select('row_key, po_detail_id, po_ref_num, po_number, po_original_quantity, grn_receive_quantity, last_grn_date, expected_delivery_date').ilike('vendor_code', vendorCode).order('row_key')),
+    pageAll<HistoryOrderLine>(() => db.from('sd_po_lines_enriched').select('po_detail_id, po_ref_num, po_number, product_code, original_qty, expected_delivery_date').ilike('vendor_code', vendorCode).order('po_detail_id')),
+    pageAll<{ active_karigar: number | null; machines_allocated: number | null; entry_date: string | null; week_of: string | null }>(() => db.from('sd_vendor_capacity_log').select('active_karigar, machines_allocated, entry_date, week_of').ilike('vendor_code', vendorCode).order('entry_date', { ascending: false, nullsFirst: false }).order('id', { ascending: false })),
+    pageAll<{ vendor_type: string | null }>(() => db.from('vendor_type_master').select('vendor_type').ilike('vendor_code', vendorCode).order('vendor_name')),
+    pageAll<{ in_process_qty: number | null }>(() => db.from('sd_vendor_in_process').select('in_process_qty').ilike('vendor_code', vendorCode).order('vendor_code')),
+    loadAnalyticsRules(),
+  ]);
+  const refs = [...new Set(receipts.map(r => r.po_ref_num?.trim()).filter((r): r is string => Boolean(r)))];
+  const commitments = new Map<string, string>();
+  for (let i = 0; i < refs.length; i += 100) {
+    const rows = await pageAll<{ po_ref_num: string; revised_date: string | null; committed_date: string | null }>(() => db.from('sd_vendor_commitment_log').select('po_ref_num, revised_date, committed_date').in('po_ref_num', refs.slice(i, i + 100)).order('id', { ascending: false }));
+    for (const r of rows) if (!commitments.has(r.po_ref_num)) commitments.set(r.po_ref_num, r.revised_date ?? r.committed_date ?? '');
+  }
+  const performance = historyPerformance(receipts, lines, commitments, productCode);
+  const log = logs[0];
+  return {
+    ...performance,
+    capacity: historyCapacity({ machines: log?.machines_allocated ?? null, karigar: log?.active_karigar ?? null, vendorType: context.poType ?? types[0]?.vendor_type ?? null, inProcessQty: active.reduce((n, r) => n + (Number(r.in_process_qty) || 0), 0), reportDate: log?.entry_date ?? log?.week_of ?? null, poQty: context.poQty != null && Number.isFinite(context.poQty) && context.poQty > 0 ? context.poQty : null }, capacityRulesFrom(rules), performance.all, productCode ? performance.same : undefined),
   };
 }

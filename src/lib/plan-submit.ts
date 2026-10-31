@@ -10,6 +10,9 @@ import 'server-only';
 // Runs against whatever Supabase client it is given (session-bound for a user, the
 // service role for the cron), so RLS never blocks the automated path.
 
+import { loadBuyingPlanApprovalRule } from '@/lib/buying-plan-approval.server';
+import { planApprovalStatus, frozenPlanValue, pricePlanLine } from '@/lib/buying-plan-approval';
+import { pageAll } from '@/lib/forms/queries-modules/_shared';
 import { statusOnSubmit } from '@/lib/forms/approval';
 import { loadApprovedMaterialCosts, loadApprovedStandardCosts } from '@/lib/forms/queries-modules/standard-cost';
 import type { ApprovalEntity, SdStatus } from '@/lib/forms/types';
@@ -35,11 +38,10 @@ export async function submitPlanCore(
     return { ok: false, error: 'This plan cannot be submitted from its current state.', code: 'wrong_state' };
   }
 
-  const { data: lines } = await db
-    .from('sd_buying_plan_line')
+  const lines = await pageAll<Record<string,unknown>>(() => db.from('sd_buying_plan_line')
     .select('id, product_code, job_work_qty, fob_qty, efob_qty, standard_value, line_status')
-    .eq('plan_id', planId);
-  const lineRows = (lines ?? []) as {
+    .eq('plan_id',planId).order('id'));
+  const lineRows = lines as {
     id: number;
     product_code: string;
     job_work_qty: number;
@@ -55,7 +57,16 @@ export async function submitPlanCore(
   if (qty <= 0) return { ok: false, error: 'Allocate at least one quantity before submitting.', code: 'empty' };
 
   const entity: ApprovalEntity = 'buying_plan';
-  const next = statusOnSubmit(entity, qty);
+  const approvalRule=await loadBuyingPlanApprovalRule(db);
+  const isMaterial = (plan as { plan_type?: string }).plan_type === 'material';
+  const fgCosts = isMaterial ? {} : await loadApprovedStandardCosts(db);
+  const matCosts = isMaterial ? await loadApprovedMaterialCosts(db) : {};
+  const pricedLines=lineRows.map(l=>{
+    const c=isMaterial?matCosts[l.product_code]:fgCosts[l.product_code];
+    const value=pricePlanLine(l,c,isMaterial);
+    return {...l,standard_value:value};
+  });
+  const next = approvalRule ? planApprovalStatus(frozenPlanValue(pricedLines.map(l=>({...l,line_status:l.line_status==='approved'?'approved':null}))),approvalRule) : statusOnSubmit(entity,qty);
 
   // Guarded update: if someone else already moved it, zero rows match.
   const { data: updated, error } = await db
@@ -72,27 +83,16 @@ export async function submitPlanCore(
   if (error) return { ok: false, error: error.message, code: 'db' };
   if (!updated?.length) return { ok: false, error: 'Already submitted by someone else.', code: 'race' };
 
-  // Freeze the standard value per line at submission — from the CURRENT accepted rates.
-  const isMaterial = (plan as { plan_type?: string }).plan_type === 'material';
-  const fgCosts = isMaterial ? {} : await loadApprovedStandardCosts(db);
-  const matCosts = isMaterial ? await loadApprovedMaterialCosts(db) : {};
-  for (const l of lineRows) {
-    const job = Number(l.job_work_qty || 0);
-    const fob = Number(l.fob_qty || 0);
-    const efob = Number(l.efob_qty || 0);
-    if (job + fob + efob <= 0) continue;
-    let value = 0;
-    if (isMaterial) {
-      const c = matCosts[l.product_code];
-      if (!c) continue; // no accepted rate to freeze — leave as-is (still values live)
-      value = job * c.job + fob * c.fob;
-    } else {
-      const c = fgCosts[l.product_code];
-      if (!c) continue;
-      value = job * c.job + fob * c.fob + efob * c.efob;
-    }
-    if (value > 0) {
-      await db.from('sd_buying_plan_line').update({ standard_value: value }).eq('id', l.id);
+  // Freeze exactly the values used for routing. Unknown pricing must not retain
+  // an old lower value that could let L1 approve an unpriced plan.
+  for (const l of pricedLines) {
+    if(Number(l.job_work_qty||0)+Number(l.fob_qty||0)+Number(l.efob_qty||0)<=0) continue;
+    if(l.standard_value == null && !approvalRule) continue;
+    if(l.standard_value != null && l.standard_value <= 0 && !approvalRule) continue;
+    const {error:priceError}=await db.from('sd_buying_plan_line').update({standard_value:l.standard_value}).eq('id',l.id);
+    if(priceError) {
+      await db.from('sd_buying_plan').update({status:from}).eq('id',planId).eq('status',next);
+      return {ok:false,error:priceError.message,code:'db'};
     }
   }
 

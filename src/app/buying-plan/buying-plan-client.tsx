@@ -186,6 +186,7 @@ export function BuyingPlanClient({
   deadlineDay = 7,
   firstActionAt = null,
   role,
+  decisionAllowed,
   planMonths = [],
   afterHeader = null,
   startInInput = false,
@@ -213,6 +214,7 @@ export function BuyingPlanClient({
   /** Shown straight under the header (the NPD budget card). */
   afterHeader?: React.ReactNode;
   role: SdRole;
+  decisionAllowed?: boolean;
   /** Open on the Input view (and scroll to it) - set by ?mode=input. */
   startInInput?: boolean;
 }) {
@@ -227,7 +229,7 @@ export function BuyingPlanClient({
   const editable = canEdit(role, status) && !frozen;
   // Per-product decision for the approver, next to the plan-wide decision card.
   const canDecideLines =
-    Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
+    Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && (decisionAllowed ?? canApprove(role, status));
   // Quantities the approver changed on screen, against what was submitted. Approving such a
   // line saves the new quantities as edited and approved (editAndApprovePlanLines).
   const savedByKey = new Map(lines.map((l) => [`line-${l.id}`, l]));

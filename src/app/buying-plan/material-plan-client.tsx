@@ -123,6 +123,7 @@ export function MaterialPlanClient({
   materialCodes,
   materialCosts,
   role,
+  decisionAllowed,
   startInInput = false,
   planMonths = [],
   afterHeader = null,
@@ -136,6 +137,7 @@ export function MaterialPlanClient({
   colours: string[];
   materialCosts: Record<string, { job: number; fob: number }>;
   role: SdRole;
+  decisionAllowed?: boolean;
   /** Open on the Input view (and scroll to it) - set by ?mode=input. */
   startInInput?: boolean;
   /** Under the header: the Variation Report on a month that is over. */
@@ -149,7 +151,7 @@ export function MaterialPlanClient({
   const editable = canEdit(role, status) && !frozen;
   // Per-line decision for the approver, next to the plan-wide decision card.
   const canDecideLines =
-    Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && canApprove(role, status);
+    Boolean(plan?.id) && !frozen && (status === 'submitted' || status === 'pending_l2') && (decisionAllowed ?? canApprove(role, status));
   // Quantities the approver changed on screen (Job Work → job_work_qty, Purchase → fob_qty).
   const savedByKey = new Map(lines.map((l) => [`line-${l.id}`, l]));
   const editsFor = (key: string): LineEdits | null => {

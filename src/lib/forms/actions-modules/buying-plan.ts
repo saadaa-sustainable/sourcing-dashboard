@@ -1,5 +1,7 @@
 'use server';
 
+import { pageAll } from '@/lib/forms/queries-modules/_shared';
+import { buyingPlanDecisionAllowed } from '@/lib/buying-plan-approval.server';
 import { isPlanFrozen } from '../approval';
 import { submitPlanCore } from '@/lib/plan-submit';
 
@@ -296,7 +298,7 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
   if (!plan) return fail('Plan not found.');
   if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over. Plans are changed on the current and upcoming months.`);
   const from = plan.status as SdStatus;
-  if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
+  if (!await buyingPlanDecisionAllowed(user,planId,from,supabase)) return fail('This decision is above your approval level.');
 
   // Approve the selected lines, scoped to this plan as a safety measure. The
   // returned ids tell us whether the lines still exist (a re-save replaces them).
@@ -313,10 +315,7 @@ export async function approveBuyingPlanLines(formData: FormData): Promise<Action
 
   // Re-read every line to decide the header: it flips to approved only once all
   // non-zero lines are approved.
-  const { data: allLines } = await supabase
-    .from('sd_buying_plan_line')
-    .select('job_work_qty, fob_qty, efob_qty, line_status')
-    .eq('plan_id', planId);
+  const allLines=await pageAll<Record<string,unknown>>(()=>supabase.from('sd_buying_plan_line').select('job_work_qty,fob_qty,efob_qty,line_status').eq('plan_id',planId).order('id'));
   const nonZero = ((allLines ?? []) as Record<string, unknown>[]).filter(
     (l) => Number(l.job_work_qty || 0) + Number(l.fob_qty || 0) + Number(l.efob_qty || 0) > 0,
   );
@@ -380,7 +379,7 @@ export async function rejectBuyingPlanLines(formData: FormData): Promise<ActionR
   if (isPlanFrozen(plan.plan_month)) return fail(`The ${String(plan.plan_month).slice(0, 7)} plan is view only — its month is over.`);
   const from = plan.status as SdStatus;
   if (from !== 'submitted' && from !== 'pending_l2') return fail('Only a plan awaiting approval can have lines rejected.');
-  if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
+  if (!await buyingPlanDecisionAllowed(user,planId,from,supabase)) return fail('This decision is above your approval level.');
 
   const { data: touched, error: lineErr } = await supabase
     .from('sd_buying_plan_line')

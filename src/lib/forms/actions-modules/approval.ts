@@ -1,5 +1,6 @@
 'use server';
 
+import { buyingPlanDecisionAllowed, loadBuyingPlanApprovalRule } from '@/lib/buying-plan-approval.server';
 import { parsePoReworkSections, poReworkLabel } from '@/lib/po-rework';
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
@@ -196,7 +197,9 @@ export async function decideApproval(formData: FormData): Promise<ActionResult> 
   const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
   const waitingSince = waitCol ? (row[waitCol] as string | null) : null;
   const escalated = isEscalated(waitingSince, Number(rules.approval_escalation_days ?? 0));
-  if (!canDecide(user, from, matrix, escalated)) {
+  const planRule=entityType==='buying_plan'?await loadBuyingPlanApprovalRule(supabase):null;
+  if (!(planRule ? await buyingPlanDecisionAllowed(user,entityId,from,supabase) : canDecide(user, from, matrix, escalated))) {
+    if(planRule) return fail('Only the mapped L2 approver can decide plans above the L1 value limit or with unknown value; L1 can decide plans within the limit.');
     const named = approversFor(from, matrix);
     return fail(
       named.length
@@ -350,7 +353,7 @@ export async function reworkLines(formData: FormData): Promise<ActionResult> {
     return fail(`The ${row.plan_month.slice(0, 7)} plan is view only — its month is over.`);
   }
   const from = row.status as SdStatus;
-  if (!canApprove(user.role, from)) return fail('This decision is above your approval level.');
+  if (!(entityType==='buying_plan' ? await buyingPlanDecisionAllowed(user,entityId,from,supabase) : canApprove(user.role,from))) return fail('This decision is above your approval level.');
 
   const now = new Date().toISOString();
   // Scope every line update to THIS record — a stale/crafted line id must never

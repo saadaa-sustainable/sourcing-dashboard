@@ -1,5 +1,7 @@
 'use server';
 
+import { buyingPlanDecisionAllowed, loadBuyingPlanApprovalRule } from '@/lib/buying-plan-approval.server';
+import { pricePlanLine } from '@/lib/buying-plan-approval';
 import { revalidatePath } from 'next/cache';
 import { currentUser, loadApprovedMaterialCosts, loadApprovedStandardCosts } from '../queries';
 import { canApprove, isPlanFrozen } from '../approval';
@@ -248,7 +250,7 @@ export async function getApprovalEditForm(entityType: ApprovalEntity, entityId: 
   const built = await buildForm(db, entityType, entityId);
   if ('error' in built) return { ok: false, error: built.error };
   if (!PENDING.includes(built.status)) return { ok: false, error: 'This is no longer waiting for approval.' };
-  if (!canApprove(user.role, built.status)) return { ok: false, error: 'This decision is above your approval level.' };
+  if (!(entityType==='buying_plan' ? await buyingPlanDecisionAllowed(user,entityId,built.status,db) : canApprove(user.role,built.status))) return { ok: false, error: 'This decision is above your approval level.' };
   if (!built.form.rows.length) return { ok: false, error: 'There is nothing pending to edit here.' };
   return { ok: true, form: built.form };
 }
@@ -272,7 +274,7 @@ export async function editAndApprove(formData: FormData): Promise<ActionResult> 
   const built = await buildForm(db, entityType, entityId);
   if ('error' in built) return fail(built.error);
   if (!PENDING.includes(built.status)) return fail('This is no longer waiting for approval.');
-  if (!canApprove(user.role, built.status)) return fail('This decision is above your approval level.');
+  if (!(entityType==='buying_plan' ? await buyingPlanDecisionAllowed(user,entityId,built.status,db) : canApprove(user.role,built.status))) return fail('This decision is above your approval level.');
 
   // Keep only real changes to fields the server offered.
   const rowsByRef = new Map(built.form.rows.map((r) => [r.ref, r]));
@@ -323,10 +325,16 @@ export async function editAndApprove(formData: FormData): Promise<ActionResult> 
       const { data: l } = await db.from('sd_buying_plan_line').select('id, product_code, job_work_qty, fob_qty, efob_qty, standard_value').eq('id', Number(ref)).maybeSingle();
       if (!l) continue;
       const c = (costs as Record<string, { job: number; fob: number; efob?: number }>)[text(l.product_code)];
-      if (!c) continue;
-      const value = Number(l.job_work_qty || 0) * c.job + Number(l.fob_qty || 0) * c.fob + (material ? 0 : Number(l.efob_qty || 0) * (c.efob ?? 0));
+      if (!c) {
+        if(await loadBuyingPlanApprovalRule(db)) {
+          undo.push({target:{ref,table:'sd_buying_plan_line',keyCol:'id',key:l.id},patch:{standard_value:l.standard_value??null}});
+          await write({ref,table:'sd_buying_plan_line',keyCol:'id',key:l.id},{standard_value:null});
+        }
+        continue;
+      }
+      const value = pricePlanLine(l,c,material);
       undo.push({ target: { ref, table: 'sd_buying_plan_line', keyCol: 'id', key: l.id }, patch: { standard_value: l.standard_value } });
-      await write({ ref, table: 'sd_buying_plan_line', keyCol: 'id', key: l.id }, { standard_value: value > 0 ? value : null });
+      await write({ ref, table: 'sd_buying_plan_line', keyCol: 'id', key: l.id }, { standard_value: value != null && value > 0 ? value : null });
     }
   }
   if (entityType === 'po_approval' && built.header && [...byRef.keys()].some((r) => r !== 'header')) {
@@ -412,7 +420,7 @@ export async function editAndApprovePlanLines(formData: FormData): Promise<Actio
   const built = await buildForm(db, 'buying_plan', planId);
   if ('error' in built) return fail(built.error);
   if (!PENDING.includes(built.status)) return fail('This plan is no longer waiting for approval.');
-  if (!canApprove(user.role, built.status)) return fail('This decision is above your approval level.');
+  if (!await buyingPlanDecisionAllowed(user,planId,built.status,db)) return fail('This decision is above your approval level.');
 
   const rowsByRef = new Map(built.form.rows.map((r) => [r.ref, r]));
   type Edit = { row: ApprovalEditRow; field: ApprovalEditField; next: string };
@@ -463,9 +471,9 @@ export async function editAndApprovePlanLines(formData: FormData): Promise<Actio
       const { data: l } = await db.from('sd_buying_plan_line').select('id, product_code, job_work_qty, fob_qty, efob_qty').eq('id', Number(ref)).maybeSingle();
       if (!l) continue;
       const c = (costs as Record<string, { job: number; fob: number; efob?: number }>)[text(l.product_code)];
-      if (!c) continue;
-      const value = Number(l.job_work_qty || 0) * c.job + Number(l.fob_qty || 0) * c.fob + (material ? 0 : Number(l.efob_qty || 0) * (c.efob ?? 0));
-      await write({ ref, table: 'sd_buying_plan_line', keyCol: 'id', key: l.id }, { standard_value: value > 0 ? value : null });
+      if (!c) { if(await loadBuyingPlanApprovalRule(db)) await write({ref,table:'sd_buying_plan_line',keyCol:'id',key:l.id},{standard_value:null}); continue; }
+      const value = pricePlanLine(l,c,material);
+      await write({ ref, table: 'sd_buying_plan_line', keyCol: 'id', key: l.id }, { standard_value: value != null && value > 0 ? value : null });
     }
     const target = { ref: 'header', table: built.header.table, keyCol: 'id', key: built.header.id };
     undo.push({ target, patch: { approver_edited: Boolean(plan?.approver_edited) } });

@@ -78,8 +78,9 @@ async function saveRequest(formData: FormData, editing: boolean): Promise<Action
   const { data: vendor } = await db.from('vendor_master_data').select('vendor_name,is_active').eq('vendor_code', f.v.vendor_code).maybeSingle();
   if (!vendor?.is_active) return fail('Choose an active vendor from the master.');
   f.v.vendor_name = vendor.vendor_name;
-  const pos = await commercialPos(f.v.vendor_code);
-  if (!pos.some((p) => p.po_ref_num === f.v.po_numbers)) return fail('Choose an Approved or Completed purchase order belonging to this vendor.');
+  const retainedPo=old?.vendor_code===f.v.vendor_code && old.po_numbers===f.v.po_numbers ? old.po_numbers : undefined;
+  const pos = await commercialPos(f.v.vendor_code, retainedPo);
+  if (!pos.some((p) => p.po_ref_num === f.v.po_numbers)) return fail('Choose this vendor\'s Approved or Completed purchase order created on or after 1 April 2026 and not closed in Finished Goods PO Closer.');
   const kept = new Set((old?.attachments ?? []).map((a) => a.path));
   for (const file of f.v.attachments) {
     if (kept.has(file.path)) continue;

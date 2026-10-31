@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { BadgeIndianRupee, Download, Paperclip, X } from 'lucide-react';
+import { isCommercialPoEligible } from '@/lib/commercial-po-eligibility';
+import { Combobox } from '@/components/forms/combobox';
 import { HeaderInfo } from '@/components/header-info';
 import { Field, Notice, StatusBadge } from '@/components/forms/form-layout';
 import { CommercialAccounts } from './commercial-review';
@@ -154,7 +156,7 @@ export function VendorCommercialClient({
   const b = form.business_type || null;
   const t = form.request_type || null;
   const takesFiles = t ? Boolean(ATTACHMENT_LABEL[t]) : false;
-  const eligiblePos = pos.filter((po) => po.vendor_code === form.vendor_code.trim().toUpperCase() && (po.po_status === 'Approved' || po.po_status === 'Completed'));
+  const eligiblePos = pos.filter((po) => po.vendor_code === form.vendor_code.trim().toUpperCase() && isCommercialPoEligible(po));
 
   function pickVendor(code: string) {
     const up = code.trim().toUpperCase();
@@ -307,12 +309,24 @@ export function VendorCommercialClient({
             <Field label="Firm name" required={t === 'cash_discount'}>
               <input value={form.vendor_name} readOnly />
             </Field>
-            <Field label="Purchase order" required={t === 'cash_discount'} hint="This vendor’s Approved and Completed purchase orders" hintPlacement="below">
-              <select value={form.po_numbers} onChange={(e) => set('po_numbers', e.target.value)} disabled={pending}>
-                <option value="">Select purchase order…</option>
-                {form.po_numbers && !eligiblePos.some((p) => p.po_ref_num === form.po_numbers) && <option value={form.po_numbers} disabled>Previously selected PO is no longer eligible — choose another</option>}
-                {eligiblePos.map((p) => <option key={p.po_ref_num} value={p.po_ref_num}>{p.po_ref_num} · {p.po_status}</option>)}
-              </select>
+            <Field label="Purchase order" required={t === 'cash_discount'} hint="This vendor’s Approved and Completed POs created from 1 April 2026; FG-closed POs excluded" hintPlacement="below">
+              <div className="commercial-po-picker">
+                <Combobox
+                  ariaLabel="Purchase order"
+                  value={form.po_numbers}
+                  onChange={(value) => set('po_numbers', value)}
+                  options={[
+                    { value: '', label: 'Clear purchase order selection' },
+                    ...eligiblePos.map((po) => ({ value: po.po_ref_num, label: po.po_ref_num, detail: po.po_status ?? undefined })),
+                  ]}
+                  allowFreeText={false}
+                  required={t === 'cash_discount'}
+                  disabled={pending || !form.vendor_code.trim()}
+                  placeholder="Search purchase order..."
+                  emptyText="No matching eligible purchase orders."
+                />
+                {form.po_numbers && !eligiblePos.some((po) => po.po_ref_num === form.po_numbers) && <small className="wf-error-text">The saved PO is outside the current selection list. Choose a newer PO if changing it.</small>}
+              </div>
             </Field>
             <Field label="Type of request" required={t === 'cash_discount'}>
               <select aria-label="Commercial request type" value={form.request_type} onChange={(e) => { set('request_type', e.target.value as CommercialRequestType | ''); setDetails({}); }}>

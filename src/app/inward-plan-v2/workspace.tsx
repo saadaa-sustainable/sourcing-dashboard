@@ -1,12 +1,16 @@
 'use client';
 
 import { Search } from 'lucide-react';
+import { Combobox } from '@/components/forms/combobox';
 
 import type { ReactNode } from 'react';
-import { Fragment, useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import { Fragment, useActionState, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { savePlan, reviewPlan, validatePlan } from './actions';
 import { deadlineLabel, periodBounds, planTitle, validDate } from '@/lib/inward-plan-v2/validation';
 import { STATUS_LABEL } from '@/lib/inward-plan-v2/types';
+import { variantInventoryTotals } from '@/lib/inward-plan-v2/inventory';
+import { productKey, productOptions } from '@/lib/inward-plan-v2/products';
+import { ScheduleCsvUpload } from './schedule-csv-upload';
 import type { HeaderDraft, LineDraft, Plan, PlanLine, Result, SourceLine, ProductSource } from '@/lib/inward-plan-v2/types';
 import styles from './v2.module.css';
 
@@ -111,7 +115,7 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
     remarks: line.remarks ?? '', label: (line.po_ref_num || line.po_number) + ' · ' + line.sku + ' · ' + (line.vendor_name ?? ''),
   })));
   const [choices, setChoices] = useState(initialSources);
-  const productChoices = productOptions(choices);
+  const productChoices = useMemo(() => productOptions(choices), [choices]);
   const [addedMessage, setAddedMessage] = useState('');
   const focusAdded = useRef(false);
   const addedQuantity = useRef<HTMLInputElement>(null);
@@ -126,7 +130,8 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
   const [searchError, setSearchError] = useState('');
   const [searching, startSearch] = useTransition();
   const [saved, saveAction, saving] = useActionState(savePlan, INITIAL);
-  useEffect(() => { onSavingChange(saving); }, [saving, onSavingChange]);
+  const [importing, setImporting] = useState(false);
+  useEffect(() => { onSavingChange(saving || importing); }, [saving, importing, onSavingChange]);
   let bounds: ReturnType<typeof periodBounds> | null = null;
   try { bounds = periodBounds(header.period_kind, header.period_start); } catch { /* Show server validation on save. */ }
   const generatedTitle = validDate(header.period_start) ? planTitle(header.period_kind, header.period_start) : '';
@@ -160,7 +165,7 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
       <input type="hidden" name="version" value={plan?.updated_at ?? ''} />
       <input type="hidden" name="lines" value={JSON.stringify(drafts)} />
       <input type="hidden" name="approval_notes" value={approvalNotes} />
-      <fieldset disabled={saving} className={styles.fieldset}>
+      <fieldset disabled={saving || importing} className={styles.fieldset}>
         <div className={styles.grid}>
           <label>Plan title<input className="wf-input" name="title" readOnly value={generatedTitle} aria-describedby="plan-title-hint" /><span id="plan-title-hint" className={styles.titleHint}>Plan title is auto-generated from the planning period and start date</span></label>
           <label>Planning period<select className="wf-input" name="period_kind" value={header.period_kind} onChange={e => {
@@ -177,6 +182,19 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
         {bounds && <p>Period ends {bounds.end} · Submit by {deadlineLabel(bounds.deadline)}</p>}
         <label>Plan remarks<textarea className="wf-input" name="remarks" rows={2} maxLength={4000} value={header.remarks} onChange={e => changeHeader({ remarks: e.target.value })} /></label>
         <h3>Inward plan schedule ({drafts.length} lines)</h3>
+        <ScheduleCsvUpload header={header} drafts={drafts} onBusy={setImporting} onImport={lines => {
+          focusAdded.current = true;
+          setDrafts(current => [...current, ...lines]); onDirty();
+        }} />
+        <div className={styles.entryDivider}><span>OR</span></div>
+        <div className={styles.manualEntry}>
+          <div><h4>Add Inward Plan Entries manually</h4><p>Choose products from open, approved purchase orders.</p></div>
+          <a className="wf-btn wf-btn-ghost" href="#inward-v2-open-pos">Add from open, approved POs</a>
+        </div>
+        <div className={styles.scheduleTableHeading}>
+          <h4>Schedule entries</h4>
+          <span>{drafts.length} {drafts.length === 1 ? 'line' : 'lines'}</span>
+        </div>
         {!drafts.length && <p>Add products using the PO search below. You can save an empty draft.</p>}
         <div className={styles.scroll}><table className={styles.table}>
           <caption className={styles.srOnly}>Editable receipt schedule</caption>
@@ -215,7 +233,7 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
     <Feedback result={saved} />
     {children}
     <div className={styles.source}>
-      <h3>Add from open, approved POs</h3>
+      <h3 id="inward-v2-open-pos" className={styles.anchorHeading} tabIndex={-1}>Add from open, approved POs</h3>
       <form className={styles.sourceSearch} onSubmit={event => {
         event.preventDefault();
         startSearch(async () => {
@@ -238,7 +256,8 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
       {searchError && <p role="alert">{searchError}</p>}
       {addedMessage && <p role="status">{addedMessage}</p>}
       <p className={styles.muted}>Showing all matching approved PO lines with pending quantity. Leave the search term blank to show all products. Source data is read-only.</p>
-      <InventoryPicker choices={choices} add={add} disabled={saving} remaining={500 - drafts.length} />
+      <InventoryPicker choices={choices} add={add} disabled={saving || importing} remaining={500 - drafts.length} />
+      <PendingPoPicker products={productChoices} add={add} disabled={saving || importing} remaining={500 - drafts.length} />
       {!choices.length && <p>No matching open PO lines. Try another product code or variant code.</p>}
     </div>
   </section>;
@@ -247,6 +266,71 @@ function Editor({ plan, lines, initialSources, today, onDirty, children, summary
 const INVENTORY_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
 const inventoryNumber = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 const normalizedSize = (size: string | null) => (size ?? '').trim().toUpperCase().replace(/^XXL$/, '2XL').replace(/^XXXL$/, '3XL');
+function PendingPoPicker({ products, add, disabled, remaining }: {
+  products: ProductSource[]; add: (source: ProductSource) => void; disabled: boolean; remaining: number;
+}) {
+  const [query, setQuery] = useState('');
+  const [vendorQuery, setVendorQuery] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const vendorOptions = useMemo(() => [{ value: '', label: 'All vendors' }, ...[...new Set(products.map(source => source.vendor_name).filter((value): value is string => !!value))]
+    .sort((a, b) => a.localeCompare(b)).map(value => ({ value, label: value }))], [products]);
+  const productOptions = useMemo(() => [{ value: '', label: 'All products' }, ...[...new Set(products.map(source => source.product_code))]
+    .sort((a, b) => a.localeCompare(b)).map(value => ({ value, label: value }))], [products]);
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return products.filter(source => (!term || [source.po_number, source.po_ref_num, source.vendor_name, source.product_code]
+      .some(value => value?.toLowerCase().includes(term))) &&
+      (!vendorQuery || source.vendor_name === vendorQuery) &&
+      (!productQuery || source.product_code === productQuery))
+      .sort((a, b) => a.po_number.localeCompare(b.po_number, undefined, { numeric: true }) || a.product_code.localeCompare(b.product_code));
+  }, [products, query, vendorQuery, productQuery]);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pages);
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const groups = new Map<string, ProductSource[]>();
+  for (const source of visible) groups.set(source.po_number, [...(groups.get(source.po_number) ?? []), source]);
+  const number = (value: number) => Number(value).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+  return <section className={styles.pendingPoSection} aria-labelledby="pending-pos-heading">
+    <h3 id="pending-pos-heading">Pending POs View</h3>
+    <p className={styles.muted}>Pick a product code directly from its pending PO. Quantities combine matching variants and sizes within each PO/product; the product/variant search above applies to this view too.</p>
+    <div className={styles.pendingPoToolbar}>
+      <label>Search pending POs<input className="wf-input" type="search" value={query}
+        onChange={event => { setQuery(event.target.value); setPage(1); }} placeholder="PO number, vendor or product code" /></label>
+      <label>Vendor<Combobox value={vendorQuery} options={vendorOptions} allowFreeText={false} ariaLabel="Filter pending POs by vendor"
+        onChange={value => { setVendorQuery(value); setPage(1); }} placeholder="All vendors" /></label>
+      <label>Product Code<Combobox value={productQuery} options={productOptions} allowFreeText={false} ariaLabel="Filter pending POs by product code"
+        onChange={value => { setProductQuery(value); setPage(1); }} placeholder="All products" /></label>
+      {(query || vendorQuery || productQuery) && <button className="wf-btn wf-btn-ghost wf-btn-sm" type="button"
+        onClick={() => { setQuery(''); setVendorQuery(''); setProductQuery(''); setPage(1); }}>Clear filters</button>}
+      <p className={styles.muted} role="status">{filtered.length} PO/product combinations across {new Set(filtered.map(source => source.po_number)).size} POs</p>
+    </div>
+    <div className={`${styles.scroll} ${styles.pendingPoScroll}`} role="region" aria-label="Scrollable pending POs" tabIndex={0}>
+      <table className={`${styles.table} ${styles.pendingPoTable}`}>
+        <caption className={styles.srOnly}>Pending POs by purchase order and product code</caption>
+        <thead><tr><th>PO No.</th><th>Vendor</th><th>Product Code</th><th>Pending Quantity</th><th>Earliest Delivery Date</th><th>Cost/piece</th><th>Action</th></tr></thead>
+        <tbody>{[...groups].map(([po, sources]) => <Fragment key={po}>{sources.map((source, index) => <tr key={productKey(source)}>
+          {index === 0 && <td rowSpan={sources.length}>{source.po_ref_num || po}{source.po_ref_num && source.po_ref_num !== po && <small className={styles.pendingPoNumber}>{po}</small>}</td>}
+          <td>{source.vendor_name || 'N/A'}</td><td><strong>{source.product_code}</strong></td>
+          <td>{number(source.pending_qty)}</td><td>{source.expected_delivery_date || 'N/A'}</td>
+          <td>{source.item_price == null ? 'N/A' : number(source.item_price)}</td>
+          <td><button className="wf-btn wf-btn-ghost wf-btn-sm" type="button" disabled={disabled || remaining < 1}
+            title={remaining < 1 ? 'The schedule has reached its 500-line limit.' : undefined}
+            aria-label={'Add ' + source.product_code + ' from ' + source.po_number + ' to Inward Plan'}
+            onClick={() => add(source)}>Add to Inward Plan</button></td>
+        </tr>)}</Fragment>)}</tbody>
+      </table>
+      {!filtered.length && <p className={styles.muted}>No pending POs match this search.</p>}
+    </div>
+    <nav className={styles.buttons} aria-label="Pending POs pages">
+      <button className="wf-btn wf-btn-ghost wf-btn-sm" type="button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
+      <span className={styles.muted}>Page {currentPage} of {pages}</span>
+      <button className="wf-btn wf-btn-ghost wf-btn-sm" type="button" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>Next</button>
+    </nav>
+  </section>;
+}
+
 function InventoryPicker({ choices, add, disabled, remaining }: { choices: SourceLine[]; add: (source: ProductSource) => void; disabled: boolean; remaining: number }) {
   const [selected, setSelected] = useState<string | null>(null);
   const popup = useRef<HTMLDialogElement>(null);
@@ -273,12 +357,13 @@ function InventoryPicker({ choices, add, disabled, remaining }: { choices: Sourc
   const poSizes = [...INVENTORY_SIZES, ...extraSizes];
   return <>
     <h3>Inventory View</h3>
-    <p className={styles.muted}>Use current inventory and demand to decide what should be inwarded. Main Warehouse; DOQ = 45-day daily order quantity; DOH = Current Stock / DOQ. N/A means inventory is unavailable or DOQ is zero.</p>
+    <p className={styles.muted}>Use current inventory and demand to decide what should be inwarded. Main Warehouse; DOQ = 45-day daily order quantity; DOH = Current Stock / DOQ. Cumulative DOQ sums all sizes of the variant; cumulative DOH = total variant stock / cumulative DOQ, in days. Missing inputs or zero DOQ make DOH unavailable (N/A).</p>
     <div className={`${styles.scroll} ${styles.inventoryScroll}`} role="region" aria-label="Scrollable inventory view" tabIndex={0}><table className={`${styles.table} ${styles.inventory}`}>
       <caption className={styles.srOnly}>Inventory by product, variant and size</caption>
-      <thead><tr><th>Product Code</th><th>Variant Code</th><th>Size</th>{INVENTORY_SIZES.map(size => <th key={size}>{size}</th>)}<th>View PO Detail</th></tr></thead>
+      <thead><tr><th>Product Code</th><th>Variant Code</th><th>Size</th>{INVENTORY_SIZES.map(size => <th key={size}>{size}</th>)}<th>Cumulative DOQ</th><th>Cumulative DOH</th><th>View PO Detail</th></tr></thead>
       <tbody>{[...products].map(([product, variants]) => [...variants].map(([variant, sources], index) => {
         const inventory = sources[0].inventory ?? [];
+        const cumulative = variantInventoryTotals(inventory);
         const sizes = INVENTORY_SIZES.map(size => inventory.filter(row => normalizedSize(row.size || (row.sku.startsWith(variant) ? row.sku.slice(variant.length).replace(/^[_\s-]+/, '') : null)) === size));
         return <Fragment key={keyOf(product, variant)}>{['Current Stock', 'DOQ (Daily Order Quantity)', 'DOH (Inventory Days on Hand)'].map((label, metric) => <tr key={label}>
           {index === 0 && metric === 0 && <th scope="rowgroup" rowSpan={variants.size * 3}>{product}</th>}
@@ -290,7 +375,11 @@ function InventoryPicker({ choices, add, disabled, remaining }: { choices: Sourc
             const value = metric === 0 ? stock : metric === 1 ? doq : stock != null && doq != null && doq > 0 ? stock / doq : null;
             return <td key={INVENTORY_SIZES[sizeIndex]}>{value == null ? 'N/A' : inventoryNumber.format(value)}</td>;
           })}
-          {metric === 0 && <td rowSpan={3}><button className="wf-btn wf-btn-ghost wf-btn-sm" type="button" aria-haspopup="dialog" aria-expanded={selected === keyOf(product, variant)} onClick={() => setSelected(selected === keyOf(product, variant) ? null : keyOf(product, variant))}>View PO Detail<span className={styles.srOnly}> for {variant}</span></button></td>}
+          {metric === 0 && <>
+            <td rowSpan={3}>{cumulative.doq == null ? 'N/A' : inventoryNumber.format(cumulative.doq)}</td>
+            <td rowSpan={3}>{cumulative.doh == null ? 'N/A' : inventoryNumber.format(cumulative.doh)}</td>
+            <td rowSpan={3}><button className="wf-btn wf-btn-ghost wf-btn-sm" type="button" aria-haspopup="dialog" aria-expanded={selected === keyOf(product, variant)} onClick={() => setSelected(selected === keyOf(product, variant) ? null : keyOf(product, variant))}>View PO Detail<span className={styles.srOnly}> for {variant}</span></button></td>
+          </>}
         </tr>)}</Fragment>;
       }))}</tbody>
     </table></div>
@@ -316,22 +405,4 @@ function InventoryPicker({ choices, add, disabled, remaining }: { choices: Sourc
       </table></div>
     </dialog>
   </>;
-}
-
-function productKey(source: Pick<ProductSource, 'po_number' | 'product_code'>) {
-  return JSON.stringify([source.po_number, source.product_code]);
-}
-function productOptions(sources: SourceLine[]): ProductSource[] {
-  const products = new Map<string, ProductSource>();
-  for (const source of sources) {
-    const key = productKey(source);
-    const old = products.get(key);
-    if (!old) products.set(key, { ...source });
-    else {
-      old.pending_qty = Number(old.pending_qty) + Number(source.pending_qty);
-      if (Number(old.item_price) !== Number(source.item_price) || (old.item_price == null) !== (source.item_price == null)) old.item_price = null;
-      if (source.expected_delivery_date && (!old.expected_delivery_date || source.expected_delivery_date < old.expected_delivery_date)) old.expected_delivery_date = source.expected_delivery_date;
-    }
-  }
-  return [...products.values()];
 }

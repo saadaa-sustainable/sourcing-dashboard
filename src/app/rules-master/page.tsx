@@ -5,6 +5,10 @@ import {
   loadAnalyticsRuleRows,
   NotConfiguredError,
 } from '@/lib/forms/queries';
+import { loadBuyingPlanApprovalRule } from '@/lib/buying-plan-approval.server';
+import { client, pageAll } from '@/lib/forms/queries-modules/_shared';
+import type { SdUser } from '@/lib/forms/types';
+import { BuyingPlanRuleEditor } from './buying-plan-rule-editor';
 import { RulesMasterClient } from './rules-master-client';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +31,11 @@ export default async function RulesMasterPage() {
   if (!user) redirect('/login');
   if (user.role !== 'admin') redirect('/');
 
-  const rules = await loadAnalyticsRuleRows();
+  const db=await client();
+  const [rules,approvalRule,users] = await Promise.all([
+    loadAnalyticsRuleRows(), loadBuyingPlanApprovalRule(db),
+    pageAll<SdUser>(()=>db.from('sd_user').select('email,full_name,role,is_active').order('email')),
+  ]);
 
   return (
     <FormLayout
@@ -38,6 +46,7 @@ export default async function RulesMasterPage() {
       userEmail={user.email}
       allowedPages={user.allowed_pages ?? null}
     >
+      <BuyingPlanRuleEditor rule={approvalRule} users={users} />
       <RulesMasterClient rules={rules} role={user.role} />
     </FormLayout>
   );
