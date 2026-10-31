@@ -4881,7 +4881,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG OUT BUSY entry date for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgOutBusyDate ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyDate: event.target.value || null } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -4894,7 +4894,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG OUT BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgOutBusyAmount ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -4906,7 +4906,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG IN BUSY entry date for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgInBusyDate ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyDate: event.target.value || null } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -4919,7 +4919,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG IN BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgInBusyAmount ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -4934,7 +4934,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`DG entry date for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.dgEntryDate ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgEntryDate: event.target.value || null } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                       className="fg-grn-busy-date-input"
                                       style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
                                     />
@@ -4947,7 +4947,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`DG DN amount for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.dgDnAmount ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgDnAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                       className="fg-grn-busy-date-input"
                                       placeholder="Amount"
                                       style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
@@ -4962,7 +4962,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`Fabric issue/received date for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.fabricDate ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricDate: event.target.value || null } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                       style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                     />
@@ -4975,7 +4975,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`Fabric amount for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.fabricAmount ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                       style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                     />
@@ -4989,7 +4989,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`Trims issue/received date for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.trimsDate ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsDate: event.target.value || null } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5002,7 +5002,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`Trims amount for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.trimsAmount ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5829,7 +5829,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG OUT BUSY entry date for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgOutBusyDate ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyDate: event.target.value || null } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5842,7 +5842,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG OUT BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgOutBusyAmount ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgOutBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5854,7 +5854,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG IN BUSY entry date for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgInBusyDate ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyDate: event.target.value || null } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5867,7 +5867,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`RG IN BUSY entry amount for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.rgInBusyAmount ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, rgInBusyAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5882,7 +5882,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`DG entry date for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.dgEntryDate ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgEntryDate: event.target.value || null } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                       className="fg-grn-busy-date-input"
                                       style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
                                     />
@@ -5895,7 +5895,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`DG DN amount for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.dgDnAmount ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, dgDnAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                       className="fg-grn-busy-date-input"
                                       placeholder="Amount"
                                       style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: reviewReadOnly ? '#f8fafc' : '#fff', color: '#1e293b', fontSize: 12 }}
@@ -5910,7 +5910,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`Fabric issue/received date for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.fabricDate ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricDate: event.target.value || null } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                       style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                     />
@@ -5923,7 +5923,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                       aria-label={`Fabric amount for GRN ${grn.grn ?? index + 1}`}
                                       value={grn.fabricAmount ?? ''}
                                       onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fabricAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                      disabled={reviewReadOnly}
+                                      disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                       style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                     />
@@ -5937,7 +5937,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`Trims issue/received date for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.trimsDate ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsDate: event.target.value || null } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 142, minWidth: 132, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
@@ -5950,7 +5950,7 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                                   aria-label={`Trims amount for GRN ${grn.grn ?? index + 1}`}
                                   value={grn.trimsAmount ?? ''}
                                   onChange={(event) => setGrnRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, trimsAmount: event.target.value === '' ? null : Number(event.target.value) } : row))}
-                                  disabled={reviewReadOnly}
+                                  disabled={reviewReadOnly || selectedDepartment === 'Merchandise'}
                                   className="fg-grn-busy-date-input"
                                   style={{ width: 112, minWidth: 100, padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#1e293b', fontSize: 12 }}
                                 />
