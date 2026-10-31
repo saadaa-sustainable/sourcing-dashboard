@@ -4227,6 +4227,11 @@ export function FinishedGoodPoCloserClient({ userEmail }: FinishedGoodPoCloserCl
                 {workflowCounts.l1SentBack}
               </span>
             )}
+            {filter === 'L-2' && workflowCounts.founder > 0 && (
+              <span className="fg-filter-notification" aria-label={`${workflowCounts.founder} pending Level-2 reviews`}>
+                {workflowCounts.founder}
+              </span>
+            )}
           </button>
         ))}
       </div>
