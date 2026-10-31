@@ -1,3 +1,4 @@
+import { buyingPlanDecisionAllowed } from '@/lib/buying-plan-approval.server';
 import { redirect } from 'next/navigation';
 import { FormLayout, Notice } from '@/components/forms/form-layout';
 import {
@@ -36,6 +37,8 @@ export default async function ApprovalsPage() {
     loadApprovalQueue(),
     loadApprovalStats(),
   ]);
+
+  await Promise.all(items.filter(i=>i.entityType==='buying_plan').map(async item=>{ item.canCurrentUserDecide=await buyingPlanDecisionAllowed(user,item.entityId,item.status); }));
 
   // Item 1: inline approval context for FG buying-plan lines. Material lines
   // (raw/dyed/trims) have no garment stock/DOQ, so they're excluded.

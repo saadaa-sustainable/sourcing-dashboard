@@ -437,3 +437,58 @@ body.poa-drawer-open { overflow: hidden; }
 .wf-btn.poa-edit-request { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; border: 1px solid #202223; border-radius: 8px; background: #202223; color: #fff; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .wf-btn.poa-edit-request:hover { background: #303336; border-color: #303336; color: #fff; }
 .wf-btn.poa-edit-request:focus-visible { outline: 2px solid #202223; outline-offset: 3px; }
+
+.ui-shopify .wf-btn.poa-vendor-analytics-button { background: #fff5d9; border-color: #ead9a6; color: #604b16; font-weight: 600; }
+.ui-shopify .wf-btn.poa-vendor-analytics-button:hover:not(:disabled) { background: #ffedb5; border-color: #d7bd70; color: #604b16; }
+.ui-shopify .wf-btn.poa-vendor-analytics-button:focus-visible { outline: 2px solid #a67513; outline-offset: 2px; }
+
+/* Timeline step: stage, day offset and computed date in one aligned table. */
+.poa-tna-table-wrap { grid-column: 1 / -1; min-width: 0; overflow-x: auto; border: 1px solid var(--line, #e1e3e5); border-radius: 8px; }
+.poa-tna-table { width: 100%; min-width: 440px; border-collapse: collapse; table-layout: fixed; font-size: 13px; line-height: 1.5; }
+.poa-tna-table th, .poa-tna-table td { padding: 12px 16px; border-bottom: 1px solid var(--line, #e1e3e5); text-align: left; vertical-align: middle; }
+.poa-tna-table thead th { background: #f6f6f7; color: var(--ink-1, #202223); font-size: 12px; font-weight: 600; }
+.poa-tna-table thead th:first-child { width: 42%; }
+.poa-tna-table thead th:nth-child(2) { width: 28%; }
+.poa-tna-table tbody th { color: var(--ink-1, #202223); font-weight: 500; }
+.poa-tna-table tbody tr:last-child > * { border-bottom: 0; }
+.poa-tna-table tbody label { display: inline; font-size: 13px; font-weight: 500; }
+.poa-tna-required { display: inline; color: #d72c0d; }
+.poa-drawer .poa-tna-table input { flex: none; width: 112px; max-width: 100%; height: 36px; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line-strong, #c9cccf); border-radius: 8px; font: inherit; font-size: 13px; box-sizing: border-box; }
+.poa-tna-table small { display: block; margin-top: 4px; color: var(--ink-3, #6d7175); font-size: 11px; line-height: 1.4; }
+.poa-tna-table time { font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 650px) { .poa-tna-table th, .poa-tna-table td { padding: 10px; } }
+
+.poa-drawer .poa-tna-table input.poa-tna-date { width: 160px; }
+
+.poa-cad-plans { grid-column: 1 / -1; min-width: 0; margin: 8px 0 0; padding: 20px; border: 1px solid var(--line, #e1e3e5); border-radius: 10px; background: var(--surface, #fff); color: var(--ink-1, #202223); font-size: 13px; line-height: 1.5; }
+.poa-cad-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.poa-cad-heading h4 { margin: 0; font-size: 14px; font-weight: 600; }
+.poa-cad-count { flex: none; padding: 3px 9px; border-radius: 20px; background: #f1f2f3; color: var(--ink-3, #6d7175); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.poa-cad-help { color: var(--ink-3, #6d7175); font-size: 12px; margin: 6px 0 0; }
+.poa-cad-required { display: inline; color: var(--danger-text, #d72c0d); font-size: inherit; font-weight: 600; vertical-align: baseline; }
+.poa-cad-optional { color: var(--ink-3, #6d7175); font-weight: 400; }
+.poa-cad-upload-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: 16px; margin: 20px 0 0; }
+.poa-cad-upload-grid label { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; font-size: 12px; font-weight: 600; }
+.poa-cad-upload-grid label > span { display: block; min-height: 18px; line-height: 18px; }
+.poa-cad-upload-grid .poa-cad-width-label { grid-column: 1; }
+.poa-cad-upload-grid small { color: var(--ink-3, #6d7175); font-size: 11px; font-weight: 400; line-height: 1.5; }
+.poa-drawer .poa-cad-plans input, .poa-drawer .poa-cad-plans select { flex: 0 0 38px; width: 100%; height: 38px; min-height: 38px; max-height: 38px; padding: 8px 10px; border: 1px solid var(--line-strong, #c9cccf); border-radius: 8px; background: #fff; color: var(--ink-1, #202223); font-family: inherit; font-size: 13px; font-weight: 400; line-height: 20px; box-sizing: border-box; }
+.poa-cad-upload-grid label > .poa-cad-file-control { position: relative; display: flex; height: 38px; min-height: 38px; }
+.poa-drawer .poa-cad-plans .poa-cad-file-control input[type="file"] { position: absolute; inset: 0; z-index: 1; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.poa-cad-file-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 38px; padding: 0 14px; box-sizing: border-box; border: 1px solid var(--line-strong, #c9cccf); border-radius: 8px; background: #f1f2f3; color: var(--ink-1, #202223); font-size: 13px; font-weight: 600; line-height: 20px; pointer-events: none; }
+.poa-cad-file-button svg { flex-shrink: 0; }
+.poa-cad-file-control:hover input:not(:disabled) + .poa-cad-file-button { background: #e8eaeb; }
+.poa-cad-file-control input:focus-visible + .poa-cad-file-button { outline: 2px solid var(--focus, #008060); outline-offset: 2px; }
+.poa-cad-file-control input:disabled + .poa-cad-file-button { opacity: .55; }
+.poa-cad-plans input:disabled, .poa-cad-plans select:disabled { opacity: .6; cursor: not-allowed; }
+.poa-cad-list { padding: 0; margin: 12px 0 0; list-style: none; }
+.poa-cad-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line, #e1e3e5); padding: 14px 0; }
+.poa-cad-list li:last-child { padding-bottom: 0; }
+.poa-cad-list button { flex-shrink: 0; }
+.poa-cad-list li > div { min-width: 0; }
+.poa-cad-list small { display: block; margin-top: 4px; color: var(--ink-3, #6d7175); font-size: 11px; }
+.poa-cad-list p { margin: 5px 0 0; overflow-wrap: anywhere; }
+.poa-cad-open { color: #202223; text-decoration: underline; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.poa-cad-success { color: #007f63; margin: 10px 0 0; }
+.poa-cad-plans > [role="alert"], .poa-cad-plans > [role="status"] { margin: 12px 0 0; font-size: 12px; }
+@media (max-width: 650px) { .poa-cad-plans { padding: 16px; } .poa-cad-upload-grid { grid-template-columns: 1fr; gap: 14px; } }

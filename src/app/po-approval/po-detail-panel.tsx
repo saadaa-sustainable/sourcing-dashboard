@@ -1,5 +1,6 @@
 'use client';
 
+import { PoCadPlans } from './po-cad-plans';
 import { FileDown } from 'lucide-react';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import { addTnaDays, tnaBaseFor } from '@/lib/business-logic';
@@ -118,6 +119,8 @@ export function PoDetailPanel({
             {po.vendor_code && (
               <VendorHistoryButton
                 vendorCode={po.vendor_code}
+                poQty={Number(po.po_qty) || null}
+                poType={po.po_type}
                 productCode={po.product_code}
                 label="PO history"
                 className="wf-btn wf-btn-ghost wf-btn-sm wf-inline-btn"
@@ -221,6 +224,8 @@ export function PoDetailPanel({
           <Row label="First actual delivery">{day(po.first_actual_delivery_date)}</Row>
         </Block>
       </div>
+
+      <PoCadPlans key={po.id} poId={po.id} />
 
       {lines.length > 0 && (
         <div className="table-scroll">

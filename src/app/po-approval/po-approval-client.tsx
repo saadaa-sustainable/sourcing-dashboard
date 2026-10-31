@@ -24,13 +24,15 @@ import {
 } from '@/lib/forms/actions';
 import { confirmDelete as askConfirmDelete } from '@/lib/confirm';
 import { addMonths, canApprove, canDeletePo, canEdit, isPlanFrozen, monthLabel, monthStart, routeApproval, STATUS_LABEL } from '@/lib/forms/approval';
-import { addTnaDays, awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
+import { awaitingEasycomDays, tnaBaseFor } from '@/lib/business-logic';
 import type { CostSheetFigures } from '@/lib/cost-sheet';
 import { Field, Notice } from '@/components/forms/form-layout';
 import { DeboardedPill } from '@/components/forms/deboarded-pill';
 import { InfoDot } from '@/components/info-dot';
 import { SubmitChecksModal } from './submit-checks-modal';
 import { DeleteRequestModal } from './delete-request-modal';
+import { PoCadPlans } from './po-cad-plans';
+import { PoTnaTable } from './po-tna-table';
 import { VendorHistoryButton } from '@/components/vendor-history-modal';
 import { Combobox, type ComboOption } from '@/components/forms/combobox';
 import { PoCard, poFlag } from './po-card';
@@ -1136,8 +1138,11 @@ export function PoApprovalClient({
               {form.vendor_code.trim() && (
                 <VendorHistoryButton
                   vendorCode={form.vendor_code}
+                  poQty={draftQty}
+                  poType={form.po_type}
                   productCode={form.product_code.trim().toUpperCase() || null}
-                  label="See their PO history"
+                  label="View Vendor Performance Analytics"
+                  className="wf-btn wf-btn-ghost wf-btn-sm poa-vendor-analytics-button"
                 />
               )}
             </div>
@@ -1303,6 +1308,7 @@ export function PoApprovalClient({
                 onChange={(e) => set('margin_pct', e.target.value)}
               />
             </Field>
+            <PoCadPlans key={editing?.id ?? draftId ?? 'new'} poId={editing?.id ?? draftId} required={canEditPoSection(current, 'cost')} editable={canEdit(role, current?.status ?? 'draft') && canEditPoSection(current, 'cost')} />
           </FormSection>
 
           <FormSection
@@ -1324,33 +1330,11 @@ export function PoApprovalClient({
                 )}
               </Notice>
             </div>
-            {TNA_DAY_FIELDS.map((f) => (
-              <Field required
-                key={f.key}
-                label={f.label}
-                hint={
-                  form[f.key]
-                    ? `${dayLabel(addTnaDays(tnaBase.date, Number(form[f.key])))}${
-                        leadtimes?.[f.standard] != null ? ` · standard ${leadtimes[f.standard]}d` : ''
-                      }`
-                    : leadtimes?.[f.standard] != null
-                      ? `standard ${leadtimes[f.standard]}d`
-                      : 'days from the EasyEcom PO'
-                }
-              >
-                <div className="wf-issue-row">
-                  <input required aria-required="true"
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={form[f.key]}
-                    placeholder={leadtimes?.[f.standard] != null ? String(leadtimes[f.standard]) : 'days'}
-                    onChange={(e) => set(f.key, e.target.value)}
-                  />
-                  <span className="wf-subtle">days</span>
-                </div>
-              </Field>
-            ))}
+            <PoTnaTable
+              baseDate={tnaBase.date}
+              rows={TNA_DAY_FIELDS.map(field => ({ key: field.key, label: field.label, days: form[field.key], standardDays: leadtimes?.[field.standard] ?? null }))}
+              onDaysChange={(key, value) => set(key, value)}
+            />
             <div style={{ gridColumn: '1 / -1' }}>
               <button
                 type="button"

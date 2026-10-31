@@ -15,7 +15,7 @@ const mocks = {
   'next/navigation': `export const redirect=(path)=>{throw new Error('Unexpected redirect '+path)};`,
   './session-actions': `export const vendorCommercialSignOut=async()=>{};`,
   '@/lib/forms/actions-modules/vendor-commercial': `import {commercialFields} from '@/lib/forms/commercial-validation';
-    export async function loadCommercialPos(){return [{po_ref_num:'PO-1',vendor_code:'ABC',po_status:'Approved'},{po_ref_num:'PO-DONE',vendor_code:'ABC',po_status:'Completed'},{po_ref_num:'PO-DRAFT',vendor_code:'ABC',po_status:'Draft'},{po_ref_num:'OTHER-PO',vendor_code:'XYZ',po_status:'Approved'}]}
+    export async function loadCommercialPos(){return [{po_ref_num:'PO-1',vendor_code:'ABC',po_date:'2026-04-01',po_status:'Approved'},{po_ref_num:'PO-DONE',vendor_code:'ABC',po_date:'2026-04-01',po_status:'Completed'},{po_ref_num:'PO-OLD',vendor_code:'ABC',po_date:'2026-03-31T23:59:59',po_status:'Approved'},{po_ref_num:'PO-UNDATED',vendor_code:'ABC',po_date:null,po_status:'Approved'},{po_ref_num:'PO-DRAFT',vendor_code:'ABC',po_date:'2026-04-01',po_status:'Draft'},{po_ref_num:'OTHER-PO',vendor_code:'XYZ',po_date:'2026-04-01',po_status:'Approved'}]}
     export async function createVendorCommercialRequest(fd){window.saved=Object.fromEntries(fd);const result=commercialFields(fd,fd.get('intent')==='draft');return window.failSave?{ok:false,error:'Simulated save failure'}:result.ok?{ok:true,message:'Saved'}:result}
     export const updateVendorCommercialRequest=createVendorCommercialRequest;
     export async function startCommercialUpload(){return {ok:true,path:'ABC/00000000-0000-4000-8000-000000000001.pdf',token:'test'}}
@@ -40,7 +40,7 @@ const root=createRoot(document.getElementById('app'));const actor=${JSON.stringi
 window.mountPassword=async()=>root.render(await ChangePasswordPage());
 window.mountGoogle=(vendor=true)=>root.render(<GoogleButton key={Math.random()} vendor={vendor}/>);
 window.mountLogin=async()=>{document.getElementById('app').parentElement.className='ui-shopify';root.render(await VendorLogin({searchParams:Promise.resolve({})}));};
-window.mount=(extra={})=>root.render(<VendorCommercialClient key={Math.random()} actor={actor} role="viewer" requests={[]} vendors={[{vendor_code:'ABC',vendor_name:'ABC Textiles',primary_type:null}]} initialPos={[{po_ref_num:'PO-1',vendor_code:'ABC',po_status:'Approved'},{po_ref_num:'PO-DONE',vendor_code:'ABC',po_status:'Completed'},{po_ref_num:'PO-DRAFT',vendor_code:'ABC',po_status:'Draft'},{po_ref_num:'OTHER-PO',vendor_code:'XYZ',po_status:'Approved'}]} {...extra}/>);
+window.mount=(extra={})=>root.render(<VendorCommercialClient key={Math.random()} actor={actor} role="viewer" requests={[]} vendors={[{vendor_code:'ABC',vendor_name:'ABC Textiles',primary_type:null}]} initialPos={[{po_ref_num:'PO-1',vendor_code:'ABC',po_date:'2026-04-01',po_status:'Approved'},{po_ref_num:'PO-DONE',vendor_code:'ABC',po_date:'2026-04-01',po_status:'Completed'},{po_ref_num:'PO-OLD',vendor_code:'ABC',po_date:'2026-03-31T23:59:59',po_status:'Approved'},{po_ref_num:'PO-UNDATED',vendor_code:'ABC',po_date:null,po_status:'Approved'},{po_ref_num:'PO-DRAFT',vendor_code:'ABC',po_date:'2026-04-01',po_status:'Draft'},{po_ref_num:'OTHER-PO',vendor_code:'XYZ',po_date:'2026-04-01',po_status:'Approved'}]} {...extra}/>);
 window.mountAdmin=()=>window.mount({actor:{...actor,email:'admin@saadaa.in',vendorCode:null,role:'admin'},role:'admin',requests:[req]});
 window.mountEdit=()=>window.mount({requests:[req],editRequest:req});
 window.mountReview=()=>root.render(<div className="commercial-review-screen"><CommercialReview request={req} events={[]} admin standalone/></div>);
@@ -53,6 +53,7 @@ let checks = 0;
 const check = (v) => { assert.ok(v); checks++; };
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const pickPo=async(value)=>{const input=page.getByRole('combobox',{name:'Purchase order',exact:true});await input.fill(value);await input.press('ArrowDown');await input.press('Enter');};
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.setContent('<div class="commercial-portal ui-shopify" style="font-family:Arial,sans-serif"><div class="wf-page"><div id="app"></div></div></div>');
@@ -71,9 +72,22 @@ try {
   await page.keyboard.press('Enter');
   check(await page.getByLabel('Business type').isVisible());
   await page.getByLabel('Business type').selectOption('fabric');
-  check(await page.locator('select').filter({ has: page.locator('option[value="PO-1"]') }).locator('option[value="PO-DONE"]').count() === 1);
-  check(await page.locator('option[value="PO-DRAFT"], option[value="OTHER-PO"]').count() === 0);
-  await page.getByLabel('Purchase order', { exact: false }).selectOption('PO-1');
+  const poSearch=page.getByRole('combobox', {name:'Purchase order',exact:true});
+  await poSearch.click();
+  check(await page.getByRole('listbox').getByRole('option').filter({hasText:'PO-DONE'}).count()===1);
+  check(await page.getByRole('listbox').getByRole('option').filter({hasText:/PO-DRAFT|OTHER-PO|PO-OLD|PO-UNDATED/}).count()===0);
+  await poSearch.fill('DONE');
+  check(await page.getByRole('listbox').getByRole('option').count()===1);
+  await page.getByRole('listbox').getByRole('option').filter({hasText:'PO-DONE'}).click();
+  check(await poSearch.inputValue()==='PO-DONE');
+  await poSearch.fill('NO-SUCH-PO');
+  check(await page.getByText('No matching eligible purchase orders.',{exact:true}).isVisible());
+  await poSearch.press('Escape');
+  check(await poSearch.inputValue()==='PO-DONE');
+  await poSearch.fill('');await page.getByRole('listbox').getByRole('option',{name:'Clear purchase order selection',exact:true}).click();
+  check(await poSearch.inputValue()==='');
+
+  await pickPo('PO-1');
   await page.getByLabel('Commercial request type', { exact: true }).selectOption('surplus_fabric_consumption');
   await page.getByLabel('Initial Average Fabric Consumption').fill('100');
   await page.getByLabel('Revised Fabric Consumption', { exact: true }).fill('101');
@@ -87,7 +101,7 @@ try {
   await page.getByRole('button', { name: 'Submit for approval', exact: true }).click();
   await page.waitForFunction(() => window.toast === 'Saved');
   await page.getByLabel('Business type').selectOption('fabric');
-  await page.getByLabel('Purchase order', { exact: false }).selectOption('PO-1');
+  await pickPo('PO-1');
   await page.getByLabel('Commercial request type', { exact: true }).selectOption('grn_delay_waiver');
   check(await page.getByRole('heading', { name: 'Request for GRN Delay Waiver', exact: true }).isVisible());
   await page.getByLabel('Challan no').fill('CH-1');
@@ -105,13 +119,13 @@ try {
   check(JSON.parse(await page.evaluate(() => window.saved.details)).grn_no === 'GRN-1');
   check(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(await page.evaluate(() => window.saved.submission_key)));
   await page.getByLabel('Business type').selectOption('fabric');
-  await page.getByLabel('Purchase order', { exact: false }).selectOption('PO-1');
+  await pickPo('PO-1');
   await page.getByLabel('Commercial request type', { exact: true }).selectOption('hold_waiver');
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   await page.waitForFunction(() => window.saved?.intent === 'draft');
   check((await page.evaluate(() => window.saved.vendor_code)) === 'ABC');
   await page.getByLabel('Business type').selectOption('fabric');
-  await page.getByLabel('Purchase order', { exact: false }).selectOption('PO-1');
+  await pickPo('PO-1');
   await page.getByLabel('Commercial request type').selectOption('hold_waiver');
   await page.getByLabel('Total hold qty').fill('100');
   await page.getByLabel('Total days hold').fill('5');
@@ -126,7 +140,7 @@ try {
   await page.waitForFunction(() => window.saved?.intent === 'submit');
   check(JSON.parse(await page.evaluate(() => window.saved.details)).quantity_unit === 'metres');
   await page.getByLabel('Business type').selectOption('fabric');
-  await page.getByLabel('Purchase order', { exact: false }).selectOption('PO-1');
+  await pickPo('PO-1');
   await page.getByLabel('Commercial request type', { exact: true }).selectOption('cost_increment');
   await page.getByLabel('Increase in dye rate', { exact: true }).check();
   await page.getByLabel('Add-ons in fabric finishing / washing', { exact: true }).check();
@@ -146,7 +160,7 @@ try {
   await page.waitForFunction(() => window.saved?.cost_reason === 'dye_rate,fabric_finishing');
   check((await page.evaluate(() => window.saved.increment_amount)) === '2');
   await page.getByLabel('Business type').selectOption('fabric');
-  await page.getByLabel('Purchase order', { exact: false }).selectOption('PO-1');
+  await pickPo('PO-1');
   await page.getByLabel('Commercial request type', { exact: true }).selectOption('cash_discount');
   check(await page.getByLabel('Owner name').isVisible());
   check(await page.getByLabel('Requested cash discount').count() === 0);

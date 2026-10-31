@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import ts from 'typescript';
+import {readFileSync} from 'node:fs';
+const compile=(file,require)=>{const exports={};vm.runInNewContext(ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require,console,Date,FormData});return exports;};
+const approval=compile('src/lib/forms/approval.ts',()=>({}));
+const logic=compile('src/lib/buying-plan-approval.ts',()=>approval);
+const shared=compile('src/lib/forms/queries-modules/_shared.ts',()=>({}));
+let role='admin',rule={l1_email:'l1@saadaa.in',l2_email:'l2@saadaa.in',max_value:100},missing=false,writeCount=0,failRead=false;
+let lines=[{id:1,product_code:'P',job_work_qty:2,fob_qty:0,efob_qty:0,standard_value:200,line_status:null}];
+let plan={id:1,status:'draft',plan_type:'fg',plan_month:'2099-01-01'};const calls=[];
+const db={from(table){let payload,op='read',filters=[];const q={select(){return q;},eq(c,v){filters.push([c,v]);return q;},in(){return q;},order(){return q;},update(p){payload=p;op='update';return q;},insert(p){payload=p;op='insert';return q;},upsert(p){payload=p;op='upsert';return q;},async maybeSingle(){if(table==='sd_buying_plan_approval_rule')return missing?{data:null,error:{code:'PGRST205',message:'missing'}}:{data:rule};return {data:plan};},async range(from,to){calls.push({table,from});return {data:failRead?null:lines.slice(from,to+1),error:failRead?{message:'failed page'}:null};},then(resolve,reject){let result;if(table==='sd_user')result={data:[{email:'l1@saadaa.in',role:'team',is_active:true},{email:'l2@saadaa.in',role:'team',is_active:true}]};else if(op!=='read'){writeCount++;if(table==='sd_buying_plan'&&op==='update')Object.assign(plan,payload);if(table==='sd_buying_plan_line'&&op==='update'){const id=filters.find(f=>f[0]==='id')?.[1];for(const l of lines)if(id==null||l.id===id)Object.assign(l,payload);}result={data:[{id:1}],error:null};}else result={data:[]};return Promise.resolve(result).then(resolve,reject);}};return q;}};
+const server=compile('src/lib/buying-plan-approval.server.ts',name=>name==='./forms/queries-modules/_shared'?{client:async()=>db,pageAll:shared.pageAll}:name==='./buying-plan-approval'?logic:{});
+assert.equal(await server.buyingPlanDecisionAllowed({email:'l1@saadaa.in',role:'team'},1,'submitted',db),false);
+assert.equal(await server.buyingPlanDecisionAllowed({email:'l2@saadaa.in',role:'team'},1,'submitted',db),true);
+lines=Array.from({length:1501},(_,i)=>({id:i+1,job_work_qty:1,standard_value:1}));assert.equal(await server.buyingPlanDecisionAllowed({email:'l1@saadaa.in',role:'team'},1,'submitted',db),false);assert.ok(calls.some(c=>c.from===1000));
+failRead=true;await assert.rejects(()=>server.buyingPlanDecisionAllowed({email:'l1@saadaa.in',role:'team'},1,'submitted',db),/failed page/);failRead=false;
+const actions=compile('src/app/rules-master/buying-plan-rule-actions.ts',name=>name==='@/lib/forms/queries'?{currentUser:async()=>({role,email:'admin@saadaa.in'})}:name==='@/lib/forms/queries-modules/_shared'?{client:async()=>db}:name==='next/cache'?{revalidatePath:()=>{}}:{});
+const form=new FormData();form.set('l1_email','l1@saadaa.in');form.set('l2_email','l2@saadaa.in');form.set('max_value','100.00');role='team';assert.equal((await actions.saveBuyingPlanApprovalRule(form)).ok,false);role='admin';form.set('max_value','-1');assert.equal((await actions.saveBuyingPlanApprovalRule(form)).ok,false);form.set('max_value','100');form.set('l2_email','l1@saadaa.in');assert.equal((await actions.saveBuyingPlanApprovalRule(form)).ok,false);form.set('l2_email','l2@saadaa.in');assert.equal((await actions.saveBuyingPlanApprovalRule(form)).ok,true);
+const submit=compile('src/lib/plan-submit.ts',name=>name==='@/lib/buying-plan-approval.server'?server:name==='@/lib/buying-plan-approval'?logic:name==='@/lib/forms/approval'?approval:name==='@/lib/forms/queries-modules/_shared'?{pageAll:shared.pageAll}:name==='@/lib/forms/queries-modules/standard-cost'?{loadApprovedStandardCosts:async()=>({P:{job:100,fob:200,efob:300}}),loadApprovedMaterialCosts:async()=>({P:{job:100,fob:200}})}:{});
+for(const type of ['fg','material']){plan={id:1,status:'draft',plan_type:type,plan_month:'2099-01-01'};lines=[{id:1,product_code:'P',job_work_qty:2,fob_qty:0,efob_qty:0,line_status:null}];assert.equal((await submit.submitPlanCore(db,1,{email:'team@saadaa.in'})).status,'pending_l2');assert.equal(lines[0].standard_value,200);}
+plan.status='draft';lines[0].job_work_qty=1;assert.equal((await submit.submitPlanCore(db,1,{email:'team@saadaa.in'})).status,'submitted');
+plan.status='draft';lines[0].product_code='UNKNOWN';lines[0].standard_value=1;assert.equal((await submit.submitPlanCore(db,1,{email:'team@saadaa.in'})).status,'pending_l2');assert.equal(lines[0].standard_value,null);
+missing=true;assert.equal(await server.loadBuyingPlanApprovalRule(db),null);
+console.log('Buying Plan rule actual server modules passed: authorization, inclusive value routing FG/material, missing costs, legacy fallback, settings validation, 1501-line paging and fail-closed read.');

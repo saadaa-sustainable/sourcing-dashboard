@@ -79,7 +79,7 @@ export function ApprovalsClient({
   const toggleCost = (id: string) =>
     setPickedCosts((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const mine = items.filter((item) => canApprove(role, item.status));
+  const mine = items.filter((item) => (item.canCurrentUserDecide ?? canApprove(role, item.status)));
   const byLevel = filter === 'mine' ? mine : items;
   const shown =
     typeFilter === 'all' ? byLevel : byLevel.filter((item) => item.entityType === typeFilter);
@@ -284,7 +284,7 @@ export function ApprovalsClient({
               <PoReviewPanels item={item} role={role} />
             )}
             {item.entityType === 'buying_plan' &&
-              canApprove(role, item.status) &&
+              (item.canCurrentUserDecide ?? canApprove(role, item.status)) &&
               !!item.lines?.length && <BuyingPlanApprovalLines item={item} context={context} />}
             {item.entityType === 'inward_plan' && !!item.lines?.length && <InwardPlanLines item={item} />}
             {item.entityType === 'standard_cost' && item.costRecord && item.costTrack && (
@@ -308,7 +308,7 @@ export function ApprovalsClient({
                       buying-plan approver can't accidentally act on all lines at once. */}
                   {item.entityType !== 'buying_plan' &&
                     item.entityType !== 'inward_plan' &&
-                    canApprove(role, item.status) &&
+                    (item.canCurrentUserDecide ?? canApprove(role, item.status)) &&
                     !!item.lines?.length && (
                       <LineRework
                         entityType={item.entityType}
@@ -320,7 +320,7 @@ export function ApprovalsClient({
                         }}
                       />
                     )}
-                  {item.entityType !== 'buying_plan' && item.entityType !== 'vendor_commercial' && canApprove(role, item.status) && (
+                  {item.entityType !== 'buying_plan' && item.entityType !== 'vendor_commercial' && (item.canCurrentUserDecide ?? canApprove(role, item.status)) && (
                     <ApprovalBar
                       entityType={item.entityType}
                       entityId={item.entityId}

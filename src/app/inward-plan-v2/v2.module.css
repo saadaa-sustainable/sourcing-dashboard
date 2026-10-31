@@ -45,6 +45,57 @@
 .inventoryScroll .inventory thead th { position: sticky; top: 0; z-index: 5; background: #fafafa; box-shadow: 0 1px 0 var(--border, #e1e5e8); }
 .inventoryScroll:focus-visible { outline: 2px solid #205b49; outline-offset: 2px; }
 
+.pendingPoSection { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--border, #e1e5e8); }
+.pendingPoToolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0; }
+.pendingPoToolbar > label { display: grid; gap: 6px; flex: 1 1 280px; max-width: 440px; font-size: 13px; }
+.pendingPoToolbar > p { margin: 0; }
+.pendingPoScroll { max-height: 480px; overflow: auto; border: 1px solid var(--border, #e1e5e8); }
+.pendingPoTable { min-width: 980px; border-collapse: separate; border-spacing: 0; }
+.pendingPoTable thead th { position: sticky; top: 0; z-index: 2; background: #f5f7f8; }
+.pendingPoTable td { vertical-align: middle; }
+.pendingPoTable td:first-child { min-width: 150px; }
+.pendingPoNumber { display: block; margin-top: 4px; color: var(--muted, #616d75); }
+.pendingPoScroll:focus-visible { outline: 2px solid #205b49; outline-offset: 2px; }
+.csvUpload { min-width: 0; padding: 16px; margin: 12px 0 16px; border: 1px solid var(--line, #dde2e5); border-radius: 8px; background: var(--surface, #fff); font-size: 12px; line-height: 1.5; }
+.csvHeader, .csvFileRow, .csvPreviewHeading, .csvActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.csvHeader { justify-content: space-between; margin-bottom: 16px; }
+.csvHeader h4 { margin: 0; color: var(--ink, #171717); font-size: 13px; font-weight: 600; line-height: 1.5; }
+.scheduleTableHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 12px; }
+.scheduleTableHeading h4 { margin: 0; color: var(--ink, #171717); font-size: 13px; font-weight: 600; line-height: 1.5; }
+.scheduleTableHeading > span { color: var(--muted, #616d75); font-size: 11px; }
+.entryDivider { display: flex; align-items: center; gap: 12px; margin: 12px 0; color: var(--muted, #616d75); font-size: 11px; font-weight: 600; }
+.entryDivider::before, .entryDivider::after { content: ''; flex: 1; border-top: 1px solid var(--line, #dde2e5); }
+.manualEntry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid var(--line, #dde2e5); border-radius: 8px; background: var(--surface, #fff); }
+.manualEntry h4 { margin: 0; color: var(--ink, #171717); font-size: 13px; font-weight: 600; line-height: 1.5; }
+.manualEntry p { margin: 3px 0 0; color: var(--muted, #616d75); font-size: 12px; }
+.anchorHeading { scroll-margin-top: 100px; }
+.csvUpload .csvHeader p { margin: 3px 0 0; color: var(--muted, #616d75); font-size: 12px; }
+.csvFileRow { padding: 12px; border: 1px dashed var(--line-strong, #c9cccf); border-radius: 8px; background: #fafafa; }
+.csvUpload .csvFileInput { display: none; }
+.csvFileName { flex: 1 1 140px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2, #43474a); }
+.csvLimit, .csvPreviewHeading > span { color: var(--muted, #616d75); font-size: 11px; }
+.csvHelp { display: grid; gap: 6px; margin: 12px 0; font-size: 11px; color: var(--ink-2, #43474a); }
+.csvHelp > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; }
+.csvHelp dt { font-weight: 600; }
+.csvHelp dd { margin: 0; overflow-wrap: anywhere; }
+.csvUpload .csvHint { margin: 0; color: var(--muted, #616d75); font-size: 11px; }
+.csvUpload .csvNotice { margin: 12px 0 0; padding: 10px 12px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.csvUpload .csvNotice p { margin: 0; font-weight: 600; }
+.csvNotice ul { margin: 6px 0 0; padding-left: 18px; max-height: 200px; overflow-y: auto; }
+.csvPreview { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line, #dde2e5); }
+.csvPreviewHeading { justify-content: space-between; margin-bottom: 12px; }
+.csvPreviewHeading strong { font-size: 12px; font-weight: 600; }
+.csvPreview th, .csvPreview td { padding: 9px 10px; font-size: 11px; }
+.csvActions { margin-top: 12px; gap: 8px; }
+.csvUpload button { flex-shrink: 0; }
+@media (max-width: 540px) {
+  .csvUpload { padding: 12px; }
+  .csvHeader { align-items: flex-start; }
+  .csvHelp > div { grid-template-columns: 1fr; gap: 2px; }
+  .csvLimit { flex-basis: 100%; }
+  .csvActions > button { width: 100%; }
+}
+
 
 
 .summaryAboveEditor { margin-bottom: 24px; }

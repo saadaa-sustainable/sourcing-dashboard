@@ -62,11 +62,12 @@ export async function getPoLineContext(productCode: string): Promise<PoLineConte
 export async function getVendorPoHistory(
   vendorCode: string,
   productCode?: string | null,
+  context: { poQty?: number | null; poType?: string | null } = {},
 ): Promise<VendorPoHistory | null> {
   const user = await currentUser();
   if (!user) return null;
   try {
-    return await loadVendorPoHistory(vendorCode, productCode);
+    return await loadVendorPoHistory(vendorCode, productCode, context);
   } catch {
     return null;
   }

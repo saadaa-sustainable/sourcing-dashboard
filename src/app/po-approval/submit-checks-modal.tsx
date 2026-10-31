@@ -174,6 +174,8 @@ export function SubmitChecksModal({
           {c.vendorCode && (
             <VendorHistoryButton
               vendorCode={c.vendorCode}
+              poQty={c.qty}
+              poType={c.poType}
               productCode={c.productCode}
               label="Open this vendor’s PO history"
             />

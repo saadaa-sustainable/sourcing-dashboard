@@ -1,5 +1,8 @@
 import 'server-only';
+import { loadBuyingPlanApprovalRule, buyingPlanDecisionAllowed } from '@/lib/buying-plan-approval.server';
+import { frozenPlanValue, planApprovalStatus } from '@/lib/buying-plan-approval';
 import { cache } from 'react';
+import { currentUser } from './auth';
 import { client, PAGE_SIZE, pageAll } from './_shared';
 import {
   approversFor,
@@ -108,6 +111,7 @@ export async function countPendingApprovals(): Promise<number> {
  */
 export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalNotification[]> {
   const supabase = await client();
+  const [actor,planRule]=await Promise.all([currentUser(),loadBuyingPlanApprovalRule(supabase)]);
   // Cost rows live outside the status ladder — proposed / rate_submitted are the
   // admin's turn in the negotiation, so they only surface for admins.
   const costTurn = (t: string) =>
@@ -200,7 +204,7 @@ export async function loadApprovalNotifications(role: SdRole): Promise<ApprovalN
     id: number; plan_month: string; plan_type: string | null; status: SdStatus;
     submitted_by: string | null; submitted_at: string | null;
   }>) {
-    if (!canApprove(role, p.status)) continue;
+    if (!(planRule&&actor?await buyingPlanDecisionAllowed(actor,p.id,p.status,supabase):canApprove(role,p.status))) continue;
     const material = p.plan_type === 'material';
     items.push({
       key: `bp-${p.id}`,
@@ -486,11 +490,9 @@ export async function loadApprovalQueue(): Promise<{
 
   for (const plan of (plans ?? []) as BuyingPlan[]) {
     const isMaterial = plan.plan_type === 'material';
-    const { data: lines } = await supabase
-      .from('sd_buying_plan_line')
+    const lineRows = await pageAll<BuyingPlanLine & {material_type:string|null}>(()=>supabase.from('sd_buying_plan_line')
       .select('id, product_code, fabric_type, material_type, line_status, job_work_qty, fob_qty, efob_qty, standard_value')
-      .eq('plan_id', plan.id);
-    const lineRows = (lines ?? []) as (BuyingPlanLine & { material_type: string | null })[];
+      .eq('plan_id',plan.id).order('id'));
     const qty = lineRows.reduce(
       (sum, l) =>
         sum +
@@ -501,6 +503,7 @@ export async function loadApprovalQueue(): Promise<{
     );
     items.push({
       entityType: 'buying_plan',
+      planApprovalValue: frozenPlanValue(lineRows),
       entityId: String(plan.id),
       track: isMaterial ? 'material' : 'fg',
       label: `${isMaterial ? 'Material buying plan' : 'Buying plan'} — ${plan.plan_month.slice(0, 7)}`,
@@ -781,7 +784,7 @@ export async function loadApprovalQueue(): Promise<{
   }
   // Spec 7.5 — stamp each card with whose turn it is and how long it has been theirs, so
   // the queue says who is holding it up rather than leaving everyone to assume.
-  const [matrix, rules] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules()]);
+  const [matrix, rules, planRule] = await Promise.all([loadApprovalMatrix(), loadAnalyticsRules(), loadBuyingPlanApprovalRule(supabase)]);
   const escalationDays = Number(rules.approval_escalation_days ?? 0);
   const now = Date.now();
   for (const item of items) {
@@ -791,6 +794,11 @@ export async function loadApprovalQueue(): Promise<{
       ? Math.max(0, Math.floor((now - Date.parse(item.submittedAt)) / 86_400_000))
       : null;
     item.escalated = isEscalated(item.submittedAt, escalationDays);
+    if(item.entityType==='buying_plan' && planRule) {
+      item.level=planApprovalStatus(item.planApprovalValue??null,planRule)==='submitted'?'l1':'l2';
+      item.approvers=item.level==='l1'?[planRule.l1_email,planRule.l2_email]:[planRule.l2_email];
+      item.escalated=false;
+    }
   }
 
   items.sort((a, b) => (b.submittedAt ?? '').localeCompare(a.submittedAt ?? ''));

@@ -1703,6 +1703,8 @@ export type ApprovalMatrixMember = {
 
 /** One row in the unified /approvals queue. */
 export type ApprovalQueueItem = {
+  planApprovalValue?: number | null;
+  canCurrentUserDecide?: boolean;
   entityType: ApprovalEntity;
   entityId: string;
   /** Buying plan only: which track this plan belongs to (FG vs Material). */
